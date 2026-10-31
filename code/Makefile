@@ -50,7 +50,7 @@ web-dist: ## Build the merchant web app (web/dist) for make deploy
 	cd web && npm run build
 
 deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web app to the team server
-	rsync -rlptz --chmod=a+rX --delete --exclude .venv --exclude .env --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .hypothesis --exclude '.coverage*' --exclude htmlcov --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
+	rsync -rlptz --chmod=a+rX --delete --exclude .venv --exclude '.env*' --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .hypothesis --exclude '.coverage*' --exclude htmlcov --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) 'mkdir -p $(DEPLOY_DIR)/web/dist'
 	rsync -rlptz --chmod=a+rX --delete -e "$(DEPLOY_SSH)" web/dist/ $(DEPLOY_HOST):$(DEPLOY_DIR)/web/dist/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\

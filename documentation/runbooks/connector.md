@@ -33,7 +33,7 @@ You need the key `~/.ssh/baselhack2026_lxc`. If it isn't on your machine, ask th
 
 What `make deploy` ships:
 
-- **Code:** mirrors your local `code/` to `/opt/merchant-agents/code` with `rsync --delete` (except `web/`, `.env`, `.venv`, caches and test artifacts). The server runs exactly your working tree, branch and uncommitted changes included. Nothing locks it: the last deploy wins, so tell the team which branch is live.
+- **Code:** mirrors your local `code/` to `/opt/merchant-agents/code` with `rsync --delete` (except `web/`, every `.env*` file, `.venv`, caches and test artifacts). The server runs exactly your working tree, branch and uncommitted changes included. Nothing locks it: the last deploy wins, so tell the team which branch is live.
 - **Python:** `uv sync` of the `gateway` and `merchant_node` packages, then `alembic upgrade head` on the server's Postgres. It never seeds.
 - **Services:** installs, enables and restarts `merchant-node` (BATP, `127.0.0.1:4710`) and `merchant-gateway` (MCP, `127.0.0.1:8001`), both as an unprivileged user. The gateway keeps a single uvicorn worker: sessions of clients on the older MCP protocol (before 2026-07-28) live in one process's memory.
 
