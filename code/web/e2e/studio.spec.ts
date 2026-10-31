@@ -111,6 +111,8 @@ test.describe("at 1440 px", () => {
     const selection = page.locator(".st-sel");
     await expect(selection).toHaveAttribute("data-tag", "Largest group");
     await expect(selection).toBeInViewport();
+    // On the first click too: changing tab sends the others to their top, not this one.
+    await expect.poll(() => page.locator(".st-paste").evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     await expect(page.getByRole("button", { name: "Your public site" })).toHaveAttribute("aria-pressed", "true");
     await expect(selection).toHaveCSS("outline-color", "rgb(63, 105, 255)");
     await page.getByRole("button", { name: /Management$/ }).click();

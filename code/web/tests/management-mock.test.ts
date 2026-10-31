@@ -57,6 +57,11 @@ test("the mock answers Studio's public site and its frames", async () => {
   );
   assert.equal((await hidden.tryAgent(SLUG, "BOOK")).status, 404);
   assert.equal((await hidden.tryAgent(SLUG, "PING")).status, 200);
+  const paused = createMockManagementClient(
+    { ...data, merchant: { ...data.merchant, status: "down" } },
+    { latencyMs: 0, liveBookingDelayMs: 0 },
+  );
+  assert.equal((await paused.tryAgent(SLUG, "AVAILABILITY")).status, 503);
 });
 
 test("the dashboard shows tonight's room and the 30 days ending today", async () => {
