@@ -1,0 +1,15 @@
+[project]
+name = "gateway"
+version = "0.1.0"
+description = "Protocol: public remote MCP server exposed to Claude."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "core",
+    "agent",
+    "mcp>=2.3,<3",
+    "uvicorn>=0.54",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.14"]
+build-backend = "uv_build"

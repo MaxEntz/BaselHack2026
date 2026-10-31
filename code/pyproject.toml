@@ -1,0 +1,66 @@
+[project]
+name = "merchant-agents"
+version = "0.1.0"
+description = "Let Claude book with any merchant, straight from their website."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "core",
+    "agent",
+    "gateway",
+    "builder",
+    "merchant-platform",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "pytest-asyncio>=1",
+    "testcontainers[postgres]>=4",
+    "httpx>=0.28",
+    "ruff>=0.17",
+    "mypy>=2",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+core = { workspace = true }
+agent = { workspace = true }
+gateway = { workspace = true }
+builder = { workspace = true }
+merchant-platform = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["web", "sites"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "ASYNC", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Keep `op` / `sa` imports in freshly generated (still empty) revisions.
+"migrations/versions/*" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "agent", "gateway", "builder", "merchant_platform"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib", "--strict-markers"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+    "integration: needs Docker (testcontainers starts Postgres 16)",
+    "llm: calls the Anthropic API; skipped when ANTHROPIC_API_KEY is not set",
+]

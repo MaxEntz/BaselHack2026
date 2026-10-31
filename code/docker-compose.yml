@@ -1,0 +1,21 @@
+name: merchant-agents
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: merchant
+      POSTGRES_PASSWORD: merchant
+      POSTGRES_DB: merchant_agents
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U merchant -d merchant_agents"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  db-data:
