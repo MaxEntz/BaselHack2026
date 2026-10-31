@@ -1,6 +1,6 @@
 # ADR-0006 — Render chat cards from tool results, not from the LLM's text
 
-- **Status**: Accepted
+- **Status**: Accepted (rejection of a direct path to the admin operations superseded by [ADR-0015](0015-give-merchants-a-management-site-next-to-the-chat.md))
 - **Date**: 2026-10-31
 
 ## Context

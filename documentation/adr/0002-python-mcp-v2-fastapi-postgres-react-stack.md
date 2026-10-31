@@ -1,6 +1,6 @@
 # ADR-0002 — Build on Python 3.12, MCP SDK v2, FastAPI, PostgreSQL 16 and Vite/React
 
-- **Status**: Accepted
+- **Status**: Accepted ("single chat page" amended by [ADR-0015](0015-give-merchants-a-management-site-next-to-the-chat.md); the stack stands)
 - **Date**: 2026-10-31
 
 ## Context

@@ -5,7 +5,7 @@
 
 ## 1. In one sentence
 
-A restaurant owner gives us their website and a short description. We generate a booking agent for that restaurant, so that anyone can book a table by asking Claude, and the owner manages everything by chatting with our platform.
+A restaurant owner gives us their website and a short description. We generate a booking agent for that restaurant, so that anyone can book a table by asking Claude, and the owner runs it by chatting with our platform. A management site is being added next to the chat ([ADR-0015](adr/0015-give-merchants-a-management-site-next-to-the-chat.md)).
 
 ## 2. Overview
 
@@ -16,7 +16,7 @@ flowchart TB
   end
 
   subgraph MERCHANT["Merchant side"]
-    M(["Merchant"]) --> WEB["Web chat<br/>code/web"]
+    M(["Merchant"]) --> WEB["Web<br/>code/web: chat, management site"]
   end
 
   subgraph BACKEND["Our backend"]
@@ -38,8 +38,10 @@ flowchart TB
   GW -.->|"agent error or timeout: fallback_url"| SITE["Merchant's own website"]
 
   WEB -->|"POST /chat (SSE)"| PL
+  WEB -->|"management routes"| PL
   PL --> ASSIST
   ASSIST -->|"admin tools"| AG
+  PL -->|"same operations"| AG
   ASSIST -->|"build_agent"| BU
   BU -->|"crawl (Playwright)"| SITE
   BU -->|"extract (strict function call)"| OAI["OpenAI API"]
@@ -50,9 +52,9 @@ flowchart TB
   PL -->|"GET /events (SSE)"| WEB
 ```
 
-**Two conversations, one agent per merchant:**
+**Two sides, one agent per merchant:**
 - **User side.** Claude calls our **gateway**, a remote MCP server added once as a connector. The gateway applies the user's preferences as filters, routes the call to the merchant's agent through the **BATP node** (our agent protocol, [PROTOCOL.md](PROTOCOL.md)), and returns the merchant's own booking page (`fallback_url`) when the agent cannot serve the request.
-- **Merchant side.** The merchant chats with the **platform assistant**. It builds the agent from the website (the **builder**), then runs day-to-day operations through admin tools: "What bookings do I have tonight?", "Block 21:00". New bookings from Claude appear live in the chat.
+- **Merchant side.** The merchant chats with the **platform assistant**. It builds the agent from the website (the **builder**), then runs day-to-day operations through admin tools: "What bookings do I have tonight?", "Block 21:00". New bookings from Claude appear live in the chat. A **management site** is being added next to the chat: ordinary pages and forms over the same operations (§3).
 
 **What "agent" means here.** The merchant's agent is not an AI and not a separate process. It is the restaurant's data (tables, hours, policy, bookings) in its own Postgres schema `m_<slug>`, plus the booking tools described for Claude, all served by one shared multi-tenant `AgentService` ([ADR-0001](adr/0001-one-postgres-schema-per-merchant.md)). The only LLMs are:
 - Claude, on the user side;
@@ -117,6 +119,24 @@ sequenceDiagram
 
 In both cases the error carries the merchant's `fallback_url`, and Claude gives the user that link. A taken slot gets `slot_unavailable`, with no link.
 
+### Merchant side: two paths to the same operations
+
+> **Status:** being built. `/` is still today's chat until Studio lands, and the pages come one by one. [#127](https://github.com/MaxEntz/BaselHack2026/issues/127) tracks them, and the mockups are in [`design/poc-v10/`](design/poc-v10/README.md).
+
+```mermaid
+flowchart LR
+  M(["Merchant"]) --> ST["Studio, at /<br/>the chat that builds the sites"]
+  M --> MS["Management site, at /manage/slug<br/>pages and forms"]
+  ST -->|"POST /chat (SSE)"| ASSIST["Platform assistant"]
+  MS -->|"Assistant page: POST /chat (SSE)"| ASSIST
+  MS -->|"management routes"| API["Platform API"]
+  ASSIST -->|"admin tools"| AG["AgentService"]
+  API --> AG
+  AG --> DB[("PostgreSQL")]
+```
+
+The chat stays the way to onboard and to ask for anything. Pages and forms are a second path, not a second set of rules: a route is a thin adapter over the same operations as the assistant's tool, so a form can't allow what the assistant refuses ([ADR-0015](adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). A secret link opens a merchant's site ([ADR-0018](adr/0018-open-a-merchants-site-with-a-secret-link.md)).
+
 ## 4. Components
 
 Paths are relative to `code/`.
@@ -140,7 +160,7 @@ Paths are relative to `code/`.
 | Demo data | `tests/fixtures/*.json`, `scripts/seed.py`, `demo_reset.py`, `set_status.py`, `demo_management.py`, `export_management_fixture.py` (`make seed`, `demo-reset`, `outage`, `restore`) | 3 fictional Mulhouse restaurants; La Graine Verte's management data, exported from the mockup (#131); reset the demo to a known state; outage switch | Never resets a non-local database |
 | Deployment | `deploy/Caddyfile`, `deploy/merchant-gateway.service`, `deploy/merchant-node.service`, `make deploy` | Gateway on the team server behind Caddy (HTTPS, only Anthropic's outbound range gets through), and the BATP node next to it on `127.0.0.1:4710`, both as systemd services. Outside `/opt/merchant-agents` it installs the systemd units, and replaces the Caddyfile and restarts Caddy when it changed, which affects every site on the shared server | Ships neither the platform nor the web app; never exposes port 4710 |
 
-Every component above is built and merged. Still open: the Claude.ai check of `/m/<slug>/mcp` ([#23](https://github.com/MaxEntz/BaselHack2026/issues/23)) and the Claude Desktop scenarios left to retest ([#14](https://github.com/MaxEntz/BaselHack2026/issues/14)); both are tracked in the [connector runbook](runbooks/connector.md#validation-status).
+Every component above is built and merged, apart from Studio and the rest of the management site ([#127](https://github.com/MaxEntz/BaselHack2026/issues/127)). Still open: the Claude.ai check of `/m/<slug>/mcp` ([#23](https://github.com/MaxEntz/BaselHack2026/issues/23)) and the Claude Desktop scenarios left to retest ([#14](https://github.com/MaxEntz/BaselHack2026/issues/14)); both are tracked in the [connector runbook](runbooks/connector.md#validation-status).
 
 ## 5. Stack and justifications
 
@@ -159,7 +179,7 @@ Every component above is built and merged. Still open: the Claude.ai check of `/
 | LLM (backend) | OpenAI Responses API, forced strict function call | The team's key is an OpenAI one; 160/160 valid extractions in spike #4 | Claude API (no key available); multi-provider layer | [0004](adr/0004-openai-for-backend-llm-calls.md) |
 | LLM output | The LLM only fills `MerchantProfile`; code does the rest | A crawled site is untrusted input (prompt injection) | LLM-generated SQL or code | [0003](adr/0003-llm-fills-a-schema-never-generates-code.md) |
 | Crawl | Playwright (Chromium) | Handles JavaScript-rendered sites | requests + BeautifulSoup | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md) |
-| Front | Vite + React + TypeScript, React Router; cards rendered from tool results | Single chat page; what the merchant sees is what the service returned | Next.js; Markdown tables written by the LLM | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md), [0006](adr/0006-chat-cards-rendered-from-tool-results.md), [0017](adr/0017-router-and-test-tools-for-the-management-site.md) |
+| Front | Vite + React + TypeScript, React Router; cards rendered from tool results | A chat and a management site behind a secret link, so no SSR or SEO need; what the merchant sees is what the service returned | Next.js; Markdown tables written by the LLM; chat only | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md), [0006](adr/0006-chat-cards-rendered-from-tool-results.md), [0015](adr/0015-give-merchants-a-management-site-next-to-the-chat.md), [0017](adr/0017-router-and-test-tools-for-the-management-site.md) |
 | Tests | pytest, pytest-asyncio, testcontainers (Postgres 16); web: Node's runner, Vitest + Testing Library, Playwright | The exclusion constraint and the triggers must be tested for real; pages are checked in a browser against the mockups | Mocked database; screenshot diffs | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md), [0017](adr/0017-router-and-test-tools-for-the-management-site.md) |
 | Idempotent updates | Each applied update key stored with its change in `public.reservation_changes` | A late retry of an older change never undoes a newer one; existing merchants need no re-provision | A column in each merchant schema (drop and re-provision every merchant) | [0013](adr/0013-store-update-idempotency-keys-in-public.md) |
 | Merchant accounts | A secret link per merchant, an HMAC-signed `HttpOnly` owner cookie (stdlib `hmac`) | Guest names, the request log and the OpenAI key stay with whoever built the merchant; no new dependency, and a new link ends every session of the old one | OAuth or e-mail magic links (prove identity, not ownership; need a provider); a server session table; JWT | [0018](adr/0018-open-a-merchants-site-with-a-secret-link.md) |
@@ -193,7 +213,7 @@ Breaking one of these is a bug.
 **Assumptions (POC):**
 - One city, with no ranking beyond name order.
 - Guest identity is the `guest_name` Claude passes, compared everywhere by `same_guest` (case-folded, accents dropped, whitespace collapsed).
-- A single hard-coded merchant session on the platform.
+- One owner per merchant, identified by a secret link ([ADR-0018](adr/0018-open-a-merchants-site-with-a-secret-link.md)).
 - Deployed, the gateway reaches the agents through the BATP node on the same host (`BATP_URL`); without it (development, tests), they run in the same process.
 
 **Open question:** where the platform and the web chat run for the demo, given that live events need them on the gateway's Postgres ([#25](https://github.com/MaxEntz/BaselHack2026/issues/25)).
@@ -206,6 +226,9 @@ Breaking one of these is a bug.
 | **Merchant agent** | One merchant's booking logic and data. Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's schema. |
 | **Builder** | The pipeline that turns *website + description* into a validated `MerchantProfile`, then provisions and deploys the agent. |
 | **Platform assistant** | The LLM assistant merchants chat with; it acts through admin tools. |
+| **Studio** | The chat page where a merchant gives their website and gets their sites built. |
+| **Management site** | A merchant's own pages and forms for running their restaurant, in the restaurant's look, next to the chat. |
+| **Agent site** | A merchant's agent as agents see it: a `batp://` address and the MCP bridge, with no interface. |
 | **`MerchantProfile`** | Validated JSON describing a merchant (hours, tables, tags, price, fallback URL). The single input of provisioning. |
 | **Fallback URL** | The merchant's own booking page, returned whenever the agent cannot serve a request. |
 | **Registry** | The `public.merchants` table that discovery reads: one row per merchant, with its status (`building`, `live`, `down`). |
