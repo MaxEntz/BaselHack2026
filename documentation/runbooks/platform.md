@@ -45,7 +45,7 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
    ENV
    ```
 
-   `make deploy` refuses to go on without this file, `PLATFORM_DEV_ROUTES=0`, an `https://sesame.…` `PLATFORM_WEB_URL` (the start of the owners' secret links, and `Secure` cookies), a cookie secret (without it, every deploy logs every owner out) and an invite code (without it, anyone can start a build: an OpenAI call and a crawl from the shared server). It also refuses `PLATFORM_MERCHANT`, which is for local development. Don't add a `log` directive to the `sesame.` block of the Caddyfile without filtering `token`: the secret links go through it.
+   Before copying anything, `make deploy` reads the last value of each key, as the platform does, and refuses to go on without this file, `PLATFORM_DEV_ROUTES=0`, an `https://sesame.…` `PLATFORM_WEB_URL` (the start of the owners' secret links, and `Secure` cookies), a cookie secret (without it, every deploy logs every owner out) and an invite code (without it, anyone can start a build: an OpenAI call and a crawl from the shared server). It also refuses `PLATFORM_MERCHANT`, which is for local development. A refused deploy changes nothing on the server. Whatever this file says, Caddy answers `404` to `/api/dev/*`. Don't add a `log` directive to the `sesame.` block of the Caddyfile without filtering `token`: the secret links go through it.
 
 3. From your machine, with Node installed (`make deploy` builds `web/dist` first):
 
@@ -55,6 +55,17 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
    ```
 
    On top of the gateway and the node, it now ships `web/dist` (both copies readable by everyone, `--chmod=a+rX`, so `sesame` and Caddy can read them), creates the `sesame` user if needed, syncs the platform and the builder, installs Chromium under `/opt/merchant-agents/ms-playwright`, gives `sesame` a writable `.cache`, and installs and restarts `merchant-platform`.
+
+4. **Demo data** (optional): seed the server's database as in [connector.md](connector.md#2-check-it-on-the-server) §2, with `--with-management` for La Graine Verte's management data (#131).
+
+5. **Owner links** for the merchants built without one (seeded merchants), or when an owner lost theirs. Run it from `platform/`, so the link starts with the platform's `PLATFORM_WEB_URL`:
+
+   ```bash
+   cd /opt/merchant-agents/platform
+   ../code/.venv/bin/python ../code/scripts/owner_link.py la-graine-verte --name Léa
+   ```
+
+   It prints the link once, and the previous link stops working. Not from `code/`, nor with `make owner-link`: `code/.env` has no `PLATFORM_WEB_URL`, so the link would start with `http://localhost:5173` and the secret would be spent on a link that doesn't work.
 
 ## Operate it
 
@@ -89,10 +100,12 @@ cd /opt/merchant-agents/code
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `make deploy`: `../platform/.env on the server needs …` | The platform's settings file is missing, keeps the dev routes on, or lacks one of #132's settings | Step 2 |
-| `make deploy`: `../platform/.env on the server must not set PLATFORM_MERCHANT` | A development setting was copied to the server | Remove it from `platform/.env` |
+| `make deploy`: `/opt/merchant-agents/platform/.env is missing on the server` or `… needs …` | The platform's settings file is missing, keeps the dev routes on, or lacks one of #132's settings (on the last line for that key) | Step 2 |
+| `make deploy`: `… must not set PLATFORM_MERCHANT` | A development setting was copied to the server | Remove it from `platform/.env` |
 | The `crawl` step fails with "Something went wrong while reading the website" | Chromium's libraries are missing | Step 1, then `journalctl -u merchant-platform` |
 | The crawl says the address points to a private network, or that websites answer on ports 80 and 443 | `CRAWL_ALLOW_PRIVATE=0`: no private address, no port other than 80 and 443, so a build can't read the server's own services | Use the demo sites' public hosts, never `localhost` or a port |
 | The booking form switches to "call us" mode | CORS: Le Petit Zinc's host missing from `PUBLIC_CORS_ORIGINS`, or the platform down | Step 2 (`PUBLIC_CORS_ORIGINS` in `platform/.env`); `systemctl status merchant-platform` |
 | Live events stay on "Reconnecting" | `/api/events` buffered | Check `flush_interval -1` in the Caddyfile's `/api/*` block |
+| An owner link starts with `http://localhost:5173` | `owner_link.py` ran from `code/`, whose `.env` has no `PLATFORM_WEB_URL` | Step 5: a new link, from `platform/` |
+| `make web-dist`: `VITE_MOCK is set` | `VITE_MOCK` in your environment or a `web/.env*` file: it would ship the mock app | Unset it for the deployment |
 | A seeded merchant's fallback link opens `localhost:8080` | The fixtures still hold local addresses | Build the merchant from its public host instead, or re-seed with the server's addresses (#25) |

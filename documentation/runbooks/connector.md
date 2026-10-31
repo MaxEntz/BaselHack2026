@@ -33,13 +33,15 @@ You need the key `~/.ssh/baselhack2026_lxc`. If it isn't on your machine, ask th
 
 What `make deploy` ships:
 
-- **Code:** mirrors your local `code/` to `/opt/merchant-agents/code` with `rsync --delete` (except `web/`, every `.env*` file, `.venv`, caches and test artifacts). The server runs exactly your working tree, branch and uncommitted changes included. Nothing locks it: the last deploy wins, so tell the team which branch is live.
-- **Python:** `uv sync` of the `gateway` and `merchant_node` packages, then `alembic upgrade head` on the server's Postgres. It never seeds.
-- **Services:** installs, enables and restarts `merchant-node` (BATP, `127.0.0.1:4710`) and `merchant-gateway` (MCP, `127.0.0.1:8001`), both as an unprivileged user. The gateway keeps a single uvicorn worker: sessions of clients on the older MCP protocol (before 2026-07-28) live in one process's memory.
+- **Checks first:** refuses to go on, before copying anything, without the platform's own `/opt/merchant-agents/platform/.env` ([platform.md](platform.md), step 2).
+- **Code:** mirrors your local `code/` to `/opt/merchant-agents/code` with `rsync --delete` (except every `.env*` file, `.venv`, caches and test artifacts; of `web/`, only `web/dist`, built first by `make web-dist`, which needs Node). The server runs exactly your working tree, branch and uncommitted changes included. Nothing locks it: the last deploy wins, so tell the team which branch is live.
+- **Python:** `uv sync` of the `gateway`, `merchant_node`, `merchant-platform` and `builder` packages, Chromium for the crawler, then `alembic upgrade head` on the server's Postgres. It never seeds.
+- **Services:** installs, enables and restarts `merchant-node` (BATP, `127.0.0.1:4710`) and `merchant-gateway` (MCP, `127.0.0.1:8001`), both as an unprivileged user, and `merchant-platform` (`127.0.0.1:8002`, user `sesame`, see [platform.md](platform.md)). The gateway keeps a single uvicorn worker: sessions of clients on the older MCP protocol (before 2026-07-28) live in one process's memory.
 
 What it touches **outside** `/opt/merchant-agents`:
 
-- `/etc/systemd/system/merchant-node.service` and `merchant-gateway.service`.
+- `/etc/systemd/system/merchant-node.service`, `merchant-gateway.service` and `merchant-platform.service`.
+- The system user `sesame`, created if missing.
 - `/etc/caddy/Caddyfile`, only when `code/deploy/Caddyfile` changed: it validates it, overwrites the file and restarts Caddy. **The server is shared**: any other site must also be declared in our Caddyfile.
 
 It never touches `/opt/merchant-agents/code/.env`. On a new server, create it with:
@@ -97,7 +99,7 @@ Start the scenarios from a known state, still on the server:
 .venv/bin/python scripts/demo_booking.py                       # the live booking, through the local gateway
 ```
 
-(`make seed`, `make demo-reset` and `make outage` act on your **local** database; `make demo-booking` on your local gateway.)
+(`make seed`, `make demo-reset` and `make outage` act on your **local** database; `make demo-booking` on your local gateway.) Seeded merchants have no owner link: issue one from `/opt/merchant-agents/platform`, not from here ([platform.md](platform.md), step 5).
 
 From your machine, the public URL must refuse you and port 4710 must stay closed:
 
