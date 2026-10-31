@@ -191,7 +191,9 @@ async def test_the_assistant_onboards_a_restaurant_in_three_messages(
 
 
 @pytest.mark.parametrize(
-    "answer", [DESCRIPTION, "No description: use the defaults."], ids=["answer", "skip"]
+    "answer",
+    [DESCRIPTION, "24 seats, groups up to 4.", "No description: use the defaults."],
+    ids=["long", "short", "skip"],
 )
 async def test_studio_builds_from_the_address_and_the_answer_in_one_message(
     engine: AsyncEngine, tmp_path: Path, answer: str
@@ -203,6 +205,7 @@ async def test_studio_builds_from_the_address_and_the_answer_in_one_message(
     slug: str | None = None
     try:
         events = await say(f"{host}. {answer}")
+        assert built, f"no build, the model said: {_text(events)}"
         [arguments] = built
         assert host in str(arguments.website)
         assert len(crawled) == 1

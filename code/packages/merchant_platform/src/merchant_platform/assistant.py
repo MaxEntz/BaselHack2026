@@ -75,6 +75,9 @@ of tables and their sizes, largest group bookable online, dietary options (veget
 gluten-free, halal, kosher), terrace, children, cancellation policy.
 4. If an answer is vague, ask one targeted follow-up at most, then call build_agent with the \
 URL and a description that sums up their answers.
+A message that gives the URL together with anything about how they work, or that asks for the \
+defaults, is enough: call build_agent at once, with no greeting and no question. The review \
+card shows what you assumed, and the merchant corrects it there.
 """
 
 OPERATIONS_PROMPT = """\
