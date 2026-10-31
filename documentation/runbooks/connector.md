@@ -1,6 +1,6 @@
 # Runbook: connect Claude to the MCP gateway
 
-Spike [#3](https://github.com/MaxEntz/BaselHack2026/issues/3). Goal: call our server's `ping` tool from a Claude conversation.
+Issues [#3](https://github.com/MaxEntz/BaselHack2026/issues/3), [#11](https://github.com/MaxEntz/BaselHack2026/issues/11) and [#14](https://github.com/MaxEntz/BaselHack2026/issues/14). Goal: book a table with our server's 6 tools from a Claude conversation.
 
 Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not from your browser. So `localhost` is not enough: you need a public HTTPS URL. The same goes for Claude Desktop. Only Claude Code can target `localhost` directly.
 
@@ -12,21 +12,25 @@ Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not f
 
 | Link | Status | How |
 |---|---|---|
-| `ping` over HTTPS on the public URL | ✅ validated | SDK client from outside, valid Let's Encrypt certificate |
-| Same URL after an LXC reboot | ✅ validated | same URL, `ping` OK after reboot |
+| HTTPS on the public URL | ✅ validated | Spike #3: SDK client from outside, valid Let's Encrypt certificate |
+| Same URL after an LXC reboot | ✅ validated | Spike #3: same URL after a reboot |
 | `allowed_hosts`, `Origin`, bearer token, `https` redirect | ✅ validated locally | real server, headers simulated with curl |
-| Claude Code (plan B), with and without token | ✅ validated | real `ping` call, locally |
-| Claude.ai | ✅ validated | `ping` called from a conversation, screenshot below |
+| Claude Code (plan B), token | ✅ validated | Spike #3: real call, locally, with and without token |
+| Claude Code (plan B), §9 scenarios | ✅ validated | the 6 tools, locally, see [User scenarios](#user-scenarios) |
+| MCP client (e2e, in CI) | ✅ validated | `tests/e2e/test_gateway_mcp.py`, real server and real Postgres |
+| Deployed server, 6 tools | ✅ validated | SDK client run on the LXC, on `http://127.0.0.1:8001/mcp`: booking, move, cancellation, party too large, outage and restore |
+| Claude.ai, connection | ✅ validated | Spike #3: the former `ping` tool called from a conversation, screenshot below |
+| Claude Desktop, §9 scenarios | 🔶 5 of 6 | by hand, through the connector, see [User scenarios](#user-scenarios) |
 | Claude.ai's calls accepted by the server | ✅ validated | coming from `160.79.106.x`, all `200`, no `Host` or `Origin` rejected in the logs |
-| Caddy IP filter (#45): `403` outside `160.79.104.0/21` | ✅ validated locally | Caddy 2.6.2 (the LXC's version) in Docker: allowed range → gateway, otherwise `403`. On the LXC: to recheck at the first `make deploy` after merge |
-| SDK client run on the LXC over SSH | ✅ validated | `tools/list` on `http://127.0.0.1:8001/mcp` |
+| Anthropic's calls through the filter | ✅ validated | Claude Desktop's tool calls came from `160.79.106.x`, all `200`, with the deployed Caddyfile |
+| Caddy IP filter (#45): `403` outside `160.79.104.0/21` | ✅ validated | `403` and `server: Caddy` on `/mcp`, `/health` and `/.env` from outside, on the LXC |
 | SSH tunnel (`ssh -L`) | ❌ refused | `AllowTcpForwarding no` in the server's SSH hardening |
-| MCP Inspector | ⏳ not run yet | step 4 |
+| MCP Inspector | ✅ validated | `tools/list` locally: the 6 tools, their schemas and annotations |
 | ngrok tunnel (steps 1 to 3) | ⏳ not tested | alternative if the LXC is no longer available |
 
 ![Claude.ai calls ping and shows pong](img/connector-ping.png)
 
-*Claude.ai calls the connector's `ping` tool and shows `pong` with the server time (the conversation is in French).*
+*Spike #3: Claude.ai calls the former `ping` tool and shows `pong` with the server time (the conversation is in French). The tool has since been removed.*
 
 ## Deploy a change to the LXC
 
@@ -45,7 +49,31 @@ ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
 
 On the server, Caddy handles HTTPS and forwards to `127.0.0.1:8001`. The `merchant-gateway` service runs as an unprivileged user. Its configuration is in `/opt/merchant-agents/code/.env`, and its logs with `journalctl -u merchant-gateway`. `make deploy` doesn't touch that `.env`: on a new server, create it with `DATABASE_URL`, without which the service doesn't start, and `GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io`, without which every public request gets `421`.
 
+To check that the gateway is running and reaches Postgres, run this on the server (`curl` isn't installed there):
+
+```bash
+cd /opt/merchant-agents/code
+.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8001/health').read().decode())"
+```
+
 ⚠️ **The LXC is shared, it doesn't only run the gateway.** Ask before rebooting it, stopping a service or touching anything outside `/opt/merchant-agents`. When `code/deploy/Caddyfile` changed, `make deploy` validates it, overwrites `/etc/caddy/Caddyfile` and restarts Caddy: any other site must also be declared there. The firewall (`/etc/nftables.conf`) only opens ports 22, 80 and 443 inbound, and refuses new outbound connections to private networks.
+
+## Postgres on the LXC
+
+`postgresql-16` runs on the LXC, listening on localhost only. `make deploy` applies the migrations but doesn't touch the data. `make seed` and `make outage` act on your local database. For the server's:
+
+```bash
+ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
+cd /opt/merchant-agents/code
+.venv/bin/python scripts/demo_reset.py --all --with-bookings      # known state: the 3 restaurants and tonight's bookings
+.venv/bin/python scripts/set_status.py le-petit-zinc down         # outage (then `live`)
+```
+
+On a new server, create the database in UTF-8. Without a locale, Postgres picks `SQL_ASCII`: psycopg then returns bytes, and everything fails with `cannot use a string pattern on a bytes-like object`.
+
+```sql
+CREATE DATABASE merchant_agents OWNER merchant ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0;
+```
 
 ## Prerequisites
 
@@ -101,7 +129,6 @@ A `400` shows that the request does reach the server (`401` if `GATEWAY_TOKEN` i
 
 ```bash
 npx -y @modelcontextprotocol/inspector --cli https://<name>.ngrok-free.app/mcp --transport http --method tools/list
-npx -y @modelcontextprotocol/inspector --cli https://<name>.ngrok-free.app/mcp --transport http --method tools/call --tool-name ping
 ```
 
 Without Node, the SDK client runs the same test:
@@ -113,12 +140,10 @@ from mcp import Client
 
 async def main():
     async with Client("https://<name>.ngrok-free.app/mcp") as client:
-        print(await client.call_tool("ping", {}))
+        print(await client.list_tools())
 
 asyncio.run(main())'
 ```
-
-`ping` is the spike's health check. The #11 gateway, with the six user tools, may not keep it (the build deployed on the LXC on 2026-10-31 doesn't): then use `tools/list` (or `client.list_tools()`) instead.
 
 ### 5. Add the connector in Claude.ai
 
@@ -141,8 +166,8 @@ The dialog's layout varies between organizations.
 **In a conversation**
 
 1. Open **+ > Connectors** and enable `merchant-agents`.
-2. Ask: "Call the ping tool of the merchant-agents connector". If the deployed gateway has no `ping` (see step 4), ask "Which tools does the merchant-agents connector have?" instead.
-3. Approve the call if Claude asks. The answer must mention `pong` and the server time, or list the six user tools, from `search_merchants` to `get_my_reservations`.
+2. Ask: "Table for 4 tonight at 8pm in Mulhouse".
+3. Approve the calls if Claude asks. It must propose times, then ask for confirmation before booking.
 
 ## Plan B: Claude Code
 
@@ -154,11 +179,34 @@ claude mcp add --transport http merchant-agents http://localhost:8001/mcp
 claude mcp add --transport http merchant-agents http://localhost:8001/mcp --header "Authorization: Bearer <token>"
 ```
 
-Run `/mcp` in a session to check the connection, then ask it to call `ping`.
+Run `/mcp` in a session to check the connection, then play the scenarios below.
 
 Claude Code can't target the LXC's gateway: the public URL answers it with `403`, and the server refuses SSH tunnels (see [Protect the public URL](#protect-the-public-url)).
 
 Claude Desktop is **not** an independent plan B: its custom connector also goes through Anthropic's cloud, so if the tunnel goes down, it goes down too.
+
+## User scenarios
+
+Start from a known database (locally: `make db`, `make migrate`, `make seed`; on the LXC: `demo_reset.py`, see [Postgres on the LXC](#postgres-on-the-lxc)). In Claude, under **Settings > Account > Instructions for Claude**, set: *"I'm vegetarian. My budget is mid-range (max €€). My name is Alex Martin."*
+
+| Message | Expected | Plan B (Claude Code) | Claude Desktop |
+|---|---|---|---|
+| "Table for 4 tonight at 8pm in Mulhouse" | `filters` passed without repeating them, times proposed, **confirmation requested**, booking, summary | ✅ | ✅ |
+| "Move it to 9pm" | Confirmation, then `update_reservation` | ✅ | ✅ |
+| "Cancel my booking" | Confirmation, then `cancel_reservation` | ✅ | ✅ |
+| "A vegan place with a terrace in Mulhouse" | No results, Claude offers to drop a filter | ✅ | ⏳ |
+| "Table for 8 at Le Petit Zinc" | Fallback link given (`party_too_large`) | ✅ | ✅ |
+| Le Petit Zinc down (`make outage`, or `set_status.py` on the LXC), then "Table for 2 at Le Petit Zinc" | Fallback link given (`agent_unavailable`); back to `live`, it works again without a restart | ✅ | ✅ |
+
+Claude Desktop ran on 2026-10-31 against the LXC. Its first try at the vegan scenario, worded "A vegan place with a terrace", never called the connector: Claude used its own place search and proposed restaurants in Basel, where it located the user. The `search_merchants` description now asks Claude to call it first; that wording is what the ⏳ retests. Name the city in demo prompts anyway: the demo restaurants are in Mulhouse.
+
+Plan B ran on 2026-10-31 with Claude Code, locally, mostly with Sonnet: `get_availability` took 11 to 28 ms server-side, and no guest name appeared in the INFO logs. It also validated two merchant-side scenarios: a cancellation by the restaurant, whose notice Claude relays, and a blocked slot, which Claude no longer offers. For Claude.ai, store a screenshot of each conversation in `assets/screenshots/`.
+
+Watch the confirmation: Claude's behaviour varies between conversations. With the first descriptions, it once booked as soon as the user picked a restaurant. With the current ones, it waited for the yes in 9 conversations out of 9 (Sonnet and Opus). In Claude.ai, check that no booking goes out before your "yes".
+
+Fallback links and the fixtures' websites point to `localhost` (`make sites`), so they only open on the machine serving those sites: the demo's. Claude notices: in Claude Desktop, it warned that the link probably won't open and suggested calling the restaurant. For a demo where the audience sees the link, the sites need a public URL (#25).
+
+To simulate a slow agent, `CHAOS_DELAY_MS=3000` (with `CHAOS_MERCHANTS=le-petit-zinc` to target one merchant) triggers the 2 s timeout, then the fallback link.
 
 ## Protect the public URL
 
@@ -173,7 +221,7 @@ curl -i https://191-96-88-152.sslip.io/mcp   # from your machine: 403 Forbidden,
 ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152 'journalctl -u merchant-gateway --since "-5min"'   # no line for your request
 ```
 
-Then, from a Claude.ai conversation, the connector must still answer (step 5).
+Then, from a Claude.ai conversation, the connector must still list its tools (step 5).
 
 To test without opening the URL, two options:
 
@@ -199,7 +247,7 @@ To test without opening the URL, two options:
 
 ### Token (`GATEWAY_TOKEN`)
 
-`GATEWAY_TOKEN` requires `Authorization: Bearer <token>` on every request. Empty, the server is open to anyone who knows the URL.
+`GATEWAY_TOKEN` requires `Authorization: Bearer <token>` on every request except `/health`. Empty, the server is open to anyone who knows the URL.
 
 ⚠️ On the Claude.ai side, header authentication is **in beta, limited to some organizations**. Without a **Request headers** section in the dialog, you don't have access: if `GATEWAY_TOKEN` is set, the connector won't be able to connect.
 
@@ -223,6 +271,7 @@ With ngrok and without access to the beta, two options:
 | `421 Invalid Host header` | Tunnel domain missing from `allowed_hosts` | Fix `GATEWAY_PUBLIC_URL`, restart `make gateway` |
 | `403 Forbidden` (only a `server: Caddy` header) | Request from outside Anthropic's range, refused by Caddy on the LXC | Expected from your machine: local gateway, or SDK client on the server. If Claude.ai gets it, recheck Anthropic's range and the Caddyfile |
 | `403 Invalid Origin header` | `Origin` sent outside `ALLOWED_ORIGINS` | Add it in `gateway/server.py`. The refused name is in the server logs |
+| `agent_unavailable` without a link, `/health` at `503` | Postgres unreachable: wrong `DATABASE_URL`, or database not migrated | Fix `.env`, run the migrations |
 | `401 Unauthorized` | Token missing, wrong, or without the `Bearer ` prefix | Fix the header, or empty `GATEWAY_TOKEN` |
 | `make tunnel`: `GATEWAY_PUBLIC_URL is empty` | `.env` missing or incomplete | Step 2 |
 | `make gateway`: `database_url Field required` | `.env` missing | Step 2 |

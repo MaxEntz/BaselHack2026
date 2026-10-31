@@ -249,8 +249,8 @@ def test_generic_words_never_restrict_the_query() -> None:
 
 
 def test_an_incidental_query_word_can_be_dropped(merchants: list[MerchantSummary]) -> None:
-    # "maison" names Maison Albane, which is not vegan; La Graine Verte is.
-    names, suggestions, _ = find(merchants, tags=["vegan"], query="cuisine maison")
+    # "albane" names Maison Albane, which is not vegan; La Graine Verte is.
+    names, suggestions, _ = find(merchants, tags=["vegan"], query="albane")
 
     assert names == []
     assert suggestions == [
@@ -259,9 +259,35 @@ def test_an_incidental_query_word_can_be_dropped(merchants: list[MerchantSummary
     ]
 
 
+def test_a_generic_query_word_does_not_hide_a_match(merchants: list[MerchantSummary]) -> None:
+    names, _, _ = find(merchants, tags=["vegan"], query="cuisine maison")
+
+    assert names == ["La Graine Verte"]
+
+
 def test_equal_names_are_ordered_by_slug() -> None:
     merchants = [summary("b-zinc", "Zinc"), summary("a-zinc", "Zinc")]
 
     criteria, _ = normalize_filters(None, None, "")
 
     assert [m.slug for m in filter_merchants(merchants, criteria)] == ["a-zinc", "b-zinc"]
+
+
+@pytest.mark.parametrize("query", ["un petit restaurant végétarien", "une maison", "a little cafe"])
+def test_generic_words_of_merchant_names_keep_the_search_generic(
+    query: str, merchants: list[MerchantSummary]
+) -> None:
+    criteria, _ = normalize_filters(None, None, query)
+
+    assert len(filter_merchants(merchants, criteria)) == len(merchants)
+
+
+@pytest.mark.parametrize(
+    ("query", "slug"), [("Le Petit Zinc", "le-petit-zinc"), ("Maison Albane", "maison-albane")]
+)
+def test_the_distinctive_word_still_names_the_merchant(
+    query: str, slug: str, merchants: list[MerchantSummary]
+) -> None:
+    criteria, _ = normalize_filters(None, None, query)
+
+    assert [m.slug for m in filter_merchants(merchants, criteria)] == [slug]
