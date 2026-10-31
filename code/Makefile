@@ -5,7 +5,7 @@ DEPLOY_SSH ?= ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes
 DEPLOY_DIR := /opt/merchant-agents/code
 PLATFORM_ENV := /opt/merchant-agents/platform/.env
 
-.PHONY: setup db migrate gateway node platform web web-dist site sites tunnel deploy seed demo-reset owner-link test lint fmt rfc
+.PHONY: setup db migrate gateway node platform web web-dist site sites tunnel deploy seed demo-reset owner-link test test-stack lint fmt rfc
 
 setup: ## .env, Python deps, Chromium for the crawler, web deps
 	test -f .env || cp .env.example .env
@@ -113,6 +113,10 @@ owner-link: ## A new secret link for SLUG's owner (NAME="Léa" optional); the ol
 
 test:
 	uv run pytest
+
+test-stack: ## The browser test of the whole stack on a fresh build of the web app (#153)
+	cd web && npm run build
+	uv run pytest tests/e2e/test_web_stack.py
 
 lint:
 	uv run ruff check .

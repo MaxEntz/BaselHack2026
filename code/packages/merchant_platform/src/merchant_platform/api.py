@@ -21,6 +21,9 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from agent.management import ManagementService
 from agent.service import AgentService, PgAgentService
+from builder.build import Crawl
+from builder.crawl import crawl
+from builder.llm import LLMClient
 from core.config import Settings, get_settings
 from core.db import make_engine
 from core.errors import AgentError, AgentUnavailable, FormProblem, InvalidInput
@@ -508,7 +511,14 @@ def _since(started: float) -> int:
 @lru_cache
 def _default_app() -> FastAPI:
     configure_logging()
-    settings = get_settings()
+    return default_app(get_settings())
+
+
+def default_app(
+    settings: Settings, *, llm: LLMClient | None = None, crawler: Crawl = crawl
+) -> FastAPI:
+    """The platform as `make platform` runs it. `llm` and `crawler` stand in for OpenAI and
+    the builder's crawl in the browser test of the whole stack (#153)."""
     engine = make_engine(settings.database_url)
     bus = LiveBus()
     listener = LiveListener(settings.database_url, engine, bus, settings.merchant_tz)
@@ -516,7 +526,7 @@ def _default_app() -> FastAPI:
     accounts = default_accounts(settings, PgOwnerStore(engine))
     return create_app(
         settings,
-        assistant=default_assistant(settings, engine, agent, accounts),
+        assistant=default_assistant(settings, engine, agent, accounts, llm=llm, crawler=crawler),
         agent=agent,
         profiles=registry_profiles(engine),
         bus=bus,

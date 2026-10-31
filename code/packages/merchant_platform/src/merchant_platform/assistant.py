@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import generated_tools
 from agent.service import AgentService
-from builder.build import Builder, gateway_mcp_url, publish
+from builder.build import Builder, Crawl, gateway_mcp_url, publish
 from builder.cache import BuildCache
 from builder.crawl import StepEmitter, crawl
 from builder.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
@@ -342,27 +342,39 @@ def default_assistant(
     engine: AsyncEngine,
     agent: AgentService | None = None,
     accounts: Accounts | None = None,
+    *,
+    llm: LLMClient | None = None,
+    crawler: Crawl = crawl,
 ) -> RunTurn:
-    """The assistant wired to OpenAI, the registry, the builder and the owners' links."""
-    if settings.openai_api_key is None:
+    """The assistant wired to OpenAI, the registry, the builder and the owners' links.
+
+    `llm` stands in for OpenAI, in the conversation and the extraction alike, and `crawler`
+    for the builder's crawl: the browser test of the whole stack runs both as fakes (#153).
+    """
+    if llm is not None:
+        extractor = llm
+    elif settings.openai_api_key is None:
         return run_turn
-    tz = ZoneInfo(settings.merchant_tz)
-    # Retries are ours (one, before any text reached the merchant).
-    openai = AsyncOpenAI(
-        api_key=settings.openai_api_key.get_secret_value(), max_retries=0, timeout=LLM_TIMEOUT
-    )
-    llm = OpenAIClient(
-        openai, settings.openai_model, reasoning_effort=settings.openai_reasoning_effort
-    )
-    builder = Builder(
+    else:
+        # Retries are ours (one, before any text reached the merchant).
+        openai = AsyncOpenAI(
+            api_key=settings.openai_api_key.get_secret_value(), max_retries=0, timeout=LLM_TIMEOUT
+        )
+        llm = OpenAIClient(
+            openai, settings.openai_model, reasoning_effort=settings.openai_reasoning_effort
+        )
         # Spike #4: no reasoning extracts as well, a second faster.
-        OpenAIClient(
+        extractor = OpenAIClient(
             openai, settings.openai_model, reasoning_effort=settings.builder_reasoning_effort
-        ),
+        )
+    tz = ZoneInfo(settings.merchant_tz)
+    builder = Builder(
+        extractor,
         engine,
         model=settings.openai_model,
         mcp_url=gateway_mcp_url(settings.gateway_public_url),
         cache=BuildCache(settings.builder_cache),
+        crawl=crawler,
         tz=tz,
     )
 
