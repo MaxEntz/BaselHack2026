@@ -36,6 +36,13 @@ def is_local(database_url: str) -> bool:
     return url.host in LOCAL_HOSTS and not {"host", "hostaddr"} & set(url.query)
 
 
+def migrate(database_url: str) -> None:
+    """Alembic on exactly the URL that passed `is_local` (env.py keeps a URL already set)."""
+    config = Config(ALEMBIC_INI)
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    command.upgrade(config, "head")
+
+
 async def wipe(conn: AsyncConnection) -> list[str]:
     """Drop every merchant schema and empty the public tables; returns the dropped schemas."""
     # starts_with rather than LIKE 'm_%', where `_` is a wildcard that also matches "mx…".
@@ -70,7 +77,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     started = time.perf_counter()
     try:
-        command.upgrade(Config(ALEMBIC_INI), "head")
+        migrate(database_url)
         dropped = asyncio.run(reset(database_url))
     except DBAPIError as error:
         return seed.database_error(error)
