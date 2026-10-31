@@ -254,6 +254,17 @@ test("an identical save writes no activity line", async () => {
   assert.deepEqual((await mock.dashboard(SLUG)).activity, before);
 });
 
+test("the same hours in another order are no change", async () => {
+  const mock = client();
+  const before = (await mock.dashboard(SLUG)).activity;
+
+  const saved = await mock.saveHours(SLUG, { services: data.hours.services.toReversed() });
+  await mock.saveHours(SLUG, { services: data.hours.services });
+
+  assert.deepEqual(saved.services, data.hours.services);
+  assert.deepEqual((await mock.dashboard(SLUG)).activity, before);
+});
+
 test("a form's malformed field is refused before any of its rules", async () => {
   const mock = client();
   const generic = async (promise: Promise<unknown>) => {
