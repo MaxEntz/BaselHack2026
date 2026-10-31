@@ -47,6 +47,13 @@ export function createMockClient(onboarded: boolean): ChatClient {
     const url = message.match(/\S+\.\S+/);
     if (!url) return reply("What's the address of your restaurant's website?");
     website = url[0];
+    // Studio sends the address and the description in one message.
+    const words = message.replace(url[0], "").split(/\s+/).filter(Boolean);
+    if (words.length >= 3) {
+      if (CUT.test(message)) return ONBOARDING.slice(0, CUT_AT + 1);
+      onboarded = true;
+      return ONBOARDING;
+    }
     return reply(
       "Thanks! Now describe how you work in a few words: your tables, " +
         "your opening hours and the largest group you accept.",

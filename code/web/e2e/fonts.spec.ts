@@ -24,8 +24,8 @@ test("the management routes set their titles", async ({ page }) => {
   await expect(page).toHaveTitle("La Graine Verte · Home");
 });
 
-test("the chat still runs at / until Studio replaces it", async ({ page }) => {
+test("Studio runs at /", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("What's your restaurant's website?")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What's your website's address?" })).toBeVisible();
   await expect(page.getByRole("textbox")).toBeVisible();
 });

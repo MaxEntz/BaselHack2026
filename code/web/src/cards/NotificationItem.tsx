@@ -1,17 +1,5 @@
 import type { LiveEvent } from "../types.ts";
-import { VIA_LABELS, describeDay, plural } from "./format.ts";
-
-// Live events only report guests' changes: the merchant's own are not sent.
-function title({ kind, via }: LiveEvent): string {
-  switch (kind) {
-    case "new_booking":
-      return `New booking via ${VIA_LABELS[via]}`;
-    case "updated":
-      return "Booking updated by the guest";
-    case "cancelled":
-      return "Booking cancelled by the guest";
-  }
-}
+import { VIA_LABELS, describeDay, notificationTitle, plural } from "./format.ts";
 
 export function NotificationItem({ event }: { event: LiveEvent }) {
   const { kind, via, date, reservation } = event;
@@ -21,7 +9,7 @@ export function NotificationItem({ event }: { event: LiveEvent }) {
         🔔
       </span>
       <div>
-        <strong>{title(event)}</strong>
+        <strong>{notificationTitle(event)}</strong>
         <p>
           {reservation.id} · {plural(reservation.party_size, "guest")} · {describeDay(date)}{" "}
           {reservation.time} · table {reservation.table_label}

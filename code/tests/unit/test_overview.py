@@ -99,3 +99,29 @@ async def test_a_merchant_missing_from_the_registry(registry_given: bool, status
         response = await http.get("/merchants/chez-mimi")
 
     assert response.status_code == status
+
+
+# The look (#149), for the management site's tokens (#150).
+
+
+def test_the_overview_carries_the_stored_look() -> None:
+    from builder.look import DEFAULT_LOOK
+    from merchant_platform.overview import stored_look
+
+    stored = DEFAULT_LOOK.model_dump(mode="json")
+    with_look = MerchantRecord(**{**RECORD.__dict__, "look": stored_look({"look": stored})})
+    settings = Settings(_env_file=None, database_url="postgresql+psycopg://u:p@localhost/db")  # type: ignore[call-arg]
+
+    overview = merchant_overview(with_look, None, settings, datetime.now(UTC))
+
+    assert overview.look == DEFAULT_LOOK
+    assert merchant_overview(RECORD, None, settings, datetime.now(UTC)).look is None
+
+
+@pytest.mark.parametrize(
+    "profile", [{}, {"look": None}, {"look": {"bg": "red"}}, "not a profile", None]
+)
+def test_a_profile_without_a_readable_look_gives_none(profile: Any) -> None:
+    from merchant_platform.overview import stored_look
+
+    assert stored_look(profile) is None

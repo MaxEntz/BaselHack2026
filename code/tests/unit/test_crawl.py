@@ -205,3 +205,48 @@ def test_parse_json_ld_keeps_objects_and_ignores_broken_blocks() -> None:
     blocks = ['{"@type": "Restaurant"}', "{not json", '[{"@type": "Menu"}, 3]', None, '"x"']
 
     assert parse_json_ld(blocks) == [{"@type": "Restaurant"}, {"@type": "Menu"}]
+
+
+# The look's sample (#149, #197 review): bounded in size and in time.
+
+
+def test_the_look_sample_is_bounded_before_it_is_cached() -> None:
+    from builder.crawl import LOOK_KEY_CHARS, LOOK_KEYS, bounded_look
+
+    huge = {f"rgb({i}, 0, 0)" + "x" * 500: float(i) for i in range(1000)}
+    sample = bounded_look(
+        {
+            "bg": "rgb(1, 2, 3)" + "y" * 5000,
+            "ink": "rgb(4, 5, 6)",
+            "body_font": "z" * 5000,
+            "heading": {"size": 10, "color": "rgb(0, 0, 0)", "font": "w" * 5000},
+            "backgrounds": huge,
+            "texts": huge,
+            "borders": "not a map",
+            "radii": [[1, 2, 3]] * 2000,
+            "page_area": 1,
+        }
+    )
+
+    assert len(sample["bg"]) == LOOK_KEY_CHARS
+    assert len(sample["backgrounds"]) == len(sample["texts"]) == LOOK_KEYS
+    assert all(len(key) <= 2 * LOOK_KEY_CHARS for key in sample["backgrounds"])
+    assert min(sample["backgrounds"].values()) == 1000 - LOOK_KEYS  # the heaviest kept
+    assert sample["borders"] == {}
+    assert len(sample["radii"]) == 500
+    assert len(sample["body_font"]) == len(sample["heading"]["font"]) == 200
+
+
+async def test_a_look_that_takes_too_long_is_given_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    from builder import crawl as crawl_module
+
+    class SlowTab:
+        async def evaluate(self, _: str) -> dict[str, object]:
+            await asyncio.sleep(5)
+            return {}
+
+    monkeypatch.setattr(crawl_module, "LOOK_TIMEOUT_S", 0.05)
+
+    assert await crawl_module._styles(SlowTab()) is None

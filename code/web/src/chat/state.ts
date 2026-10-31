@@ -35,11 +35,19 @@ export type ChatState = {
   activity: string | null;
   merchant: Merchant | null;
   status: AgentStatus | null;
+  // The site being onboarded, until the agent has a name.
+  site: string | null;
+  // The address given, while Studio asks how the merchant works.
+  address: string | null;
   nextId: number;
 };
 
 export type ChatAction =
-  | { type: "send"; text: string }
+  | { type: "send"; text: string; site?: string }
+  // An address with nothing else: Studio asks for the details itself, with no model call.
+  | { type: "details"; text: string; address: string; site: string; reply: string }
+  | { type: "status"; status: AgentStatus }
+  | { type: "reset"; welcome: string }
   | { type: "chat"; event: ChatEvent }
   | { type: "live"; event: LiveEvent }
   | { type: "failed"; message: string }
@@ -57,6 +65,8 @@ export function initialChatState(
     activity: null,
     merchant,
     status: merchant ? "live" : null,
+    site: null,
+    address: null,
     nextId: 1,
   };
 }
@@ -67,10 +77,23 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "send": {
       const turn = state.turn + 1;
       return append(
-        { ...state, turn, busy: true, activity: null },
+        { ...state, turn, busy: true, activity: null, address: null, site: action.site ?? state.site },
         { type: "user", turn, text: action.text },
       );
     }
+    case "details": {
+      const turn = state.turn + 1;
+      const asked = { ...state, turn, address: action.address, site: action.site };
+      return append(append(asked, { type: "user", turn, text: action.text }), {
+        type: "assistant",
+        turn,
+        text: action.reply,
+      });
+    }
+    case "status":
+      return { ...state, status: action.status };
+    case "reset":
+      return initialChatState(action.welcome, null);
     case "live":
       return append(state, {
         type: "notification",
@@ -148,7 +171,16 @@ function interruptBuild(state: ChatState): ChatState {
   // stays. One stopped earlier in this turn left nothing, as the server undid it.
   const deploy = group?.type === "steps" ? group.steps.deploy?.status : undefined;
   if (next.status !== "building" || group?.type !== "steps" || deploy === "waiting") return next;
+  if (isPublishing(state, "deploy")) return next;
   return { ...next, status: next.merchant ? "live" : null };
+}
+
+// `deploy` alone in this turn: publishing an agent the build left hidden (#136).
+function isPublishing(state: ChatState, step: StepName): boolean {
+  if (step !== "deploy") return false;
+  const index = lastTurnItemIndex(state, (item) => item.type === "steps");
+  const group = index === -1 ? null : state.items[index];
+  return group?.type === "steps" && Object.keys(group.steps).every((name) => name === "deploy");
 }
 
 // Deltas extend the turn's last assistant message, unless something else
@@ -167,8 +199,9 @@ function applyStep(state: ChatState, event: StepEvent): ChatState {
   const { type: _type, step, ...stepState } = event;
   let status: AgentStatus | null = "building";
   // A failed rebuild leaves an onboarded merchant's agent live; a failed first build leaves no
-  // agent at all (the server undoes it), as when the stream is cut (#86).
-  if (event.status === "error") status = state.merchant ? "live" : null;
+  // agent at all (the server undoes it), as when the stream is cut (#86). A failed publish
+  // leaves it hidden.
+  if (event.status === "error") status = isPublishing(state, step) ? "building" : state.merchant ? "live" : null;
   else if (step === "deploy" && event.status === "done") status = "live";
   const next: ChatState = { ...state, status };
   const index = lastTurnItemIndex(state, (item) => item.type === "steps");

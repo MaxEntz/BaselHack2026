@@ -29,7 +29,7 @@ from core.models import BuildAgentInput, BuildAgentOutput, StepEvent
 from gateway.discovery import search
 from merchant_node.agents import MerchantAgents
 from merchant_platform.api import create_app
-from merchant_platform.assistant import Assistant, registry_profiles
+from merchant_platform.assistant import Assistant, registry_profiles, registry_statuses
 from merchant_platform.tools import AdminTools
 
 pytestmark = pytest.mark.integration
@@ -171,7 +171,7 @@ async def test_a_build_stops_before_publishing_and_publish_puts_it_live(
     assert str(output.profile.website) == site
     assert str(output.profile.fallback_url) == f"{site}reservation.html"
     assert {tool.name for tool in output.tools} >= {"get_availability", "create_reservation"}
-    assert [fact.key for fact in output.facts][-1] == "booking_page"
+    assert [fact.key for fact in output.facts][-2:] == ["booking_page", "look"]
     saved = tmp_path / "generated" / f"{output.profile.slug}.json"
     assert json.loads(saved.read_text())["slug"] == output.profile.slug
 
@@ -304,7 +304,7 @@ async def test_a_warm_cache_replays_the_steps_without_crawl_or_llm(
 
     assert (crawl.calls, llm.calls) == (1, 1)
     assert [(e.step, e.status) for e in run.events] == BUILT
-    assert run.events[1].detail == "2 pages read: homepage, reservation"
+    assert run.events[1].detail == "Read 2 pages: /, /reservation.html"
     assert again.profile == first.profile
     assert (again.facts, again.flags) == (first.facts, first.flags)
 
@@ -344,7 +344,9 @@ async def test_onboarding_through_the_chat_api(
     tools = AdminTools(None, build, tz, today=date.today)
     app = create_app(
         Settings(_env_file=None, database_url="postgresql+psycopg://unused/db"),  # type: ignore[call-arg]
-        assistant=Assistant(llm, tools, registry_profiles(engine), tz),
+        assistant=Assistant(
+            llm, tools, registry_profiles(engine), tz, statuses=registry_statuses(engine)
+        ),
     )
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:

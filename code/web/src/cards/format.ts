@@ -1,5 +1,5 @@
 import { strings } from "../strings.ts";
-import type { Service, Via } from "../types.ts";
+import type { LiveEvent, Service, Via } from "../types.ts";
 
 export const VIA_LABELS: Record<Via, string> = {
   claude: strings.viaAssistant,
@@ -53,4 +53,16 @@ export function describeDay(date: string): string {
 
 function shortDate(day: Date): string {
   return day.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
+
+// Live events only report guests' changes: the merchant's own are not sent.
+export function notificationTitle({ kind, via }: LiveEvent): string {
+  switch (kind) {
+    case "new_booking":
+      return `New booking via ${VIA_LABELS[via]}`;
+    case "updated":
+      return "Booking updated by the guest";
+    case "cancelled":
+      return "Booking cancelled by the guest";
+  }
 }

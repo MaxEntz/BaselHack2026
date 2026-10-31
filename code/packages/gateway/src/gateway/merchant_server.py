@@ -9,7 +9,6 @@ the same `fallback.call_merchant`, timeout, `down` status and log line.
 import asyncio
 import logging
 import re
-import unicodedata
 from collections.abc import Awaitable, Callable
 from functools import partial
 from typing import Annotated, Any
@@ -24,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from agent.provisioning import generated_tools
+from agent.provisioning import described_tools
 from core.config import Settings
 from core.db import merchants_t
 from core.models import (
@@ -49,10 +48,6 @@ MERCHANT_PATH = "/m/{slug}/mcp"
 SLUG = re.compile(r"^[a-z0-9-]{3,61}$")
 # Key of the request's deadline in the ASGI scope's `state`, set by `MerchantEndpoint`.
 DEADLINE = "merchant_deadline"
-# Merchant free text allowed in a tool description (name, city).
-MAX_FREE_TEXT = 80
-# Instead of the merchant's own words, which could carry instructions for Claude.
-POLICY_ELSEWHERE = "see the restaurant's own website"
 
 INSTRUCTIONS = """\
 Book a table at one restaurant, on the user's behalf. The restaurant, its hours and its largest \
@@ -149,35 +144,9 @@ async def load_profile(slug: str, *, engine: AsyncEngine) -> MerchantProfile | N
         return None
 
 
-def one_line(text: str, limit: int = MAX_FREE_TEXT) -> str:
-    """Merchant text fit for a tool description: one line, no control characters, bounded."""
-    printable = "".join(" " if unicodedata.category(char)[0] == "C" else char for char in text)
-    line = " ".join(printable.split())
-    return line if len(line) <= limit else f"{line[: limit - 1].rstrip()}…"
-
-
-def described_profile(profile: MerchantProfile) -> MerchantProfile:
-    """The profile as the descriptions may show it.
-
-    Tool descriptions read as the connector's instructions, and the free text of a profile comes
-    from the merchant's website, which anyone can onboard (#22): the cancellation policy never
-    goes in, and the name and city are bounded. Services and party size are validated already.
-    """
-    location = profile.location
-    if location and location.city:
-        location = location.model_copy(update={"city": one_line(location.city)})
-    return profile.model_copy(
-        update={
-            "name": one_line(profile.name),
-            "location": location,
-            "cancellation_policy": POLICY_ELSEWHERE,
-        }
-    )
-
-
 def describe(tools: list[dict[str, Any]], profile: MerchantProfile) -> list[dict[str, Any]]:
     """Each tool's description, prefixed with the merchant's sentence from the template."""
-    own = {tool.name: tool.description for tool in generated_tools(described_profile(profile))}
+    own = {tool.name: tool.description for tool in described_tools(profile)}
     return [
         {**tool, "description": f"{own[tool['name']]} {tool.get('description') or ''}".strip()}
         if tool.get("name") in own
