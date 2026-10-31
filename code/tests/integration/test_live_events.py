@@ -289,3 +289,28 @@ async def test_a_rolled_back_booking_sends_nothing(
     # Notifications arrive in commit order: the first one is the committed booking.
     assert (await next_event(queue)).reservation.id == committed
     assert queue.empty()
+
+
+async def test_a_replayed_update_that_changes_nothing_sends_nothing(
+    engine: AsyncEngine, merchants: tuple[str, str], listener: LiveListener, bus: LiveBus
+) -> None:
+    slug = merchants[0]
+    queue = bus.subscribe(slug)
+    reservation_id = await book(engine, slug)
+    await next_event(queue)
+
+    cancel = (
+        update(reservations_t)
+        .where(reservations_t.c.id == reservation_id)
+        .values(status="cancelled", cancelled_by="guest")
+    )
+    async with merchant_conn(engine, slug) as conn:
+        await conn.execute(cancel)
+    async with merchant_conn(engine, slug) as conn:
+        replayed = await conn.execute(cancel)
+    later = await book(engine, slug, at=EIGHT_PM + timedelta(hours=1))
+
+    assert replayed.rowcount == 0  # skipped by reservations_skip_noop
+    assert (await next_event(queue)).kind == "cancelled"
+    assert (await next_event(queue)).reservation.id == later
+    assert queue.empty()
