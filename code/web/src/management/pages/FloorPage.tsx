@@ -22,19 +22,16 @@ type FloorBase = { today: string; clock: string; tables: TableSpec[] };
 
 export function FloorPage({ slug, version }: { slug: string; version: number }) {
   const client = useClient();
-  const load = useCallback(
-    async (signal: AbortSignal): Promise<FloorBase> => {
-      const [merchant, { tables }] = await Promise.all([
-        client.merchant(slug, signal),
-        client.tables(slug, signal),
-      ]);
-      // The merchant's today and time are the platform's, never the browser's. Read once: while the
-      // page stays open, the default time and what has passed don't follow the clock.
-      return { today: merchant.now.slice(0, 10), clock: merchant.now.slice(11, 16), tables };
-    },
+  // The merchant's today and time are the platform's, never the browser's. Read once: while the
+  // page stays open, the default time and what has passed don't follow the clock.
+  const loadNow = useCallback(async (signal: AbortSignal) => (await client.merchant(slug, signal)).now, [client, slug]);
+  const loadTables = useCallback(
+    async (signal: AbortSignal) => (await client.tables(slug, signal)).tables,
     [client, slug],
   );
-  const { data, error, update } = useLoad(load);
+  const now = useLoad(loadNow);
+  const tables = useLoad(loadTables, version);
+  const error = now.error ?? tables.error;
 
   return (
     <>
@@ -44,14 +41,16 @@ export function FloorPage({ slug, version }: { slug: string; version: number }) 
           {error}
         </p>
       )}
-      {data && (
+      {now.data && tables.data && (
         <>
-          <Room slug={slug} version={version} {...data} />
-          <TablesForm
+          <Room
             slug={slug}
-            tables={data.tables}
-            onSaved={(tables) => update((loaded) => ({ ...loaded, tables }))}
+            version={version}
+            today={now.data.slice(0, 10)}
+            clock={now.data.slice(11, 16)}
+            tables={tables.data}
           />
+          <TablesForm slug={slug} tables={tables.data} onSaved={(saved) => tables.update(() => saved)} />
         </>
       )}
     </>

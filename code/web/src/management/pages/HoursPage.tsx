@@ -13,7 +13,7 @@ import { PageTitle } from "./PageTitle.tsx";
 
 type HoursData = { hours: Hours; blocked: BlockedTime[]; today: string; clock: string };
 
-export function HoursPage({ slug }: { slug: string }) {
+export function HoursPage({ slug, version }: { slug: string; version: number }) {
   const client = useClient();
   const load = useCallback(
     async (signal: AbortSignal): Promise<HoursData> => {
@@ -27,7 +27,7 @@ export function HoursPage({ slug }: { slug: string }) {
     },
     [client, slug],
   );
-  const { data, error, update } = useLoad(load);
+  const { data, error, update } = useLoad(load, version);
 
   return (
     <>
