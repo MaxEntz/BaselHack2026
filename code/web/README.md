@@ -12,6 +12,9 @@ npm run lint
 npm run check:contracts    # mocks vs src/types.ts
 ```
 
+Open <http://localhost:5173/?gallery> to review every card and state (steps,
+profile, reservations incl. empty, stats, policy, notifications, errors).
+
 ## Environment
 
 | Variable | Effect |
@@ -36,3 +39,5 @@ message replays `tonight.json`, and messages mentioning *block*, *busy*, *stats*
   `/api/events?merchant=<slug>`; `src/mocks/mockClient.ts` is its mock twin.
 - `src/chat/useChat.ts`: wires the client to the reducer.
 - `src/components/`: header, message list (auto-scroll), composer.
+- `src/cards/`: rich messages rendered from `step`/`card` events and live
+  notifications, never from the assistant's Markdown; `Gallery.tsx` is `/?gallery`.

@@ -9,9 +9,10 @@ type Props = {
   items: readonly ChatItem[];
   activity: string | null;
   busy: boolean;
+  onRetry: () => void;
 };
 
-export function MessageList({ items, activity, busy }: Props) {
+export function MessageList({ items, activity, busy, onRetry }: Props) {
   const list = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -33,8 +34,13 @@ export function MessageList({ items, activity, busy }: Props) {
   return (
     <div className="messages" ref={list} onScroll={onScroll} aria-live="polite">
       <div className="messages-inner">
-        {items.map((item) => (
-          <ChatItemView key={item.id} item={item} />
+        {items.map((item, index) => (
+          <ChatItemView
+            key={item.id}
+            item={item}
+            // Only the latest error offers a retry, and never during a turn.
+            onRetry={!busy && index === items.length - 1 ? onRetry : undefined}
+          />
         ))}
         {busy && (
           <div className="activity" role="status">

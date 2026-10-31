@@ -22,6 +22,7 @@ const WELCOME = DEMO_MERCHANT
 
 export default function App() {
   const { state, send, liveConnected } = useChat(CLIENT, WELCOME, DEMO_MERCHANT);
+  const lastMessage = state.items.findLast((item) => item.type === "user");
 
   return (
     <div className="app">
@@ -30,7 +31,12 @@ export default function App() {
         status={state.status}
         liveConnected={liveConnected}
       />
-      <MessageList items={state.items} activity={state.activity} busy={state.busy} />
+      <MessageList
+        items={state.items}
+        activity={state.activity}
+        busy={state.busy}
+        onRetry={() => lastMessage && void send(lastMessage.text)}
+      />
       <Composer disabled={state.busy} onSend={(text) => void send(text)} />
     </div>
   );
