@@ -24,6 +24,7 @@ Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not f
 | Claude.ai's calls accepted by the server | ✅ validated | coming from `160.79.106.x`, all `200`, no `Host` or `Origin` rejected in the logs |
 | Anthropic's calls through the filter | ✅ validated | Claude Desktop's tool calls came from `160.79.106.x`, all `200`, with the deployed Caddyfile |
 | Caddy IP filter (#45): `403` outside `160.79.104.0/21` | ✅ validated | `403` and `server: Caddy` on `/mcp`, `/health` and `/.env` from outside, on the LXC |
+| MATP node on the LXC (#62) | ⏳ waits for #60, #61 | unit and `make deploy` ready; port 4710 already unreachable from outside (firewall) |
 | SSH tunnel (`ssh -L`) | ❌ refused | `AllowTcpForwarding no` in the server's SSH hardening |
 | MCP Inspector | ✅ validated | `tools/list` locally: the 6 tools, their schemas and annotations |
 | ngrok tunnel (steps 1 to 3) | ⏳ not tested | alternative if the LXC is no longer available |
@@ -74,6 +75,38 @@ On a new server, create the database in UTF-8. Without a locale, Postgres picks 
 ```sql
 CREATE DATABASE merchant_agents OWNER merchant ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0;
 ```
+
+## MATP node on the LXC
+
+The MATP node ([`PROTOCOL.md`](../PROTOCOL.md)) serves the merchant agents. It runs on the LXC as the systemd service `merchant-node` (`code/deploy/merchant-node.service`), as the same unprivileged user as the gateway. The unit pins `MATP_HOST=127.0.0.1` and `MATP_PORT=4710`, which override `.env`. The gateway, on the same host, is its only client. Port 4710 is **not** exposed: the firewall only opens 22, 80 and 443. Opening it needs TLS and a firewall rule on a shared server, so ask first, in a separate issue.
+
+`make deploy` installs, enables and restarts `merchant-node` along with `merchant-gateway`. Both read `/opt/merchant-agents/code/.env`, which `make deploy` doesn't touch. On the server, it needs:
+
+```bash
+MATP_TOKENS=…                     # node: one token per known agent, including the gateway's (format: see .env.example)
+MATP_URL=matp://127.0.0.1:4710    # gateway: speak MATP to the node; without it, the gateway calls the agents in-process
+MATP_TOKEN=…                      # gateway: its own token, the one listed in MATP_TOKENS
+```
+
+Generate a token with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. After editing `.env`, restart both services.
+
+On the server:
+
+```bash
+systemctl restart merchant-node                   # restart the node (then merchant-gateway if its settings changed)
+systemctl status merchant-node                    # state, last log lines
+journalctl -u merchant-node -f                    # live logs: one JSON line per request (agent id, intent, merchant, status, latency)
+journalctl -u merchant-node --since "-10min"      # recent logs
+ss -ltnp | grep 4710                              # must show 127.0.0.1:4710 only
+```
+
+From your machine, the port must stay closed (the connection times out):
+
+```bash
+timeout 5 bash -c 'echo > /dev/tcp/191.96.88.152/4710' && echo OPEN || echo closed
+```
+
+If the node is down, the gateway's tools answer `agent_unavailable` with each restaurant's fallback URL (#61), and `journalctl -u merchant-node` says why. The usual causes are a missing `DATABASE_URL` or `MATP_TOKENS`, or Postgres down (`systemctl status postgresql`).
 
 ## Prerequisites
 

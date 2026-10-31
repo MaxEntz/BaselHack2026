@@ -140,7 +140,7 @@ Paths are relative to `code/`.
 | Web chat | `web/` | Merchant chat: SSE client, one component per card kind, live notifications, mock mode (`VITE_MOCK=1`, `/?gallery`) | No business logic, no forms | ✅ #19, #20 |
 | Demo sites | `sites/le-petit-zinc/`, `sites/la-graine-verte/`, `sites/maison-albane/` (`make site`, `make sites` on :8080–:8082) | Fictional restaurant sites (in French): crawl target, fallback URL, and Le Petit Zinc's booking form, which posts to the platform's public booking API | — | ✅ #16 |
 | Demo data | `tests/fixtures/*.json`, `scripts/seed.py`, `demo_reset.py`, `set_status.py` (`make seed`, `demo-reset`, `outage`, `restore`) | 3 fictional Mulhouse restaurants; reset the demo to a known state; outage switch | Refuses to reset a non-local database | ✅ #10 |
-| Deployment | `deploy/Caddyfile`, `deploy/merchant-gateway.service`, `make deploy` | Gateway on the team server behind Caddy (HTTPS, only Anthropic's outbound range gets through), systemd service | Ships only the gateway (not the web app, the platform or Postgres). Outside `/opt/merchant-agents` it installs the systemd unit, and replaces the Caddyfile and restarts Caddy when it changed, which affects every site on the shared server | ✅ #3 |
+| Deployment | `deploy/Caddyfile`, `deploy/merchant-gateway.service`, `deploy/merchant-node.service`, `make deploy` | Gateway on the team server behind Caddy (HTTPS, only Anthropic's outbound range gets through), and the MATP node next to it on `127.0.0.1:4710`, both as systemd services | Ships only the gateway and the node (not the web app, the platform or Postgres); never exposes port 4710. Outside `/opt/merchant-agents` it installs the systemd units, and replaces the Caddyfile and restarts Caddy when it changed, which affects every site on the shared server | ✅ #3; 🚧 node #62 (waits for #60) |
 
 ## 5. Stack and justifications
 
@@ -189,7 +189,7 @@ Breaking one of these is a bug.
 - The gateway and the agent run in the same process (AGENTS.md §13).
 
 **Open question: demo topology (#25).**
-- `make deploy` ships only the gateway to the team server, where Postgres also runs (localhost only).
+- `make deploy` ships only the gateway and the MATP node to the team server, where Postgres also runs (localhost only).
 - Live events need the gateway (writes) and the platform (`LISTEN`) on the same Postgres.
 - The server's firewall opens only ports 22, 80 and 443 inbound.
 

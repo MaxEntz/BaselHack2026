@@ -1,0 +1,26 @@
+[Unit]
+Description=Merchant Agents MATP node
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=gateway
+WorkingDirectory=/opt/merchant-agents/code
+# Settings come from /opt/merchant-agents/code/.env (DATABASE_URL, MATP_TOKENS), read from the working directory.
+# Loopback only: the gateway on the same host is the node's only client (issue #62).
+Environment=MATP_HOST=127.0.0.1 MATP_PORT=4710
+ExecStart=/opt/merchant-agents/code/.venv/bin/python -m matp
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

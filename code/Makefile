@@ -42,16 +42,16 @@ tunnel: ## Expose a local gateway through ngrok (the team URL is served by `make
 	@test -n "$(GATEWAY_PUBLIC_URL)" || (echo "GATEWAY_PUBLIC_URL is empty: see documentation/runbooks/connector.md" >&2; exit 1)
 	ngrok http --url="$(GATEWAY_PUBLIC_URL)" 8001
 
-deploy: ## Ship the gateway to the team server -> https://191-96-88-152.sslip.io/mcp
+deploy: ## Ship the MATP node and the gateway to the team server -> https://191-96-88-152.sslip.io/mcp
 	rsync -rlptz --delete --exclude .venv --exclude .env --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
-		/opt/uv/bin/uv sync --frozen --no-dev --package gateway -q && \
+		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package matp -q && \
 		.venv/bin/alembic upgrade head && \
-		install -m 644 deploy/merchant-gateway.service /etc/systemd/system/ && \
+		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service /etc/systemd/system/ && \
 		systemctl daemon-reload && \
-		systemctl enable --quiet merchant-gateway && \
-		systemctl restart merchant-gateway && \
+		systemctl enable --quiet merchant-node merchant-gateway && \
+		systemctl restart merchant-node merchant-gateway && \
 		if ! cmp -s deploy/Caddyfile /etc/caddy/Caddyfile; then \
 			caddy validate --adapter caddyfile --config deploy/Caddyfile && \
 			install -m 644 deploy/Caddyfile /etc/caddy/Caddyfile && \
