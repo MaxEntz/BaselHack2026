@@ -497,25 +497,25 @@ class PgAgentService:
         self, slug: str, day: date, *, include_cancelled: bool = False
     ) -> list[AdminReservationRow]:
         async with merchant_conn(self.engine, slug) as conn:
-            await self._load(conn, slug)
+            await self._load(conn, slug, merchant_side=True)
             return await admin.list_reservations(
                 conn, day, self.tz, include_cancelled=include_cancelled
             )
 
     async def get_stats(self, slug: str, day: date) -> Stats:
         async with merchant_conn(self.engine, slug) as conn:
-            await self._load(conn, slug)
+            await self._load(conn, slug, merchant_side=True)
             return await admin.get_stats(conn, day, self.tz)
 
     async def block_slot(self, slug: str, starts_at: datetime) -> None:
         async with merchant_conn(self.engine, slug) as conn:
-            merchant = await self._load(conn, slug)
+            merchant = await self._load(conn, slug, merchant_side=True)
             await admin.block_slot(conn, merchant.services, starts_at, self.tz)
         log.info("slot blocked", extra={"merchant": slug, "starts_at": starts_at.isoformat()})
 
     async def unblock_slot(self, slug: str, starts_at: datetime) -> None:
         async with merchant_conn(self.engine, slug) as conn:
-            await self._load(conn, slug)
+            await self._load(conn, slug, merchant_side=True)
             await admin.unblock_slot(conn, starts_at)
         log.info("slot unblocked", extra={"merchant": slug, "starts_at": starts_at.isoformat()})
 
@@ -526,21 +526,21 @@ class PgAgentService:
         services: Sequence[Service] | None = None,
     ) -> Policy:
         async with merchant_conn(self.engine, slug) as conn:
-            await self._load(conn, slug)
+            await self._load(conn, slug, merchant_side=True)
             policy = await admin.update_policy(conn, slug, max_party_size, services)
         log.info("policy updated", extra={"merchant": slug})
         return policy
 
     async def update_tables(self, slug: str, tables: Sequence[TableSpec]) -> list[TableSpec]:
         async with merchant_conn(self.engine, slug) as conn:
-            await self._load(conn, slug)
+            await self._load(conn, slug, merchant_side=True)
             plan = await admin.update_tables(conn, slug, tables, self.clock(), self.tz)
         log.info("floor plan updated", extra={"merchant": slug, "tables": len(plan)})
         return plan
 
     async def _cancel_by_merchant(self, slug: str, reservation_id: str) -> Reservation:
         async with merchant_conn(self.engine, slug) as conn:
-            await self._load(conn, slug)
+            await self._load(conn, slug, merchant_side=True)
             row = await admin.cancel_by_merchant(conn, slug, reservation_id, self.tz, self.clock())
         log.info(
             "reservation cancelled by merchant", extra={"merchant": slug, "reservation": row.id}
@@ -549,7 +549,11 @@ class PgAgentService:
 
     # Helpers
 
-    async def _load(self, conn: AsyncConnection, slug: str) -> _Merchant:
+    async def _load(
+        self, conn: AsyncConnection, slug: str, *, merchant_side: bool = False
+    ) -> _Merchant:
+        """The merchant's name, policy and tables. Guests can't reach a merchant still
+        `building`; the merchant can (`merchant_side`), to fix its plan during onboarding."""
         registry = (
             await conn.execute(
                 select(merchants_t.c.name, merchants_t.c.status).where(merchants_t.c.slug == slug)
@@ -557,7 +561,7 @@ class PgAgentService:
         ).one_or_none()
         if registry is None:
             raise NotFound(f"Unknown merchant: {slug!r}")
-        if registry.status == "building":
+        if registry.status == "building" and not merchant_side:
             raise NotFound(f"Merchant {slug!r} is not live yet")
         name: str = registry.name
         policy = (await conn.execute(select(policy_t))).one()
