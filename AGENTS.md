@@ -6,6 +6,8 @@ This file is the single source of truth for this repository. Read it fully befor
 
 `CLAUDE.md` only imports this file (`@AGENTS.md`), so Claude Code and opencode read the same instructions. Edit this file, never `CLAUDE.md`.
 
+Architecture overview, component boundaries and decision records: [`documentation/ARCHITECTURE.md`](documentation/ARCHITECTURE.md) and [`documentation/adr/`](documentation/adr/README.md).
+
 ## 0. Corrections (take precedence over the sections below)
 
 - **All code lives in `code/`** (BaselHack template: `code/`, `documentation/`, `assets/`). The `merchant-agents/` root of §4 is `code/`; run every command of §10 from `code/`.
@@ -360,6 +362,8 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 - Log every tool call (tool, merchant, latency, outcome) as structured JSON; never log guest names at INFO level.
 - Tests first for `availability.py` and anything touching the exclusion constraint.
 - Commits: Conventional Commits (`feat:`, `fix:`, `test:` …), one milestone per branch/PR.
+- **Living docs, same PR as the code**: update `documentation/ARCHITECTURE.md` when you add, rename or remove a component, change the main flow, the stack, a protocol or data format, or a guarantee (§4 Components, §3 Main flow, §5 Stack, §6 Invariants, §7 Glossary). A new or replaced technology or a structural choice gets a new ADR in `documentation/adr/` (never edit an accepted one: supersede it). A local fix, a rename of a variable or an extra test needs neither.
+- Everything in the repo is in **English**: code, comments, docs, commits, PRs, issues. Only the demo site's content is in French.
 
 ## 13. Default decisions (apply without asking)
 

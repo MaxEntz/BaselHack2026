@@ -1,0 +1,220 @@
+# Merchant Agents — Architecture
+
+> Living document: update it **in the same PR** as the code that makes it wrong.
+> Decisions and their reasons are in [`adr/`](adr/README.md); the full spec is [`AGENTS.md`](../AGENTS.md).
+
+## 1. In one sentence
+
+A restaurant owner gives us their website and a short description. We generate a booking agent for that restaurant, so that anyone can book a table by asking Claude, and the owner manages everything by chatting with our platform.
+
+## 2. Overview
+
+```mermaid
+flowchart LR
+  subgraph USER["User side"]
+    U(["User"]) --> C["Claude.ai"]
+  end
+
+  subgraph MERCHANT["Merchant side"]
+    M(["Merchant"]) --> WEB["Web chat<br/>code/web"]
+  end
+
+  subgraph BACKEND["Our backend"]
+    GW["Gateway<br/>MCP server"]
+    AG["Agent runtime<br/>AgentService + provisioning"]
+    DB[("PostgreSQL 16<br/>public + one schema per merchant")]
+    PL["Platform API<br/>FastAPI"]
+    ASSIST["Platform assistant<br/>OpenAI tool-use loop"]
+    BU["Builder<br/>crawl, extract, validate"]
+  end
+
+  C -->|"MCP, Streamable HTTP, via Caddy (HTTPS)"| GW
+  GW -->|"user tools"| AG
+  AG --> DB
+  GW -.->|"agent error or timeout: fallback_url"| SITE["Merchant's own website"]
+
+  WEB -->|"POST /chat (SSE)"| PL
+  PL --> ASSIST
+  ASSIST -->|"admin tools"| AG
+  ASSIST -->|"build_agent"| BU
+  BU -->|"crawl (Playwright)"| SITE
+  BU -->|"extract (strict function call)"| OAI["OpenAI API"]
+  BU -->|"provision, deploy"| AG
+
+  DB -.->|"LISTEN/NOTIFY reservations"| PL
+  PL -->|"GET /events (SSE)"| WEB
+```
+
+**Two conversations, one agent per merchant:**
+- **User side.** Claude calls our **gateway**, a remote MCP server added once as a connector. The gateway applies the user's preferences as filters, routes the call to the merchant's agent, and returns the merchant's own booking page (`fallback_url`) when the agent cannot serve the request.
+- **Merchant side.** The merchant chats with the **platform assistant**. It builds the agent from the website (the **builder**), then runs day-to-day operations through admin tools: "What bookings do I have tonight?", "Block 21:00". New bookings from Claude appear live in the chat.
+
+**"One agent per merchant"** is a logical boundary: one multi-tenant `AgentService`, with each merchant's data in its own Postgres schema `m_<slug>` ([ADR-0001](adr/0001-one-postgres-schema-per-merchant.md)).
+
+## 3. Main flow: Claude books, the merchant sees it live
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant C as Claude.ai
+  participant G as Gateway (MCP)
+  participant A as AgentService
+  participant DB as PostgreSQL
+  participant P as Platform (events)
+  participant W as Merchant web chat
+
+  U->>C: Table for 4 tonight at 8pm (preferences: vegetarian, up to €€)
+  C->>G: search_merchants(query, filters)
+  G->>DB: live merchants matching tags and price
+  G-->>C: merchants, or suggestions of filters to drop
+  C->>G: get_availability(merchant, date, time, party_size)
+  G->>A: get_availability(...)
+  A->>DB: tables, policy, blocked slots, confirmed bookings
+  A-->>G: up to 3 slots
+  G-->>C: slots
+  C->>U: proposes the slots and asks to confirm
+  U->>C: Yes, 20:00
+  C->>G: create_reservation(..., guest_name, idempotency_key)
+  G->>A: create_reservation(..., via = claude)
+  A->>DB: INSERT reservation, then COMMIT
+  DB-->>P: NOTIFY reservations (schema, op, id, status, via)
+  A-->>G: reservation R-001
+  G-->>C: booking details
+  C->>U: Booked: R-001, 20:00, table T5
+  P-->>W: SSE notification: New booking via Claude
+```
+
+**Step by step:**
+
+1. **Request (1).** The user asks Claude in plain language. Their dietary and budget preferences come from Claude's side; we never store them (invariant 5).
+2. **Discovery (2–4).** `search_merchants` reads the registry `public.merchants`. Only merchants with status `live` are returned, filtered by tags and price. If nothing matches, the response suggests which filter to drop and how many merchants that would add (`suggestions`), so Claude can offer it to the user ([ADR-0008](adr/0008-deviations-from-the-original-tool-contracts.md)).
+3. **Availability (5–9).** The `AgentService` reads the merchant's schema through `merchant_conn(engine, slug)`. The pure functions in `core/availability.py` compute up to 3 start times closest to the request. Starts are every 30 minutes, the last seating is 60 minutes before the end of the service, and blocked starts are excluded. Each slot gets the smallest free table that fits.
+4. **Confirmation (10–11).** Claude must confirm with the user before any write. The tool descriptions instruct it to (invariant 2).
+5. **Booking (12–14).** `create_reservation` carries an `idempotency_key`, so a retried call does not book twice. The insert either succeeds or is rejected by the database's exclusion constraint if the table is already taken at that time (invariant 1). The reference `R-NNN` comes from the merchant's own sequence.
+6. **Live event (15, 19).** On commit, a trigger on the merchant's `reservations` table calls `public.notify_reservation()`, which sends `NOTIFY reservations`. The platform listens on that channel and pushes a `LiveEvent` over SSE to the merchant's open chat: "New booking via Claude", in under 2 s.
+7. **Answer (16–18).** Claude shows the booking to the user.
+
+**When something fails:**
+- A party larger than `max_party_size` gets `party_too_large`.
+- An unreachable or slow agent (over 2 s), or a merchant marked `down`, gets `agent_unavailable`.
+
+In both cases the error carries the merchant's `fallback_url`, and Claude gives the user that link. A taken slot gets `slot_unavailable`, with no link.
+
+**Implementation status** (see §4): steps 2–4 and 12–14 are designed and their data layer exists (`core/db.py`, `core/availability.py`, `agent/provisioning.py`). The gateway's user tools (#11–#13), the `AgentService` implementation (#8, #9) and the live-event listener (#18) are in progress.
+
+## 4. Components
+
+Paths are relative to `code/`.
+
+| Component | File | Responsibility | Does NOT do | State |
+|---|---|---|---|---|
+| Contracts | `packages/core/src/core/models.py`, `errors.py`, `packages/agent/src/agent/service.py`, `web/src/types.ts` | Tool inputs/outputs, SSE events, business errors, the async `AgentService` protocol ([CONTRACTS.md](CONTRACTS.md)) | No I/O, no business logic; never change without a dedicated PR | ✅ #2 |
+| Settings | `packages/core/src/core/config.py` | Typed settings from the environment and `code/.env`; `DATABASE_URL` required | No defaults for secrets | ✅ #1 |
+| Availability rules | `packages/core/src/core/availability.py` | Pure functions: bookable start times, table choice, slot search (up to 3) | No database access; never reads the clock (`now` is passed in) | ✅ #5 |
+| DB layer | `packages/core/src/core/db.py`, `migrations/versions/0001_public_schema.py` | Engine; `schema_for(slug)`; merchant tables declared once (with the exclusion constraint and the notify trigger); `merchant_conn` (one transaction, schema translation); registry and guest notices in `public` | No business rules; no migrations for merchant schemas (drop + re-provision) | ✅ #6 |
+| Provisioning | `packages/agent/src/agent/provisioning.py`, `templates/restaurant.json` | `MerchantProfile` → merchant schema, floor plan, policy, registry row (all or nothing); `deploy` / `set_status` / `deprovision`; default floor plan; generated tool descriptions | Never calls an LLM, never builds SQL from profile text, never takes bookings | ✅ #7 |
+| Agent service | `packages/agent/src/agent/service.py` (`PgAgentService`) | Bookings (availability, create, update, cancel), merchant operations (list, stats, block, policy, tables), guest notices | Knows nothing of MCP or HTTP; no authentication | 🚧 #8, #9 |
+| Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `discovery.py`, `fallback.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, optional bearer token, the 6 user tools, preference filtering, 2 s timeout and `fallback_url` | Never stores preferences; never exposes admin tools; never returns a stack trace | ✅ `ping` (#3); 🚧 tools #11–#14 |
+| Builder | `packages/builder/src/builder/crawl.py`, `extract.py`, `build.py` | Website + description → validated `MerchantProfile` → provision → deploy, streamed as steps; cache for the demo | Never writes SQL or code; never decides a value the schema doesn't allow | 🚧 #21, #22 (extraction validated by the spike, `scripts/spike_extract.py`) |
+| Platform API | `packages/merchant_platform/src/merchant_platform/api.py` | `POST /chat` (SSE stream of `ChatEvent`), `GET /events` (SSE `LiveEvent`), public booking API for the site | No business logic (delegates to the assistant and the service) | ✅ `/health`; 🚧 #15 |
+| Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py` | OpenAI tool-use loop over the admin tools; onboarding questions | Never formats results itself (cards come from tool results); never reachable by Claude users | 🚧 #17 |
+| Live events | `packages/merchant_platform/src/merchant_platform/events.py` | `LISTEN reservations` → `LiveEvent` on SSE | Does not poll the database | 🚧 #18 |
+| Web chat | `web/` | Merchant chat: SSE client, one component per card kind, live notifications, mock mode (`VITE_MOCK=1`, `/?gallery`) | No business logic, no forms | ✅ #19, #20 |
+| Demo site | `sites/le-petit-zinc/` | Fictional restaurant site (French): crawl target and fallback URL | — | 🚧 #16 |
+| Demo data | `tests/fixtures/*.json`, `scripts/seed.py`, `demo_reset.py`, `set_status.py` | 3 fictional Mulhouse restaurants; reset the demo to a known state; outage switch | Refuses to reset a non-local database | 🚧 #10 (`le-petit-zinc.json` on `main`) |
+| Deployment | `deploy/Caddyfile`, `deploy/merchant-gateway.service`, `make deploy` | Gateway on the team server behind Caddy (HTTPS), systemd service | Touches nothing outside `/opt/merchant-agents` except the systemd unit and the Caddyfile | ✅ #3 |
+
+## 5. Stack and justifications
+
+| Layer | Choice | Why | Rejected alternatives | ADR |
+|---|---|---|---|---|
+| Language, packaging | Python 3.12, uv workspace (5 packages) | Most mature MCP SDK; MCP, API, crawl and LLM in one language; shared Pydantic contracts | Go/Rust gateway (less mature SDK, splits the contracts) | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md) |
+| MCP server | `mcp` SDK v2 (`MCPServer`), Streamable HTTP | Claude.ai supports remote MCP servers as connectors; v2 validated by spike #3 | SDK v1 `FastMCP`; a REST API re-exposed as tools | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md) |
+| Gateway hosting | Team LXC server, Caddy (HTTPS), `sslip.io` name; ngrok as plan B | Fixed public URL, independent of a laptop and of the Wi-Fi | Laptop tunnel only; binding on `0.0.0.0` | [0009](adr/0009-serve-the-gateway-from-the-team-server-behind-caddy.md) |
+| Merchant API | FastAPI + Pydantic v2, SSE | Typed endpoints from the shared models; SSE is plain HTTP | Flask, Django | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md) |
+| Database | PostgreSQL 16, SQLAlchemy 2 (async, psycopg 3), Alembic | Exclusion constraint makes double booking impossible; `LISTEN/NOTIFY` gives live events | SQLite (no exclusion constraint, no NOTIFY) | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md) |
+| Multi-tenancy | One schema per merchant, `schema_translate_map` | Structural isolation; per-merchant constraint and sequence; no SQL built from slugs | Shared tables + `merchant_id`; one DB per merchant; row-level security | [0001](adr/0001-one-postgres-schema-per-merchant.md) |
+| Live events | Postgres `LISTEN/NOTIFY` → SSE | No extra broker; one-way server → browser is enough | Redis pub/sub, WebSockets | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md) |
+| LLM (backend) | OpenAI Responses API, forced strict function call | The team's key is an OpenAI one; 160/160 valid extractions in spike #4 | Claude API (no key available); multi-provider layer | [0004](adr/0004-openai-for-backend-llm-calls.md) |
+| LLM output | The LLM only fills `MerchantProfile`; code does the rest | A crawled site is untrusted input (prompt injection) | LLM-generated SQL or code | [0003](adr/0003-llm-fills-a-schema-never-generates-code.md) |
+| Crawl | Playwright (Chromium) | Handles JavaScript-rendered sites | requests + BeautifulSoup | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md) |
+| Front | Vite + React + TypeScript; cards rendered from tool results | Single chat page; what the merchant sees is what the service returned | Next.js; Markdown tables written by the LLM | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md), [0006](adr/0006-chat-cards-rendered-from-tool-results.md) |
+| Tests | pytest, pytest-asyncio, testcontainers (Postgres 16) | The exclusion constraint and the triggers must be tested for real | Mocked database | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md) |
+| Package naming | `merchant_platform` | `platform` shadows a stdlib module | Rely on `sys.path` order | [0005](adr/0005-rename-platform-package-to-merchant-platform.md) |
+| Demo reliability | Builder cache (`BUILDER_CACHE`) | Onboarding works even if the Wi-Fi or the API drops | Always live; faked build steps | [0007](adr/0007-builder-cache-for-a-replayable-demo.md) |
+| Contracts | Frozen models with deviations from §8 (`guest_name`, suggestions, `update_tables`) | Safe cancel and update; filter relaxation; floor-plan correction | Keep §8 as written; real guest authentication | [0008](adr/0008-deviations-from-the-original-tool-contracts.md) |
+
+## 6. Invariants and assumptions
+
+Breaking one of these is a bug.
+
+1. **No double booking.** Two confirmed reservations never overlap on the same table. The database enforces it with `EXCLUDE USING gist (table_id WITH =, during WITH &&) WHERE (status = 'confirmed')`, and `during` must not be empty (`core/db.py`).
+2. **Every write from Claude is confirmed and idempotent.** The tool descriptions tell Claude to confirm with the user before `create_reservation`, `update_reservation` or `cancel_reservation`. Each write carries an `idempotency_key`, unique per merchant.
+3. **Blocking a slot never deletes a reservation.** It only stops new bookings at that start time.
+4. **Never a stack trace in a tool response.** Errors are `{error, message, fallback_url?}` with the codes of AGENTS.md §8.4. `fallback_url` is set for `agent_unavailable` and `party_too_large`.
+5. **Preferences are never stored server-side.** They only arrive as `filters` on `search_merchants`.
+6. **The LLM only produces validated data.** It fills `MerchantProfile`, which Pydantic validates. It never produces SQL, code or tool definitions ([ADR-0003](adr/0003-llm-fills-a-schema-never-generates-code.md)).
+7. **Slugs are `^[a-z0-9-]{3,61}$`**, and the schema name is `m_` + slug with `-` → `_` (at most 63 bytes, the Postgres limit). Only `schema_for(slug)` turns a slug into an identifier.
+8. **Merchant queries go through `merchant_conn` with Core constructs**, never `text()`, which the schema translation does not rewrite.
+9. **Notifications follow commits.** `NOTIFY` is delivered at commit, so a rolled-back booking never reaches the merchant's chat.
+10. **Time is `Europe/Zurich`, stored as `timestamptz`.** Tool inputs require an explicit UTC offset (`AwareDatetime`).
+11. **The merchant's `tables` and `policy` rows are authoritative.** The registry's `profile` column is a display copy that `update_policy` / `update_tables` keep in sync.
+12. **Provisioning is all or nothing.** A failed provision leaves no schema and no registry row. A slug in use raises `SlugTaken`.
+13. **Contracts change only through a dedicated PR**, with Python and TypeScript updated together.
+
+Assumptions (POC): one city, no ranking beyond name order. Guest identity is the `guest_name` Claude passes. A single hard-coded merchant session on the platform. Gateway and agent run in the same process (AGENTS.md §13).
+
+## 7. Glossary
+
+| Term | Meaning |
+|---|---|
+| **Protocol / gateway** | Our public remote MCP server, which Claude connects to: discovery, preference filtering, routing, fallback. |
+| **Merchant agent** | One merchant's booking logic and data. Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's schema. |
+| **Builder** | The pipeline that turns *website + description* into a validated `MerchantProfile`, then provisions and deploys the agent. |
+| **Platform assistant** | The LLM assistant merchants chat with; it acts through admin tools. |
+| **`MerchantProfile`** | Validated JSON describing a merchant (hours, tables, tags, price, fallback URL). The single input of provisioning. |
+| **Fallback URL** | The merchant's own booking page, returned whenever the agent cannot serve a request. |
+| **Registry** | The `public.merchants` table that discovery reads: one row per merchant, with its status (`building`, `live`, `down`). |
+| **Slug** | The merchant's identifier (`le-petit-zinc`), which also names its schema (`m_le_petit_zinc`). |
+| **Guest notice** | A message stored when the merchant cancels a booking, shown to the guest on their next `get_my_reservations`. |
+| **MCP** | Model Context Protocol: how an AI client (Claude) discovers and calls tools exposed by a server. |
+| **Connector** | A remote MCP server added to Claude.ai. Claude.ai calls it from Anthropic's cloud, hence the need for a public HTTPS URL. |
+| **Streamable HTTP** | The MCP transport over HTTP: JSON-RPC requests in POST, responses as JSON or as an SSE stream. |
+| **SSE** | Server-Sent Events: a one-way stream of named events from server to browser over a plain HTTP response. |
+| **`LISTEN/NOTIFY`** | Postgres publish/subscribe: a session that ran `LISTEN channel` receives every `NOTIFY channel` committed by others. |
+| **Exclusion constraint** | A Postgres constraint that rejects any row whose values "conflict" with an existing row, using an operator. Here, the same table (`=`) and overlapping time ranges (`&&`). |
+| **`tstzrange`** | A Postgres range of `timestamptz`. A booking occupies `[start, start + 120 min)`. |
+| **`schema_translate_map`** | A SQLAlchemy execution option that rewrites a placeholder schema name (`merchant`) into the real one (`m_<slug>`) when statements are compiled. |
+| **Idempotency key** | A client-chosen unique key sent with a write, so that retrying the same request has no extra effect. |
+
+## 8. Further reading
+
+In this order, to rebuild the project yourself:
+
+1. [`AGENTS.md`](../AGENTS.md): the product, the domain rules (§6), the data model (§7) and the tool contracts (§8). §0 lists what changed since.
+2. [`documentation/CONTRACTS.md`](CONTRACTS.md): the frozen Python/TypeScript contracts and the SSE format.
+3. [MCP specification](https://modelcontextprotocol.io/specification/latest): what a tool is, how a client calls it. Then [transports](https://modelcontextprotocol.io/specification/latest/basic/transports) for Streamable HTTP.
+4. [MCP Python SDK v2, What's new](https://py.sdk.modelcontextprotocol.io/whats-new/) and [Deploy & scale](https://py.sdk.modelcontextprotocol.io/run/deploy/): `MCPServer`, `allowed_hosts` and the 421 error, proxy headers.
+5. [Claude custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp): eligible plans, authentication options, why the server must be public. Then our [connector runbook](runbooks/connector.md).
+6. PostgreSQL 16:
+   - [range types](https://www.postgresql.org/docs/16/rangetypes.html) (`tstzrange`, `&&`, empty ranges);
+   - [constraints](https://www.postgresql.org/docs/16/ddl-constraints.html) (exclusion);
+   - [btree_gist](https://www.postgresql.org/docs/16/btree-gist.html) (why `int =` works in a GiST index);
+   - [schemas](https://www.postgresql.org/docs/16/ddl-schemas.html);
+   - [NOTIFY](https://www.postgresql.org/docs/16/sql-notify.html) (delivery at commit, payload limits).
+7. [SQLAlchemy, translation of schema names](https://docs.sqlalchemy.org/en/21/core/connections.html#translation-of-schema-names): the multi-tenant mechanism, and why `text()` escapes it.
+8. [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling) and [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs): forcing a function, strict schemas and their limits.
+9. [Playwright for Python](https://playwright.dev/python/docs/intro): headless Chromium for the crawl.
+10. [WHATWG, server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html): event names, framing, reconnection.
+11. [IETF draft, the Idempotency-Key header](https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/): the idempotency pattern, which our tools reuse as a field.
+12. Tooling:
+    - [uv workspaces](https://docs.astral.sh/uv/concepts/projects/workspaces/);
+    - [FastAPI](https://fastapi.tiangolo.com/);
+    - [testcontainers-python](https://testcontainers-python.readthedocs.io/);
+    - [Vite](https://vite.dev/guide/) and [React](https://react.dev/learn).
+13. [Documenting Architecture Decisions (Michael Nygard)](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions): the ADR format used in [`adr/`](adr/README.md). [Mermaid](https://mermaid.js.org/intro/): the diagrams above.
+
+---
+
+*Last updated: 2026-10-31, describing `main` at commit `002c52c`.*
