@@ -62,13 +62,14 @@ flowchart TB
 >   - the data layer: `core/db.py`, `core/availability.py`, provisioning, and the trigger that sends `NOTIFY`;
 >   - the platform API, with the `/chat` and `/events` streams (#15);
 >   - the live-event listener (#18);
+>   - the merchant assistant (#17). Until the builder lands, it builds the agent from the Le Petit Zinc fixture;
 >   - the web chat;
->   - the demo data.
+>   - the demo data and the three demo websites (#10, #16);
+>   - the gateway's discovery rules (#12).
 > - **Not built yet:**
->   - the gateway's user tools and its timeout/fallback layer (#11, #13, #14). Its discovery rules are built (#12);
->   - the `AgentService` implementation (#8, #9);
->   - the merchant assistant (#17);
->   - the builder (#21, #22).
+>   - the gateway's user tools and its timeout/fallback layer (#11, #13, #14);
+>   - the `AgentService` implementation (#8, #9: PRs #42 and #47);
+>   - the builder (#21, #22: PRs #44 and #48).
 >
 > So steps 2–14 below are not wired end to end yet.
 >
@@ -137,10 +138,10 @@ Paths are relative to `code/`.
 | Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `discovery.py`, `fallback.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, optional bearer token, the 6 user tools, preference filtering, 2 s timeout and `fallback_url` | Never stores preferences; never exposes admin tools; never returns a stack trace | ✅ `ping` (#3), discovery rules (#12); 🚧 tools #11, #13, #14 |
 | Builder | `packages/builder/src/builder/crawl.py`, `extract.py`, `build.py` | Website + description → validated `MerchantProfile` → provision → deploy, streamed as steps; cache for the demo | Never writes SQL or code; never decides a value the schema doesn't allow | 🚧 #21, #22 (extraction validated by the spike, `scripts/spike_extract.py`) |
 | Platform API | `packages/merchant_platform/src/merchant_platform/api.py`, `sessions.py`, `logs.py` | Endpoints: `POST /chat` (SSE stream of `ChatEvent`, one turn at a time per session), `GET /events?merchant=` (SSE `LiveEvent`), `POST /public/{slug}/reservations` (the showcase site's form, CORS-limited), `/health`, dev-only `/dev/reset-session`. Also: in-memory sessions, JSON logs | No business logic: delegates to the assistant and the `AgentService`. Until #8 plugs the service in, the public booking API answers `agent_unavailable` | ✅ #15 |
-| Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py` | OpenAI tool-use loop over the admin tools; onboarding questions | Never formats results itself (cards come from tool results); never reachable by Claude users | 🚧 #17 (placeholder `run_turn` answers "not connected yet") |
+| Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py`, `tools.py`, `llm.py`, `build_stub.py` | Tool-use loop over the admin tools (at most 8 steps per turn) through an `LLMClient` interface (OpenAI Responses API, `store=False`); onboarding questions; `tools.py` runs each tool and builds its card from the tool's result | Never puts crawled website text in the prompt (only the validated profile); never formats results itself; never reachable by Claude users | ✅ #17 (`build_agent` provisions the Le Petit Zinc fixture until #22) |
 | Live events | `packages/merchant_platform/src/merchant_platform/events.py` | `LiveListener` holds a `LISTEN reservations` connection, reads the booking row for each notification, and turns it into a `LiveEvent` (`new_booking`, `updated`, `cancelled`). `LiveBus` fans it out to that merchant's open `/events` streams | Does not poll the database; does not trust the payload beyond identifiers | ✅ #18 |
 | Web chat | `web/` | Merchant chat: SSE client, one component per card kind, live notifications, mock mode (`VITE_MOCK=1`, `/?gallery`) | No business logic, no forms | ✅ #19, #20 |
-| Demo site | `sites/le-petit-zinc/` | Fictional restaurant site (French): crawl target and fallback URL | — | 🚧 #16 |
+| Demo sites | `sites/le-petit-zinc/`, `sites/la-graine-verte/`, `sites/maison-albane/` (`make site`, `make sites` on :8080–:8082) | Fictional restaurant sites (in French): crawl target, fallback URL, and Le Petit Zinc's booking form, which posts to the platform's public booking API | — | ✅ #16 |
 | Demo data | `tests/fixtures/*.json`, `scripts/seed.py`, `demo_reset.py`, `set_status.py` (`make seed`, `demo-reset`, `outage`, `restore`) | 3 fictional Mulhouse restaurants; reset the demo to a known state; outage switch | Refuses to reset a non-local database | ✅ #10 (`seed --with-bookings` needs #8) |
 | Deployment | `deploy/Caddyfile`, `deploy/merchant-gateway.service`, `make deploy` | Gateway on the team server behind Caddy (HTTPS), systemd service | Ships only the gateway (not the web app, the platform or Postgres). Outside `/opt/merchant-agents` it installs the systemd unit, and replaces the Caddyfile and restarts Caddy when it changed, which affects every site on the shared server | ✅ #3 |
 
@@ -247,4 +248,4 @@ In this order, to rebuild the project yourself:
 
 ---
 
-*Last updated: 2026-10-31, describing `main` at commit `6861ac7`.*
+*Last updated: 2026-10-31, describing `main` at commit `045fa64`.*
