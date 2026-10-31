@@ -25,7 +25,10 @@ import {
   siteName,
   stepNote,
 } from "../src/studio/phase.ts";
-import type { ChatEvent } from "../src/types.ts";
+import { ChatError } from "../src/chat/client.ts";
+import { ManagementRequestError } from "../src/management/client.ts";
+import { publishing } from "../src/studio/publish.ts";
+import type { ChatEvent, MerchantOverview } from "../src/types.ts";
 
 const BUILD = onboarding as ChatEvent[];
 const HOST = "lagraineverte.example";
@@ -96,6 +99,13 @@ test("an address with three other words goes straight to building", () => {
   assert.equal(parseAddress("hello there"), null);
   assert.equal(parseAddress("localhost:8081")?.host, "localhost:8081");
   assert.equal(parseAddress(`look at ${HOST}.`)?.address, HOST);
+});
+
+test("an e-mail or a file's name is not an address", () => {
+  assert.equal(parseAddress("contact@resto.fr"), null);
+  assert.equal(parseAddress("Our menu.pdf is online, 40 seats"), null);
+  assert.equal(parseAddress(`Our menu.pdf is on ${HOST}`)?.host, HOST);
+  assert.equal(parseAddress(`https://${HOST}/menu.pdf`)?.host, HOST);
 });
 
 test("the assistant gets the address and the answer together", () => {
@@ -202,6 +212,37 @@ test("a failed publish stays hidden, and says so", () => {
   );
   assert.equal(phaseOf(refused), "review");
   assert.equal(feedOf(refused).at(-1)?.kind, "error");
+});
+
+async function publishEvents(publish: () => Promise<MerchantOverview>): Promise<ChatEvent[]> {
+  const fromChat: ChatEvent[] = [{ type: "text", delta: "From the assistant." }, { type: "done" }];
+  const chat = {
+    async *send() {
+      yield* fromChat;
+    },
+  };
+  const events: ChatEvent[] = [];
+  for await (const event of publishing({ publish }, chat, "la-graine-verte", "s", new AbortController().signal)) {
+    events.push(event);
+  }
+  return events;
+}
+
+test("Publish goes through the route, and through the assistant without the cookie", async () => {
+  const done = await publishEvents(async () => ({}) as MerchantOverview);
+  assert.deepEqual(done.map((event) => event.type), ["step", "step", "done"]);
+
+  const unsigned = await publishEvents(async () => {
+    throw new ManagementRequestError(401, { error: "not_signed_in", message: "Open your private link." });
+  });
+  assert.deepEqual(unsigned.map((event) => event.type), ["step", "text", "done"]);
+
+  await assert.rejects(
+    publishEvents(async () => {
+      throw new ManagementRequestError(0, { error: "agent_unavailable", message: "I can't reach the platform right now." });
+    }),
+    (error: Error) => error instanceof ChatError && /can't reach/.test(error.message),
+  );
 });
 
 test("a failed build shows the model's explanation and goes back to the address", () => {

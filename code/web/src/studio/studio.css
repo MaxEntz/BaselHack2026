@@ -164,6 +164,7 @@
 .studio .st-seg button:hover { background: var(--bg-2); }
 .studio .st-seg button[aria-pressed="true"] { background: var(--bg-3); }
 .st-paste { overflow: auto; padding: 8px 24px 24px; display: flex; gap: 24px; align-items: flex-start; justify-content: center; overscroll-behavior: contain; min-height: 0; }
+.st-paste[hidden] { display: none; }
 .st-frame { flex: none; display: grid; gap: 6px; }
 .st-frame-agent { width: min(1000px, 100%); flex: 1 1 auto; }
 .st-frame-name { font-size: .875rem; font-weight: 600; color: var(--ink-2); }

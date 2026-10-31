@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
-import { ChatError, httpClient } from "../chat/client.ts";
+import { httpClient } from "../chat/client.ts";
 import type { Merchant } from "../chat/state.ts";
 import { useChat, type Welcome } from "../chat/useChat.ts";
 import { managementClient } from "../management/index.ts";
 import { createMockClient } from "../mocks/mockClient.ts";
-import type { ChatEvent, MerchantOverview } from "../types.ts";
+import type { MerchantOverview } from "../types.ts";
 import { Canvas } from "./Canvas.tsx";
 import { DEMO, EXAMPLES } from "./examples.ts";
 import { type Addresses, Feed, type View } from "./feed.tsx";
@@ -13,7 +13,6 @@ import { crossfade, useSplitOpening } from "./motion.ts";
 import {
   FIRST_PLACEHOLDER,
   PLACEHOLDERS,
-  PUBLISH,
   askForDetails,
   buildMessage,
   chipsOf,
@@ -28,6 +27,7 @@ import {
   profileOf,
   siteName,
 } from "./phase.ts";
+import { PUBLISH, publishing } from "./publish.ts";
 import "./studio.css";
 
 const env = import.meta.env;
@@ -122,18 +122,13 @@ export function StudioPage() {
   function publish() {
     if (!slug) return;
     const merchant = slug;
-    async function* publishing(): AsyncGenerator<ChatEvent> {
-      yield { type: "step", step: "deploy", status: "running" };
-      try {
-        await managementClient.publish(merchant);
-      } catch (error) {
-        throw new ChatError(error instanceof Error ? error.message : "I couldn't publish your agent.");
-      }
-      yield { type: "step", step: "deploy", status: "done" };
-      yield { type: "done" };
-    }
     last.current = { text: PUBLISH };
-    crossfade(() => void stream(PUBLISH, undefined, publishing));
+    crossfade(
+      () =>
+        void stream(PUBLISH, undefined, (signal, sessionId) =>
+          publishing(managementClient, CLIENT, merchant, sessionId, signal),
+        ),
+    );
   }
 
   function say(raw: string) {
@@ -173,8 +168,16 @@ export function StudioPage() {
     else void send(previous.text, previous);
   }
 
+  // The owner cookie names one merchant (ADR-0018): a second build replaces it.
+  function mayLeaveSite(): boolean {
+    if (!state.merchant) return true;
+    return window.confirm(
+      `Start a new site? This browser will then open only the new one. ${state.merchant.name} stays reachable through its private link.`,
+    );
+  }
+
   function openExample(address: string, brief: string) {
-    if (state.busy) return;
+    if (state.busy || !mayLeaveSite()) return;
     const text = `${address}, ${brief}`;
     const site = parseAddress(address)?.host;
     last.current = { text, site };
@@ -185,7 +188,7 @@ export function StudioPage() {
   }
 
   function startOver() {
-    if (state.busy) return;
+    if (state.busy || !mayLeaveSite()) return;
     crossfade(() => {
       reset(WELCOME.onboarding);
       setInput("");
@@ -256,7 +259,7 @@ export function StudioPage() {
             <button
               type="button"
               className="st-btn pri sm"
-              disabled={phase !== "review" || state.busy}
+              disabled={phase !== "review" || state.busy || !claimed}
               onClick={publish}
             >
               {published ? "Published" : PUBLISH}

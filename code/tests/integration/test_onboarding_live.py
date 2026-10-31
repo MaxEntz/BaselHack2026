@@ -8,9 +8,10 @@ OPENAI_API_KEY and Docker).
 """
 
 import json
+from collections.abc import Awaitable, Callable
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -64,10 +65,15 @@ class _LlmEnv(BaseSettings):
     builder_reasoning_effort: str | None = "none"
 
 
-async def test_the_assistant_onboards_a_restaurant_in_three_messages(
-    engine: AsyncEngine, tmp_path: Path
-) -> None:
-    site = f"http://brasserie-{uuid4().hex[:8]}.example/"
+class _Platform(NamedTuple):
+    say: Callable[[str], Awaitable[list[dict[str, Any]]]]
+    built: list[BuildAgentInput]
+    crawled: list[str]
+    published: list[str]
+
+
+def _platform(engine: AsyncEngine, tmp_path: Path) -> _Platform:
+    """The real assistant and builder on OpenAI and Postgres, with a fake crawl."""
     env = _LlmEnv()
     assert env.openai_api_key is not None
     openai = AsyncOpenAI(api_key=env.openai_api_key.get_secret_value(), max_retries=0)
@@ -116,7 +122,6 @@ async def test_the_assistant_onboards_a_restaurant_in_three_messages(
         accounts=owners,
     )
     transport = httpx.ASGITransport(app=app)
-    turns: list[list[dict[str, Any]]] = []
 
     async def say(message: str) -> list[dict[str, Any]]:
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
@@ -128,12 +133,20 @@ async def test_the_assistant_onboards_a_restaurant_in_three_messages(
             for line in response.text.splitlines()
             if line.startswith("data: ")
         ]
-        turns.append(events)
         return events
 
-    def text(events: list[dict[str, Any]]) -> str:
-        return "".join(e["delta"] for e in events if e["type"] == "text")
+    return _Platform(say, built, crawled, published)
 
+
+def _text(events: list[dict[str, Any]]) -> str:
+    return "".join(e["delta"] for e in events if e["type"] == "text")
+
+
+async def test_the_assistant_onboards_a_restaurant_in_three_messages(
+    engine: AsyncEngine, tmp_path: Path
+) -> None:
+    site = f"http://brasserie-{uuid4().hex[:8]}.example/"
+    say, built, crawled, published = _platform(engine, tmp_path)
     slug: str | None = None
     try:
         # Facts, not wording: what matters is when build_agent runs.
@@ -160,7 +173,7 @@ async def test_the_assistant_onboards_a_restaurant_in_three_messages(
         ]
         assert any(a.startswith("Closed on Monday") for a in output.assumptions)
         # The assistant reads the assumptions out (closing day, default floor plan).
-        reply = text(third).lower()
+        reply = _text(third).lower()
         assert any(word in reply for word in ("monday", "table", "assum", "default")), reply
 
         assert output.status == "building"
@@ -172,6 +185,32 @@ async def test_the_assistant_onboards_a_restaurant_in_three_messages(
         if not published:
             await say("Please publish it now.")
         assert published == [slug]
+    finally:
+        if slug is not None:
+            await deprovision(slug, engine=engine)
+
+
+@pytest.mark.parametrize(
+    "answer", [DESCRIPTION, "No description: use the defaults."], ids=["answer", "skip"]
+)
+async def test_studio_builds_from_the_address_and_the_answer_in_one_message(
+    engine: AsyncEngine, tmp_path: Path, answer: str
+) -> None:
+    """Studio asks for the details itself, then sends all of it at once (#141): the model
+    must build from that one message, even with the address as the merchant typed it."""
+    host = f"brasserie-{uuid4().hex[:8]}.example"
+    say, built, crawled, published = _platform(engine, tmp_path)
+    slug: str | None = None
+    try:
+        events = await say(f"{host}. {answer}")
+        [arguments] = built
+        assert host in str(arguments.website)
+        assert len(crawled) == 1
+        [card] = [e for e in events if e["type"] == "card" and e["kind"] == "profile"]
+        output = BuildAgentOutput.model_validate(card["data"])
+        slug = output.profile.slug
+        assert output.status == "building"
+        assert published == [], "published before the merchant checked the card"
     finally:
         if slug is not None:
             await deprovision(slug, engine=engine)

@@ -2,6 +2,7 @@
 // from here and from feed.tsx, because the model's text can vary (`llm` tests assert facts).
 import type { CardEvent, ChatItem, ChatState, StepGroup, StepName, StepState } from "../chat/state.ts";
 import type { BuildAgentOutput, LiveEvent, Service } from "../types.ts";
+import { PUBLISH } from "./publish.ts";
 
 export type Phase = "address" | "describe" | "building" | "review" | "live";
 
@@ -17,10 +18,12 @@ export function phaseOf(state: ChatState): Phase {
 // A website's address in a message, and how many other words came with it.
 export type FoundAddress = { address: string; host: string; words: number };
 
-const ADDRESS = /(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,}|localhost|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?(\/\S*)?/i;
+// Not an e-mail's domain, nor a file's name ("our menu.pdf").
+const ADDRESS = /(?<![@\w.-])(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,}|localhost|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?(\/\S*)?/gi;
+const FILE = /\.(pdf|jpe?g|png|gif|webp|svg|docx?|xlsx?|csv|txt|zip)$/i;
 
 export function parseAddress(text: string): FoundAddress | null {
-  const match = text.trim().match(ADDRESS);
+  const match = [...text.trim().matchAll(ADDRESS)].find((found) => !FILE.test(found[1]));
   if (!match) return null;
   const rest = text.replace(match[0], "").replace(/^[\s,.:;-]+/, "").trim();
   const host = `${match[1].toLowerCase().replace(/^www\./, "")}${match[2] ?? ""}`;
@@ -203,8 +206,6 @@ export function lastSeating(services: readonly Service[]): string | null {
   const minutes = start + steps * 30;
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
-
-export const PUBLISH = "Publish";
 
 // The mockup's other chips need what isn't there yet, and come with it: "A table for {n}?", the
 // cancellation policy, the dark site and "Say covers" with #152, "Send a test booking" with

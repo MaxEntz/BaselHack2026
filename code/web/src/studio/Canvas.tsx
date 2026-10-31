@@ -38,22 +38,21 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
           </button>
         </div>
       </div>
-      {view === "manage" ? (
-        <ManageFrame slug={slug} ready={ready} />
-      ) : (
-        <AgentSheet slug={slug} live={live} addresses={addresses} />
-      )}
+      {/* Stays mounted: a form being edited in the frame keeps its draft. */}
+      <ManageFrame slug={slug} ready={ready} hidden={view !== "manage"} />
+      {view === "agent" && <AgentSheet slug={slug} live={live} addresses={addresses} />}
     </div>
   );
 });
 
-function ManageFrame({ slug, ready }: { slug: string; ready: boolean }) {
+function ManageFrame({ slug, ready, hidden }: { slug: string; ready: boolean; hidden: boolean }) {
   const paste = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   useEffect(() => {
     const element = paste.current;
     if (!element) return;
     const measure = () => {
+      if (element.clientWidth === 0) return;
       const style = getComputedStyle(element);
       setSize({
         width: element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
@@ -72,7 +71,7 @@ function ManageFrame({ slug, ready }: { slug: string; ready: boolean }) {
   const height = size ? Math.max(0, size.height - NAME_ROW) : 0;
 
   return (
-    <div ref={paste} className="st-paste">
+    <div ref={paste} className="st-paste" hidden={hidden}>
       {size && (
         <div className="st-frame" style={{ width: width * scale }}>
           <div className="st-frame-name">{NAMES.manage}</div>

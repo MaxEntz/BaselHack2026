@@ -701,6 +701,9 @@ export function createMockManagementClient(
     },
 
     async publish() {
+      if (data.merchant.status === "down") {
+        invalid("Your agent is paused: resume it rather than publish it again.");
+      }
       data = { ...data, merchant: { ...data.merchant, status: "live" } };
       return respond({ ...data.merchant, now: nowIso() });
     },

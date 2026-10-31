@@ -57,8 +57,13 @@ test.describe("at 1440 px", () => {
     await fact.click();
     await expect(fact).toHaveAttribute("aria-pressed", "true");
 
+    const frame = page.frameLocator(".st-sheet iframe").locator("body");
+    await expect(frame).toBeAttached();
     await page.getByRole("button", { name: "Agent site" }).first().click();
     await expect(page.getByText("Agent site, no interface")).toBeVisible();
+    // The management site stays loaded behind it, so a draft in a form survives.
+    await expect(frame).toBeAttached();
+    await expect(page.locator(".st-sheet iframe")).toBeHidden();
     await expect(page.getByText("Right now every agent gets a 404.")).toBeVisible();
 
     const publish = page.getByRole("button", { name: "Publish", exact: true }).first();
@@ -81,8 +86,19 @@ test.describe("at 1440 px", () => {
     await expect(page.getByText("What went into your profile")).toBeVisible({ timeout: 20_000 });
   });
 
-  test("New starts over", async ({ page }) => {
+  test("New starts over, once the merchant agreed to leave the site", async ({ page }) => {
     await buildSite(page);
+    const asked: string[] = [];
+    let accept = false;
+    page.on("dialog", (dialog) => {
+      asked.push(dialog.message());
+      void (accept ? dialog.accept() : dialog.dismiss());
+    });
+    const rail = page.getByRole("navigation", { name: "Restaurants" });
+    await rail.getByRole("button", { name: "New" }).click();
+    await expect(page.locator(".st-status")).toHaveText("Hidden from guests");
+    expect(asked[0]).toContain("La Graine Verte stays reachable through its private link");
+    accept = true;
     await page.getByRole("navigation", { name: "Restaurants" }).getByRole("button", { name: "New" }).click();
     await expect(page.getByRole("heading", { name: "What's your website's address?" })).toBeVisible();
     await expect(page.locator(".st-canvas")).toHaveCount(0);

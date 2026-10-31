@@ -59,7 +59,7 @@ export function useChat(
     async (
       text: string,
       site: string | undefined,
-      open: (signal: AbortSignal) => AsyncIterable<ChatEvent>,
+      open: (signal: AbortSignal, sessionId: string) => AsyncIterable<ChatEvent>,
     ) => {
       if (busy.current) return;
       busy.current = true;
@@ -67,7 +67,7 @@ export function useChat(
       const abort = new AbortController();
       controller.current = abort;
       try {
-        for await (const event of open(abort.signal)) {
+        for await (const event of open(abort.signal, session.current as string)) {
           dispatch({ type: "chat", event });
           if (event.type === "card" && event.kind === "profile" && event.login_url) {
             setClaimed(false);
