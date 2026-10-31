@@ -27,7 +27,7 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy packages/core packages/agent packages/gateway
+      - run: uv run mypy packages/core packages/agent packages/gateway packages/matp packages/merchant_node
       # Chromium for the crawler's `browser` tests (#21).
       - run: uv run playwright install --with-deps chromium
       # Docker is available on ubuntu-latest, so testcontainers works for integration tests.

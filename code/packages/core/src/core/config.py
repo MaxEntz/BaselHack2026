@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     builder_reasoning_effort: str | None = "none"
     builder_cache: Literal["read_write", "read_only", "off"] = "read_write"
     crawl_allow_private: bool = False
+    # MATP node (documentation/PROTOCOL.md): loopback only in the POC (ADR-0011).
+    matp_host: str = "127.0.0.1"
+    matp_port: int = 4710
+    # Known agents and their tokens, as JSON: {"urn:matp:agent:claude-gateway": "…"}.
+    matp_tokens: dict[str, SecretStr] = {}
+    # TLS for the node, required when it listens beyond loopback (PEM files).
+    matp_tls_cert: str | None = None
+    matp_tls_key: str | None = None
 
 
 @lru_cache

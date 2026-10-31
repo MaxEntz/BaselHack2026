@@ -122,11 +122,13 @@ def normalize_filters(
     """Criteria from what Claude sent, plus the tags we don't know (reported, not fatal)."""
     tags: set[Tag] = set()
     ignored: list[str] = []
+    reported: set[str] = set()
     for raw_tag in raw.tags if raw else ():
         tag = normalize_tag(raw_tag)
         if tag is not None:
             tags.add(tag)
-        elif raw_tag.strip() and raw_tag not in ignored:
+        elif raw_tag.strip() and raw_tag not in reported:
+            reported.add(raw_tag)
             ignored.append(raw_tag)
     near_words = _words(near or "") - NEAR_NOISE
     city = " ".join(sorted(near_words)) if near_words else None
