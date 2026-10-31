@@ -1,0 +1,28 @@
+{
+  "slug": "la-graine-verte",
+  "name": "La Graine Verte",
+  "website": "http://localhost:8081/",
+  "vertical": "restaurant",
+  "location": { "city": "Mulhouse", "lat": null, "lng": null },
+  "seats": 24,
+  "services": [
+    { "start": "11:30", "end": "14:30" },
+    { "start": "18:30", "end": "21:30" }
+  ],
+  "max_party_size": 4,
+  "tables": [
+    { "label": "T1", "seats": 2 },
+    { "label": "T2", "seats": 2 },
+    { "label": "T3", "seats": 2 },
+    { "label": "T4", "seats": 2 },
+    { "label": "T5", "seats": 2 },
+    { "label": "T6", "seats": 2 },
+    { "label": "T7", "seats": 4 },
+    { "label": "T8", "seats": 4 },
+    { "label": "T9", "seats": 4 }
+  ],
+  "tags": ["vegan", "vegetarian", "gluten-free"],
+  "price_level": "€",
+  "cancellation_policy": "Free cancellation up to 1 hour before the booking.",
+  "fallback_url": "http://localhost:8081/#reserver"
+}

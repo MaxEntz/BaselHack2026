@@ -100,12 +100,12 @@ async def make_merchant(
     async def make(*, live: bool = True, **overrides: Any) -> str:
         slug = f"zinc-{uuid4().hex[:8]}"
         profile = MerchantProfile.model_validate({**profile_data, **overrides, "slug": slug})
-        await provision(engine, profile)
+        await provision(profile, engine=engine)
         slugs.append(slug)
         if live:
-            await deploy(engine, slug)
+            await deploy(slug, engine=engine)
         return slug
 
     yield make
     for slug in slugs:
-        await deprovision(engine, slug)
+        await deprovision(slug, engine=engine)

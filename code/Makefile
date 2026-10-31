@@ -50,11 +50,24 @@ deploy: ## Ship the gateway to the team server -> https://191-96-88-152.sslip.io
 		fi && \
 		systemctl enable --now --quiet caddy'
 
-seed:
-	uv run python scripts/seed.py
+.PHONY: bookings outage restore
 
-demo-reset:
-	uv run python scripts/demo_reset.py
+SLUG ?= le-petit-zinc
+
+seed: ## The 3 demo merchants + tonight's bookings (or SEED="--except le-petit-zinc" …)
+	uv run python scripts/seed.py $(or $(SEED),--all --with-bookings)
+
+demo-reset: ## Known demo state: all but Le Petit Zinc, built live by onboarding (or SEED=…)
+	uv run python scripts/demo_reset.py $(SEED)
+
+bookings: ## Tonight's bookings at Le Petit Zinc, e.g. after its live onboarding
+	uv run python scripts/seed.py --with-bookings
+
+outage: ## Demo outage: SLUG goes down, Claude gets its fallback URL (SLUG=le-petit-zinc)
+	uv run python scripts/set_status.py $(SLUG) down
+
+restore: ## End of the outage: SLUG is live again
+	uv run python scripts/set_status.py $(SLUG) live
 
 test:
 	uv run pytest

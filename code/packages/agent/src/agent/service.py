@@ -242,8 +242,10 @@ _RESERVATION_COLUMNS = (
 class PgAgentService:
     """`AgentService` on Postgres, one schema per merchant (`core.db.merchant_conn`).
 
-    `clock` returns the current time (tests inject a fixed one). The registry status is the
-    gateway's business (#13): here an unknown slug is `NotFound`, whatever its status.
+    `clock` returns the current time (tests inject a fixed one). An unknown slug, or a
+    merchant still `building` (onboarding not finished), is `NotFound`. A `down` merchant
+    still takes bookings here: the gateway stops Claude for it (#13), while its own website
+    keeps working during an outage.
     """
 
     def __init__(
@@ -548,9 +550,16 @@ class PgAgentService:
     # Helpers
 
     async def _load(self, conn: AsyncConnection, slug: str) -> _Merchant:
-        name = await conn.scalar(select(merchants_t.c.name).where(merchants_t.c.slug == slug))
-        if name is None:
+        registry = (
+            await conn.execute(
+                select(merchants_t.c.name, merchants_t.c.status).where(merchants_t.c.slug == slug)
+            )
+        ).one_or_none()
+        if registry is None:
             raise NotFound(f"Unknown merchant: {slug!r}")
+        if registry.status == "building":
+            raise NotFound(f"Merchant {slug!r} is not live yet")
+        name: str = registry.name
         policy = (await conn.execute(select(policy_t))).one()
         tables = [
             TableRow(id=row.id, label=row.label, seats=row.seats)
