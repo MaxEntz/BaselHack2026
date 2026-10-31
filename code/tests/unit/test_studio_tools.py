@@ -122,7 +122,11 @@ class Studio:
             save_look=save_look,
             site_look=site_look,
         )
-        self.assistant = Assistant(llm, tools, profiles, TZ, clock=lambda: NOW)
+
+        async def statuses(slug: str) -> Any:
+            return self.status
+
+        self.assistant = Assistant(llm, tools, profiles, TZ, statuses=statuses, clock=lambda: NOW)
 
     async def turn(self, message: str) -> list[dict[str, Any]]:
         session = Session(id="s")
