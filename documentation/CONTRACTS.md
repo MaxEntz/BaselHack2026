@@ -73,10 +73,11 @@ text content is the plain JSON object.
 - Without the registry there is no URL to give: `agent_unavailable` has no `fallback_url`.
 - A timeout on a write may hit after the COMMIT, so its message asks Claude to check
   `get_my_reservations` before retrying.
-- `get_my_reservations` returns a notice on every call for 24 hours after the first call that
-  returned it (`agent.service.NOTICE_WINDOW`), then never again. A failed call, even one the
-  service completed, loses no notice. The description tells Claude not to repeat a notice in
-  the same conversation (#91).
+- `get_my_reservations` returns a notice on every call for 24 hours (real time, in UTC) after
+  the first call that returned it (`agent.service.NOTICE_WINDOW`), then never again. A failed
+  call, even one the service completed, loses no notice as long as the next call comes within
+  those 24 hours. The window starts at the first call by any caller giving that name. The
+  instructions and the description tell Claude to give each notice once per conversation (#91).
 - Each call logs one JSON line: `{"event": "tool_call", "tool", "merchant", "latency_ms",
   "outcome"}`, where `outcome` is `ok` or the error code. Guest names never appear at INFO.
 

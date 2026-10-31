@@ -560,3 +560,45 @@ async def test_guest_notices_come_back_for_a_day_then_stop(
             .where(guest_notices_t.c.guest_name == guest, guest_notices_t.c.delivered_at == NOW)
         )
     assert delivered == 2
+
+
+async def notice(engine: AsyncEngine, guest: str, slug: str, message: str) -> None:
+    async with engine.begin() as conn:
+        await conn.execute(
+            insert(guest_notices_t).values(
+                guest_name=guest, merchant_slug=slug, reservation_id="R-001", message=message
+            )
+        )
+
+
+async def test_each_notice_has_its_own_day(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
+) -> None:
+    guest = f"Guest {uuid4().hex[:6]}"
+    slug = await make_merchant()
+    await notice(engine, guest, slug, "Old notice")
+    await service.find_guest_reservations(guest)
+    clock.now = NOW + timedelta(hours=12)
+    await notice(engine, guest, slug, "New notice")
+    await service.find_guest_reservations(guest)
+
+    clock.now = NOW + NOTICE_WINDOW + timedelta(seconds=1)
+    _, notices = await service.find_guest_reservations(guest)
+
+    assert notices == ["New notice"]
+
+
+async def test_the_day_is_24_real_hours_across_a_clock_change(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
+) -> None:
+    # Clocks go back on 2026-10-25: 12:00 CEST to 11:30 CET the next day is 24 h 30 min.
+    guest = f"Guest {uuid4().hex[:6]}"
+    slug = await make_merchant()
+    await notice(engine, guest, slug, "A notice")
+    clock.now = datetime(2026, 10, 24, 12, tzinfo=TZ)
+    await service.find_guest_reservations(guest)
+
+    clock.now = datetime(2026, 10, 25, 11, 30, tzinfo=TZ)
+    _, notices = await service.find_guest_reservations(guest)
+
+    assert notices == []

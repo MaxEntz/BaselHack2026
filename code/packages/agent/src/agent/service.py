@@ -12,7 +12,7 @@ transaction never holds one table while waiting for another.
 
 import logging
 from collections.abc import Callable, Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal, NoReturn, Protocol, overload
 from zoneinfo import ZoneInfo
 
@@ -487,7 +487,8 @@ class PgAgentService:
                 .where(
                     or_(
                         guest_notices_t.c.delivered_at.is_(None),
-                        guest_notices_t.c.delivered_at > now - NOTICE_WINDOW,
+                        # In UTC: 24 real hours, also across a clock change.
+                        guest_notices_t.c.delivered_at > now.astimezone(UTC) - NOTICE_WINDOW,
                     ),
                     _normalized_column(guest_notices_t.c.guest_name) == name,
                 )
