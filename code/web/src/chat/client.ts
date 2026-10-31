@@ -22,6 +22,7 @@ export class ChatError extends Error {}
 // A silent network drop never ends the stream: give up after this long without
 // any event (builder steps report progress well within it).
 const IDLE_TIMEOUT_MS = 90_000;
+const LIVE_RETRY_MS = 2000;
 
 export const httpClient: ChatClient = {
   async *send(message, sessionId, signal) {
@@ -77,19 +78,33 @@ export const httpClient: ChatClient = {
   },
 
   subscribe(slug, { onEvent, onConnection }) {
-    // EventSource reconnects on its own after a network error.
-    const source = new EventSource(
-      `/api/events?merchant=${encodeURIComponent(slug)}`,
-    );
     const handle = (message: MessageEvent<string>) => {
       const event = parseEvent<LiveEvent>(message.data);
       if (event?.type === "notification") onEvent(event);
     };
-    source.addEventListener("notification", handle);
-    source.addEventListener("message", handle);
-    source.addEventListener("open", () => onConnection(true));
-    source.addEventListener("error", () => onConnection(false));
-    return () => source.close();
+    let source: EventSource;
+    let retry = 0;
+    const connect = () => {
+      source = new EventSource(
+        `/api/events?merchant=${encodeURIComponent(slug)}`,
+      );
+      source.addEventListener("notification", handle);
+      source.addEventListener("message", handle);
+      source.addEventListener("open", () => onConnection(true));
+      source.addEventListener("error", () => {
+        onConnection(false);
+        // EventSource retries network errors on its own, but a non-200 answer
+        // (API restarting, proxy 502) closes it for good: open a new one.
+        if (source.readyState === EventSource.CLOSED) {
+          retry = window.setTimeout(connect, LIVE_RETRY_MS);
+        }
+      });
+    };
+    connect();
+    return () => {
+      window.clearTimeout(retry);
+      source.close();
+    };
   },
 };
 

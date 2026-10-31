@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
+// The platform API rejects longer messages (#15).
+const MAX_MESSAGE_LENGTH = 4000;
+
 type Props = {
   disabled: boolean;
   onSend: (text: string) => void;
@@ -42,6 +45,7 @@ export function Composer({ disabled, onSend }: Props) {
         ref={input}
         value={text}
         rows={1}
+        maxLength={MAX_MESSAGE_LENGTH}
         placeholder={disabled ? "The assistant is answering…" : "Write a message…"}
         aria-label="Message"
         disabled={disabled}
