@@ -78,7 +78,7 @@ assumptions from its result (default values used) and ask the merchant to confir
 them. Corrections go through update_policy or update_tables. Then wrap up with: "Your agent \
 is live: Claude users can now book you."
 - Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel \
-and say the guest will be notified.
+and say what its result says: whether the guest will be notified, or why not.
 
 The merchant's validated profile:
 {profile}

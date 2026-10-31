@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
 
-from agent.service import AgentService
+from agent.service import AgentService, MerchantCancelOutcome
 from builder.build import AlreadyProvisioned
 from builder.llm import ToolCall, ToolSpec
 from core.errors import AgentError, AgentUnavailable
@@ -58,6 +58,13 @@ SITE_TAKEN = (
     "This website already has an agent on the platform, managed from another account. "
     "It can't be built again from here."
 )
+# The merchant is told what a cancellation did, never a notice that wasn't stored (#82).
+CANCELLED: dict[MerchantCancelOutcome, str] = {
+    "notified": "{id} cancelled. The guest will be notified.",
+    "ended": "{id} is in the past: cancelled, no notice sent.",
+    "guest_cancelled": "{id} was already cancelled by the guest.",
+    "already_cancelled": "{id} was already cancelled.",
+}
 
 
 @dataclass(frozen=True)
@@ -131,8 +138,9 @@ TOOLS = (
     ),
     _Tool(
         "cancel_reservation",
-        "Cancel a booking by reference (e.g. R-001). The guest is notified. Only call it after "
-        "the merchant explicitly confirmed this cancellation.",
+        "Cancel a booking by reference (e.g. R-001). The guest is notified, unless the booking "
+        "is over or was already cancelled: the result says which. Only call it after the "
+        "merchant explicitly confirmed this cancellation.",
         "Cancelling the booking…",
         AdminCancelInput,
     ),
@@ -238,8 +246,8 @@ class AdminTools:
                     f"Floor plan updated: {len(saved)} tables · {seats} seats."
                 )
             case "cancel_reservation", AdminCancelInput(reservation_id=reservation_id):
-                cancelled = await agent.cancel_reservation(slug, reservation_id, by="merchant")
-                return self._confirmation(f"{cancelled.id} cancelled. The guest will be notified.")
+                done = await agent.cancel_by_merchant(slug, reservation_id)
+                return self._confirmation(CANCELLED[done.outcome].format(id=done.reservation.id))
         raise AssertionError(f"no handler for {name}")
 
     async def _build(self, session: Session, arguments: BuildAgentInput, emit: Emit) -> Outcome:

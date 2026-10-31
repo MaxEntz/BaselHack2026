@@ -13,7 +13,7 @@ guest's.
 
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import TypeAdapter, ValidationError
@@ -283,14 +283,19 @@ async def _check_plan_change(
         )
 
 
+# What a merchant's cancellation did (#82): cancelled with a notice for the guest, cancelled
+# without one since it is over, or nothing, since the guest or the merchant already cancelled it.
+CancelOutcome = Literal["notified", "ended", "guest_cancelled", "already_cancelled"]
+
+
 async def cancel_by_merchant(
     conn: AsyncConnection, slug: str, reservation_id: str, tz: ZoneInfo, now: datetime
-) -> _Row:
+) -> tuple[_Row, CancelOutcome]:
     """Cancel a booking and leave the guest a notice, in the same transaction.
 
     Cancelling an already cancelled booking changes nothing and adds no second notice; a
     booking that has already ended is cancelled without a notice. Returns the booking row
-    (with its table label), as it is after the cancellation.
+    (with its table label), as it is after the cancellation, and what was done.
     """
     wanted_id = reservation_id.strip().upper()
     if not wanted_id.isprintable():
@@ -306,21 +311,23 @@ async def cancel_by_merchant(
     if row is None:
         raise NotFound(f"No booking {reservation_id!r}")
     if row.status == "cancelled":
-        return row
+        return row, "guest_cancelled" if row.cancelled_by == "guest" else "already_cancelled"
     await conn.execute(
         update(reservations_t)
         .where(reservations_t.c.id == row.id)
         .values(status="cancelled", cancelled_by="merchant")
     )
-    if row.during.upper > now:
+    notified = row.during.upper > now
+    if notified:
         await _notify_guest(conn, slug, row, tz)
-    return (
+    cancelled = (
         await conn.execute(
             select(reservations_t, tables_t.c.label)
             .join(tables_t, tables_t.c.id == reservations_t.c.table_id)
             .where(reservations_t.c.id == row.id)
         )
     ).one()
+    return cancelled, "notified" if notified else "ended"
 
 
 async def _notify_guest(conn: AsyncConnection, slug: str, row: _Row, tz: ZoneInfo) -> None:
