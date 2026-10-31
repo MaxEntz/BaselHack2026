@@ -1,6 +1,6 @@
 # ADR-0010 — Allow only Anthropic's outbound range on the public gateway
 
-- **Status**: Accepted
+- **Status**: Superseded by [ADR-0019](0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md)
 - **Date**: 2026-10-31
 - **Supersedes**: the access-restriction consequence of [ADR-0009](0009-serve-the-gateway-from-the-team-server-behind-caddy.md) ("before the write tools land (#11), restrict access …")
 
