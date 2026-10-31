@@ -98,6 +98,27 @@ async def test_provision_builds_the_merchant(
     assert registry.profile == profile.model_dump(mode="json")
 
 
+async def test_provision_stores_the_services_by_start(
+    engine: AsyncEngine, profile: MerchantProfile
+) -> None:
+    """As `update_policy` does: /m/<slug>/mcp words them as the Rules page does (#201)."""
+    evening_first = profile.model_copy(update={"services": profile.services[::-1]})
+    await provision(evening_first, engine=engine)
+    try:
+        async with merchant_conn(engine, profile.slug) as conn:
+            policy = await conn.scalar(select(policy_t.c.services))
+            stored = await conn.scalar(
+                select(merchants_t.c.profile).where(merchants_t.c.slug == profile.slug)
+            )
+    finally:
+        await deprovision(profile.slug, engine=engine)
+
+    by_start = [{"start": "12:00", "end": "14:00"}, {"start": "19:00", "end": "22:00"}]
+    assert policy == by_start
+    assert stored is not None
+    assert stored["services"] == by_start
+
+
 async def test_deploy_and_set_status_switch_the_registry_status(
     engine: AsyncEngine, profile: MerchantProfile, provisioned: MerchantRecord
 ) -> None:

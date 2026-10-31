@@ -221,6 +221,17 @@ export function StudioPage() {
     });
   }
 
+  // The assistant's `show_view` (#152): each view card switches the canvas, once.
+  const asked = state.items.findLast((item) => item.type === "card" && item.card.kind === "view");
+  const askedView = asked?.type === "card" && asked.card.kind === "view" ? asked.card.data.view : null;
+  const askedId = asked?.id ?? null;
+  const shown = useRef<string | null>(null);
+  useEffect(() => {
+    if (askedId === null || askedView === null || shown.current === askedId) return;
+    shown.current = askedId;
+    open(askedView);
+  });
+
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     say(input);
