@@ -25,9 +25,6 @@ SETTINGS = {"name": "La Graine Verte", "city": "Mulhouse", "price_level": "€",
 
 # (method, path under /merchants/{slug}, body, issue that implements it; None once built)
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
-    ("GET", "/dashboard?date=2026-10-31", None, "#135"),
-    ("GET", "/dashboard", None, "#135"),  # the server's today
-    ("GET", "/search?q=kim", None, "#135"),
     ("GET", "/hours", None, "#133"),
     ("PUT", "/hours", HOURS, "#133"),
     ("GET", "/tables", None, "#133"),
@@ -41,15 +38,19 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
     ("POST", "/agent/pause", None, "#146"),
     ("POST", "/agent/resume", None, "#146"),
     ("GET", "/agent/requests?date=2026-10-31&refused=true", None, "#146"),
+    ("POST", "/publish", None, None),
 ]
 NOT_BUILT = [route for route in ROUTES if route[3]]
 
 
-# Built routes: the overview (#132), the guests (#144) and the bookings (#134); here without
-# their services.
+# Built routes: the overview (#132), the guests (#144), the bookings (#134) and Home (#135);
+# here without their services.
 BUILT: list[tuple[str, str, dict[str, Any] | None, str]] = [
     ("GET", "", None, "#132"),
     ("GET", "/guests?q=kim", None, "#144"),
+    ("GET", "/dashboard?date=2026-10-31", None, "#135"),
+    ("GET", "/dashboard", None, "#135"),  # the server's today
+    ("GET", "/search?q=kim", None, "#135"),
     ("GET", "/reservations?date=2026-10-31", None, "#134"),
     ("POST", "/reservations", BOOKING, "#134"),
     ("PATCH", "/reservations/R-001", MOVE, "#134"),
@@ -175,8 +176,9 @@ async def test_a_form_that_breaks_a_rule_names_it(
     assert error.problem.model_dump(mode="json", exclude_defaults=True) == problem
 
 
-async def test_a_built_route_without_an_agent_is_unavailable() -> None:
-    response = await call("GET", "/guests")
+@pytest.mark.parametrize(("method", "path"), [("GET", "/guests"), ("POST", "/publish")])
+async def test_a_built_route_without_an_agent_is_unavailable(method: str, path: str) -> None:
+    response = await call(method, path)
 
     assert response.status_code == 503
     assert ManagementError.model_validate(response.json()).error == "agent_unavailable"

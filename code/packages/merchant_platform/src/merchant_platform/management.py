@@ -11,9 +11,11 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Request
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.management import ManagementService
 from agent.service import AgentService
+from builder.build import publish
 from core.config import Settings
 from core.errors import AgentUnavailable, NotFound
 from core.forms import checked_rules, checked_services, checked_settings, checked_tables
@@ -44,6 +46,7 @@ from core.models import (
     SearchText,
     SettingsInput,
     Slug,
+    StepEvent,
 )
 from merchant_platform.accounts import Owner
 from merchant_platform.auth import owner_of_path
@@ -88,11 +91,20 @@ async def overview(
     return merchant_overview(record, owner.name, settings, datetime.now(UTC))
 
 
-@router.get("/dashboard")
-async def dashboard(
-    slug: SlugPath, date: Annotated[BookingDay | None, Query()] = None
-) -> Dashboard:
-    raise NotBuiltYet("#135")
+@router.post("/publish")
+async def publish_agent(
+    request: Request, slug: SlugPath, owner: Annotated[Owner, Depends(owner_of_path)]
+) -> MerchantOverview:
+    """Publishes the agent a build left waiting (#136), then answers its addresses."""
+    engine: AsyncEngine | None = request.app.state.engine
+    if engine is None:
+        raise AgentUnavailable("Publishing isn't available on this platform.")
+
+    async def unseen(_: StepEvent) -> None:
+        """The chat shows the steps; this route answers the result."""
+
+    await publish(slug, unseen, engine=engine)
+    return await overview(request, slug, owner)
 
 
 def bookings(request: Request) -> ManagementService | None:
@@ -105,10 +117,17 @@ Bookings = Annotated[ManagementService | None, Depends(bookings)]
 
 
 def need(service: ManagementService | None) -> ManagementService:
-    """The management site's booking operations (#134), or `agent_unavailable` without them."""
+    """The management site's operations (#134, #135), or `agent_unavailable` without them."""
     if service is None:
         raise AgentUnavailable("Managing bookings isn't available on this platform.")
     return service
+
+
+@router.get("/dashboard")
+async def get_dashboard(
+    slug: SlugPath, service: Bookings, date: Annotated[BookingDay | None, Query()] = None
+) -> Dashboard:
+    return await need(service).dashboard(slug, date)
 
 
 @router.get("/reservations")
@@ -154,8 +173,8 @@ async def guests(slug: SlugPath, request: Request, q: Search = "") -> GuestsOutp
 
 
 @router.get("/search")
-async def search(slug: SlugPath, q: Search = "") -> SearchOutput:
-    raise NotBuiltYet("#135")
+async def search(slug: SlugPath, service: Bookings, q: Search = "") -> SearchOutput:
+    return await need(service).search(slug, q)
 
 
 @router.get("/hours")

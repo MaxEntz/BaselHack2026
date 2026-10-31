@@ -13,6 +13,15 @@ const CARDS = cards as ChatEvent[];
 const NOTIFICATION = notification as LiveEvent;
 const SESSION = session as SessionOutput;
 
+// "Publish it" after the onboarding: the `deploy` step the build left waiting (#136).
+const PUBLISH: ChatEvent[] = [
+  { type: "tool_start", tool: "publish_agent", label: "Publishing your agent…" },
+  { type: "step", step: "deploy", status: "running" },
+  { type: "step", step: "deploy", status: "done", detail: "Your agent is live.", duration_ms: 12 },
+  { type: "card", kind: "confirmation", data: { text: "Your agent is live: Claude users can now book you." } },
+  { type: "done" },
+];
+
 const NOTIFICATION_DELAY_MS = 6000;
 // A description containing "cut" drops the stream while `extract` runs (#86).
 const CUT = /\bcut\b/i;
@@ -27,6 +36,7 @@ export function createMockClient(onboarded: boolean): ChatClient {
 
   function script(message: string): ChatEvent[] {
     if (onboarded) {
+      if (/publi/i.test(message)) return PUBLISH;
       return /block|busy|stat|polic|party|max/i.test(message) ? CARDS : TONIGHT;
     }
     if (website) {

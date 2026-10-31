@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import type { ChatEvent } from "../src/types.ts";
 import {
   type ChatAction,
   type ChatState,
@@ -99,4 +100,25 @@ test("a failed first build shows the same pill as a cut one: none", () => {
     type: "chat",
     event: { type: "step", step: "extract", status: "error" },
   }).status, "live");
+});
+
+test("a built agent's card leaves the pill on building until it is published (#136)", async () => {
+  const onboarding = (await import("../src/mocks/onboarding.json", { with: { type: "json" } }))
+    .default as ChatEvent[];
+  const built = onboarding.reduce(
+    (state, event) => chatReducer(state, { type: "chat", event }),
+    chatReducer(initialChatState("Hello", null), { type: "send", text: "http://zinc.example/" }),
+  );
+
+  assert.equal(built.status, "building");
+  assert.equal(built.merchant?.slug, "le-petit-zinc");
+  assert.equal(steps(built).deploy?.status, "waiting");
+
+  const published = run(
+    built,
+    { type: "send", text: "Publish it" },
+    { type: "chat", event: { type: "step", step: "deploy", status: "running" } },
+    { type: "chat", event: { type: "step", step: "deploy", status: "done" } },
+  );
+  assert.equal(published.status, "live");
 });

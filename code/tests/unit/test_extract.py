@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -301,9 +302,24 @@ def test_slugify(name: str, website: str, slug: str) -> None:
     assert slugify(name, website) == slug
 
 
+def logged(record: logging.LogRecord) -> str:
+    """What a log call put in `record`: its message and its `extra` fields. The record's own
+    attributes (creation time, thread and process ids…) can hold any digits (#171)."""
+    own = logging.LogRecord("", logging.INFO, "", 0, "", None, None).__dict__.keys()
+    return repr((record.getMessage(), {k: v for k, v in record.__dict__.items() if k not in own}))
+
+
+def test_the_log_check_sees_the_message_and_the_extra_fields() -> None:
+    assert "4711" in logged(logging.makeLogRecord({"msg": "invalid %s", "args": (4711,)}))
+    assert "4711" in logged(logging.makeLogRecord({"msg": "invalid", "tags": ["vegan", 4711]}))
+
+
 async def test_the_retry_logs_the_invalid_fields_without_their_values(
-    caplog: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The CI run of #171: the record's creation time held the invalid value.
+    monkeypatch.setattr(time, "time", lambda: 1793471147.874)
+    monkeypatch.setattr(time, "time_ns", lambda: 1793471147874000000)
     caplog.set_level(logging.INFO, logger="builder.extract")
     llm = FakeLLM(draft(max_party_size=0, tags=["vegan", 4711]), draft())
 
@@ -313,7 +329,8 @@ async def test_the_retry_logs_the_invalid_fields_without_their_values(
     assert record.levelno == logging.INFO
     assert record.__dict__["fields"] == ["max_party_size", "tags.1"]
     assert record.__dict__["attempt"] == 0
-    assert "4711" not in repr(record.__dict__)
+    assert "4711" in repr(record.created)
+    assert "4711" not in logged(record)
 
 
 @pytest.mark.parametrize(
@@ -368,3 +385,157 @@ def test_the_model_must_fill_the_closing_days() -> None:
 )
 def test_the_instructions_keep_the_extraction_rules(rule: str) -> None:
     assert rule in INSTRUCTIONS.replace("\n", " ")
+
+
+# The review card (#136): sources checked against the crawl, facts and flags written by code.
+
+GRAINE = CrawlResult(
+    website=SITE,
+    pages=[
+        Page(
+            url=SITE,
+            title="La Graine Verte",
+            text=(
+                "Réserver une table. Réservez par téléphone : 03 89 00 00 11. "
+                "Tables de 1 à 4 personnes. Bol du jour 12 €."
+            ),
+            json_ld=[],
+            anchors=["reserver"],
+        ),
+        Page(
+            url=f"{SITE}horaires.html", title="Horaires", text="Midi 11h30 \u2013 14h30", json_ld=[]
+        ),
+    ],
+)
+
+
+def sourced(*, fields: dict[str, Any] | None = None, **sources: Any) -> dict[str, Any]:
+    base = {"fallback_url": None, "max_party_size": 4, "tables": [], "seats": 24}
+    return draft(**base, **(fields or {}), sources=sources)
+
+
+async def test_a_quote_found_on_its_page_becomes_the_facts_source() -> None:
+    quote = {"page": SITE, "quote": "Tables de 1 à 4 personnes"}
+
+    result = await extract_profile(GRAINE, "", FakeLLM(sourced(max_party_size=quote)))
+
+    [largest] = [f for f in result.facts if f.key == "max_party_size"]
+    assert largest.value == '4, from "Tables de 1 à 4 personnes"'
+    assert (largest.source, largest.quote) == ("/", "Tables de 1 à 4 personnes")
+
+
+async def test_a_made_up_quote_is_dropped() -> None:
+    invented = {"page": SITE, "quote": "Groupes jusqu'à 12 personnes"}
+
+    result = await extract_profile(GRAINE, "", FakeLLM(sourced(max_party_size=invented)))
+
+    [largest] = [f for f in result.facts if f.key == "max_party_size"]
+    assert (largest.value, largest.source, largest.quote) == ("4", None, None)
+
+
+async def test_a_quote_on_another_page_or_in_the_description_keeps_its_real_origin() -> None:
+    # Really on /horaires.html, in another case.
+    hours = {"page": SITE, "quote": "midi 11h30 \u2013 14h30"}
+    mine = {"page": None, "quote": "jusqu'à 4"}
+
+    result = await extract_profile(
+        GRAINE,
+        "On prend les groupes jusqu\u2019à 4.",  # curly apostrophe, the model's is straight
+        FakeLLM(sourced(services=hours, max_party_size=mine)),
+    )
+
+    by_key = {f.key: f for f in result.facts}
+    assert by_key["hours"].source == "/horaires.html"
+    assert by_key["max_party_size"].source == "you"
+
+
+async def test_every_fact_of_the_card_is_there_in_order() -> None:
+    result = await extract_profile(GRAINE, "", FakeLLM(sourced()))
+
+    assert [f.label for f in result.facts] == [
+        "Name",
+        "Hours",
+        "Tags",
+        "Largest group",
+        "Cancelling",
+        "Price level",
+        "Booking page",
+    ]
+    assert result.facts[-1].value == "/#reserver, used as the fallback"
+
+
+async def test_flags_are_written_by_code() -> None:
+    llm = FakeLLM(
+        sourced(
+            max_party_size={"page": None, "quote": "groups up to 4"},
+            fields={
+                "site_max_party_size": 6,
+                "bookings_by_phone_only": True,
+                "cancellation_policy": None,
+                "closed_days": ["Monday"],
+            },
+        )
+    )
+
+    result = await extract_profile(GRAINE, "We take groups up to 4.", llm)
+
+    titles = [flag.title for flag in result.flags]
+    assert titles[:2] == [
+        "I drafted your floor plan from the seat count.",
+        "Your description and your site disagree on group size.",
+    ]
+    by_title = {flag.title: flag.detail for flag in result.flags}
+    assert by_title["Your description and your site disagree on group size."] == (
+        "Your site suggests 6, you said 4. Your words win."
+    )
+    assert by_title["Your site only takes bookings by phone."].startswith(
+        "The fallback link goes to that section"
+    )
+    assert "No cancellation policy on your site." in by_title
+    assert by_title["Closed on Monday on your site."].endswith("Monday bookings stay open.")
+
+
+async def test_a_group_larger_than_every_table_is_flagged() -> None:
+    llm = FakeLLM(draft(max_party_size=6, tables=[{"label": "T1", "seats": 4}], seats=4))
+
+    result = await extract_profile(CRAWL, "", llm)
+
+    [flag] = [f for f in result.flags if f.title.startswith("Your largest table")]
+    assert flag.title == "Your largest table seats 4 and you accept groups up to 6."
+    assert flag.detail.startswith("A group of 5 or 6 goes to your booking page")
+
+
+async def test_defaults_without_a_source_are_flagged_and_sourced_values_are_not() -> None:
+    defaults = draft(max_party_size=8, price_level="€€")
+    sourced_price = draft(
+        max_party_size=8,
+        price_level="€€",
+        sources={"price_level": {"page": SITE, "quote": "Bistrot alsacien"}},
+    )
+
+    plain = await extract_profile(CRAWL, "", FakeLLM(defaults))
+    priced = await extract_profile(CRAWL, "", FakeLLM(sourced_price))
+
+    [guessed] = [f for f in plain.flags if "default" in f.title]
+    assert "Groups up to 8 is a default." in guessed.title
+    assert "€€ is a default price level." in guessed.title
+    [still] = [f for f in priced.flags if "default" in f.title]
+    assert "price level" not in still.title
+
+
+@pytest.mark.parametrize("quote", ["4", "€", "12 €"])
+async def test_a_quote_too_short_to_prove_anything_is_no_source(quote: str) -> None:
+    # Found in the page all right, but a digit or a price sign is in almost any page.
+    result = await extract_profile(
+        GRAINE, "", FakeLLM(sourced(max_party_size={"page": SITE, "quote": quote}))
+    )
+
+    [largest] = [f for f in result.facts if f.key == "max_party_size"]
+    assert (largest.value, largest.source, largest.quote) == ("4", None, None)
+
+
+async def test_the_booking_page_is_the_crawls_finding_without_a_source() -> None:
+    result = await extract_profile(CRAWL, "", FakeLLM(draft()))
+
+    [booking] = [f for f in result.facts if f.key == "booking_page"]
+    assert (booking.value, booking.source) == ("/reservation.html, used as the fallback", None)
