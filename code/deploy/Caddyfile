@@ -17,6 +17,9 @@
 # Sésame for merchants: the web app and its platform API (#142, ADR-0016). Its own host, so the
 # gateway's filter above stays as it is.
 sesame.191-96-88-152.sslip.io {
+	# Secret links (/api/login?token=…, #132) must not leave in a Referer header.
+	header Referrer-Policy no-referrer
+	# No `log` here: an access log would record those tokens unless it filters `token`.
 	handle_path /api/* {
 		reverse_proxy 127.0.0.1:8002 {
 			# SSE (/chat, /events): send each event as it comes.

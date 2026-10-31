@@ -2,7 +2,7 @@
 
 Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-team-server.md). The gateway and the BATP node are in [connector.md](connector.md).
 
-⚠️ **Not deployed yet.** The platform waits for merchant accounts (#132): until then it has no login, calls the OpenAI API and crawls any public address. Deploy it only after #132 is merged, and after the team agreed to the server changes below.
+⚠️ **Not deployed yet.** Merchant accounts (#132) are merged, and `make deploy` refuses a platform without their settings (step 2). Deploy it only after the team agreed to the server changes below.
 
 ⚠️ **The server is shared.** Ask before rebooting it, stopping a service or changing anything outside `/opt/merchant-agents`. When `code/deploy/Caddyfile` changes, `make deploy` validates it, overwrites `/etc/caddy/Caddyfile` and restarts Caddy: every other site must be declared in it.
 
@@ -39,10 +39,13 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
    PUBLIC_CORS_ORIGINS=["https://le-petit-zinc.191-96-88-152.sslip.io"]
    PLATFORM_DEV_ROUTES=0
    CRAWL_ALLOW_PRIVATE=0
+   PLATFORM_WEB_URL=https://sesame.191-96-88-152.sslip.io
+   PLATFORM_COOKIE_SECRET=…       # openssl rand -hex 32
+   PLATFORM_INVITE_CODE=…         # at least 8 characters, given to the merchants we invite
    ENV
    ```
 
-   plus the settings #132 adds (invite code, cookie secret). `make deploy` refuses to go on without this file and `PLATFORM_DEV_ROUTES=0`.
+   `make deploy` refuses to go on without this file, `PLATFORM_DEV_ROUTES=0`, an `https://sesame.…` `PLATFORM_WEB_URL` (the start of the owners' secret links, and `Secure` cookies), a cookie secret (without it, every deploy logs every owner out) and an invite code (without it, anyone can start a build: an OpenAI call and a crawl from the shared server). It also refuses `PLATFORM_MERCHANT`, which is for local development. Don't add a `log` directive to the `sesame.` block of the Caddyfile without filtering `token`: the secret links go through it.
 
 3. From your machine, with Node installed (`make deploy` builds `web/dist` first):
 
@@ -85,7 +88,8 @@ cd /opt/merchant-agents/code
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `make deploy`: `Create ../platform/.env with PLATFORM_DEV_ROUTES=0 on the server first` | The platform's settings file is missing, or keeps the dev routes on | Step 2 |
+| `make deploy`: `../platform/.env on the server needs …` | The platform's settings file is missing, keeps the dev routes on, or lacks one of #132's settings | Step 2 |
+| `make deploy`: `../platform/.env on the server must not set PLATFORM_MERCHANT` | A development setting was copied to the server | Remove it from `platform/.env` |
 | The `crawl` step fails with "Something went wrong while reading the website" | Chromium's libraries are missing | Step 1, then `journalctl -u merchant-platform` |
 | The crawl says the address points to a private network, or that websites answer on ports 80 and 443 | `CRAWL_ALLOW_PRIVATE=0`: no private address, no port other than 80 and 443, so a build can't read the server's own services | Use the demo sites' public hosts, never `localhost` or a port |
 | The booking form switches to "call us" mode | CORS: Le Petit Zinc's host missing from `PUBLIC_CORS_ORIGINS`, or the platform down | Step 2 (`PUBLIC_CORS_ORIGINS` in `platform/.env`); `systemctl status merchant-platform` |

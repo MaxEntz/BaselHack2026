@@ -56,7 +56,8 @@ deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web ap
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
 		sed -i -E "s/^MATP_/BATP_/; s/urn:matp:/urn:batp:/g; s,matp://,batp://,g" .env && \
-		{ grep -qs "^PLATFORM_DEV_ROUTES=0" ../platform/.env || { echo "Create ../platform/.env with PLATFORM_DEV_ROUTES=0 on the server first (documentation/runbooks/platform.md)" >&2; exit 1; }; } && \
+		{ for s in "^PLATFORM_DEV_ROUTES=0" "^PLATFORM_INVITE_CODE=." "^PLATFORM_COOKIE_SECRET=." "^PLATFORM_WEB_URL=https://sesame\\." ; do grep -qs "$$s" ../platform/.env || { echo "../platform/.env on the server needs $$s (documentation/runbooks/platform.md, step 2)" >&2; exit 1; }; done; } && \
+		{ ! grep -qs "^PLATFORM_MERCHANT=." ../platform/.env || { echo "../platform/.env on the server must not set PLATFORM_MERCHANT (local development only)" >&2; exit 1; }; } && \
 		{ id -u sesame >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin sesame; } && \
 		chown root:gateway .env && chmod 640 .env && \
 		chown -R root:sesame ../platform && chmod 750 ../platform && chmod 640 ../platform/.env && \

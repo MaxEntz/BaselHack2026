@@ -1,6 +1,6 @@
 # ADR-0016 — Serve the web app, the platform and the demo sites from the team server, each on its own host
 
-- **Status**: Proposed (deploy after #132, merchant accounts)
+- **Status**: Proposed
 - **Date**: 2026-10-31
 
 ADR-0015 is taken by #128 (the management site decision).
@@ -33,7 +33,8 @@ Constraints:
 - **Chromium** for the crawler is installed by `make deploy` under `/opt/merchant-agents/ms-playwright` (`PLAYWRIGHT_BROWSERS_PATH`). Its system libraries are a one-time `apt` install, outside `/opt`, done only with the team's agreement (`documentation/runbooks/platform.md`).
 - **The management address** is `https://sesame.191-96-88-152.sslip.io/manage/<slug>` (#127 decision 8): the mockup's `<slug>.sesame.example` is invented.
 - **The demo booking form** posts to `https://sesame.<server>/api/public/le-petit-zinc/reservations` when it is served from the server, and to `http://localhost:8002` locally. The server's `PUBLIC_CORS_ORIGINS` allows Le Petit Zinc's host.
-- **Safety before #132:** `make deploy` refuses to go on unless `/opt/merchant-agents/platform/.env` exists and sets `PLATFORM_DEV_ROUTES=0`. Once #132 names its secret, the gate also requires it, so an early merge can't deploy an open platform. The platform is not deployed before #132 gives it accounts: until then it has no login, calls the OpenAI API and crawls any public address.
+- **Deploy gate:** `make deploy` refuses to go on unless `/opt/merchant-agents/platform/.env` exists and sets `PLATFORM_DEV_ROUTES=0`, #132's `PLATFORM_INVITE_CODE` and `PLATFORM_COOKIE_SECRET`, and an `https://sesame.…` `PLATFORM_WEB_URL`, and doesn't set `PLATFORM_MERCHANT`. Without the invite code anyone could start a build (an OpenAI call and a crawl from the shared server); without the cookie secret every deploy would log every owner out.
+- **Secret links through Caddy:** the `sesame.` host sends `Referrer-Policy: no-referrer`, so an owner's `/api/login?token=…` never leaves in a `Referer`, and it has no access log (uvicorn's already masks `token=`, #132).
 
 ## Alternatives considered
 
