@@ -23,9 +23,9 @@ CacheMode = Literal["read_write", "read_only", "off"]
 DEFAULT_ROOT = Path(__file__).parents[4] / ".cache" / "builder"
 
 
-# Part of the crawl cache key: bump it when `Page` changes, so no stale crawl is replayed
-# (#136; `anchors` came with #74).
-CRAWL_VERSION = "c2"
+# Part of the crawl cache key: bump it when `Page` changes or a demo site is rewritten, so no
+# stale crawl is replayed (#136; `anchors` came with #74; La Graine Verte's new page, #148).
+CRAWL_VERSION = "c3"
 
 
 def crawl_key(website: str) -> str:
