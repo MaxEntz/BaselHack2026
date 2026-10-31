@@ -10,6 +10,7 @@ import seed
 import set_status
 
 from agent import provisioning, service
+from core.config import get_settings
 from core.errors import InvalidInput, NotFound
 from core.models import MerchantProfile, Reservation, Via
 
@@ -63,6 +64,7 @@ class FakeAgent:
     def __init__(self) -> None:
         self.reservations: dict[str, Reservation] = {}
         self.missing = False
+        self.engines: list[object] = []
 
     async def create_reservation(
         self,
@@ -102,7 +104,12 @@ def registry(monkeypatch: pytest.MonkeyPatch) -> FakeRegistry:
 @pytest.fixture
 def agent(monkeypatch: pytest.MonkeyPatch) -> FakeAgent:
     fake = FakeAgent()
-    monkeypatch.setattr(service, "PgAgentService", lambda: fake, raising=False)
+
+    def pg_agent_service(engine: object) -> FakeAgent:  # PgAgentService(engine) in #42
+        fake.engines.append(engine)
+        return fake
+
+    monkeypatch.setattr(service, "PgAgentService", pg_agent_service)
     return fake
 
 
@@ -150,8 +157,8 @@ def test_seed_refuses_bad_options(registry: FakeRegistry, argv: list[str]) -> No
 async def test_tonight_bookings_skip_past_times_and_never_book_twice(agent: FakeAgent) -> None:
     now = datetime(2026, 10, 31, 19, 15, tzinfo=ZURICH)
 
-    assert await seed.seed_bookings(now) == 0
-    assert await seed.seed_bookings(now) == 0
+    assert await seed.seed_bookings(FakeEngine(), now) == 0  # type: ignore[arg-type]
+    assert await seed.seed_bookings(FakeEngine(), now) == 0  # type: ignore[arg-type]
 
     booked = sorted(agent.reservations.values(), key=lambda r: r.starts_at)
     assert [(r.starts_at.isoformat(), r.party_size, r.via) for r in booked] == [
@@ -165,7 +172,23 @@ async def test_tonight_bookings_skip_past_times_and_never_book_twice(agent: Fake
 async def test_bookings_without_le_petit_zinc_are_reported(agent: FakeAgent) -> None:
     agent.missing = True
 
-    assert await seed.seed_bookings(datetime(2026, 10, 31, 12, 0, tzinfo=ZURICH)) == 4
+    noon = datetime(2026, 10, 31, 12, 0, tzinfo=ZURICH)
+
+    assert await seed.seed_bookings(FakeEngine(), noon) == 4  # type: ignore[arg-type]
+
+
+def test_bookings_share_the_provisioning_engine(
+    registry: FakeRegistry, agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost:5432/db")
+    get_settings.cache_clear()
+    try:
+        assert seed.main(["--all", "--with-bookings"]) == 0
+    finally:
+        get_settings.cache_clear()
+
+    assert agent.engines == [registry.engine]
+    assert registry.engine.disposed
 
 
 @pytest.mark.parametrize(

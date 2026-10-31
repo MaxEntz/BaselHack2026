@@ -90,9 +90,9 @@ async def seed_merchant(engine: AsyncEngine, profile: MerchantProfile) -> None:
     print(f"{profile.slug}: {done}, live")
 
 
-async def seed_bookings(now: datetime) -> int:
+async def seed_bookings(engine: AsyncEngine, now: datetime) -> int:
     """Book TONIGHT at Le Petit Zinc, skipping the times already past; returns the failures."""
-    agent = service.PgAgentService()
+    agent = service.PgAgentService(engine)
     failures = 0
     for booking in TONIGHT:
         starts_at = datetime.combine(now.date(), time.fromisoformat(booking.time), now.tzinfo)
@@ -120,16 +120,16 @@ async def seed_bookings(now: datetime) -> int:
 
 
 async def run(args: argparse.Namespace) -> int:
-    engine = make_engine()  # one pool for every provisioning call
+    engine = make_engine()  # one pool for provisioning and bookings
     try:
         for slug in selected(args):
             await seed_merchant(engine, load_profile(slug))
+        if not args.with_bookings:
+            return 0
+        now = datetime.now(ZoneInfo(get_settings().merchant_tz))
+        return 1 if await seed_bookings(engine, now) else 0
     finally:
         await engine.dispose()
-    if not args.with_bookings:
-        return 0
-    now = datetime.now(ZoneInfo(get_settings().merchant_tz))
-    return 1 if await seed_bookings(now) else 0
 
 
 def database_error(error: DBAPIError) -> int:
