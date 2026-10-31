@@ -74,6 +74,8 @@ class Notification(BaseModel):
     id: str
     status: ReservationStatus
     via: Via
+    # `merchant` when a merchant operation made the change (`core.db.as_merchant`, #134).
+    actor: str | None = None
 
 
 Kind = Literal["new_booking", "updated", "cancelled"]
@@ -93,11 +95,14 @@ def classify(op: str, status: str) -> Kind | None:
     return "cancelled" if status == "cancelled" else "updated"
 
 
-def made_by_merchant(kind: Kind, booking: Booking) -> bool:
-    """The merchant's own change, which its chat already confirms.
+def made_by_merchant(kind: Kind, booking: Booking, actor: str | None = None) -> bool:
+    """The merchant's own change, which its pages and chat already confirm.
 
-    An update is always the guest's: no admin tool moves a booking (`agent/admin.py`).
+    A merchant operation says so (`actor`, #134): a move from the management site. Without it,
+    the booking tells: a cancellation by the merchant, or a booking it entered itself.
     """
+    if actor == "merchant":
+        return True
     if kind == "cancelled":
         return booking.cancelled_by == "merchant"
     return kind == "new_booking" and booking.row.via == "merchant"
@@ -172,7 +177,7 @@ class LiveListener:
         if booking is None:
             return
         row = booking.row
-        if made_by_merchant(kind, booking):
+        if made_by_merchant(kind, booking, notification.actor):
             log.info("live_event_skipped", extra={"merchant": slug, "kind": kind, "id": row.id})
             return
         event = LiveEvent(kind=kind, via=notification.via, date=booking.day, reservation=row)

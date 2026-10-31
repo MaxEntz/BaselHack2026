@@ -39,14 +39,14 @@ describe("Home with the demo fixture", () => {
     setClock(DEMO_NOW);
     show({ client: mock() });
     expect(await screen.findByText("Saturday 31 October, dinner 18:30–21:30")).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Good evening, Léa");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Good evening, Camille");
   });
 
   it("says good morning before noon", async () => {
     setClock(new Date("2026-10-31T09:10:00+01:00"));
     show({ client: mock() });
     await screen.findByText(/Saturday 31 October/);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Good morning, Léa");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Good morning, Camille");
   });
 
   it("fills every card", async () => {
@@ -55,32 +55,31 @@ describe("Home with the demo fixture", () => {
     await screen.findByRole("region", { name: "Guests" });
 
     const guests = card("Guests");
-    expect(guests.textContent).toContain("851guests in the last 30 days");
-    expect(guests.textContent).toContain("466 through your agent");
-    expect(guests.textContent).toContain("31 cancelled");
+    expect(guests.textContent).toContain("982guests in the last 30 days");
+    expect(guests.textContent).toContain("597 through your agent");
+    expect(guests.textContent).toContain("42 cancelled");
     expect(within(guests).getByRole("img", { name: "Guests per day over the last 30 days" })).toBeTruthy();
 
     const tonight = card("Tonight");
     expect(tonight.textContent).toContain("17 guests, 6 bookings");
     const rows = within(tonight).getAllByRole("button");
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(6);
     expect(rows[0].textContent).toBe("18:30Sara Muller2, T1Agent");
-    expect(rows.find((row) => row.textContent?.includes("Hugo Bernard"))?.className).toBe("t-row off");
     // Live bookings only, like the header.
     expect(within(tonight).getByRole("link").textContent).toBe("See all 6 bookings");
 
     const week = card("Next 7 days");
-    expect(week.textContent).toContain("39guests booked");
+    expect(week.textContent).toContain("146guests booked");
     const bars = within(week).getAllByRole("button");
     expect(bars).toHaveLength(7);
-    expect(bars[0].getAttribute("aria-label")).toBe("Today, Sat 31 Oct, 22 guests");
+    expect(bars[0].getAttribute("aria-label")).toBe("Today, Sat 31 Oct, 39 guests");
     expect(bars[0].className).toBe("bar today");
 
     const sources = card("Where bookings come from");
-    expect(sources.textContent).toContain("57%through your agent");
-    expect(sources.textContent).toContain("Agent 57%");
-    expect(sources.textContent).toContain("You 43%");
-    expect(sources.textContent).toContain("378 bookings in the last 30 days");
+    expect(sources.textContent).toContain("61%through your agent");
+    expect(sources.textContent).toContain("Agent 61%");
+    expect(sources.textContent).toContain("You 39%");
+    expect(sources.textContent).toContain("375 bookings in the last 30 days");
 
     const room = card("The room tonight");
     expect(room.textContent).toContain("17of 24 seats booked");
@@ -98,7 +97,21 @@ describe("Home with the demo fixture", () => {
 
     const activity = card("Recent activity");
     expect(activity.querySelectorAll(".act").length).toBeLessThanOrEqual(6);
-    expect(activity.textContent).toContain("R-008, Lucas Martin, 2 guests, today 20:30");
+    expect(activity.textContent).toContain("R-009, Sara Muller, 2 guests, today 18:30");
+  });
+
+  it("keeps a booking cancelled tonight in the list, greyed, and out of the count", async () => {
+    setClock(DEMO_NOW);
+    const client = mock();
+    await client.cancelBooking(SLUG, "R-014");
+    show({ client });
+    await screen.findByText("13 guests, 5 bookings");
+
+    const tonight = card("Tonight");
+    const rows = within(tonight).getAllByRole("button");
+    expect(rows).toHaveLength(6);
+    expect(rows.find((row) => row.textContent?.includes("Marie Lang"))?.className).toBe("t-row off");
+    expect(within(tonight).getByRole("link").textContent).toBe("See all 5 bookings");
   });
 
   it("switches the guests chart to a table, newest day first", async () => {
@@ -107,7 +120,7 @@ describe("Home with the demo fixture", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Table" }));
     const rows = within(card("Guests")).getAllByRole("row");
     expect(rows).toHaveLength(31);
-    expect(rows[1].textContent).toBe("Sat 31 Oct22141");
+    expect(rows[1].textContent).toBe("Sat 31 Oct39240");
     expect(screen.getByRole("button", { name: "Table" }).getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -122,10 +135,10 @@ describe("Home with the demo fixture", () => {
     await userEvent.click(screen.getByRole("button", { name: "Ask the assistant" }));
     await userEvent.click(screen.getByRole("button", { name: "Block a time" }));
     await userEvent.click(within(card("Tonight")).getAllByRole("button")[0]);
-    await userEvent.click(screen.getByRole("button", { name: "Sun 1 Nov, 4 guests" }));
+    await userEvent.click(screen.getByRole("button", { name: "Sun 1 Nov, 20 guests" }));
     expect(onAsk).toHaveBeenCalledOnce();
     expect(onBlock).toHaveBeenCalledWith("2026-10-31");
-    expect(onOpenBooking).toHaveBeenCalledWith("R-003", "2026-10-31");
+    expect(onOpenBooking).toHaveBeenCalledWith("R-009", "2026-10-31");
     expect(onOpenDay).toHaveBeenCalledWith("2026-11-01");
   });
 
@@ -149,8 +162,8 @@ describe("Home with the demo fixture", () => {
 
     expect(await screen.findByText("19 guests, 7 bookings")).toBeTruthy();
     expect(card("The room tonight").textContent).toContain("19of 24 seats booked");
-    expect(card("Next 7 days").textContent).toContain("41guests booked");
-    expect(card("Guests").textContent).toContain("853guests in the last 30 days");
+    expect(card("Next 7 days").textContent).toContain("148guests booked");
+    expect(card("Guests").textContent).toContain("984guests in the last 30 days");
     const fresh = [...document.querySelectorAll(".fresh")];
     expect(fresh.map((el) => el.className)).toEqual(["t-row fresh", "act fresh"]);
     expect(fresh[0].textContent).toContain("Kim Weber");

@@ -11,7 +11,7 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Table, create_engine, delete, func, insert, inspect, select, text
+from sqlalchemy import Table, create_engine, delete, func, insert, inspect, select, text, update
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -20,6 +20,7 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 from core.db import (
     MERCHANT,
     agent_requests_t,
+    as_merchant,
     guest_notices_t,
     merchant_conn,
     merchant_metadata,
@@ -395,6 +396,30 @@ async def test_cancelled_reservations_free_the_table(
     assert confirmed == ["R-002"]
 
 
+async def test_a_merchant_operation_marks_its_notifications(
+    engine: AsyncEngine, libpq_database_url: str, two_merchants: tuple[str, str]
+) -> None:
+    """#134: `as_merchant` is transaction-local, so the next write is nobody's again."""
+    zinc = two_merchants[0]
+    table_id = await add_table(engine, zinc)
+    async with await psycopg.AsyncConnection.connect(
+        libpq_database_url, autocommit=True
+    ) as listener:
+        await listener.execute("LISTEN reservations")
+        async with merchant_conn(engine, zinc) as conn:
+            await as_merchant(conn)
+            await conn.execute(insert(reservations_t).values(booking("R-001", table_id)))
+        async with merchant_conn(engine, zinc) as conn:
+            await conn.execute(
+                update(reservations_t)
+                .where(reservations_t.c.id == "R-001")
+                .values(guest_name="Kim Weber")
+            )
+        received = [note async for note in listener.notifies(timeout=5, stop_after=2)]
+
+    assert [json.loads(note.payload)["actor"] for note in received] == ["merchant", None]
+
+
 async def test_reservation_writes_notify_the_reservations_channel(
     engine: AsyncEngine, libpq_database_url: str, two_merchants: tuple[str, str]
 ) -> None:
@@ -415,5 +440,6 @@ async def test_reservation_writes_notify_the_reservations_channel(
             "id": "R-001",
             "status": "confirmed",
             "via": "claude",
+            "actor": None,  # outside merchant operations (#134)
         }
     ]

@@ -1,0 +1,39 @@
+{
+  "merchant": "la-graine-verte",
+  "opening": [
+    {
+      "type": "notification",
+      "event": {
+        "type": "notification",
+        "kind": "new_booking",
+        "via": "claude",
+        "date": "2026-10-31",
+        "reservation": {
+          "id": "R-009",
+          "time": "18:30",
+          "guest_name": "Sara Muller",
+          "party_size": 2,
+          "table_label": "T1",
+          "via": "claude",
+          "status": "confirmed"
+        }
+      }
+    },
+    {
+      "type": "user",
+      "text": "How busy are we tomorrow?"
+    },
+    {
+      "type": "assistant",
+      "text": "Sunday 1 November: **20 guests** in 9 bookings (lunch 10 of 24 seats, dinner 10 of 24 seats)."
+    },
+    {
+      "type": "user",
+      "text": "Block 13:00 on Sunday"
+    },
+    {
+      "type": "assistant",
+      "text": "Done. **13:00** is blocked tomorrow, so guests won't be offered it. Remy Schmitt keeps their table."
+    }
+  ]
+}

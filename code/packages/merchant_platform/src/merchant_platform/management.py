@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, Request
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.management import ManagementService
 from agent.service import AgentService
 from builder.build import publish
 from core.config import Settings
@@ -113,26 +114,46 @@ async def dashboard(
     raise NotBuiltYet("#135")
 
 
+def bookings(request: Request) -> ManagementService | None:
+    service: ManagementService | None = request.app.state.bookings
+    return service
+
+
+# Checked in the route, so that a bad request is still `invalid_input` first.
+Bookings = Annotated[ManagementService | None, Depends(bookings)]
+
+
+def need(service: ManagementService | None) -> ManagementService:
+    """The management site's booking operations (#134), or `agent_unavailable` without them."""
+    if service is None:
+        raise AgentUnavailable("Managing bookings isn't available on this platform.")
+    return service
+
+
 @router.get("/reservations")
-async def reservations(slug: SlugPath, date: Day) -> ReservationDay:
-    raise NotBuiltYet("#134")
+async def reservations(slug: SlugPath, date: Day, service: Bookings) -> ReservationDay:
+    return await need(service).day(slug, date)
 
 
 @router.post("/reservations", status_code=201)
-async def add_booking(slug: SlugPath, body: MerchantBookingInput) -> ManagedReservation:
-    raise NotBuiltYet("#134")
+async def add_booking(
+    slug: SlugPath, body: MerchantBookingInput, service: Bookings
+) -> ManagedReservation:
+    return await need(service).add(slug, body)
 
 
 @router.patch("/reservations/{reservation_id}")
 async def move_booking(
-    slug: SlugPath, reservation_id: ReservationId, body: MoveBookingInput
+    slug: SlugPath, reservation_id: ReservationId, body: MoveBookingInput, service: Bookings
 ) -> ManagedReservation:
-    raise NotBuiltYet("#134")
+    return await need(service).move(slug, reservation_id, body)
 
 
 @router.post("/reservations/{reservation_id}/cancel")
-async def cancel_booking(slug: SlugPath, reservation_id: ReservationId) -> MerchantCancelOutput:
-    raise NotBuiltYet("#134")
+async def cancel_booking(
+    slug: SlugPath, reservation_id: ReservationId, service: Bookings
+) -> MerchantCancelOutput:
+    return await need(service).cancel(slug, reservation_id)
 
 
 @router.get("/slots")
@@ -140,9 +161,10 @@ async def slots(
     slug: SlugPath,
     date: Day,
     party_size: Annotated[int, Query(gt=0, le=1000)],
+    service: Bookings,
     ignore: Annotated[GuestText | None, Query()] = None,
 ) -> DaySlots:
-    raise NotBuiltYet("#134")
+    return await need(service).slots(slug, date, party_size, ignore)
 
 
 @router.get("/guests")

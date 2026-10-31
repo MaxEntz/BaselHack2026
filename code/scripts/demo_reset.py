@@ -2,9 +2,10 @@
 
 Applies the migrations, drops every merchant schema (`m_*`), empties the registry and the guest
 notices, then runs `scripts/seed.py` with the same options. Without options: demo mode, where
-the onboarding builds Le Petit Zinc live. Refuses a DATABASE_URL that is not on localhost.
+the onboarding builds Le Petit Zinc live and La Graine Verte has its management data. Refuses
+a DATABASE_URL that is not on localhost.
 
-    uv run python scripts/demo_reset.py                           # = --except le-petit-zinc
+    uv run python scripts/demo_reset.py           # = --except le-petit-zinc --with-management
     uv run python scripts/demo_reset.py --all --with-bookings
 """
 
@@ -27,7 +28,7 @@ from core.config import get_settings
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
-DEMO_MODE = ["--except", "le-petit-zinc"]
+DEMO_MODE = ["--except", "le-petit-zinc", "--with-management"]
 
 
 def is_local(database_url: str) -> bool:

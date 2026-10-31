@@ -357,8 +357,9 @@ async def cancel_by_merchant(
     """Cancel a booking and leave the guest a notice, in the same transaction.
 
     Cancelling an already cancelled booking changes nothing and adds no second notice; a
-    booking that has already ended is cancelled without a notice. Returns the booking row
-    (with its table label), as it is after the cancellation, and what was done.
+    booking that has already ended, or that the merchant made itself, is cancelled without one.
+    Returns the booking row (with its table label), as it is after the cancellation, and what
+    was done.
     """
     wanted_id = reservation_id.strip().upper()
     if not wanted_id.isprintable():
@@ -380,8 +381,15 @@ async def cancel_by_merchant(
         .where(reservations_t.c.id == row.id)
         .values(status="cancelled", cancelled_by="merchant")
     )
-    notified = row.during.upper > now
-    if notified:
+    # A notice only for a booking a guest made, through an agent or the website (#134): the
+    # merchant who entered a booking itself has nobody to tell.
+    outcome: CancelOutcome
+    if row.during.upper <= now:
+        outcome = "ended"
+    elif row.via == "merchant":
+        outcome = "own_booking"
+    else:
+        outcome = "notified"
         await _notify_guest(conn, slug, row, tz)
     cancelled = (
         await conn.execute(
@@ -390,7 +398,7 @@ async def cancel_by_merchant(
             .where(reservations_t.c.id == row.id)
         )
     ).one()
-    return cancelled, "notified" if notified else "ended"
+    return cancelled, outcome
 
 
 async def _notify_guest(conn: AsyncConnection, slug: str, row: _Row, tz: ZoneInfo) -> None:
@@ -409,6 +417,33 @@ async def _notify_guest(conn: AsyncConnection, slug: str, row: _Row, tz: ZoneInf
             message=(
                 f"{merchant.name} cancelled your booking {row.id} on {start:%Y-%m-%d} at "
                 f"{start:%H:%M}. Please contact them at {merchant.website} or book again."
+            ),
+        )
+    )
+
+
+async def notify_move(
+    conn: AsyncConnection,
+    slug: str,
+    reservation_id: str,
+    guest_name: str,
+    start: datetime,
+    tz: ZoneInfo,
+) -> None:
+    """A guest's booking the merchant moved (#134): told like a cancellation, on the guest's
+    next `get_my_reservations`, so that nobody comes at the old time."""
+    merchant = (
+        await conn.execute(select(merchants_t.c.name).where(merchants_t.c.slug == slug))
+    ).one()
+    local = start.astimezone(tz)
+    await conn.execute(
+        insert(guest_notices_t).values(
+            guest_name=guest_name,
+            merchant_slug=slug,
+            reservation_id=reservation_id,
+            message=(
+                f"{merchant.name} moved your booking {reservation_id} on {local:%Y-%m-%d} to "
+                f"{local:%H:%M}."
             ),
         )
     )

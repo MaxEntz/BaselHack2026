@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
+from agent.management import ManagementService
 from agent.service import AgentService, PgAgentService
 from core.config import Settings, get_settings
 from core.db import make_engine
@@ -128,6 +129,7 @@ def create_app(
     engine: AsyncEngine | None = None,
     accounts: Accounts | None = None,
     registry: RegistryLookup | None = None,
+    bookings: ManagementService | None = None,
     heartbeat_seconds: float = HEARTBEAT_SECONDS,
 ) -> FastAPI:
     """Build the platform API around its collaborators (injected by tests).
@@ -135,7 +137,8 @@ def create_app(
     Without `agent`, the public booking API answers `agent_unavailable`. Without `profiles`
     (the registry), `/session` reports no merchant. `listener` feeds `bus` while the app
     runs; `engine` is disposed at shutdown. Without `accounts`, owners live in memory. Without
-    `registry`, `GET /merchants/{slug}` answers `agent_unavailable`.
+    `registry`, `GET /merchants/{slug}` answers `agent_unavailable`, and without `bookings`
+    the management site's booking routes do.
     """
     check_account_settings(settings)
     sessions = SessionStore()
@@ -163,6 +166,7 @@ def create_app(
     app.state.bus = live
     app.state.accounts = owners
     app.state.registry = registry
+    app.state.bookings = bookings
     app.state.settings = settings
     app.state.development_merchant = settings.platform_merchant
     app.state.secure_cookies = settings.platform_web_url.startswith("https://")
@@ -517,6 +521,7 @@ def _default_app() -> FastAPI:
         engine=engine,
         accounts=accounts,
         registry=registry_records(engine),
+        bookings=ManagementService(engine, agent, tz=ZoneInfo(settings.merchant_tz)),
     )
 
 
