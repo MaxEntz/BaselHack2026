@@ -51,7 +51,7 @@ export type AdminReservationRow = {
   party_size: number;
   table_label: string;
   via: Via;
-  status: string;
+  status: "confirmed" | "cancelled";
 };
 
 export type Stats = {

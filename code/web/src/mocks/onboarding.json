@@ -49,10 +49,10 @@
       "status": "live",
       "assumptions": ["Bookings last 120 minutes by default."],
       "tools": [
-        { "name": "get_availability", "description": "Check free tables at Le Petit Zinc in Mulhouse for groups up to 6." },
-        { "name": "create_reservation", "description": "Book a table at Le Petit Zinc. Confirm with the guest first." },
-        { "name": "update_reservation", "description": "Move or resize a booking at Le Petit Zinc. Confirm with the guest first." },
-        { "name": "cancel_reservation", "description": "Cancel a booking at Le Petit Zinc. Confirm with the guest first." }
+        { "name": "get_availability", "description": "Check free tables at Le Petit Zinc (Mulhouse). Services: 12:00–14:00, 19:00–22:00. Groups up to 6." },
+        { "name": "create_reservation", "description": "Book a table at Le Petit Zinc. Always confirm with the guest first." },
+        { "name": "update_reservation", "description": "Move or resize a booking at Le Petit Zinc." },
+        { "name": "cancel_reservation", "description": "Cancel a booking at Le Petit Zinc. Policy: not specified." }
       ],
       "mcp_url": "http://localhost:8001/mcp"
     }

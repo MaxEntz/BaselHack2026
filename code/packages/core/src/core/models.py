@@ -19,6 +19,7 @@ from pydantic import (
 Tag = Literal["gluten-free", "vegetarian", "vegan", "halal", "kosher", "terrace", "kid-friendly"]
 PriceLevel = Literal["€", "€€", "€€€", "€€€€"]
 Via = Literal["claude", "merchant", "website"]
+ReservationStatus = Literal["confirmed", "cancelled"]
 HHMM = Annotated[str, StringConstraints(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
 Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{3,61}$")]
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -115,7 +116,7 @@ class Reservation(_Model):
     starts_at: AwareDatetime
     party_size: PositiveInt
     table_label: str
-    status: Literal["confirmed", "cancelled"]
+    status: ReservationStatus
     guest_name: str
     via: Via
 
@@ -222,7 +223,7 @@ class AdminReservationRow(_Model):
     party_size: int
     table_label: str
     via: Via
-    status: str
+    status: ReservationStatus
 
 
 class ListReservationsInput(_Model):
