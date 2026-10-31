@@ -14,6 +14,10 @@ type Props = {
 
 export function MessageList({ items, activity, busy, onRetry }: Props) {
   const list = useRef<HTMLDivElement>(null);
+  // A live notification arriving after an error must not hide its retry.
+  const retryIndex = busy
+    ? -1
+    : items.findLastIndex((item) => item.type !== "notification");
   const stick = useRef(true);
 
   useLayoutEffect(() => {
@@ -39,7 +43,7 @@ export function MessageList({ items, activity, busy, onRetry }: Props) {
             key={item.id}
             item={item}
             // Only the latest error offers a retry, and never during a turn.
-            onRetry={!busy && index === items.length - 1 ? onRetry : undefined}
+            onRetry={index === retryIndex ? onRetry : undefined}
           />
         ))}
         {busy && (

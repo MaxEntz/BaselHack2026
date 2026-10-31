@@ -2,13 +2,12 @@ import type { Stats } from "../types.ts";
 import { describeDate } from "./format.ts";
 
 export function StatsCard({ data }: { data: Stats & { date: string } }) {
-  const occupancy =
-    data.seats > 0 ? Math.round((data.guests / data.seats) * 100) : null;
+  // No occupancy rate: guests are counted over the whole day, so the same
+  // seat is often sold twice. Add it once the backend sends a real figure.
   const figures = [
     { label: "Bookings", value: data.bookings },
     { label: "Guests", value: data.guests },
     { label: "Seats", value: data.seats },
-    ...(occupancy === null ? [] : [{ label: "Occupancy", value: `${occupancy}%` }]),
   ];
 
   return (
