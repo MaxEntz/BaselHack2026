@@ -10,7 +10,7 @@ A restaurant owner gives us their website and a short description. We generate a
 ## 2. Overview
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph USER["User side"]
     U(["User"]) --> C["Claude.ai"]
   end
