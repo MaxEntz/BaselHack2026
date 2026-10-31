@@ -11,8 +11,8 @@ export function Field({
   return (
     <label className="field" htmlFor={children ? undefined : id}>
       {label}
-      {hint && <small>{hint}</small>}
       {children ?? <input id={id} type="text" {...input} />}
+      {hint && <small>{hint}</small>}
     </label>
   );
 }
