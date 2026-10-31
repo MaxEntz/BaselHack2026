@@ -63,7 +63,8 @@ async def read_json(reader: asyncio.StreamReader) -> dict[str, Any]:
     return frame
 
 
-Script = Callable[[list[dict[str, Any]]], Awaitable[list[dict[str, Any]]]]
+# The answers to send for the requests so far, or None to drop the session.
+Script = Callable[[list[dict[str, Any]]], Awaitable[list[dict[str, Any]] | None]]
 
 
 @asynccontextmanager
@@ -82,7 +83,9 @@ async def scripted_node(script: Script) -> AsyncIterator[tuple[int, list[str]]]:
         requests: list[dict[str, Any]] = []
         while (frame := await read_frame(reader)) is not None:
             requests.append(frame)
-            for answer in await script(requests):
+            if (answers := await script(requests)) is None:
+                break
+            for answer in answers:
                 writer.write(encode(answer))
             await writer.drain()
         writer.close()
@@ -333,6 +336,24 @@ async def test_an_unreadable_answer_without_an_id_drops_the_session() -> None:
     ):
         with pytest.raises(AgentUnavailable, match="closed before the answer"):
             await client.request("BOOK", "le-petit-zinc")
+
+
+async def test_a_recall_lost_with_its_session_is_sent_again() -> None:
+    # Safe: a notice comes back for a day after it was first returned (#91).
+    async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+        if len(sessions) == 1:
+            return None  # the first session dies under the RECALL
+        request = requests[-1]
+        return [{"type": "response", "id": request["id"], "status": 200, "result": {"n": 1}}]
+
+    async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
+        scripted_node(script) as (port, sessions),
+        MatpClient("127.0.0.1", port, CALLER) as client,
+    ):
+        assert await client.request("RECALL", params={"guest_name": "Ada"}) == {"n": 1}
+
+    assert sessions == ["s-1", "s-2"]
 
 
 async def test_any_2xx_status_is_a_success() -> None:
