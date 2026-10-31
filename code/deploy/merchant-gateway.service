@@ -1,7 +1,8 @@
 [Unit]
 Description=Merchant Agents MCP gateway
-After=network-online.target
-Wants=network-online.target
+# Wants, not Requires: when the node stops, the gateway stays up and gives the fallback links.
+After=network-online.target merchant-node.service
+Wants=network-online.target merchant-node.service
 
 [Service]
 User=gateway
