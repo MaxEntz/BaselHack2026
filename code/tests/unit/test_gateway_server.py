@@ -92,6 +92,8 @@ async def test_writes_tell_claude_to_confirm_first(name: str) -> None:
     description = (await list_tools())[name].description or ""
 
     assert "confirm" in description.lower() or "explicit yes" in description
+    # A user pre-confirming in their request still gets the summary first (#14).
+    assert "in advance" in description
     assert "fallback_url" in description
 
 
@@ -139,6 +141,7 @@ async def test_server_sends_its_rules_to_claude() -> None:
         instructions = client.instructions or ""
 
     assert "explicit yes" in instructions
+    assert "in advance" in instructions
     assert "fallback_url" in instructions
 
 
