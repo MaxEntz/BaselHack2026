@@ -218,7 +218,7 @@ live booking also appears in tonight's reservations, on the same date.
 
 ## Checks
 
-With Python 3.12, uv and Node.js 24 installed, run from `code/`:
+With Python 3.12, uv and Node.js ([minimum version](../code/README.md#prerequisites)) installed, run from `code/`:
 
 ```sh
 uv sync --locked
