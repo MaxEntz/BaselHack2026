@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-6.1-terra"
     merchant_tz: str = "Europe/Zurich"
     agent_timeout_ms: int = 2000
+    # Fault injection for demos and tests (#13): delay before each agent call, only for these
+    # comma-separated slugs (empty = every merchant).
+    chaos_delay_ms: int = 0
+    chaos_merchants: str = ""
     gateway_public_url: str | None = None
     gateway_token: SecretStr | None = None
     platform_public_url: str = "http://localhost:8002"

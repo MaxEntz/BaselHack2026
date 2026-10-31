@@ -24,7 +24,7 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 
 | Command | What | URL |
 |---|---|---|
-| `make gateway` | MCP server (protocol), `uv run python -m gateway`; only `ping` until #11 | http://localhost:8001/mcp |
+| `make gateway` | MCP server (protocol), `uv run python -m gateway`: the 6 user tools, JSON logs, `GET /health` | http://localhost:8001/mcp |
 | `make platform` | Platform API, `uv run uvicorn merchant_platform.api:app --port 8002` | http://localhost:8002 |
 | `make web` | Merchant chat UI (Vite) | http://localhost:5173 |
 | `make site` | Demo restaurant website "Le Petit Zinc" (static, in French) | http://localhost:8080 |
@@ -55,6 +55,7 @@ Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_pr
 
 ```bash
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
+uv run pytest tests/e2e           # §9 user scenarios through a real MCP client
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
 uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway
 make fmt                          # autofix lint + format

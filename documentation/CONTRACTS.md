@@ -55,6 +55,26 @@ but rejects `format: uri` (from `HttpUrl`) and any property missing from `requir
 `code/scripts/spike_extract.py`, as validated live by the extraction spike in
 [#4](https://github.com/MaxEntz/BaselHack2026/issues/4).
 
+## Gateway tools
+
+Each tool returns `<Result> | ToolError`, as a normal result that Claude can read, so that it
+sees `fallback_url`. A `ToolError` never arrives as a protocol error or an `isError` result.
+Because the return type is a union, the SDK wraps `structuredContent` as `{"result": ...}`; the
+text content is the plain JSON object.
+
+- Arguments outside the tool's schema are rejected before the tool runs and answer
+  `invalid_input` (`gateway.fallback.RejectedArguments`).
+- `search_merchants` never lists a `down` merchant (#12). When the query names one and no live
+  merchant, it answers `agent_unavailable` with that merchant's `fallback_url`. Otherwise a
+  request for that restaurant would silently propose others.
+- Without the registry there is no URL to give: `agent_unavailable` has no `fallback_url`.
+- A timeout on a write may hit after the COMMIT, so its message asks Claude to check
+  `get_my_reservations` before retrying.
+- Each call logs one JSON line: `{"event": "tool_call", "tool", "merchant", "latency_ms",
+  "outcome"}`, where `outcome` is `ok` or the error code. Guest names never appear at INFO.
+
+`GET /health` (outside MCP, no token): `200` or `503`, with `{"status", "database"}`.
+
 ## SSE
 
 `POST /chat` returns one `ChatEvent` stream per merchant message, ending in `done`.

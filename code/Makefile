@@ -47,6 +47,7 @@ deploy: ## Ship the gateway to the team server -> https://191-96-88-152.sslip.io
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
 		/opt/uv/bin/uv sync --frozen --no-dev --package gateway -q && \
+		.venv/bin/alembic upgrade head && \
 		install -m 644 deploy/merchant-gateway.service /etc/systemd/system/ && \
 		systemctl daemon-reload && \
 		systemctl enable --quiet merchant-gateway && \

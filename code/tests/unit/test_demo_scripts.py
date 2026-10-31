@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import demo_reset
@@ -14,6 +15,7 @@ from core.config import get_settings
 from core.errors import InvalidInput, NotFound
 from core.models import MerchantProfile, Reservation, Via
 
+NO_ENGINE: Any = object()
 ZURICH = ZoneInfo("Europe/Zurich")
 
 
@@ -105,7 +107,7 @@ def registry(monkeypatch: pytest.MonkeyPatch) -> FakeRegistry:
 def agent(monkeypatch: pytest.MonkeyPatch) -> FakeAgent:
     fake = FakeAgent()
 
-    def pg_agent_service(engine: object) -> FakeAgent:  # PgAgentService(engine) in #42
+    def pg_agent_service(engine: object, tz: object = None) -> FakeAgent:  # as in #42
         fake.engines.append(engine)
         return fake
 
@@ -157,8 +159,8 @@ def test_seed_refuses_bad_options(registry: FakeRegistry, argv: list[str]) -> No
 async def test_tonight_bookings_skip_past_times_and_never_book_twice(agent: FakeAgent) -> None:
     now = datetime(2026, 10, 31, 19, 15, tzinfo=ZURICH)
 
-    assert await seed.seed_bookings(FakeEngine(), now) == 0  # type: ignore[arg-type]
-    assert await seed.seed_bookings(FakeEngine(), now) == 0  # type: ignore[arg-type]
+    assert await seed.seed_bookings(NO_ENGINE, now) == 0
+    assert await seed.seed_bookings(NO_ENGINE, now) == 0
 
     booked = sorted(agent.reservations.values(), key=lambda r: r.starts_at)
     assert [(r.starts_at.isoformat(), r.party_size, r.via) for r in booked] == [
@@ -172,9 +174,7 @@ async def test_tonight_bookings_skip_past_times_and_never_book_twice(agent: Fake
 async def test_bookings_without_le_petit_zinc_are_reported(agent: FakeAgent) -> None:
     agent.missing = True
 
-    noon = datetime(2026, 10, 31, 12, 0, tzinfo=ZURICH)
-
-    assert await seed.seed_bookings(FakeEngine(), noon) == 4  # type: ignore[arg-type]
+    assert await seed.seed_bookings(NO_ENGINE, datetime(2026, 10, 31, 12, 0, tzinfo=ZURICH)) == 4
 
 
 def test_bookings_share_the_provisioning_engine(
