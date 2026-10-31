@@ -34,3 +34,14 @@ export function nameFromSlug(slug: string): string {
     .map((word) => word[0].toUpperCase() + word.slice(1))
     .join(" ");
 }
+
+/** A page of `slug`'s site: `/manage/<slug>`, or `/manage/<slug>/<page>`. */
+export function pagePath(slug: string, page: PageId): string {
+  const base = `/manage/${encodeURIComponent(slug)}`;
+  return page === "home" ? base : `${base}/${page}`;
+}
+
+/** A booking, opened on the Reservations page of its day (#139). */
+export function bookingPath(slug: string, date: string, id: string): string {
+  return `${pagePath(slug, "reservations")}?date=${date}&booking=${encodeURIComponent(id)}`;
+}

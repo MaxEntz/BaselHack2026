@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useNow } from "../../../clock.ts";
 import type {
@@ -10,6 +10,7 @@ import type {
 } from "../../../types.ts";
 import type { ManagementClient } from "../../client.ts";
 import { useClient } from "../../data.ts";
+import { crossfade } from "../../motion.ts";
 import { sampleBookings } from "../../samples.ts";
 import { Blob, Box, Pill, Source, Tag, Under } from "../../ui/index.ts";
 import { GuestsCard } from "./GuestsCard.tsx";
@@ -38,7 +39,7 @@ const ACTIVITY_ROWS = 6;
 
 export type HomeProps = {
   slug: string;
-  // Bump to read everything again (the shell does on live events, #137).
+  // Bump to read everything again: the shell does on every change (#137).
   version?: number;
   // The shell's actions; without them Home navigates to the page that has them.
   onAsk?: () => void;
@@ -78,6 +79,8 @@ function useFresh(ids: readonly string[] | null): Set<string> {
 function useHomeData(slug: string, client: ManagementClient, version: number) {
   const [data, setData] = useState<HomeData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The version Home last showed: a read for a newer one crossfades in (#137).
+  const shown = useRef<number | null>(null);
   useEffect(() => {
     const abort = new AbortController();
     const { signal } = abort;
@@ -92,8 +95,14 @@ function useHomeData(slug: string, client: ManagementClient, version: number) {
       const reservations = samples
         ? sampleBookings(dashboard.date, dashboard.room.service)
         : day.reservations;
-      setData({ merchant, dashboard, day: { ...day, reservations }, samples });
-      setError(null);
+      const live = shown.current !== null && shown.current !== version;
+      shown.current = version;
+      const apply = () => {
+        setData({ merchant, dashboard, day: { ...day, reservations }, samples });
+        setError(null);
+      };
+      if (live) crossfade(apply);
+      else apply();
     })().catch((reason: unknown) => {
       if (signal.aborted) return;
       setError(reason instanceof Error ? reason.message : String(reason));
