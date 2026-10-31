@@ -21,6 +21,7 @@ from sqlalchemy import Row, delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from agent import activity
 from agent.guests import guest_key
 from core import forms
 from core.availability import bookable_starts, is_bookable_start
@@ -165,7 +166,11 @@ async def list_guests(
 
 
 async def block_slot(
-    conn: AsyncConnection, services: Sequence[Service], starts_at: datetime, tz: ZoneInfo
+    conn: AsyncConnection,
+    slug: str,
+    services: Sequence[Service],
+    starts_at: datetime,
+    tz: ZoneInfo,
 ) -> None:
     """No new booking may start at `starts_at`. Existing bookings stay (AGENTS.md §6)."""
     if not is_bookable_start(services, starts_at, tz):
@@ -174,13 +179,24 @@ async def block_slot(
         raise InvalidInput(
             f"{local:%H:%M} is not a start time on {local:%Y-%m-%d}; valid times: {valid or 'none'}"
         )
-    await conn.execute(
-        pg_insert(blocked_slots_t).values(starts_at=starts_at).on_conflict_do_nothing()
+    added = await conn.scalar(
+        pg_insert(blocked_slots_t)
+        .values(starts_at=starts_at)
+        .on_conflict_do_nothing()
+        .returning(blocked_slots_t.c.starts_at)
     )
+    if added is not None:  # already blocked: nothing changed, no line
+        await activity.record_times(conn, slug, "blocked", [starts_at])
 
 
-async def unblock_slot(conn: AsyncConnection, starts_at: datetime) -> None:
-    await conn.execute(delete(blocked_slots_t).where(blocked_slots_t.c.starts_at == starts_at))
+async def unblock_slot(conn: AsyncConnection, slug: str, starts_at: datetime) -> None:
+    removed = await conn.scalar(
+        delete(blocked_slots_t)
+        .where(blocked_slots_t.c.starts_at == starts_at)
+        .returning(blocked_slots_t.c.starts_at)
+    )
+    if removed is not None:
+        await activity.record_times(conn, slug, "reopened", [starts_at])
 
 
 async def set_status(conn: AsyncConnection, slug: str, status: Literal["live", "down"]) -> None:
@@ -194,6 +210,7 @@ async def set_status(conn: AsyncConnection, slug: str, status: Literal["live", "
     )
     if result.rowcount == 0:
         raise InvalidInput("This agent isn't published yet: publish it first")
+    await activity.record(conn, slug, "paused" if status == "down" else "resumed", "merchant")
 
 
 async def _update_profile(conn: AsyncConnection, slug: str, changes: dict[str, Any]) -> None:
@@ -236,6 +253,8 @@ async def update_policy(
         values["services"] = [service.model_dump() for service in checked]
     row = (await conn.execute(update(policy_t).values(values).returning(policy_t))).one()
     await _update_profile(conn, slug, values)
+    what = activity.BOOKING_RULES if max_party_size is not None else activity.OPENING_HOURS
+    await activity.record(conn, slug, "saved", "merchant", details={"what": what})
     return Policy(
         max_party_size=row.max_party_size,
         slot_length_min=row.slot_length_min,
@@ -293,6 +312,7 @@ async def update_tables(
             "seats": sum(table.seats for table in plan),
         },
     )
+    await activity.record(conn, slug, "saved", "merchant", details={"what": activity.FLOOR_PLAN})
     return plan
 
 
@@ -380,6 +400,16 @@ async def cancel_by_merchant(
         update(reservations_t)
         .where(reservations_t.c.id == row.id)
         .values(status="cancelled", cancelled_by="merchant")
+    )
+    await activity.record_booking(
+        conn,
+        slug,
+        "cancelled",
+        "merchant",
+        row.id,
+        row.guest_name,
+        row.party_size,
+        row.during.lower,
     )
     # A notice only for a booking a guest made, through an agent or the website (#134): the
     # merchant who entered a booking itself has nobody to tell.

@@ -17,15 +17,9 @@ from sqlalchemy import ColumnElement, Row, func, select, update
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from agent import admin
-from agent.service import (
-    PgAgentService,
-    _attempt,
-    _during,
-    _utc,
-    candidate_tables,
-    check_start,
-)
+from agent import activity, admin, dashboard
+from agent.service import PgAgentService, _during, _utc
+from agent.writes import attempt, candidate_tables, check_start
 from core.availability import BusyInterval, TableRow, bookable_starts, pick_table
 from core.db import (
     as_merchant,
@@ -38,6 +32,7 @@ from core.db import (
 )
 from core.errors import InvalidInput, NotFound, SlotUnavailable
 from core.models import (
+    Dashboard,
     DaySlot,
     DaySlots,
     ManagedReservation,
@@ -45,11 +40,20 @@ from core.models import (
     MerchantCancelOutput,
     MoveBookingInput,
     ReservationDay,
+    SearchOutput,
     Service,
     TableSpec,
 )
 
 log = logging.getLogger(__name__)
+
+SEARCH_LIMIT = 8
+
+
+def _fold(text: str) -> str:
+    """`same_guest`'s comparison (agent/service.py), for substrings."""
+    return " ".join(text.split()).casefold()
+
 
 _start_of = func.lower(reservations_t.c.during)
 _MANAGED_COLUMNS = (
@@ -228,7 +232,7 @@ class ManagementService:
                 key=lambda t: (t.seats, t.id != current.table_id, t.label),
             )
             for table in tables:
-                outcome = await _attempt(
+                outcome = await attempt(
                     conn,
                     table.id,
                     current.party_size,
@@ -241,6 +245,16 @@ class ManagementService:
                         await admin.notify_move(
                             conn, slug, current.id, current.guest_name, body.starts_at, self.tz
                         )
+                    await activity.record_booking(
+                        conn,
+                        slug,
+                        "moved",
+                        "merchant",
+                        current.id,
+                        current.guest_name,
+                        current.party_size,
+                        body.starts_at,
+                    )
                     log.info(
                         "reservation moved by merchant",
                         extra={"merchant": slug, "reservation": current.id},
@@ -254,6 +268,49 @@ class ManagementService:
         return MerchantCancelOutput(
             reservation=await self.reservation(slug, done.reservation.id), outcome=done.outcome
         )
+
+    async def dashboard(self, slug: str, day: date | None = None) -> Dashboard:
+        """Home for the merchant's today by the server's clock; another day is refused."""
+        now = self.clock()
+        today = now.astimezone(self.tz).date()
+        if day is not None and day != today:
+            raise InvalidInput(f"The dashboard is for today ({today}), not {day}")
+        async with merchant_conn(self.engine, slug) as conn:
+            plan = await self._plan(conn, slug)
+            history, next_days = await dashboard.days(conn, today, self.tz)
+            room = await dashboard.room(
+                conn,
+                services=plan.services,
+                tables=plan.tables,
+                slot_length=plan.slot_length,
+                largest_group=plan.largest_group,
+                max_party_size=plan.max_party_size,
+                now=now,
+                tz=self.tz,
+            )
+            return Dashboard(
+                date=today,
+                history=tuple(history),
+                next_days=tuple(next_days),
+                channels=tuple(await dashboard.channels(conn, today, self.tz)),
+                room=room,
+                activity=tuple(await dashboard.recent(conn, slug, today, self.tz)),
+            )
+
+    async def search(self, slug: str, q: str) -> SearchOutput:
+        """Up to 8 bookings of the next 7 days by guest name or reference, cancelled included;
+        names compare as `same_guest` does (case folded, runs of spaces as one)."""
+        wanted = _fold(q)
+        if not wanted:
+            return SearchOutput(reservations=())
+        today = self.clock().astimezone(self.tz).date()
+        start, _ = self._bounds(today)
+        _, end = self._bounds(today + timedelta(days=dashboard.NEXT_DAYS - 1))
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._plan(conn, slug)
+            ahead = await self._managed(conn, _start_of >= start, _start_of < end)
+        found = [b for b in ahead if wanted in _fold(b.guest_name) or wanted in _fold(b.id)]
+        return SearchOutput(reservations=tuple(found[:SEARCH_LIMIT]))
 
     async def reservation(self, slug: str, reservation_id: str) -> ManagedReservation:
         async with merchant_conn(self.engine, slug) as conn:

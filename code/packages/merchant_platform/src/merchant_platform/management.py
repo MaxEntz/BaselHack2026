@@ -88,13 +88,6 @@ async def overview(
     return merchant_overview(record, owner.name, settings, datetime.now(UTC))
 
 
-@router.get("/dashboard")
-async def dashboard(
-    slug: SlugPath, date: Annotated[BookingDay | None, Query()] = None
-) -> Dashboard:
-    raise NotBuiltYet("#135")
-
-
 def bookings(request: Request) -> ManagementService | None:
     service: ManagementService | None = request.app.state.bookings
     return service
@@ -105,10 +98,17 @@ Bookings = Annotated[ManagementService | None, Depends(bookings)]
 
 
 def need(service: ManagementService | None) -> ManagementService:
-    """The management site's booking operations (#134), or `agent_unavailable` without them."""
+    """The management site's operations (#134, #135), or `agent_unavailable` without them."""
     if service is None:
         raise AgentUnavailable("Managing bookings isn't available on this platform.")
     return service
+
+
+@router.get("/dashboard")
+async def get_dashboard(
+    slug: SlugPath, service: Bookings, date: Annotated[BookingDay | None, Query()] = None
+) -> Dashboard:
+    return await need(service).dashboard(slug, date)
 
 
 @router.get("/reservations")
@@ -154,8 +154,8 @@ async def guests(slug: SlugPath, request: Request, q: Search = "") -> GuestsOutp
 
 
 @router.get("/search")
-async def search(slug: SlugPath, q: Search = "") -> SearchOutput:
-    raise NotBuiltYet("#135")
+async def search(slug: SlugPath, service: Bookings, q: Search = "") -> SearchOutput:
+    return await need(service).search(slug, q)
 
 
 @router.get("/hours")

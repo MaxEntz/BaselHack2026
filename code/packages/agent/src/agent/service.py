@@ -20,18 +20,16 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Row, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
-from sqlalchemy.sql import Executable
 
-from agent import admin
+from agent import activity, admin
 from agent.guests import same_guest
+from agent.writes import attempt as _attempt
+from agent.writes import candidate_tables, check_start
 from core.availability import (
     BusyInterval,
     TableRow,
-    bookable_starts,
     find_slots,
-    is_bookable_start,
 )
 from core.config import get_settings
 from core.db import (
@@ -65,14 +63,9 @@ Clock = Callable[[], datetime]
 # Any row shape: reservations joined with their table label, or the policy row.
 _Row = Row[*tuple[Any, ...]]
 
-EXCLUSION_VIOLATION = "23P01"
-UNIQUE_VIOLATION = "23505"
-IDEMPOTENCY_CONSTRAINT = "reservations_idempotency_key_key"
 # A notice comes back on every lookup for this long after the first one that returned it, so
 # that an answer lost on its way to the guest doesn't lose the notice (#91).
 NOTICE_WINDOW = timedelta(hours=24)
-
-Outcome = Literal["done", "taken", "key_taken"]
 
 
 # What the merchant can switch its published agent to: paused (`down`) or `live` (#146).
@@ -153,75 +146,6 @@ class AgentService(Protocol):
     async def set_status(self, slug: str, status: AgentStatus) -> None:
         """Pause (`down`) or resume (`live`) the merchant's agent (#146)."""
         ...
-
-
-def candidate_tables(
-    tables: Sequence[TableRow], party_size: int, current_id: int | None = None
-) -> list[TableRow]:
-    """Tables that seat the party, smallest first then by label; the current one first."""
-    fitting = sorted((t for t in tables if t.seats >= party_size), key=lambda t: (t.seats, t.label))
-    current = [t for t in fitting if t.id == current_id]
-    return current + [t for t in fitting if t.id != current_id]
-
-
-def check_start(
-    services: Sequence[Service], start: datetime, *, now: datetime, tz: ZoneInfo
-) -> None:
-    """Raise `SlotUnavailable` unless `start` is a future start time of a service."""
-    if not is_bookable_start(services, start, tz):
-        local = start.astimezone(tz)
-        valid = ", ".join(s.strftime("%H:%M") for s in bookable_starts(services, local.date(), tz))
-        raise SlotUnavailable(
-            f"{local:%H:%M} is not a start time on {local:%Y-%m-%d}; valid times: {valid or 'none'}"
-        )
-    if _utc(start) <= _utc(now):
-        raise SlotUnavailable(f"{start.astimezone(tz):%Y-%m-%d %H:%M} is in the past")
-
-
-def _sqlstate(error: DBAPIError) -> str | None:
-    state: str | None = getattr(error.orig, "sqlstate", None)
-    return state
-
-
-def _constraint(error: DBAPIError) -> str | None:
-    diag = getattr(error.orig, "diag", None)
-    name: str | None = getattr(diag, "constraint_name", None)
-    return name
-
-
-class _Unfit(Exception):
-    """The table was removed or shrunk below the party since `_load` read the floor plan."""
-
-
-async def _attempt(
-    conn: AsyncConnection, table_id: int, party_size: int, statement: Executable
-) -> Outcome:
-    """Write a booking on `table_id` in a SAVEPOINT, so a conflict leaves the transaction usable.
-
-    `taken`: the table is booked over that range (exclusion violation), or a concurrent
-    `update_tables` removed it or made it too small. `key_taken`: a concurrent request with
-    the same idempotency key won. Anything else is raised.
-    """
-    try:
-        async with conn.begin_nested():
-            # Queue behind other writers on this table (see the module docstring), then
-            # re-read its seats under the lock: the floor plan may have changed since `_load`.
-            seats = await conn.scalar(
-                select(tables_t.c.seats).where(tables_t.c.id == table_id).with_for_update()
-            )
-            if seats is None or seats < party_size:
-                # Raised inside the SAVEPOINT, so its rollback releases the lock.
-                raise _Unfit
-            await conn.execute(statement)
-    except _Unfit:
-        return "taken"
-    except DBAPIError as error:
-        if _sqlstate(error) == EXCLUSION_VIOLATION:
-            return "taken"
-        if _sqlstate(error) == UNIQUE_VIOLATION and _constraint(error) == IDEMPOTENCY_CONSTRAINT:
-            return "key_taken"
-        raise
-    return "done"
 
 
 class _Merchant:
@@ -347,6 +271,16 @@ class PgAgentService:
                     continue  # booked meanwhile: next table
                 if outcome == "key_taken":
                     break  # a concurrent retry with the same key won: return its booking
+                await activity.record_booking(
+                    conn,
+                    slug,
+                    "new_booking",
+                    via,
+                    reservation_id,
+                    guest_name,
+                    party_size,
+                    starts_at,
+                )
                 log.info(
                     "reservation created",
                     extra={"merchant": slug, "reservation": reservation_id, "via": via},
@@ -407,6 +341,16 @@ class PgAgentService:
                 )
                 if outcome != "done":
                     continue
+                await activity.record_booking(
+                    conn,
+                    slug,
+                    "moved",
+                    current.via,
+                    current.id,
+                    current.guest_name,
+                    new_party,
+                    new_start,
+                )
                 log.info(
                     "reservation updated",
                     extra={"merchant": slug, "reservation": current.id, "key": idempotency_key},
@@ -457,6 +401,16 @@ class PgAgentService:
                     update(reservations_t)
                     .where(reservations_t.c.id == current.id)
                     .values(status="cancelled", cancelled_by="guest")
+                )
+                await activity.record_booking(
+                    conn,
+                    slug,
+                    "cancelled",
+                    current.via,
+                    current.id,
+                    current.guest_name,
+                    current.party_size,
+                    current.during.lower,
                 )
                 log.info(
                     "reservation cancelled", extra={"merchant": slug, "reservation": current.id}
@@ -606,13 +560,13 @@ class PgAgentService:
     async def block_slot(self, slug: str, starts_at: datetime) -> None:
         async with merchant_conn(self.engine, slug) as conn:
             merchant = await self._load(conn, slug, merchant_side=True)
-            await admin.block_slot(conn, merchant.services, starts_at, self.tz)
+            await admin.block_slot(conn, slug, merchant.services, starts_at, self.tz)
         log.info("slot blocked", extra={"merchant": slug, "starts_at": starts_at.isoformat()})
 
     async def unblock_slot(self, slug: str, starts_at: datetime) -> None:
         async with merchant_conn(self.engine, slug) as conn:
             await self._load(conn, slug, merchant_side=True)
-            await admin.unblock_slot(conn, starts_at)
+            await admin.unblock_slot(conn, slug, starts_at)
         log.info("slot unblocked", extra={"merchant": slug, "starts_at": starts_at.isoformat()})
 
     async def update_policy(
