@@ -160,6 +160,8 @@ Every component above is built and merged. Still open: the Claude.ai check of `/
 | Crawl | Playwright (Chromium) | Handles JavaScript-rendered sites | requests + BeautifulSoup | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md) |
 | Front | Vite + React + TypeScript, React Router; cards rendered from tool results | Single chat page; what the merchant sees is what the service returned | Next.js; Markdown tables written by the LLM | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md), [0006](adr/0006-chat-cards-rendered-from-tool-results.md), [0017](adr/0017-router-and-test-tools-for-the-management-site.md) |
 | Tests | pytest, pytest-asyncio, testcontainers (Postgres 16); web: Node's runner, Vitest + Testing Library, Playwright | The exclusion constraint and the triggers must be tested for real; pages are checked in a browser against the mockups | Mocked database; screenshot diffs | [0002](adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md), [0017](adr/0017-router-and-test-tools-for-the-management-site.md) |
+| Idempotent updates | Each applied update key stored with its change in `public.reservation_changes` | A late retry of an older change never undoes a newer one; existing merchants need no re-provision | A column in each merchant schema (drop and re-provision every merchant) | [0013](adr/0013-store-update-idempotency-keys-in-public.md) |
+| Merchant accounts | A secret link per merchant, an HMAC-signed `HttpOnly` owner cookie (stdlib `hmac`) | Guest names, the request log and the OpenAI key stay with whoever built the merchant; no new dependency, and a new link ends every session of the old one | OAuth or e-mail magic links (prove identity, not ownership; need a provider); a server session table; JWT | [0018](adr/0018-open-a-merchants-site-with-a-secret-link.md) |
 | Package naming | `merchant_platform` | `platform` shadows a stdlib module | Rely on `sys.path` order | [0005](adr/0005-rename-platform-package-to-merchant-platform.md) |
 | Demo reliability | Builder cache (`BUILDER_CACHE`) | Onboarding works even if the Wi-Fi or the API drops | Always live; faked build steps | [0007](adr/0007-builder-cache-for-a-replayable-demo.md) |
 | Contracts | Frozen models with deviations from §8 (`guest_name`, suggestions, `update_tables`) | Safe cancel and update; filter relaxation; floor-plan correction | Keep §8 as written; real guest authentication | [0008](adr/0008-deviations-from-the-original-tool-contracts.md) |
@@ -248,4 +250,4 @@ In this order, to rebuild the project yourself:
 
 ---
 
-*Last updated: 2026-10-31, describing `main` at commit `e0aec93`.*
+*Last updated: 2026-10-31, describing `main` at commit `110b18a`.*
