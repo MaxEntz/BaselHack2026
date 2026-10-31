@@ -203,7 +203,8 @@ describe("live bookings", () => {
   it("appear on Home without a reload", async () => {
     at(`/manage/${SLUG}`, mock(10));
     const row = await screen.findByRole("button", { name: /Kim Weber/ });
-    expect(row.className).toContain("fresh");
+    // The row can render a moment before its live mark: wait for the mark, not the row.
+    await waitFor(() => expect(row.className).toContain("fresh"));
   });
 });
 
