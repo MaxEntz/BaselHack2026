@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     gateway_public_url: str | None = None
     gateway_token: SecretStr | None = None
     platform_public_url: str = "http://localhost:8002"
+    # Origins allowed to call the platform's public booking API (the showcase site's form).
+    public_cors_origins: tuple[str, ...] = ("http://localhost:8080",)
+    # Dev-only routes such as POST /dev/reset-session.
+    platform_dev_routes: bool = True
     builder_cache: Literal["read_write", "read_only", "off"] = "read_write"
     crawl_allow_private: bool = False
 
