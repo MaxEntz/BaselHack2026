@@ -395,6 +395,8 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | `GATEWAY_TOKEN` is optional; public URL = team LXC behind Caddy (`https://191-96-88-152.sslip.io/mcp`), ngrok as documented alternative; gateway binds `127.0.0.1` | Static header auth on Claude.ai connectors is a beta for limited organizations; fixed URL independent of a laptop and of hackathon Wi-Fi; only Caddy reaches the gateway |
 | 2026-10-31 | OpenAI API for every backend LLM call (replaces the "Claude API" row above) | The team's API key is an OpenAI one; still one SDK. Spike #4 validated strict function calling for the extraction |
 | 2026-10-31 | One Postgres schema per merchant, tables declared once in Core and translated per merchant; no migrations for merchant schemas (drop + re-provision) | Structural isolation, per-merchant exclusion constraint and sequence, no SQL built from slugs ([ADR-0001](documentation/adr/0001-one-postgres-schema-per-merchant.md)) |
+| 2026-10-31 | Keep the name "Le Petit Zinc" (slug `le-petit-zinc`): the site uses a fictional address and says on every page that the restaurant is fictional | A bistro of that name existed in Mulhouse (15 rue des Bons Enfants) but is listed as closed; renaming would touch every team's fixtures and mocks |
+| 2026-10-31 | La Graine Verte and Maison Albane have one-page sites on :8081 and :8082 (`make sites`); their `fallback_url` is the page's `#reserver` section | Their fallback link opens a real page in the demo, next to Le Petit Zinc on :8080 |
 
 ## 15. Out of scope (POC)
 
