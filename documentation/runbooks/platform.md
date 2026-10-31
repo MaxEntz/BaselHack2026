@@ -77,7 +77,8 @@ cd /opt/merchant-agents/code
 ## Check after a deployment
 
 - [ ] `systemctl status merchant-platform` is `active`: the `sesame` user can read the code. `make deploy` ships it with `rsync --chmod=a+rX`, so a checkout made with `umask 077` still gives readable files.
-- [ ] From a phone on a mobile network, `https://sesame.191-96-88-152.sslip.io` opens the web app.
+- [ ] From a phone on a mobile network, `https://sesame.191-96-88-152.sslip.io` opens the web app, with `Referrer-Policy: no-referrer`.
+- [ ] A build asks for the invite code; its profile card's secret link opens `/manage/<slug>`; a second `make deploy` doesn't sign the owner out (the cookie secret is fixed).
 - [ ] Building a merchant from `https://le-petit-zinc.191-96-88-152.sslip.io` reads 5 pages (the crawl reaches the site with `CRAWL_ALLOW_PRIVATE=0`), then publishes it.
 - [ ] A booking made from Claude appears live in the merchant's chat ("New booking via Claude").
 - [ ] The booking form of `https://le-petit-zinc.191-96-88-152.sslip.io/reservation.html` books (CORS from that host).
