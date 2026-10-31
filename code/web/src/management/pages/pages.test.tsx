@@ -217,7 +217,7 @@ describe("Floor plan", () => {
 
     click("Remove T1");
     click("Save");
-    expect((await alert()).textContent).toBe("T1 has to stay, because Max Girard's booking refers to it.");
+    expect((await alert()).textContent).toBe("T1 has to stay, because Sara Muller's booking refers to it.");
   });
 });
 
