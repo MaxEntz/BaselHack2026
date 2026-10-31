@@ -460,8 +460,9 @@ async def test_every_fact_of_the_card_is_there_in_order() -> None:
         "Cancelling",
         "Price level",
         "Booking page",
+        "Look",
     ]
-    assert result.facts[-1].value == "/#reserver, used as the fallback"
+    assert result.facts[-2].value == "/#reserver, used as the fallback"
 
 
 async def test_flags_are_written_by_code() -> None:
@@ -539,3 +540,45 @@ async def test_the_booking_page_is_the_crawls_finding_without_a_source() -> None
 
     [booking] = [f for f in result.facts if f.key == "booking_page"]
     assert (booking.value, booking.source) == ("/reservation.html, used as the fallback", None)
+
+
+# The look (#149): read by code from the homepage's computed styles.
+
+
+async def test_the_homepages_styles_give_the_profiles_look_and_its_fact() -> None:
+    styled = CrawlResult(
+        website=SITE,
+        pages=[
+            Page(
+                url=SITE,
+                title="Le Petit Zinc",
+                text="Bistrot alsacien.",
+                json_ld=[],
+                look={
+                    "bg": "rgb(247, 242, 232)",
+                    "ink": "rgb(42, 35, 32)",
+                    "body_font": "system-ui, sans-serif",
+                    "heading": {"size": 64, "color": "rgb(143, 45, 42)", "font": "Georgia, serif"},
+                    "backgrounds": {"rgb(143, 45, 42)": 100_000},
+                    "page_area": 1_000_000,
+                },
+            )
+        ],
+    )
+
+    result = await extract_profile(styled, "", FakeLLM(draft()))
+
+    assert result.profile.look is not None
+    assert (result.profile.look.bg, result.profile.look.accent) == ("#f7f2e8", "#8f2d2a")
+    [look] = [f for f in result.facts if f.key == "look"]
+    assert look.source == "/"
+    assert look.value.endswith("Serif titles. Square corners.")
+
+
+async def test_a_homepage_without_styles_keeps_the_default_look_and_says_so() -> None:
+    result = await extract_profile(CRAWL, "", FakeLLM(draft()))
+
+    assert result.profile.look is None
+    [look] = [f for f in result.facts if f.key == "look"]
+    assert (look.value, look.source) == ("Sésame's default look, until you pick some", None)
+    assert "The colours will be plain until you pick some." in [f.detail for f in result.flags]

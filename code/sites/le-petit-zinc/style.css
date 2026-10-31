@@ -3,7 +3,7 @@
 :root {
   --paper: #f7f2e8;
   --paper-deep: #efe5d2;
-  --card: #fffcf6;
+  --card: #fffaf0;  /* the management look reads it as `surface` (#149) */
   --ink: #2a2320;
   --muted: #675c54;
   --line: #ddcfb8;

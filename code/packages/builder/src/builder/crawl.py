@@ -71,6 +71,76 @@ _EXTRACT = """() => ({
 })"""
 
 
+# The homepage's computed styles, for its look (#149): only numbers and colours, aggregated in the
+# page, never the CSS itself. `builder.look` turns them into a `Look`. Fonts and images stay
+# unloaded (`SKIPPED_RESOURCES`): a font's declared family is read, never its file.
+_LOOK = """() => {
+  const LIMIT = 5000;
+  const visible = (cs) => cs.display !== "none" && cs.visibility !== "hidden" && +cs.opacity > 0;
+  const area = (r) => Math.max(0, r.width) * Math.max(0, r.height);
+  const clear = (c) =>
+    !c || c === "none" || c === "transparent" || /rgba\\([^)]*,\\s*0\\)$/.test(c);
+  const bump = (map, key, n) => { map[key] = (map[key] || 0) + n; };
+  const body = document.body;
+  if (!body) return null;
+  const bcs = getComputedStyle(body), hcs = getComputedStyle(document.documentElement);
+  const look = {
+    bg: clear(bcs.backgroundColor) ? hcs.backgroundColor : bcs.backgroundColor,
+    ink: bcs.color, body_font: bcs.fontFamily, heading: null,
+    backgrounds: {}, texts: {}, borders: {}, radii: [], blob_area: 0, textures: 0,
+    page_area: area(document.documentElement.getBoundingClientRect()) || 1,
+    page_width: document.documentElement.clientWidth || 1,
+  };
+  // The restaurant's name: the largest text of the header, the brand or the first headings.
+  for (const el of document.querySelectorAll("header *, h1, h2, [class*=brand], [class*=logo]")) {
+    const cs = getComputedStyle(el);
+    if (!visible(cs) || !el.textContent.trim()) continue;
+    const size = parseFloat(cs.fontSize);
+    if (!look.heading || size > look.heading.size) {
+      look.heading = { size, color: cs.color, font: cs.fontFamily };
+    }
+  }
+  const behind = (el) => {
+    for (let e = el; e; e = e.parentElement) {
+      const c = getComputedStyle(e).backgroundColor;
+      if (!clear(c)) return c;
+    }
+    return look.bg;
+  };
+  let seen = 0;
+  for (const el of body.querySelectorAll("*")) {
+    if (++seen > LIMIT) break;
+    const cs = getComputedStyle(el);
+    if (!visible(cs)) continue;
+    const r = el.getBoundingClientRect(), a = area(r);
+    if (/feTurbulence/.test(cs.backgroundImage) && a > 10000) look.textures += 1;
+    if (el instanceof SVGElement) {
+      const shape = ["path", "rect", "circle", "ellipse", "polygon"].includes(el.tagName);
+      if (shape && !clear(cs.fill)) {
+        bump(look.backgrounds, cs.fill, a);
+        if (el.tagName === "path") look.blob_area += a;
+      }
+      continue;
+    }
+    if (!clear(cs.backgroundColor)) bump(look.backgrounds, cs.backgroundColor, a);
+    for (const side of ["Top", "Right", "Bottom", "Left"]) {
+      const drawn = cs["border" + side + "Style"] !== "none";
+      if (parseFloat(cs["border" + side + "Width"]) > 0 && drawn) {
+        bump(look.borders, cs["border" + side + "Color"], 1);
+      }
+    }
+    const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim());
+    const chars = own.join("").length;
+    if (chars) bump(look.texts, cs.color + "|" + behind(el), chars);
+    const boxed = !clear(cs.backgroundColor) || parseFloat(cs.borderTopWidth) > 0;
+    if (boxed && a > 0 && look.radii.length < 500) {
+      look.radii.push([parseFloat(cs.borderTopLeftRadius) || 0, r.width, r.height]);
+    }
+  }
+  return look;
+}"""
+
+
 @dataclass(frozen=True)
 class Page:
     url: str
@@ -80,6 +150,8 @@ class Page:
     description: str | None = None  # meta[name=description]
     # Element ids, in document order: where a link like `/#reserver` can land
     anchors: list[str] = field(default_factory=list)
+    # The homepage's computed styles (`_LOOK`), for `builder.look`; None on other pages (#149).
+    look: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -254,7 +326,7 @@ async def _crawl(
         await context.route_web_socket("**/*", _refuse_web_socket)
         try:
             home, links = await _read(
-                context, guard, website, timeout_s=timeout_s, max_chars=max_chars
+                context, guard, website, timeout_s=timeout_s, max_chars=max_chars, look=True
             )
         except (PlaywrightError, TimeoutError, _Unreadable) as error:
             if isinstance(error, _Blocked) or (
@@ -295,9 +367,16 @@ async def _read_page(
 
 
 async def _read(
-    context: BrowserContext, guard: HostGuard, url: str, *, timeout_s: float, max_chars: int
+    context: BrowserContext,
+    guard: HostGuard,
+    url: str,
+    *,
+    timeout_s: float,
+    max_chars: int,
+    look: bool = False,
 ) -> tuple[Page, list[list[str]]]:
-    """Load `url` in a new tab within `timeout_s`: the page and its links as (href, text)."""
+    """Load `url` in a new tab within `timeout_s`: the page and its links as (href, text), and
+    with `look`, its computed styles."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_s
     tab = await context.new_page()
@@ -313,6 +392,7 @@ async def _read(
                 with suppress(PlaywrightTimeout):
                     await tab.wait_for_load_state("networkidle", timeout=settle_s * 1000)
             raw = await tab.evaluate(_EXTRACT)
+            styles = await _styles(tab) if look else None
             final_url = tab.url
     finally:
         with suppress(PlaywrightError):
@@ -324,8 +404,20 @@ async def _read(
         json_ld=parse_json_ld(raw["jsonLd"]),
         description=" ".join(str(raw["description"] or "").split()) or None,
         anchors=[str(anchor) for anchor in raw["ids"][:MAX_ANCHORS]],
+        look=styles,
     )
     return page, raw["links"]
+
+
+async def _styles(tab: Any) -> dict[str, Any] | None:
+    """The page's computed styles; None if they can't be read: the build then uses the default
+    look, it never fails for it."""
+    try:
+        styles = await tab.evaluate(_LOOK)
+    except PlaywrightError:
+        log.warning("crawl_look_unreadable")
+        return None
+    return styles if isinstance(styles, dict) else None
 
 
 async def _landing(context: BrowserContext, guard: HostGuard, url: str, timeout_ms: float) -> str:

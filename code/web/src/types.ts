@@ -32,6 +32,25 @@ export type MerchantProfile = {
   price_level: PriceLevel;
   cancellation_policy: string | null;
   fallback_url: string;
+  // Profiles stored before #149 have none: the management site uses the default look.
+  look?: Look | null;
+};
+
+// The merchant site's colours and shapes, read by code from its homepage (#149).
+export type Look = {
+  bg: string;
+  surface: string;
+  line: string;
+  ink: string;
+  muted: string;
+  accent: string;
+  accent_2: string;
+  on_accent: string;
+  display_font: "Fraunces Soft" | "serif" | "sans";
+  body_font: "Karla" | "serif" | "sans";
+  corners: "organic" | "rounded" | "square";
+  radius_px: number;
+  texture: "leather" | "none";
 };
 
 export type GeneratedTool = { name: string; description: string };
@@ -43,7 +62,8 @@ export type FactKey =
   | "max_party_size"
   | "cancellation_policy"
   | "price_level"
-  | "booking_page";
+  | "booking_page"
+  | "look";
 
 // One line of the review card (#136). `source`: a crawled page's path, "you" for the owner's
 // description, null for a default.
