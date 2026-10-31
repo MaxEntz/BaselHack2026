@@ -22,7 +22,8 @@ Routes ([ADR-0017](../../documentation/adr/0017-router-and-test-tools-for-the-ma
 management site. An unknown page goes to that merchant's Home, any other path to `/`.
 
 `e2e/primitives.spec.ts` compares each management primitive's computed styles with the v10
-mockup (`documentation/design/poc-v10/sesame-management.html`). `SESAME_MOCKUP` points it at another copy.
+mockup (`documentation/design/poc-v10/sesame-management.html`), and `e2e/shell.spec.ts` the shell's
+place, look and words at 1440 and 390 px, with the clock at 19:40. `SESAME_MOCKUP` points both at another copy.
 
 Open <http://localhost:5173/?gallery> to review every management primitive and every card and state (steps,
 profile, reservations incl. empty, stats, policy, notifications, errors).
@@ -79,6 +80,14 @@ the code once and removes it from the address bar.
   `useSavedForm.tsx` and ask before leaving unsaved changes (`LeaveGuard.tsx`). `problems.ts`
   words the rule a form broke; `DayBar.tsx` picks a day of the next 7 and a service;
   `BlockDialog.tsx` sets a day's blocked times.
+- `src/management/ManagePage.tsx` and `shell/` (#137): the frame around every page. The sidebar,
+  the top bar (search of pages and bookings, Cmd/Ctrl+K, the platform's clock in the merchant's
+  zone, the bell and its popover, the avatar), the footer, the assistant's column (open above
+  1240 px, following resizes; #140 fills it). Live refresh: `/events` and the site's own changes
+  (`changes.ts`: every mutation of the client, and `announceChange(slug)` for the assistant's
+  tools) bump `live.ts`'s version; a dialog or `useHoldRefresh` holds the page's version until
+  it closes. New content crossfades through the View Transitions API (`motion.ts`), never with
+  reduced motion.
 - `src/studio/fonts/`: Studio's fonts (Source Sans 3, Source Code Pro, Gloock), self-hosted.
 - `src/clock.ts`: the time pages read; tests fix it with `setClock(DEMO_NOW)` (Sat 31 Oct 2026, 19:40).
 - `src/strings.ts`: copy that names the guest's assistant (Claude), in one place for #71.

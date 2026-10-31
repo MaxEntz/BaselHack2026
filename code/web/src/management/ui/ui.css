@@ -119,5 +119,3 @@
 .mg-gallery-blob svg { position: absolute; inset: 0; }
 .mg-gallery-blob b { position: relative; font-size: 30px; line-height: 1; }
 .mg-gallery-doodle { width: 64px; height: 64px; color: var(--olive); }
-.mg-page main { container-type: inline-size; display: grid; align-content: start; gap: 26px; min-height: 100vh; padding: 34px clamp(16px, 2.6vw, 34px); }
-.mg-page h1 { font-size: clamp(38px, 4.6cqw, 58px); line-height: 1.02; color: var(--olive); }

@@ -1,7 +1,7 @@
 /* Home (#138). Every rule is copied from documentation/design/poc-v10/sesame-management.html
-   (#home) and scoped to .mg; the container queries are the mockup's, on .home. */
+   (#home) and scoped to .mg; the container queries are the mockup's, on the shell's .mid (#137). */
 
-.mg .home { container-type: inline-size; display: grid; gap: 26px; min-width: 0; }
+.mg .home { display: grid; gap: 26px; min-width: 0; }
 .mg .home h1 { font-size: clamp(38px, 4.6cqw, 58px); line-height: 1.02; color: var(--olive); text-wrap: balance; }
 .mg .ttl { display: grid; gap: 14px; justify-items: start; }
 .mg .ttl > p { font-size: 19px; }

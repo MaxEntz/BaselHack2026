@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { AgentRequest, MerchantStatus } from "../../types.ts";
 import { useClient, useLoad } from "../data.ts";
+import { useHoldRefresh } from "../live.ts";
 import { PAGES } from "../pages.ts";
 import { errorMessage } from "../problems.ts";
 import { Pill, useToast } from "../ui/index.ts";
@@ -105,6 +106,8 @@ function Requests({ slug, today, version }: { slug: string; today: string; versi
   const [filter, setFilter] = useState<Filter>("all");
   // Ids of the rows the merchant opened: kept when the list is read again.
   const [open, setOpen] = useState<ReadonlySet<number>>(new Set());
+  // An expanded row holds the live refresh until it is closed (#137).
+  useHoldRefresh(open.size > 0);
   const load = useCallback(
     (signal: AbortSignal) => client.agentRequests(slug, { date: today, refused: filter === "refused" }, signal),
     [client, slug, today, filter],
