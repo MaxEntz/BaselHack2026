@@ -1,4 +1,5 @@
 import type { ManagedReservation, Service } from "../types.ts";
+import { startsOf } from "./services.ts";
 
 // Until the owner publishes, Home shows these instead of bookings (#136): the web's own
 // fixture, never the merchant's tables, so publishing has nothing to clear.
@@ -10,13 +11,15 @@ const GUESTS: readonly [name: string, party: number, via: ManagedReservation["vi
 
 export const SAMPLE_PREFIX = "sample-";
 
-/** Three sample bookings an hour apart from the service's start, on `date`. */
+/** Three sample bookings on `date`, at the service's first, middle and last start (#184). */
 export function sampleBookings(date: string, service: Service): ManagedReservation[] {
-  const [hours, mins] = service.start.split(":").map(Number);
+  const starts = startsOf(service);
+  if (starts.length === 0) return [];
+  const times = [starts[0], starts[Math.floor((starts.length - 1) / 2)], starts[starts.length - 1]];
   return GUESTS.map(([guest_name, party_size, via], index) => ({
     id: `${SAMPLE_PREFIX}${index + 1}`,
     date,
-    time: `${String(hours + index).padStart(2, "0")}:${String(mins).padStart(2, "0")}`,
+    time: times[index],
     guest_name,
     party_size,
     table_label: `T${index + 1}`,
