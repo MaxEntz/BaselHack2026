@@ -1,6 +1,7 @@
 """Merchant accounts over HTTP (#132): the secret link, the owner cookie, the invite code."""
 
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -10,10 +11,13 @@ from fastapi import FastAPI
 from core.config import Settings
 from core.models import MerchantProfile, TextEvent
 from merchant_platform.accounts import (
+    FINGERPRINT_CHARS,
     INVITE_COOKIE,
+    OWNER_COOKIE,
     Accounts,
     MemoryOwnerStore,
     Signer,
+    hash_token,
 )
 from merchant_platform.api import create_app
 from merchant_platform.assistant import Emit
@@ -221,3 +225,210 @@ async def test_cross_origin_calls_never_carry_the_cookie() -> None:
         )
 
     assert "access-control-allow-credentials" not in preflight.headers
+
+
+# A session is bound to its owner's current link (#132 review)
+
+
+async def signed_in(owners: Accounts, slug: str = SLUG) -> dict[str, str]:
+    owner = await owners.owner_for_token(await owners.issue_link_token(slug))
+    assert owner is not None
+    return {OWNER_COOKIE: owners.owner_cookie(owner)}
+
+
+async def chat(http: httpx.AsyncClient, session_id: str = "s1", **cookies: str) -> httpx.Response:
+    http.cookies.clear()
+    for name, value in cookies.items():
+        http.cookies.set(name, value)
+    return await http.post("/chat", json={"session_id": session_id, "message": "tonight?"})
+
+
+def remembering_app(owners: Accounts) -> FastAPI:
+    async def assistant(session: Session, message: str, emit: Emit) -> None:
+        session.messages.append({"role": "user", "content": message})
+        await emit(
+            TextEvent(delta=f"merchant={session.merchant_slug} turns={len(session.messages)}")
+        )
+
+    return create_app(settings(), accounts=owners, assistant=assistant, profiles=profiles(SLUG))
+
+
+async def test_a_new_link_ends_the_chat_sessions_of_the_old_one() -> None:
+    owners = accounts()
+    app = remembering_app(owners)
+    cookie = await signed_in(owners)
+
+    async with client(app) as http:
+        first = await chat(http, **cookie)
+        without_cookie = await chat(http)
+        await owners.issue_link_token(SLUG)  # the owner asked for a new link
+        revoked = await chat(http)
+        renewed = await chat(http, **(await signed_in(owners)))
+
+    assert "turns=1" in first.text
+    assert "turns=2" in without_cookie.text  # the session alone still acts for its owner
+    assert (revoked.status_code, revoked.json()["error"]) == (401, "not_signed_in")
+    assert "turns=1" in renewed.text  # forgotten with its history, which held guest names
+
+
+async def test_a_deleted_merchant_ends_its_chat_sessions() -> None:
+    store = MemoryOwnerStore()
+    owners = Accounts(store, Signer(SECRET))
+    app = remembering_app(owners)
+    cookie = await signed_in(owners)
+
+    async with client(app) as http:
+        await chat(http, **cookie)
+        store.forget(SLUG)
+        after = await chat(http)
+
+    assert after.status_code == 401
+
+
+async def test_a_session_refuses_another_merchants_cookie() -> None:
+    owners = accounts()
+    app = remembering_app(owners)
+    mine = await signed_in(owners)
+    theirs = await signed_in(owners, "maison-albane")
+
+    async with client(app) as http:
+        await chat(http, **mine)
+        other = await chat(http, **theirs)
+
+    assert (other.status_code, other.json()["error"]) == (403, "other_merchant")
+
+
+async def test_there_is_no_shared_default_session_outside_development() -> None:
+    async with client(create_app(settings(), accounts=accounts())) as http:
+        response = await http.post("/chat", json={"message": "hi"})
+
+    assert (response.status_code, response.json()["error"]) == (422, "invalid_input")
+
+
+async def test_an_uninvited_caller_leaves_no_session_behind() -> None:
+    app = create_app(settings(), accounts=accounts(invite=INVITE), profiles=profiles())
+
+    async with client(app) as http:
+        refused = await chat(http, session_id="probe-1")
+
+    assert refused.status_code == 403
+    assert app.state.sessions.find("probe-1") is None
+
+
+async def test_session_reports_nothing_for_a_revoked_session() -> None:
+    owners = accounts()
+    app = remembering_app(owners)
+    cookie = await signed_in(owners)
+
+    async with client(app) as http:
+        await chat(http, **cookie)
+        http.cookies.clear()
+        before = await http.get("/session", params={"session_id": "s1"})
+        await owners.issue_link_token(SLUG)
+        after = await http.get("/session", params={"session_id": "s1"})
+        stranger = await http.get("/session", params={"session_id": "someone-else"})
+
+    assert before.json()["merchant"]["slug"] == SLUG
+    assert after.json() == stranger.json() == {"merchant": None}
+
+
+# Forged and expired cookies over HTTP
+
+
+async def test_a_forged_cookie_with_a_non_ascii_mac_is_refused_not_a_crash() -> None:
+    app = create_app(settings(), accounts=accounts(invite=INVITE), profiles=profiles())
+    transport = httpx.ASGITransport(app=app)
+    # Raw bytes: a browser or a proxy can send any; Starlette reads them as latin-1.
+    cookie = f"{OWNER_COOKIE}=a.\u00e9; {INVITE_COOKIE}=a.\u00e9".encode()
+    headers = [(b"cookie", cookie)]
+
+    async with httpx.AsyncClient(transport=transport, base_url="https://t") as http:
+        page = await http.get(f"/merchants/{SLUG}/hours", headers=headers)
+        talk = await http.post("/chat", json={"session_id": "s", "message": "hi"}, headers=headers)
+
+    assert page.status_code == 401
+    assert talk.status_code == 403
+
+
+async def test_an_expired_cookie_is_refused_over_http() -> None:
+    store = MemoryOwnerStore()
+    month_ago = datetime.now(UTC) - timedelta(days=31)
+    old = Accounts(store, Signer(SECRET, clock=lambda: month_ago))
+    owner = await old.owner_for_token(await old.issue_link_token(SLUG))
+    assert owner is not None
+    app = create_app(settings(), accounts=Accounts(store, Signer(SECRET)))
+
+    async with client(app) as http:
+        http.cookies.set(OWNER_COOKIE, old.owner_cookie(owner))
+        response = await http.get(f"/merchants/{SLUG}/hours")
+
+    assert response.status_code == 401
+
+
+async def test_another_merchants_cookie_is_refused_on_every_page() -> None:
+    owners = accounts()
+    app = create_app(settings(), accounts=owners)
+
+    async with client(app) as http:
+        for name, value in (await signed_in(owners, "maison-albane")).items():
+            http.cookies.set(name, value)
+        page = await http.get(f"/merchants/{SLUG}/hours")
+        events = await http.get("/events", params={"merchant": SLUG})
+
+    assert (page.status_code, page.json()["error"]) == (403, "other_merchant")
+    assert (events.status_code, events.json()["error"]) == (403, "other_merchant")
+
+
+# The building browser gets its cookie
+
+
+async def test_the_session_that_built_a_merchant_claims_its_cookie() -> None:
+    owners = accounts()
+
+    async def builds(session: Session, message: str, emit: Emit) -> None:
+        token = await owners.issue_link_token(SLUG)
+        session.merchant_slug, session.link = SLUG, hash_token(token)[:FINGERPRINT_CHARS]
+
+    app = create_app(settings(), accounts=owners, assistant=builds, profiles=profiles(SLUG))
+    async with client(app) as http:
+        await chat(http, session_id="builder")
+        claimed = await http.post("/session/claim", json={"session_id": "builder"})
+        page = await http.get(f"/merchants/{SLUG}/hours")
+        stranger = await http.post("/session/claim", json={"session_id": "nobody"})
+
+    assert claimed.status_code == 204
+    assert OWNER_COOKIE in claimed.headers["set-cookie"]
+    assert page.status_code == 501  # past the owner check, with the claimed cookie
+    assert stranger.status_code == 401
+
+
+async def test_a_development_session_claims_nothing() -> None:
+    app = create_app(
+        settings(platform_merchant=SLUG),
+        accounts=accounts(),
+        assistant=echo_merchant,
+        profiles=profiles(SLUG),
+    )
+    async with client(app) as http:
+        await chat(http, session_id="dev")
+        claimed = await http.post("/session/claim", json={"session_id": "dev"})
+
+    assert claimed.status_code == 401
+
+
+# Settings a deployment must not combine
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"platform_merchant": SLUG, "platform_web_url": "https://sesame.example"},
+        {"platform_merchant": SLUG, "platform_cookie_secret": "s" * 40},
+        {"platform_merchant": SLUG, "platform_invite_code": "olive-2026"},
+        {"platform_cookie_secret": "too-short"},
+        {"platform_invite_code": "short"},
+    ],
+)
+def test_unsafe_account_settings_refuse_to_start(overrides: dict[str, Any]) -> None:
+    with pytest.raises(RuntimeError):
+        create_app(settings(**overrides))

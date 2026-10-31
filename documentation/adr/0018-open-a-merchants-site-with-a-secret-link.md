@@ -26,11 +26,12 @@ Proving that the person onboarding owns the website stays out of scope (AGENTS.m
   - Each request reads the owner row again, so a new link ends every cookie of the old one.
 - **Every route that shows guest data needs that cookie.**
   - A FastAPI dependency (`auth.owner_of_path`) guards each `/merchants/{slug}` route: `401` `not_signed_in` without the cookie, `403` `other_merchant` with another merchant's.
-  - It runs before the body is read.
-  - `/events` checks the same.
-- **Sessions come back through the account.** `/chat` attaches a session that works on no merchant to the cookie's merchant, and `/session` reports it. History stays in memory: what has to survive a restart is the merchant, not the conversation.
+  - It runs before the body is validated. Only a body that isn't JSON at all answers `422` first, and that reveals nothing.
+  - `/events` checks the same at connect, and again at each event and heartbeat, so an open stream ends with its link.
+- **Sessions come back through the account, and act with its current link.** A chat session records the link that attached it: a cookie, or the build that created the merchant. Every message checks that link against `merchant_owners`. A replaced link, or a deleted merchant, forgets the session and its history, which holds guest names. Another merchant's cookie is refused. There is no shared default session outside development. History stays in memory: what has to survive a restart is the merchant, not the conversation.
+- **The building browser claims its cookie.** A build happens inside a chat stream, which can't set a cookie. The web then calls `POST /session/claim`, honoured only for a session a build attached in this process, while its link is current. The session id is then worth the link it was given with.
 - **An invite code gates new builds.** With `PLATFORM_INVITE_CODE` set, a session that works on no merchant needs the invite cookie before any model call (`403` `needs_invite`). `POST /invite` sets that cookie, and the web sends it from `/?invite=<code>`. A new code ends the old invitations. Without the variable, as in local development, nothing is asked.
-- **`PLATFORM_MERCHANT` stays, for local development only.** It stands in for the owner of that merchant, so `VITE_MERCHANT_SLUG` demos keep working. It is never set on the server.
+- **`PLATFORM_MERCHANT` stays, for local development only.** It stands in for the owner of that merchant, so `VITE_MERCHANT_SLUG` demos keep working. The platform refuses to start when it comes with what only a deployment sets: an https web app, a cookie secret or an invite code. Secrets have minimum lengths: 32 characters for the cookie key, 8 for the code, which `POST /invite` lets anyone try without a throttle.
 - **No token in the logs.** The `login` log line has the merchant and the outcome. A filter masks `token=` in uvicorn's access log.
 
 ## Alternatives considered
@@ -58,7 +59,8 @@ A fragment never reaches the server or the `Referer`. It needs a web page that r
   - A merchant who comes back with the link finds their site, after a restart or in another browser.
   - Strangers can't spend the OpenAI key when an invite code is set.
 - **Negative, accepted debt:**
-  - Anyone holding the link is the owner. The card says so, and a new link revokes it.
+  - Anyone holding the link is the owner. The card says so, and a new link revokes it: cookies, chat sessions and open streams alike.
+  - `POST /logout` ends this browser's cookie only.
   - `owner_name` stays empty until a step asks for it. The pages greet without a name meanwhile.
   - Without `PLATFORM_COOKIE_SECRET`, cookies end with the process. The server must set it, and #142 checks it before deploying.
 - **This becomes the wrong choice if:**

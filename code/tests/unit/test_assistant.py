@@ -37,12 +37,14 @@ from core.models import (
     MerchantCancelOutcome,
     MerchantProfile,
     Policy,
+    ProfileCard,
     Reservation,
     Service,
     Stats,
     StepEvent,
     TableSpec,
 )
+from merchant_platform.accounts import IssuedLink
 from merchant_platform.assistant import (
     INTERRUPTED,
     MAX_ITERATIONS,
@@ -731,6 +733,48 @@ def test_compact_cuts_long_tool_results_from_old_turns_only() -> None:
         long,
     ]
     assert history[1]["content"] == long  # the stored history is untouched
+
+
+# The owner's secret link after a build (#132)
+
+LINK = IssuedLink("https://sesame.example/api/login?token=s3cr3t", "fp-1")
+
+
+async def run_build(issue_link: Any) -> tuple[Session, Any, list[ChatEvent]]:
+    tools = AdminTools(None, fake_build, TZ, today=lambda: TODAY, issue_link=issue_link)
+    session = Session(id="s")
+    events: list[ChatEvent] = []
+
+    async def emit(event: ChatEvent) -> None:
+        events.append(event)
+
+    call_ = call("build_agent", website="http://localhost:8080/", description="Bistro.")
+    result = await tools.run(session, call_, emit)
+    return session, result, events
+
+
+async def test_a_build_shows_the_link_on_the_card_only() -> None:
+    async def issue_link(slug: str) -> IssuedLink:
+        return LINK
+
+    session, result, events = await run_build(issue_link)
+
+    cards = [e for e in events if isinstance(e, ProfileCard)]
+    assert [card.login_url for card in cards] == [LINK.url]
+    assert "s3cr3t" not in result.content  # the model reads the tool result: never the link
+    assert (session.merchant_slug, session.link) == (SLUG, "fp-1")
+    assert "s3cr3t" not in json.dumps(session.messages)
+
+
+async def test_a_link_that_cant_be_stored_leaves_the_session_unattached() -> None:
+    async def failing(slug: str) -> IssuedLink:
+        raise RuntimeError("database down")
+
+    session, result, events = await run_build(failing)
+
+    assert result.is_error
+    assert (session.merchant_slug, session.link) == (None, None)
+    assert not [e for e in events if isinstance(e, ProfileCard)]
 
 
 def test_block_slot_confirmation_names_the_day() -> None:

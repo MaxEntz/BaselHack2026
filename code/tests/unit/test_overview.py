@@ -90,7 +90,8 @@ async def test_the_owner_reads_their_merchant_with_their_name() -> None:
 @pytest.mark.parametrize(("registry_given", "status"), [(True, 404), (False, 503)])
 async def test_a_merchant_missing_from_the_registry(registry_given: bool, status: int) -> None:
     app = create_app(
-        settings(platform_merchant="chez-mimi"), registry=registry if registry_given else None
+        settings(platform_merchant="chez-mimi", platform_web_url="http://localhost:5173"),
+        registry=registry if registry_given else None,
     )
 
     transport = httpx.ASGITransport(app=app)

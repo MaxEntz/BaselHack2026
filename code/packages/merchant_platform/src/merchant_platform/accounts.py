@@ -52,6 +52,14 @@ class OwnerStore(Protocol):
     async def by_slug(self, slug: str) -> Owner | None: ...
 
 
+@dataclass(frozen=True)
+class IssuedLink:
+    """A new secret link, and the fingerprint the sessions opened with it carry."""
+
+    url: str
+    fingerprint: str
+
+
 def new_token() -> str:
     return secrets.token_urlsafe(TOKEN_BYTES)
 
@@ -121,6 +129,10 @@ def login_url(web_url: str, token: str) -> str:
     return f"{web_url.rstrip('/')}/api/login?token={token}"
 
 
+def issued(web_url: str, token: str) -> IssuedLink:
+    return IssuedLink(login_url(web_url, token), hash_token(token)[:FINGERPRINT_CHARS])
+
+
 class Signer:
     """HMAC-SHA256 signed, expiring values for cookies."""
 
@@ -136,7 +148,7 @@ class Signer:
     def unsign(self, value: str) -> dict[str, str] | None:
         """The claims of a value this signer made, or None if forged, malformed or expired."""
         payload, _, mac = value.partition(".")
-        if not hmac.compare_digest(mac, self._mac(payload)):
+        if not same(mac, self._mac(payload)):
             return None
         try:
             claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
@@ -181,18 +193,19 @@ class Accounts:
         if claims is None or "slug" not in claims:
             return None
         owner = await self._store.by_slug(claims["slug"])
-        if owner is None or not hmac.compare_digest(owner.fingerprint, claims.get("link", "")):
+        if owner is None or not same(owner.fingerprint, claims.get("link", "")):
             return None
         return owner
+
+    async def owner(self, slug: str) -> Owner | None:
+        return await self._store.by_slug(slug)
 
     @property
     def needs_invite(self) -> bool:
         return self._invite is not None
 
     def accepts_invite(self, code: str) -> bool:
-        return self._invite is not None and hmac.compare_digest(
-            code.encode(), self._invite.encode()
-        )
+        return self._invite is not None and same(code, self._invite)
 
     def invite_cookie(self) -> str:
         return self._signer.sign({"invite": self._invite_fingerprint()})
@@ -202,13 +215,17 @@ class Accounts:
         if self._invite is None:
             return True
         claims = self._signer.unsign(value) if value else None
-        return claims is not None and hmac.compare_digest(
-            claims.get("invite", ""), self._invite_fingerprint()
-        )
+        return claims is not None and same(claims.get("invite", ""), self._invite_fingerprint())
 
     def _invite_fingerprint(self) -> str:
         # Changing PLATFORM_INVITE_CODE ends the invitations given with the old one.
         return hash_token(self._invite or "")[:FINGERPRINT_CHARS]
+
+
+def same(given: str, expected: str) -> bool:
+    """Constant-time comparison; as bytes, since `compare_digest` refuses non-ASCII `str`
+    (a forged cookie must be refused, not crash the request)."""
+    return hmac.compare_digest(given.encode(), expected.encode())
 
 
 def _b64(data: bytes) -> str:

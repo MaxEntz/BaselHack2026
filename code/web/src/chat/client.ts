@@ -17,6 +17,8 @@ export type ChatClient = {
   subscribe: (slug: string, handlers: LiveHandlers) => () => void;
   // The merchant the session works on; no merchant when the platform can't say.
   session: (sessionId: string, signal?: AbortSignal) => Promise<SessionOutput>;
+  // After a build: this browser gets the owner cookie, so its live events open (#132).
+  claim: (sessionId: string) => Promise<void>;
 };
 
 export class ChatError extends Error {}
@@ -114,6 +116,19 @@ export const httpClient: ChatClient = {
       window.clearTimeout(retry);
       source.close();
     };
+  },
+
+  async claim(sessionId) {
+    try {
+      await fetch("/api/session/claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+        credentials: "same-origin",
+      });
+    } catch {
+      // The private link on the card still opens the site.
+    }
   },
 
   async session(sessionId, signal) {

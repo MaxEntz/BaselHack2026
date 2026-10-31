@@ -84,6 +84,10 @@ class InviteRequest(BaseModel):
     code: Annotated[str, Field(max_length=200)]
 
 
+def set_owner_cookie(request: Request, response: Response, value: str) -> None:
+    _set_cookie(request, response, OWNER_COOKIE, value)
+
+
 def _set_cookie(request: Request, response: Response, name: str, value: str) -> None:
     secure: bool = request.app.state.secure_cookies
     response.set_cookie(

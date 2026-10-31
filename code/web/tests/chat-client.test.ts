@@ -123,3 +123,18 @@ test("an invitation code is sent once, as JSON, with the cookie", async () => {
   globalThis.fetch = async () => new Response(null, { status: 403 });
   assert.equal(await acceptInvite("wrong"), false);
 });
+
+test("after a build the session claims its owner cookie", async () => {
+  const sent: [string, RequestInit][] = [];
+  globalThis.fetch = async (url, init) => {
+    sent.push([String(url), init ?? {}]);
+    return new Response(null, { status: 204 });
+  };
+
+  await httpClient.claim("builder");
+
+  assert.deepEqual(
+    sent.map(([url, init]) => [url, init.method, init.body]),
+    [["/api/session/claim", "POST", '{"session_id":"builder"}']],
+  );
+});

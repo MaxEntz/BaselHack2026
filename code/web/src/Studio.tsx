@@ -13,7 +13,10 @@ export function Studio() {
   useEffect(() => {
     if (!invite || import.meta.env.VITE_MOCK === "1") return;
     // The code leaves the address bar once sent, so it isn't shared by a copied URL.
-    void acceptInvite(invite).then(() => navigate(pathname, { replace: true }));
+    void acceptInvite(invite).then((accepted) => {
+      // A refused code stays in the address bar, so that it can be checked.
+      if (accepted) navigate(pathname, { replace: true });
+    });
   }, [invite, navigate, pathname]);
   if (new URLSearchParams(search).has("gallery")) {
     return (

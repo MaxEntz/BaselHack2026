@@ -28,7 +28,7 @@ from core.models import (
     MerchantProfile,
     TextEvent,
 )
-from merchant_platform.accounts import Accounts, login_url
+from merchant_platform.accounts import Accounts, IssuedLink, issued
 from merchant_platform.sessions import Session
 from merchant_platform.tools import SPECS, AdminTools, Emit
 
@@ -294,9 +294,9 @@ def default_assistant(
     async def build(arguments: BuildAgentInput, emit: StepEmitter) -> BuildAgentOutput:
         return await builder.build_agent(str(arguments.website), arguments.description, emit)
 
-    async def issue_link(slug: str) -> str:
+    async def issue_link(slug: str) -> IssuedLink:
         assert accounts is not None
-        return login_url(settings.platform_web_url, await accounts.issue_link_token(slug))
+        return issued(settings.platform_web_url, await accounts.issue_link_token(slug))
 
     tools = AdminTools(
         agent,

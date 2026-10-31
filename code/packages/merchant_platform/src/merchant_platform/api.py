@@ -22,7 +22,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 from agent.service import AgentService, PgAgentService
 from core.config import Settings, get_settings
 from core.db import make_engine
-from core.errors import AgentError, AgentUnavailable, FormProblem
+from core.errors import AgentError, AgentUnavailable, FormProblem, InvalidInput
 from core.models import (
     BookingTime,
     ChatEvent,
@@ -42,8 +42,10 @@ from merchant_platform.accounts import (
     INVITE_COOKIE,
     Accounts,
     MemoryOwnerStore,
+    Owner,
     PgOwnerStore,
     Signer,
+    same,
 )
 from merchant_platform.assistant import (
     ProfileLookup,
@@ -54,11 +56,15 @@ from merchant_platform.assistant import (
     session_merchant,
 )
 from merchant_platform.auth import (
+    NOT_SIGNED_IN,
+    OTHER_MERCHANT,
     NeedsInvite,
     NotSignedIn,
     OtherMerchant,
     cookie_owner,
+    request_owner,
     require_owner,
+    set_owner_cookie,
 )
 from merchant_platform.auth import router as auth_router
 from merchant_platform.events import LiveBus, LiveListener
@@ -94,6 +100,10 @@ class ChatRequest(_Body):
     message: Annotated[str, Field(min_length=1, max_length=MAX_MESSAGE_LENGTH)]
 
 
+class ClaimRequest(_Body):
+    session_id: Annotated[str, Field(min_length=1, max_length=100)]
+
+
 class ResetSessionRequest(_Body):
     session_id: Annotated[str, Field(max_length=100)] | None = None
 
@@ -127,6 +137,7 @@ def create_app(
     runs; `engine` is disposed at shutdown. Without `accounts`, owners live in memory. Without
     `registry`, `GET /merchants/{slug}` answers `agent_unavailable`.
     """
+    check_account_settings(settings)
     sessions = SessionStore()
     live = bus or LiveBus()
     owners = accounts or default_accounts(settings, MemoryOwnerStore())
@@ -205,13 +216,19 @@ def create_app(
 
     @app.post("/chat", response_class=EventSourceResponse)
     async def chat(request: Request, body: ChatRequest) -> EventSourceResponse:
-        session = sessions.get(body.session_id)
+        if body.session_id is None and settings.platform_merchant is None:
+            # The shared default session is the development merchant's only (#132).
+            raise InvalidInput("session_id is required")
         owner = await cookie_owner(request)
-        if session.merchant_slug is None and owner is not None:
-            # The account brings its merchant back, after a restart or in another browser.
-            session.merchant_slug = owner.slug
-        if not owners.invited(request.cookies.get(INVITE_COOKIE)) and not await _attached(session):
-            # Before any model call: an onboarding crawls a site and spends the OpenAI key.
+        invited = owners.invited(request.cookies.get(INVITE_COOKIE))
+        known = sessions.find(body.session_id)
+        if known is None and owner is None and not invited and not await _attached(None):
+            # Before any model call, and before keeping a session for an anonymous caller.
+            raise NeedsInvite(NEEDS_INVITE)
+        session = sessions.get(body.session_id)
+        await _bind(session, owner)
+        if not invited and not await _attached(session):
+            # An onboarding crawls a site and spends the OpenAI key.
             raise NeedsInvite(NEEDS_INVITE)
         # No await between the check and the acquisition: no other request can slip in.
         if session.lock.locked():
@@ -223,13 +240,56 @@ def create_app(
         session.turn = asyncio.create_task(_run(assistant, session, body.message, queue))
         return EventSourceResponse(_chat_stream(queue, session.turn), ping=heartbeat_seconds)
 
-    async def _attached(session: Session) -> bool:
+    async def _attached(session: Session | None) -> bool:
         """Whether the session works on a merchant, or will from its next message."""
-        if session.merchant_slug is not None:
+        if session is not None and session.merchant_slug is not None:
             return True
         if profiles is None:
             return False
         return await session_merchant(session, settings.platform_merchant, profiles) is not None
+
+    async def _acts_for_its_merchant(session: Session) -> bool:
+        """The session's link is still its merchant's current one (#132). The development
+        merchant's sessions carry none."""
+        if session.merchant_slug is None:
+            return True
+        if session.link is None:
+            return session.merchant_slug == settings.platform_merchant
+        current = await owners.owner(session.merchant_slug)
+        return current is not None and same(current.fingerprint, session.link)
+
+    async def _bind(session: Session, owner: Owner | None) -> None:
+        """Who the session acts for, checked on every message (#132).
+
+        A cookie attaches it, or renews its link; another merchant's cookie is refused. A
+        session whose link was replaced, or whose merchant was deleted, is forgotten with its
+        history (it holds guest names) and must sign in again.
+        """
+        if owner is not None:
+            if session.merchant_slug not in (None, owner.slug):
+                raise OtherMerchant(OTHER_MERCHANT)
+            session.merchant_slug, session.link = owner.slug, owner.fingerprint
+            return
+        if not await _acts_for_its_merchant(session):
+            sessions.reset(session.id)
+            raise NotSignedIn(NOT_SIGNED_IN)
+
+    @app.post("/session/claim", status_code=204)
+    async def claim(request: Request, body: ClaimRequest) -> Response:
+        """The building browser's owner cookie, so that its live events open at once.
+
+        Only for a session a build attached in this process, while its link is current: the
+        session id is then as good as the link it was given with.
+        """
+        session = sessions.find(body.session_id)
+        if session is None or session.link is None or not await _acts_for_its_merchant(session):
+            raise NotSignedIn(NOT_SIGNED_IN)
+        owner = await owners.owner(session.merchant_slug or "")
+        if owner is None:
+            raise NotSignedIn(NOT_SIGNED_IN)
+        response = Response(status_code=204)
+        set_owner_cookie(request, response, owners.owner_cookie(owner))
+        return response
 
     @app.get("/session")
     async def session_info(
@@ -244,8 +304,11 @@ def create_app(
         if profiles is None:
             return SessionOutput(merchant=None)
         owner = await cookie_owner(request)
+        session = sessions.find(session_id)
+        if session is not None and not await _acts_for_its_merchant(session):
+            session = None  # its link was replaced: it reports what a new session would
         default = owner.slug if owner else settings.platform_merchant
-        profile = await session_merchant(sessions.find(session_id), default, profiles)
+        profile = await session_merchant(session, default, profiles)
         if profile is None:
             return SessionOutput(merchant=None)
         return SessionOutput(merchant=SessionMerchant(slug=profile.slug, name=profile.name))
@@ -254,6 +317,10 @@ def create_app(
     async def events(request: Request, merchant: Annotated[Slug, Query()]) -> EventSourceResponse:
         # Its events carry guest names: the owner's only (#132).
         await require_owner(request, merchant)
+
+        async def still_owner() -> bool:
+            owner = await request_owner(request)
+            return owner is not None and owner.slug == merchant
 
         async def stream() -> AsyncIterator[ServerSentEvent]:
             # Subscribe inside the generator: its `finally` always pairs the unsubscribe.
@@ -264,8 +331,15 @@ def create_app(
                 # until then (#87).
                 yield ServerSentEvent(comment="connected")
                 while True:
-                    event = await queue.get()
-                    yield ServerSentEvent(data=event.model_dump_json(), event=event.type)
+                    try:
+                        event = await asyncio.wait_for(queue.get(), heartbeat_seconds)
+                    except TimeoutError:
+                        event = None
+                    # A new link or a deleted merchant ends an open stream too (#132).
+                    if not await still_owner():
+                        return
+                    if event is not None:
+                        yield ServerSentEvent(data=event.model_dump_json(), event=event.type)
             finally:
                 live.unsubscribe(merchant, queue)
 
@@ -360,6 +434,33 @@ async def _chat_stream(
         # Client gone mid-turn: stop the assistant rather than run it for nobody.
         if not turn.done():
             turn.cancel()
+
+
+# Long enough not to be guessed online (POST /invite has no throttle) or offline (the key).
+MIN_INVITE_CODE = 8
+MIN_COOKIE_SECRET = 32
+
+
+def check_account_settings(settings: Settings) -> None:
+    """Refuse a platform that would open guest data or take a weak secret (#132).
+
+    PLATFORM_MERCHANT opens its merchant to anyone: it is for local development, so it can't
+    come with what only a deployment sets (an https web app, a cookie key, an invite code).
+    """
+    secret = settings.platform_cookie_secret
+    invite = settings.platform_invite_code
+    deployed = settings.platform_web_url.startswith("https://") or secret or invite
+    if settings.platform_merchant and deployed:
+        raise RuntimeError(
+            "PLATFORM_MERCHANT is for local development only: unset it, or unset "
+            "PLATFORM_COOKIE_SECRET, PLATFORM_INVITE_CODE and the https PLATFORM_WEB_URL"
+        )
+    if secret is not None and len(secret.get_secret_value()) < MIN_COOKIE_SECRET:
+        raise RuntimeError(f"PLATFORM_COOKIE_SECRET needs at least {MIN_COOKIE_SECRET} characters")
+    if invite is not None and len(invite.get_secret_value()) < MIN_INVITE_CODE:
+        raise RuntimeError(f"PLATFORM_INVITE_CODE needs at least {MIN_INVITE_CODE} characters")
+    if secret is not None and not settings.platform_web_url.startswith("https://"):
+        log.warning("PLATFORM_WEB_URL is not https: owner cookies are sent without Secure")
 
 
 def default_accounts(settings: Settings, store: MemoryOwnerStore | PgOwnerStore) -> Accounts:

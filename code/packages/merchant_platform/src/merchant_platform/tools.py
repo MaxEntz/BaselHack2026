@@ -42,6 +42,7 @@ from core.models import (
     UpdatePolicyInput,
     UpdateTablesInput,
 )
+from merchant_platform.accounts import IssuedLink
 from merchant_platform.sessions import Session
 
 log = logging.getLogger("merchant_platform.tools")
@@ -162,7 +163,7 @@ _BY_NAME = {tool.name: tool for tool in TOOLS}
 
 
 # The secret link of a merchant just built, for its owner (#132).
-IssueLink = Callable[[str], Awaitable[str]]
+IssueLink = Callable[[str], Awaitable[IssuedLink]]
 
 
 class AdminTools:
@@ -294,13 +295,16 @@ class AdminTools:
 
     async def _build(self, session: Session, arguments: BuildAgentInput, emit: Emit) -> Outcome:
         output = await self._build_agent(arguments, emit)
+        # The link first: if it can't be stored, the session isn't attached to a merchant
+        # nobody owns (`make owner-link` then gives it one).
+        link = await self._issue_link(output.profile.slug) if self._issue_link else None
         session.merchant_slug = output.profile.slug
+        session.link = link.fingerprint if link else None
         data = output.model_dump(mode="json", exclude={"tools"})
         # On the card only: the secret link never goes to the model or the history.
-        link = await self._issue_link(output.profile.slug) if self._issue_link else None
         return Outcome(
             {"shown_to_merchant": "profile card", **data},
-            ProfileCard(data=output, login_url=link),
+            ProfileCard(data=output, login_url=link.url if link else None),
         )
 
     def _require_agent(self) -> AgentService:
