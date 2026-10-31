@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from core.db import merchants_t
 from core.models import FilterSuggestion, SearchFilters
-from gateway.discovery import search
+from gateway.discovery import RegistryEntry, find_merchant, find_named_down_merchant, search
 
 pytestmark = pytest.mark.integration
 
@@ -69,3 +69,34 @@ async def test_search_reports_ignored_tags_and_suggestions(engine: AsyncEngine, 
         FilterSuggestion(drop="vegan", matches=1),
     )
     assert result.ignored_filters == ("michelin",)
+
+
+async def test_find_merchant_returns_what_routing_needs(engine: AsyncEngine, token: str) -> None:
+    slug = f"{token}-zinc"
+    async with engine.begin() as conn:
+        await conn.execute(insert(merchants_t).values(registry_row(slug, f"Zinc {token}")))
+
+    entry = await find_merchant(slug, engine=engine)
+
+    assert entry == RegistryEntry(slug, f"Zinc {token}", "live", f"http://{slug}.example/book")
+    assert await find_merchant(f"{token}-unknown", engine=engine) is None
+
+
+async def test_find_named_down_merchant(engine: AsyncEngine, token: str) -> None:
+    down = registry_row(f"{token}-down", f"Zinc{token} Bistro", status="down")
+    building = registry_row(f"{token}-build", f"Build{token} Bistro", status="building")
+    # A live merchant sharing a word with a down one wins: the query may mean it.
+    shared_down = registry_row(f"{token}-shared-down", f"Shared{token} Down", status="down")
+    shared_live = registry_row(f"{token}-shared-live", f"Shared{token} Live", status="live")
+    async with engine.begin() as conn:
+        await conn.execute(insert(merchants_t), [down, building, shared_down, shared_live])
+
+    async def named(query: str) -> str | None:
+        entry = await find_named_down_merchant(query, engine=engine)
+        return entry.slug if entry else None
+
+    assert await named(f"a table at zinc{token} tonight") == f"{token}-down"
+    assert await named(f"build{token}") is None
+    assert await named(f"shared{token}") is None
+    assert await named("restaurant tonight") is None
+    assert await named("") is None

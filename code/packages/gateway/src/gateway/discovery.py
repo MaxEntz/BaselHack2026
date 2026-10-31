@@ -69,6 +69,24 @@ MIN_QUERY_WORD = 3
 
 
 @dataclass(frozen=True)
+class RegistryEntry:
+    """What routing a call needs to know about a merchant."""
+
+    slug: str
+    name: str
+    status: str
+    fallback_url: str
+
+
+_ENTRY_COLUMNS = (
+    merchants_t.c.slug,
+    merchants_t.c.name,
+    merchants_t.c.status,
+    merchants_t.c.fallback_url,
+)
+
+
+@dataclass(frozen=True)
 class Criteria:
     """Normalized search: tags to require, highest price, folded city, folded query."""
 
@@ -206,6 +224,33 @@ async def load_live_merchants(engine: AsyncEngine) -> list[MerchantSummary]:
                 "registry row skipped", extra={"slug": row["slug"], "errors": error.errors()}
             )
     return merchants
+
+
+async def find_merchant(slug: str, *, engine: AsyncEngine) -> RegistryEntry | None:
+    """The merchant's registry entry, whatever its status; None if the slug is unknown."""
+    query = select(*_ENTRY_COLUMNS).where(merchants_t.c.slug == slug)
+    async with engine.connect() as conn:
+        row = (await conn.execute(query)).mappings().one_or_none()
+    return RegistryEntry(**row) if row else None
+
+
+async def find_named_down_merchant(query: str, *, engine: AsyncEngine) -> RegistryEntry | None:
+    """The `down` merchant the query names, unless a live merchant also matches it.
+
+    `search` never shows a `down` merchant, and treats a query naming none of its merchants as
+    a generic search: without this, "a table at Le Petit Zinc" during an outage would silently
+    propose other restaurants instead of Le Petit Zinc's fallback link (AGENTS.md §9).
+    """
+    words = _words(query, MIN_QUERY_WORD) - QUERY_NOISE
+    if not words:
+        return None
+    registry = select(*_ENTRY_COLUMNS).where(merchants_t.c.status.in_(("live", "down")))
+    async with engine.connect() as conn:
+        rows = (await conn.execute(registry.order_by(merchants_t.c.slug))).mappings().all()
+    named = [row for row in rows if words & _words(row["name"], MIN_QUERY_WORD)]
+    if not named or any(row["status"] == "live" for row in named):
+        return None
+    return RegistryEntry(**named[0])
 
 
 async def search(
