@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from agent.words import short_day
 from core.db import merchant_activity_t
 from core.models import ActivityItem, ActivityKind, Via
 
@@ -167,4 +168,4 @@ def _day(day: date, today: date) -> str:
         return "today"
     if day == today + timedelta(days=1):
         return "tomorrow"
-    return f"{day:%a} {day.day} {day:%b}"
+    return short_day(day)
