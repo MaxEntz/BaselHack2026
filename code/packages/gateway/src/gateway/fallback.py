@@ -171,14 +171,17 @@ async def call_service[T](
 ) -> T | ToolError:
     """`call_agent` for what no single merchant serves, so there is no fallback URL by default.
 
-    `op` may return a `ToolError` itself, which is then logged as the call's outcome. When `op`
-    fails, `named` may still find the merchant the request is about, to give its link.
+    `op` may return a `ToolError` itself, which is then logged as the call's outcome. A refusal
+    keeps its own code: the service answered. Only when it can't answer may `named` still find
+    the merchant the request is about, to give its link.
     """
     started = time.perf_counter()
     timeout = (settings or get_settings()).agent_timeout_ms / 1000
     result: T | ToolError
     try:
         result = await asyncio.wait_for(op(), timeout)
+    except (SlotUnavailable, NotFound, InvalidInput) as exc:
+        result = ToolError(error=exc.code, message=str(exc))
     except Exception as exc:
         result = _service_unavailable(exc, tool, None)
         if named and (merchant := await _quietly(named, timeout)):

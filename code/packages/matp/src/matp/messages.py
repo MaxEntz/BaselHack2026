@@ -8,10 +8,13 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from core.models import ErrorCode, Slug
+from core.models import Slug
 
 PROTOCOL_VERSION = "0.1"
 DEFAULT_PORT = 4710
+# Every node accepts at least this many requests in flight per session (§6): a client that
+# stays under it never gets a 429 from a node that follows the draft.
+IN_FLIGHT_LIMIT = 32
 
 Intent = Literal["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"]
 ALL_INTENTS: tuple[Intent, ...] = (
@@ -78,9 +81,13 @@ class Request(_Frame):
 
 
 class ErrorBody(_Frame):
-    """`code` is one of AGENTS.md §8.4, absent for protocol-level errors (401, 413, 426)."""
+    """`code` is absent for protocol-level errors (401, 413, 426).
 
-    code: ErrorCode | None = None
+    The node sends a code of AGENTS.md §8.4 or `too_many_requests` (§8). Any string is read, so
+    that a code this client doesn't know fails its own request, not the whole session.
+    """
+
+    code: str | None = None
     message: str
     fallback_url: str | None = None
 

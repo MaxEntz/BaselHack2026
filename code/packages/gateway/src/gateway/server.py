@@ -145,7 +145,13 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
 
     @mcp.tool(title="Search restaurants", description=SEARCH_MERCHANTS, annotations=READ_ONLY)
     async def search_merchants(
-        query: Annotated[str, Field(description="What the user asked for, in their own words.")],
+        query: Annotated[
+            str,
+            Field(
+                max_length=discovery.MAX_QUERY,
+                description="What the user asked for, in their own words.",
+            ),
+        ],
         near: Annotated[str | None, Field(description="City, if the user named one.")] = None,
         date: Annotated[
             Date | None, Field(description="Requested day. Not used to filter yet.")
@@ -161,6 +167,7 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         ] = None,
     ) -> SearchMerchantsOutput | ToolError:
         async def op() -> SearchMerchantsOutput | ToolError:
+            discovery.check_search_bounds(query, filters)
             if down := await discovery.find_named_down_merchant(query, engine=engine):
                 return unavailable(down)
             return await agent.search_merchants(query, near, date, filters)

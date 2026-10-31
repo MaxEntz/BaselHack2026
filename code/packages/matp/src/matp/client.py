@@ -1,9 +1,13 @@
 """A MATP client: one session, many requests in flight (PROTOCOL.md §5, §6).
 
 The session opens on the first request and reopens on the next request after the node closed
-it. When the session is lost under a request, a read-only intent is sent again once; a write
-is never retried, since it may have gone through (BOOK and AMEND carry an idempotency key, so
-the caller can retry them safely).
+it. At most `IN_FLIGHT_LIMIT` requests it still waits on are in flight; the others wait for a
+free slot. A request whose caller gave up may still run on the node, which then can answer a
+429 to a later one: that request fails as `AgentUnavailable`, like any status it can't use.
+
+When the session is lost under a request, a read-only intent is sent again once; a write is
+never retried, since it may have gone through (BOOK and AMEND carry an idempotency key, so the
+caller can retry them safely).
 """
 
 import asyncio
@@ -17,6 +21,7 @@ from pydantic import ValidationError
 from core.errors import AgentUnavailable
 from matp.codec import MAX_FRAME, FrameError, encode, read_frame
 from matp.messages import (
+    IN_FLIGHT_LIMIT,
     PROTOCOL_VERSION,
     AgentIdentity,
     Hello,
@@ -30,6 +35,7 @@ from matp.status import raise_for
 
 UNREACHABLE = "The MATP node is unreachable"
 CLOSED = "The MATP session was closed before the answer"
+UNREADABLE = "The MATP node sent an answer this client can't read"
 READ_ONLY: frozenset[Intent] = frozenset({"PING", "DISCOVER", "AVAILABILITY", "RECALL"})
 
 
@@ -69,6 +75,7 @@ class MatpClient:
         self._ids = itertools.count(1)
         self._connect_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
+        self._in_flight = asyncio.Semaphore(IN_FLIGHT_LIMIT)
 
     async def __aenter__(self) -> Self:
         return self
@@ -100,12 +107,13 @@ class MatpClient:
         """
         frame_params = params or {}
         frame_id = request_id or f"r-{next(self._ids)}"
-        try:
-            response = await self._exchange(frame_id, intent, merchant, frame_params)
-        except SessionLost:
-            if intent not in READ_ONLY:
-                raise
-            response = await self._exchange(frame_id, intent, merchant, frame_params)
+        async with self._in_flight:
+            try:
+                response = await self._exchange(frame_id, intent, merchant, frame_params)
+            except SessionLost:
+                if intent not in READ_ONLY:
+                    raise
+                response = await self._exchange(frame_id, intent, merchant, frame_params)
         raise_for(response)
         return response.result or {}
 
@@ -180,14 +188,29 @@ class MatpClient:
             while (frame := await read_frame(reader)) is not None:
                 if frame.get("type") != "response":
                     continue
-                response = Response.model_validate(frame)
-                future = self._pending.get(response.id or "")
-                if future is not None and not future.done():
-                    future.set_result(response)
-        except (ConnectionError, FrameError, ValidationError):
+                try:
+                    response = Response.model_validate(frame)
+                except ValidationError:
+                    request_id = frame.get("id")
+                    if not isinstance(request_id, str):
+                        return  # no way to tell whose answer it is: the session is dropped
+                    # Only its own request fails: the session and the others go on.
+                    self._settle(request_id, AgentUnavailable(UNREADABLE))
+                    continue
+                self._settle(response.id, response)
+        except (ConnectionError, FrameError):
             pass
         finally:
             self._drop(writer)
+
+    def _settle(self, request_id: str | None, outcome: Response | AgentUnavailable) -> None:
+        future = self._pending.get(request_id) if request_id else None
+        if future is None or future.done():
+            return
+        if isinstance(outcome, Response):
+            future.set_result(outcome)
+        else:
+            future.set_exception(outcome)
 
     def _drop(self, writer: asyncio.StreamWriter | None) -> None:
         """Forget that connection; its requests still waiting get `SessionLost`.

@@ -1,14 +1,26 @@
 """Discovery rules (#12) on the 3 demo merchants: preference filters and their relaxation."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
+from core.errors import InvalidInput
 from core.models import (
     FilterSuggestion,
     MerchantProfile,
     MerchantSummary,
     SearchFilters,
 )
-from gateway.discovery import Criteria, filter_merchants, normalize_filters, suggest_relaxations
+from gateway.discovery import (
+    MAX_QUERY,
+    MAX_TAGS,
+    Criteria,
+    check_search_bounds,
+    filter_merchants,
+    normalize_filters,
+    search,
+    suggest_relaxations,
+)
 
 
 @pytest.fixture
@@ -291,3 +303,22 @@ def test_the_distinctive_word_still_names_the_merchant(
     criteria, _ = normalize_filters(None, None, query)
 
     assert [m.slug for m in filter_merchants(merchants, criteria)] == [slug]
+
+
+def test_a_search_at_its_bounds_is_accepted() -> None:
+    check_search_bounds("a" * MAX_QUERY, SearchFilters(tags=("vegan",) * MAX_TAGS))
+
+
+@pytest.mark.parametrize(
+    ("query", "filters"),
+    [("a" * (MAX_QUERY + 1), None), ("dinner", SearchFilters(tags=("vegan",) * (MAX_TAGS + 1)))],
+)
+async def test_a_search_beyond_its_bounds_is_invalid_before_reading_the_registry(
+    query: str, filters: SearchFilters | None
+) -> None:
+    engine = MagicMock()
+
+    with pytest.raises(InvalidInput, match=f"at most {MAX_TAGS} tags"):
+        await search(query, None, None, filters, engine=engine)
+
+    assert not engine.mock_calls

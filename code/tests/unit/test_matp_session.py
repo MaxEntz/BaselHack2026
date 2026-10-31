@@ -3,15 +3,16 @@
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
 
 from core.errors import AgentUnavailable, InvalidInput, SlotUnavailable
 from matp.client import MatpClient, MatpRejected
-from matp.codec import MAX_FRAME, encode
-from matp.messages import AgentIdentity, Hello, NodeIdentity, Request
+from matp.codec import MAX_FRAME, encode, read_frame
+from matp.messages import IN_FLIGHT_LIMIT, AgentIdentity, Hello, NodeIdentity, Request
 from matp.server import NodeServer
 
 CALLER = AgentIdentity(
@@ -60,6 +61,37 @@ async def read_json(reader: asyncio.StreamReader) -> dict[str, Any]:
     line = await asyncio.wait_for(reader.readline(), 2)
     frame: dict[str, Any] = json.loads(line)
     return frame
+
+
+Script = Callable[[list[dict[str, Any]]], Awaitable[list[dict[str, Any]]]]
+
+
+@asynccontextmanager
+async def scripted_node(script: Script) -> AsyncIterator[tuple[int, list[str]]]:
+    """A node that welcomes anyone, then sends whatever `script` returns for the requests so far.
+
+    Yields its port and the ids of the sessions it opened, to check that none was reopened.
+    """
+    sessions: list[str] = []
+
+    async def session(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        sessions.append(f"s-{len(sessions) + 1}")
+        await read_frame(reader)
+        welcome = {"node": NODE.model_dump(), "intents": ["PING", "BOOK"], "session": sessions[-1]}
+        writer.write(encode({"type": "welcome", "matp": "0.1", **welcome}))
+        requests: list[dict[str, Any]] = []
+        while (frame := await read_frame(reader)) is not None:
+            requests.append(frame)
+            for answer in await script(requests):
+                writer.write(encode(answer))
+            await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(session, "127.0.0.1", 0, limit=MAX_FRAME)
+    try:
+        yield server.sockets[0].getsockname()[1], sessions
+    finally:
+        server.close()
 
 
 async def test_hello_then_requests(node: NodeServer) -> None:
@@ -186,18 +218,134 @@ async def test_an_oversized_frame_gets_413_and_closes_the_session(node: NodeServ
     writer.close()
 
 
-async def test_requests_beyond_the_in_flight_limit_get_400() -> None:
+async def test_requests_beyond_the_in_flight_limit_get_429_without_being_run() -> None:
+    server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token, max_in_flight=1)
+    await server.start("127.0.0.1", 0)
+    try:
+        reader, writer = await raw_session(server)
+        hello = {"type": "hello", "matp": "0.1", "agent": CALLER.model_dump(), "token": "s3cret"}
+        writer.write(encode(hello))
+        await read_json(reader)
+        slow = {"type": "request", "id": "slow", "intent": "PING", "params": {"delay": 0.3}}
+        writer.write(encode(slow) + encode({"type": "request", "id": "over", "intent": "PING"}))
+        await writer.drain()
+
+        over = await read_json(reader)
+        assert over["id"] == "over"
+        assert over["status"] == 429
+        assert over["error"]["code"] == "too_many_requests"
+        assert (await read_json(reader))["id"] == "slow"
+        writer.close()
+    finally:
+        await server.stop()
+
+
+async def test_a_429_is_agent_unavailable_for_the_caller() -> None:
     server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token, max_in_flight=1)
     await server.start("127.0.0.1", 0)
     try:
         async with MatpClient("127.0.0.1", server.port, CALLER, token="s3cret") as client:
             slow = asyncio.create_task(client.request("PING", params={"delay": 0.3}))
             await asyncio.sleep(0.05)
-            with pytest.raises(InvalidInput, match="in flight"):
+            with pytest.raises(AgentUnavailable, match="in flight"):
                 await client.request("PING")
             assert (await slow)["pong"] is True
     finally:
         await server.stop()
+
+
+async def test_the_client_stays_under_the_node_s_in_flight_limit(node: NodeServer) -> None:
+    async with client_for(node) as client:
+        pings = [client.request("PING", params={"delay": 0.2}) for _ in range(IN_FLIGHT_LIMIT + 8)]
+        answers = await asyncio.gather(*pings)
+
+    assert all(answer["pong"] is True for answer in answers)
+
+
+async def test_a_429_on_one_request_leaves_the_others_on_the_session_answered() -> None:
+    async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        # BOOK is held until PING arrives; PING gets the draft's 429, then BOOK its answer.
+        if len(requests) < 2:
+            return []
+        book, ping = requests
+        return [
+            {
+                "type": "response",
+                "id": ping["id"],
+                "status": 429,
+                "error": {"code": "too_many_requests", "message": "Too many requests in flight"},
+            },
+            {"type": "response", "id": book["id"], "status": 200, "result": {"booked": True}},
+        ]
+
+    async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
+        scripted_node(script) as (port, sessions),
+        MatpClient("127.0.0.1", port, CALLER) as client,
+    ):
+        book = asyncio.create_task(client.request("BOOK", "le-petit-zinc"))
+        await asyncio.sleep(0.05)
+        with pytest.raises(AgentUnavailable):
+            await client.request("PING")
+        assert await book == {"booked": True}
+
+    assert sessions == ["s-1"]
+
+
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        (418, {"code": "teapot", "message": "I'm a teapot"}),
+        (599, None),
+        ("not-a-status", None),
+    ],
+)
+async def test_an_unknown_or_invalid_answer_fails_only_its_request(
+    status: object, error: dict[str, Any] | None
+) -> None:
+    async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        request = requests[-1]
+        if request["intent"] == "PING":
+            return [{"type": "response", "id": request["id"], "status": 200, "result": {}}]
+        return [{"type": "response", "id": request["id"], "status": status, "error": error}]
+
+    async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
+        scripted_node(script) as (port, sessions),
+        MatpClient("127.0.0.1", port, CALLER) as client,
+    ):
+        with pytest.raises(AgentUnavailable):
+            await client.request("BOOK", "le-petit-zinc")
+        assert await client.request("PING") == {}
+
+    assert sessions == ["s-1"]
+
+
+async def test_an_unreadable_answer_without_an_id_drops_the_session() -> None:
+    # Nobody can tell whose answer it was: every request on the session fails, none hangs.
+    async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{"type": "response", "status": "garbled"}]
+
+    async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
+        scripted_node(script) as (port, _),
+        MatpClient("127.0.0.1", port, CALLER) as client,
+    ):
+        with pytest.raises(AgentUnavailable, match="closed before the answer"):
+            await client.request("BOOK", "le-petit-zinc")
+
+
+async def test_any_2xx_status_is_a_success() -> None:
+    async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        request = requests[-1]
+        return [{"type": "response", "id": request["id"], "status": 202, "result": {"ok": 1}}]
+
+    async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
+        scripted_node(script) as (port, _),
+        MatpClient("127.0.0.1", port, CALLER) as client,
+    ):
+        assert await client.request("PING") == {"ok": 1}
 
 
 async def test_an_idle_session_is_closed() -> None:

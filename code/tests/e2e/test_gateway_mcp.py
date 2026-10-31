@@ -311,6 +311,24 @@ async def test_arguments_outside_the_schema_answer_invalid_input(gateway_base_ur
     assert "Traceback" not in result["message"]
 
 
+@pytest.mark.parametrize(
+    "search",
+    [
+        {"query": "a table for four tonight, " * 21},  # 525 characters, as a guest may write
+        {"query": "dinner", "filters": {"tags": [f"tag-{n}" for n in range(33)]}},
+    ],
+)
+async def test_a_search_beyond_the_node_s_bounds_is_invalid_input_in_both_modes(
+    gateway_base_url: str, search: dict[str, Any]
+) -> None:
+    # Over MATP, the node refuses it: a refusal, never an outage with a restaurant's link (#90).
+    async with Client(f"{gateway_base_url}/mcp") as client:
+        result = await call(client, "search_merchants", **search)
+
+    assert result["error"] == "invalid_input"
+    assert result["fallback_url"] is None
+
+
 async def test_calls_are_logged_fast_and_without_guest_names(
     gateway_base_url: str, caplog: pytest.LogCaptureFixture
 ) -> None:

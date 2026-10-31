@@ -64,6 +64,9 @@ text content is the plain JSON object.
 
 - Arguments outside the tool's schema are rejected before the tool runs and answer
   `invalid_input` (`gateway.fallback.RejectedArguments`).
+- `search_merchants` takes a `query` of at most 500 characters (in its schema) and at most 32
+  `filters.tags`, the bounds of the MATP node's `DISCOVER`; beyond them it answers
+  `invalid_input` in both modes (#90).
 - `search_merchants` never lists a `down` merchant (#12). When the query names one and no live
   merchant, it answers `agent_unavailable` with that merchant's `fallback_url`. Otherwise a
   request for that restaurant would silently propose others.
@@ -74,8 +77,9 @@ text content is the plain JSON object.
   "outcome"}`, where `outcome` is `ok` or the error code. Guest names never appear at INFO.
 
 With `MATP_URL` set, the gateway is a bridge (`documentation/PROTOCOL.md`, §12): `MatpAgentClient`
-sends each tool to the node as a MATP request, and the 2 s budget includes that hop. A lost node
-or an invalid result is `agent_unavailable`. The gateway still reads the registry itself, for the
+sends each tool to the node as a MATP request, and the 2 s budget includes that hop. A lost node,
+an overloaded one (`429`) or an invalid result is `agent_unavailable`; a refusal from the node
+keeps its own code (#90). The gateway still reads the registry itself, for the
 `down` status and the fallback URL, so that a dead node still gives the link. For the same reason,
 when `DISCOVER` fails and the query names a merchant, `search_merchants` answers with its link.
 The log line then also has `matp_request`, the id of the request sent to the node.
