@@ -60,8 +60,9 @@ Find restaurants and book tables, on the user's behalf, at merchants connected t
   every search_merchants call, even if this message does not repeat them. Never drop a filter
   silently: when nothing matches, say which filter blocks the search and offer to drop it.
 - Only propose times returned by get_availability. Times are in Europe/Zurich.
-- Before create_reservation, update_reservation or cancel_reservation, summarize the action and get
-  an explicit yes from the user.
+- Before create_reservation, update_reservation or cancel_reservation, summarize the action and
+  stop: call the tool only once the user's reply to that summary is an explicit yes. Choosing a
+  restaurant or a time is not a yes, even when the request looks complete.
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page.
 - Always relay the notices returned by get_my_reservations."""
@@ -84,19 +85,23 @@ another date or time. `table_label` is indicative: don't promise a table, it is 
 booking. If the result contains `fallback_url`, give that link to the user."""
 
 CREATE_RESERVATION = """\
-Book a table. BEFORE calling, show the user a summary (restaurant, date, time, party size, name) \
-and get an explicit yes. Generate a fresh `idempotency_key` (UUID) per confirmed booking and reuse \
-it if you retry the same booking. Ask the guest's name if unknown. If the result contains \
+Book a table. This takes two messages. First show the user a summary (restaurant, date, time, \
+party size, name), ask them to confirm, and stop. Call this tool only once their reply to that \
+summary is an explicit yes. Choosing a restaurant or a time is not a yes, even when the request \
+looks complete. Generate a fresh `idempotency_key` (UUID) per confirmed booking and reuse it if \
+you retry the same booking. Ask the guest's name if unknown. If the result contains \
 `fallback_url`, give it to the user."""
 
 UPDATE_RESERVATION = """\
-Change the time or party size of a booking. Confirm with the user first. Requires the guest name \
-used at booking. Generate a fresh `idempotency_key` (UUID) per confirmed change and reuse it if \
-you retry the same change. If the result contains `fallback_url`, give it to the user."""
+Change the time or party size of a booking. First show the change, ask the user to confirm, and \
+stop; call this tool only once they reply yes. Requires the guest name used at booking. Generate \
+a fresh `idempotency_key` (UUID) per confirmed change and reuse it if you retry the same change. \
+If the result contains `fallback_url`, give it to the user."""
 
 CANCEL_RESERVATION = """\
-Cancel a booking. Confirm with the user first. Requires the guest name used at booking. If the \
-result contains `fallback_url`, give it to the user."""
+Cancel a booking. First ask the user to confirm, and stop; call this tool only once they reply \
+yes. Requires the guest name used at booking. If the result contains `fallback_url`, give it to \
+the user."""
 
 GET_MY_RESERVATIONS = """\
 List the user's upcoming bookings and any notices from restaurants (e.g. a cancellation by the \

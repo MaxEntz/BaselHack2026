@@ -11,13 +11,13 @@ import httpx
 import pytest
 import seed
 from mcp import Client
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import set_status
 from agent.service import PgAgentService
 from core.config import Settings
-from core.db import blocked_slots_t, guest_notices_t, merchant_conn, reservations_t
+from core.db import merchant_conn, reservations_t
 from core.models import ToolError
 from gateway.agent_client import LocalAgentClient
 from gateway.discovery import find_merchant
@@ -79,23 +79,9 @@ async def book(
     return reservation
 
 
-async def merchant_cancels(engine: AsyncEngine, reservation: dict[str, Any]) -> None:
-    """What `cancel_reservation(by="merchant")` writes. Direct until #9 implements it."""
-    async with merchant_conn(engine, ZINC) as conn:
-        await conn.execute(
-            update(reservations_t)
-            .where(reservations_t.c.id == reservation["id"])
-            .values(status="cancelled", cancelled_by="merchant")
-        )
-    async with engine.begin() as conn:
-        await conn.execute(
-            insert(guest_notices_t).values(
-                guest_name=reservation["guest_name"],
-                merchant_slug=ZINC,
-                reservation_id=reservation["id"],
-                message=f"Le Petit Zinc cancelled your booking {reservation['id']}.",
-            )
-        )
+def merchant_side(engine: AsyncEngine) -> PgAgentService:
+    """The service the platform assistant calls: the gateway never exposes these operations."""
+    return PgAgentService(engine, tz=TZ)
 
 
 async def test_lists_the_six_tools_with_their_schemas(gateway_base_url: str) -> None:
@@ -277,7 +263,7 @@ async def test_merchant_cancellation_notice_appears_once(
 ) -> None:
     async with Client(f"{gateway_base_url}/mcp") as client:
         booked = await book(client, day_ahead(2))
-        await merchant_cancels(e2e_engine, booked)
+        await merchant_side(e2e_engine).cancel_reservation(ZINC, booked["id"], by="merchant")
 
         first = await call(client, "get_my_reservations", guest_name=booked["guest_name"])
         second = await call(client, "get_my_reservations", guest_name=booked["guest_name"])
@@ -301,14 +287,11 @@ async def test_blocked_start_is_no_longer_offered(
     }
     async with Client(f"{gateway_base_url}/mcp") as client:
         before = await call(client, "get_availability", **availability)
-        # What `block_slot` writes. Direct until #9 implements it.
-        async with merchant_conn(e2e_engine, ZINC) as conn:
-            await conn.execute(insert(blocked_slots_t).values(starts_at=blocked))
+        await merchant_side(e2e_engine).block_slot(ZINC, blocked)
         try:
             after = await call(client, "get_availability", **availability)
         finally:
-            async with merchant_conn(e2e_engine, ZINC) as conn:
-                await conn.execute(delete(blocked_slots_t))
+            await merchant_side(e2e_engine).unblock_slot(ZINC, blocked)
 
     def starts(result: dict[str, Any]) -> set[datetime]:
         return {datetime.fromisoformat(slot["starts_at"]) for slot in result["slots"]}

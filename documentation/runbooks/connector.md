@@ -20,7 +20,7 @@ Claude.ai appelle les connecteurs **depuis le cloud d'Anthropic** (`160.79.104.0
 | Claude.ai, connexion | ✅ validé | spike #3 : l'ancien outil `ping` appelé depuis une conversation, capture ci-dessous |
 | Claude.ai, scénarios du §9 | ⏳ à faire | à la main, voir « Scénarios utilisateur » |
 | Appels de Claude.ai acceptés par le serveur | ✅ validé | venus de `160.79.106.x`, en `200`, aucun `Host` ni `Origin` rejeté dans les logs |
-| MCP Inspector | ⏳ pas encore lancé | étape 4 |
+| MCP Inspector | ✅ validé | `tools/list` en local : les 6 outils, leurs schémas et leurs annotations |
 | Tunnel ngrok (étapes 1 à 3) | ⏳ non testé | alternative si le LXC n'est plus disponible |
 
 ![Claude.ai appelle ping et affiche pong (spike #3, outil retiré depuis)](img/connector-ping.png)
@@ -177,7 +177,9 @@ Préparer une base connue (en local : `make db`, `make migrate`, `make seed` ; l
 | « Table for 8 at Le Petit Zinc » | Lien de secours donné (`party_too_large`) | ✅ | ⏳ |
 | Panne de Le Petit Zinc (`make outage`, ou `set_status.py` sur le LXC), puis « Table for 2 at Le Petit Zinc » | Lien de secours donné (`agent_unavailable`) ; le retour à `live` rétablit sans redémarrer | ✅ | ⏳ |
 
-Le plan B a tourné le 2026-10-31 avec Claude Code en local (modèle Sonnet) : `get_availability` entre 11 et 60 ms côté serveur, aucun nom de client dans les logs à INFO. Pour Claude.ai, ranger une capture de chaque conversation dans `assets/screenshots/`.
+Le plan B a tourné le 2026-10-31 avec Claude Code en local, surtout avec le modèle Sonnet : `get_availability` entre 11 et 28 ms côté serveur, aucun nom de client dans les logs à INFO. Il a aussi validé deux scénarios marchand : une annulation par le restaurant, dont Claude relaie la notice, et un créneau bloqué, qu'il ne propose plus. Pour Claude.ai, ranger une capture de chaque conversation dans `assets/screenshots/`.
+
+La confirmation est le point à surveiller, car le comportement de Claude varie d'une conversation à l'autre. Avec les premières descriptions, il a réservé une fois dès que l'utilisateur a choisi un restaurant. Avec les descriptions actuelles, il a attendu le oui dans 9 conversations sur 9 (Sonnet et Opus). Dans Claude.ai, vérifie qu'aucune réservation ne part avant ton « yes ».
 
 Les liens de secours et les sites des fixtures pointent vers `localhost` (`make sites`) : ils ne s'ouvrent que sur la machine qui sert ces sites, donc celle de la démo.
 
