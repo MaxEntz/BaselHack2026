@@ -143,7 +143,7 @@ through the guest notice returned by `RECALL`.
 - **Exposure:** in the POC the node listens on `127.0.0.1:4710`, and only the gateway on the same host reaches it. Opening 4710 on the team server needs TLS and a firewall rule on a shared machine, so ask first (AGENTS.md §0).
 - **Limits:**
   - 64 KiB per frame (an answer that would exceed it becomes `503`);
-  - 10 s to say `HELLO`, then 60 s idle timeout;
+  - 10 s to say `HELLO`, then 60 s idle timeout (no frame and no request in flight);
   - 10 s per request on the node (`503` past that);
   - 32 requests in flight per session, extra ones get `400`;
   - 64 sessions per node, the next one gets a `503` reject;

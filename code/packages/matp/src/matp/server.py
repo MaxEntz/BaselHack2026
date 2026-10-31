@@ -194,6 +194,8 @@ class NodeServer:
             try:
                 frame = await asyncio.wait_for(read_frame(reader), self.idle_timeout)
             except TimeoutError:
+                if tasks:
+                    continue  # not idle: answers are still on their way
                 return
             except FrameTooLarge:
                 await send(

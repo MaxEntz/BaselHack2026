@@ -292,22 +292,29 @@ async def test_a_cancelled_request_leaves_nothing_pending(node: NodeServer) -> N
         assert client._pending == {}
 
 
-async def test_a_read_survives_a_node_restart_but_a_write_is_not_resent() -> None:
-    server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token)
-    await server.start("127.0.0.1", 0)
-    port = server.port
-    client = MatpClient("127.0.0.1", port, CALLER, token="s3cret")
+async def test_a_read_survives_a_dropped_session_but_a_write_is_not_resent(
+    node: NodeServer,
+) -> None:
+    client = client_for(node)
     try:
         read = asyncio.create_task(client.request("PING", params={"delay": 0.5}))
         write = asyncio.create_task(client.request("BOOK", "le-petit-zinc", {"delay": 0.5}))
         await asyncio.sleep(0.1)
-        await server.stop()
-        server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token)
-        await server.start("127.0.0.1", port)
+        for writer in list(node._writers):  # the session drops, the node keeps listening
+            writer.close()
 
         assert (await read)["pong"] is True
         with pytest.raises(AgentUnavailable, match="closed before the answer"):
             await write
     finally:
         await client.close()
+
+
+async def test_a_slow_answer_is_not_cut_by_the_idle_timeout() -> None:
+    server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token, idle_timeout=0.1)
+    await server.start("127.0.0.1", 0)
+    try:
+        async with MatpClient("127.0.0.1", server.port, CALLER, token="s3cret") as client:
+            assert (await client.request("PING", params={"delay": 0.4}))["pong"] is True
+    finally:
         await server.stop()
