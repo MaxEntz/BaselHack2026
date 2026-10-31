@@ -9,7 +9,6 @@ from datetime import date as Date
 from functools import partial
 from typing import Annotated
 from urllib.parse import urlsplit
-from zoneinfo import ZoneInfo
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
@@ -23,7 +22,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from agent.service import PgAgentService
 from core.config import Settings
 from core.db import make_engine
 from core.models import (
@@ -40,7 +38,7 @@ from core.models import (
     UpdateReservationInput,
 )
 from gateway import discovery
-from gateway.agent_client import AgentClient, LocalAgentClient
+from gateway.agent_client import AgentClient, make_agent_client
 from gateway.fallback import RejectedArguments, call_merchant, call_service, unavailable
 
 log = logging.getLogger("gateway.server")
@@ -162,9 +160,10 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         async def op() -> SearchMerchantsOutput | ToolError:
             if down := await discovery.find_named_down_merchant(query, engine=engine):
                 return unavailable(down)
-            return await discovery.search(query, near, date, filters, engine=engine)
+            return await agent.search_merchants(query, near, date, filters)
 
-        return await call_service("search_merchants", op, settings=settings)
+        named = partial(discovery.find_named_merchant, query, engine=engine)
+        return await call_service("search_merchants", op, settings=settings, named=named)
 
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
@@ -307,11 +306,12 @@ def create_app(
 ) -> Starlette:
     """Build the ASGI app: Host allowlist from the public URL, bearer token when one is set.
 
-    `agent` and `engine` default to the real ones, on DATABASE_URL (tests inject theirs). An
-    engine created here is disposed at shutdown.
+    `agent` and `engine` default to the real ones (tests inject theirs): the engine on
+    DATABASE_URL, and the agent in this process or over MATP (`MATP_URL`). What is created here
+    is released at shutdown.
     """
     db = engine or make_engine(settings.database_url)
-    client = agent or LocalAgentClient(PgAgentService(db, tz=ZoneInfo(settings.merchant_tz)))
+    client = agent or make_agent_client(settings, db)
     app = create_server(client, db, settings).streamable_http_app(
         transport_security=TransportSecuritySettings(
             allowed_hosts=allowed_hosts(settings.gateway_public_url),
@@ -320,14 +320,16 @@ def create_app(
     )
     if settings.gateway_token:
         app.add_middleware(BearerAuth, token=settings.gateway_token.get_secret_value())
-    if engine is None:
-        run_transport = app.router.lifespan_context
+    run_transport = app.router.lifespan_context
 
-        @asynccontextmanager
-        async def lifespan(app: Starlette) -> AsyncIterator[None]:
-            async with run_transport(app):
-                yield
+    @asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncIterator[None]:
+        async with run_transport(app):
+            yield
+        if agent is None:
+            await client.close()
+        if engine is None:
             await db.dispose()
 
-        app.router.lifespan_context = lifespan
+    app.router.lifespan_context = lifespan
     return app

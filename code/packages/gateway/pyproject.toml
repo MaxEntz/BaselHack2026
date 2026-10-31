@@ -6,6 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "core",
     "agent",
+    "matp",
     "mcp>=2.3,<3",
     "starlette>=1.10",
     "uvicorn>=0.54",

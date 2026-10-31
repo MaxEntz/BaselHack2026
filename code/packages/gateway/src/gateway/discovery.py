@@ -15,7 +15,7 @@ from datetime import date as Date
 from typing import get_args
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import RowMapping, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from core.db import merchants_t
@@ -122,11 +122,13 @@ def normalize_filters(
     """Criteria from what Claude sent, plus the tags we don't know (reported, not fatal)."""
     tags: set[Tag] = set()
     ignored: list[str] = []
+    reported: set[str] = set()
     for raw_tag in raw.tags if raw else ():
         tag = normalize_tag(raw_tag)
         if tag is not None:
             tags.add(tag)
-        elif raw_tag.strip() and raw_tag not in ignored:
+        elif raw_tag.strip() and raw_tag not in reported:
+            reported.add(raw_tag)
             ignored.append(raw_tag)
     near_words = _words(near or "") - NEAR_NOISE
     city = " ".join(sorted(near_words)) if near_words else None
@@ -237,6 +239,24 @@ async def find_merchant(slug: str, *, engine: AsyncEngine) -> RegistryEntry | No
     return RegistryEntry(**row) if row else None
 
 
+async def _named_in_registry(query: str, engine: AsyncEngine) -> list[RowMapping]:
+    """The live and `down` registry entries the query names, by slug."""
+    words = _words(query, MIN_QUERY_WORD) - QUERY_NOISE
+    if not words:
+        return []
+    registry = select(*_ENTRY_COLUMNS).where(merchants_t.c.status.in_(("live", "down")))
+    async with engine.connect() as conn:
+        rows = (await conn.execute(registry.order_by(merchants_t.c.slug))).mappings().all()
+    return [row for row in rows if words & _words(row["name"], MIN_QUERY_WORD)]
+
+
+async def find_named_merchant(query: str, *, engine: AsyncEngine) -> RegistryEntry | None:
+    """The merchant the query names, live or `down`: when discovery itself fails, the link to
+    its own booking page is still something to give."""
+    named = await _named_in_registry(query, engine)
+    return RegistryEntry(**named[0]) if named else None
+
+
 async def find_named_down_merchant(query: str, *, engine: AsyncEngine) -> RegistryEntry | None:
     """The `down` merchant the query names, unless a live merchant also matches it.
 
@@ -244,13 +264,7 @@ async def find_named_down_merchant(query: str, *, engine: AsyncEngine) -> Regist
     a generic search: without this, "a table at Le Petit Zinc" during an outage would silently
     propose other restaurants instead of Le Petit Zinc's fallback link (AGENTS.md §9).
     """
-    words = _words(query, MIN_QUERY_WORD) - QUERY_NOISE
-    if not words:
-        return None
-    registry = select(*_ENTRY_COLUMNS).where(merchants_t.c.status.in_(("live", "down")))
-    async with engine.connect() as conn:
-        rows = (await conn.execute(registry.order_by(merchants_t.c.slug))).mappings().all()
-    named = [row for row in rows if words & _words(row["name"], MIN_QUERY_WORD)]
+    named = await _named_in_registry(query, engine)
     if not named or any(row["status"] == "live" for row in named):
         return None
     return RegistryEntry(**named[0])

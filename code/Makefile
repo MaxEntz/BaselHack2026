@@ -4,7 +4,7 @@ DEPLOY_HOST ?= root@191.96.88.152
 DEPLOY_SSH ?= ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes
 DEPLOY_DIR := /opt/merchant-agents/code
 
-.PHONY: setup db migrate gateway platform web site sites tunnel deploy seed demo-reset test lint fmt
+.PHONY: setup db migrate gateway node platform web site sites tunnel deploy seed demo-reset test lint fmt
 
 setup: ## .env, Python deps, Chromium for the crawler, web deps
 	test -f .env || cp .env.example .env
@@ -20,6 +20,9 @@ migrate:
 
 gateway: ## MCP server -> http://localhost:8001/mcp
 	uv run python -m gateway
+
+node: ## MATP node (our agent protocol) -> matp://127.0.0.1:4710
+	uv run python -m merchant_node
 
 platform: ## Platform API -> http://localhost:8002
 	uv run uvicorn merchant_platform.api:app --port 8002
@@ -84,7 +87,7 @@ test:
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy packages/core packages/agent packages/gateway
+	uv run mypy packages/core packages/agent packages/gateway packages/matp packages/merchant_node
 
 fmt:
 	uv run ruff check --fix .
