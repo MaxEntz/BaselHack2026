@@ -19,6 +19,7 @@ export function CardView({ card }: { card: CardEvent }) {
     case "diff":
       return <DiffCard data={card.data} />;
     case "view":
+    case "page":
       return null;
   }
 }

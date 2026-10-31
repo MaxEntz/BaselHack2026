@@ -17,6 +17,8 @@ import { ReservationsPage } from "./pages/reservations/ReservationsPage.tsx";
 import { RulesPage } from "./pages/RulesPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { type PageId, PAGES, bookingPath, isPage, nameFromSlug, pagePath, pageTitle } from "./pages.ts";
+import { AssistantChat } from "./assistant/AssistantChat.tsx";
+import { useChatClient } from "./assistant/chatClient.ts";
 import { AssistantPanel } from "./shell/AssistantPanel.tsx";
 import { Footer } from "./shell/Footer.tsx";
 import { Sidebar } from "./shell/Sidebar.tsx";
@@ -101,6 +103,12 @@ function Shell({
   const version = usePageVersion();
   const [unseen, setUnseen] = useState(0);
   const full = page === "assistant";
+  const chat = useChatClient();
+  // The panel's conversation takes the live events the shell receives (#140).
+  const panelLive = useRef<((event: LiveEvent) => void) | null>(null);
+  const listen = useCallback((handler: ((event: LiveEvent) => void) | null) => {
+    panelLive.current = handler;
+  }, []);
 
   const name = merchant?.name ?? nameFromSlug(slug);
 
@@ -109,6 +117,7 @@ function Shell({
   useEffect(() => {
     onLive.current = (event) => {
       store.bump();
+      panelLive.current?.(event);
       if (event.kind !== "new_booking") return;
       setUnseen((n) => n + 1);
       const { reservation: r } = event;
@@ -167,7 +176,9 @@ function Shell({
           setAssistantOpen(false);
           if (full) home();
         }}
-      />
+      >
+        <AssistantChat slug={slug} name={name} now={merchant?.now ?? null} chat={chat} live={listen} />
+      </AssistantPanel>
     </div>
   );
 }

@@ -184,7 +184,8 @@ describe("live bookings", () => {
   it("show a toast while the assistant is closed, which opens the booking", async () => {
     const user = userEvent.setup();
     const router = at(`/manage/${SLUG}/rules`, mock(10));
-    const toast = await screen.findByText("New booking through your agent");
+    const toasts = document.querySelector<HTMLElement>(".toasts")!;
+    const toast = await within(toasts).findByText("New booking through your agent");
     expect(toast.parentElement?.textContent).toBe("New booking through your agentKim Weber, 20:00, 2 guests, T4");
     await user.click(screen.getByRole("button", { name: "See it" }));
     expect(where(router)).toBe(`/manage/${SLUG}/reservations?date=2026-10-31&booking=R-056`);
@@ -199,7 +200,10 @@ describe("live bookings", () => {
     await user.click(screen.getByRole("button", { name: "Ask the assistant" }));
     expect(panel.hidden).toBe(false);
     await waitFor(() => expect(bell().querySelector("i")?.textContent).toBe("1"));
-    expect(screen.queryByText("New booking through your agent")).toBeNull();
+    expect(within(document.querySelector<HTMLElement>(".toasts")!).queryByText(/New booking/)).toBeNull();
+    // The conversation shows it instead (#140).
+    const ping = await within(panel).findByText("New booking through your agent");
+    expect(ping.parentElement?.textContent).toBe("New booking through your agentKim Weber, 2 guests, tonight 20:00, T4");
   });
 
   it("appear on Home without a reload", async () => {

@@ -56,6 +56,18 @@ export type Look = {
 export type GeneratedTool = { name: string; description: string };
 
 export type StudioView = "agent" | "manage";
+// The management site's pages a reply can link to (#140): Home and the Assistant aside.
+export type ManagePage = "reservations" | "guests" | "hours" | "floor" | "rules" | "agent" | "settings";
+
+// GET /merchants/<slug>/assistant (#140): the owner's conversation, as the chat shows it. The
+// session is the platform's, shared by the owner's devices.
+export type ConversationItem =
+  | { type: "user"; text: string }
+  | { type: "assistant"; text: string }
+  | { type: "card"; card: Extract<ChatEvent, { type: "card" }> }
+  | { type: "notification"; event: LiveEvent }
+  | { type: "error"; message: string };
+export type AssistantConversation = { session_id: string; items: ConversationItem[] };
 export type DiffCardData = {
   label: string;
   before: string | null;
@@ -151,6 +163,8 @@ export type ChatEvent =
   | { type: "card"; kind: "diff"; data: DiffCardData }
   // Studio shows that pane of its canvas; the plain chat shows nothing (#152).
   | { type: "card"; kind: "view"; data: { view: StudioView } }
+  // A link from a reply to a management page, worded by code (#140).
+  | { type: "card"; kind: "page"; data: { page: ManagePage } }
   | { type: "error"; message: string }
   | { type: "done" };
 

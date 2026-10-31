@@ -411,7 +411,10 @@ async def _run(
         # `_run` sends the only `done`, once the turn is over and the session is free: an
         # assistant still awaiting after its own `done` must not be cut off.
         if not isinstance(event, DoneEvent):
+            session.record(event)
             queue.put_nowait(event)
+
+    session.said(message)
 
     started = time.perf_counter()
     outcome = "ok"
