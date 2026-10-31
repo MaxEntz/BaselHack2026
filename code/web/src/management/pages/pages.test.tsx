@@ -142,6 +142,18 @@ describe("Guests", () => {
     expect(await screen.findByText("Nobody by that name.")).toBeTruthy();
   });
 
+  it("opens a guest's next booking in place", async () => {
+    const { router } = open("guests");
+    fireEvent.click(await screen.findByRole("button", { name: "Lena Becker" }));
+
+    const box = within(await screen.findByRole("dialog"));
+    expect(box.getByRole("heading", { name: "Lena Becker" })).toBeTruthy();
+    expect(box.getByText("Thursday 5 November, 19:30 to 21:30")).toBeTruthy();
+    expect(await box.findByLabelText("Move to another time")).toBeTruthy();
+    expect(router.state.location.pathname).toBe(`/manage/${SLUG}/guests`);
+    expect(router.state.location.search).toBe("");
+  });
+
   it("shows a guest an agent just booked", async () => {
     open("guests", 10);
     expect(await screen.findByRole("cell", { name: "Kim Weber" })).toBeTruthy();

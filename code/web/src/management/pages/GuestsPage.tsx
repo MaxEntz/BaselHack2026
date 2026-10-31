@@ -1,10 +1,15 @@
 import { useCallback, useState } from "react";
-import { Link } from "react-router";
+import type { GuestRow, ManagedReservation } from "../../types.ts";
 import { useClient, useLoad } from "../data.ts";
 import { dayShort } from "../dates.ts";
-import { PAGES, bookingPath } from "../pages.ts";
-import { Source } from "../ui/index.ts";
+import { PAGES } from "../pages.ts";
+import { errorMessage } from "../problems.ts";
+import { Source, useToast } from "../ui/index.ts";
 import { PageTitle } from "./PageTitle.tsx";
+import { BookingDialog } from "./reservations/BookingDialog.tsx";
+import { hasEnded, hasStarted } from "./reservations/words.ts";
+
+type Opened = { booking: ManagedReservation; slotLengthMin: number; started: boolean; ended: boolean };
 
 /**
  * Everyone with a booking ahead in the next 7 days, one row per guest (#144). Read again on each
@@ -18,6 +23,26 @@ export function GuestsPage({ slug, version }: { slug: string; version: number })
     [client, slug, query],
   );
   const { data, error } = useLoad(load, version);
+  const toast = useToast();
+  const [opened, setOpened] = useState<Opened | null>(null);
+
+  // The booking's day gives its slot length; the merchant's clock, read now, whether it has started.
+  async function open(guest: GuestRow) {
+    try {
+      const [{ now }, day] = await Promise.all([client.merchant(slug), client.reservations(slug, guest.date)]);
+      const booking = day.reservations.find((b) => b.id === guest.reservation_id);
+      if (!booking) return;
+      const [today, clock] = [now.slice(0, 10), now.slice(11, 16)];
+      setOpened({
+        booking,
+        slotLengthMin: day.slot_length_min,
+        started: hasStarted(booking, today, clock),
+        ended: hasEnded(booking, today, clock, day.slot_length_min),
+      });
+    } catch (failure) {
+      toast(errorMessage(failure));
+    }
+  }
 
   return (
     <>
@@ -57,9 +82,9 @@ export function GuestsPage({ slug, version }: { slug: string; version: number })
                   {data.guests.map((guest) => (
                     <tr key={guest.reservation_id}>
                       <td>
-                        <Link className="guest" to={bookingPath(slug, guest.date, guest.reservation_id)}>
+                        <button type="button" onClick={() => void open(guest)}>
                           {guest.guest_name}
-                        </Link>
+                        </button>
                       </td>
                       <td>
                         {dayShort(guest.date)}, {guest.time}
@@ -78,6 +103,16 @@ export function GuestsPage({ slug, version }: { slug: string; version: number })
             <p className="none">Nobody by that name.</p>
           ))}
       </div>
+      <BookingDialog
+        slug={slug}
+        booking={opened?.booking ?? null}
+        slotLengthMin={opened?.slotLengthMin ?? 0}
+        started={opened?.started ?? false}
+        ended={opened?.ended ?? false}
+        onClose={() => setOpened(null)}
+        onMoved={() => setOpened(null)}
+        onCancelled={() => setOpened(null)}
+      />
     </>
   );
 }
