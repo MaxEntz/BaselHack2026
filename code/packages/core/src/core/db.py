@@ -107,7 +107,9 @@ guest_notices_t = Table(
 reservation_changes_t = Table(
     "reservation_changes",
     public_metadata,
-    Column("merchant_slug", Text, ForeignKey(merchants_t.c.slug), primary_key=True),
+    Column(
+        "merchant_slug", Text, ForeignKey(merchants_t.c.slug, ondelete="CASCADE"), primary_key=True
+    ),
     Column("idempotency_key", Text, primary_key=True),
     Column("reservation_id", Text, nullable=False),
     Column("starts_at", DateTime(timezone=True)),

@@ -33,7 +33,9 @@ cancel a booking once it has started (`slot_unavailable`); after that it is the 
 (#79). `update_reservation` needs `starts_at` or `party_size`, and its `idempotency_key` is
 stored with the change it applied (`public.reservation_changes`, #78): the same key for the
 same booking and parameters returns the booking as it is now without changing it, and the
-same key for anything else is `invalid_input`. A failed update doesn't use up its key. And
+same key for anything else is `invalid_input`. A failed update doesn't use up its key. Like a
+creation replay, an update replay returns the booking even if it was cancelled since. Update
+and creation keys are separate namespaces. And
 `update_policy` needs `max_party_size` or `services`.
 
 A floor plan has at least one table and unique labels. The builder must fill a

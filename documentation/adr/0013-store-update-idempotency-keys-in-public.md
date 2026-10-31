@@ -9,7 +9,7 @@
 
 Fixing it means storing, for each applied update, its key and its parameters, written in the same transaction as the update. Creations already keep their key in the merchant's own `reservations` table.
 
-ADR-0001 isolates each merchant in its own schema, created from the Core declarations by provisioning, with no migrations: a merchant-schema change means drop and re-provision. Merchants are already live on the team server, with their bookings.
+ADR-0001 isolates each merchant in its own schema, created from the Core declarations by provisioning, with no migrations: a merchant-schema change means drop and re-provision. Merchants are already live on the team server, with their bookings. That is the case ADR-0001 names as the one where its "no migrations" stops holding.
 
 ## Decision
 
@@ -24,7 +24,7 @@ ADR-0001 isolates each merchant in its own schema, created from the Core declara
 
 ### A `reservation_changes` table in each merchant schema — rejected
 
-It was the issue's suggestion, and it would follow ADR-0001's isolation. But existing schemas don't get new tables (no migrations, ADR-0001). Every live merchant on the server would need a drop and re-provision, which loses its bookings. Until then, every update would fail with "relation does not exist". `public` already holds per-merchant rows keyed by slug (`guest_notices`), written in the same transaction as the merchant's own tables.
+It was the issue's suggestion, and it would follow ADR-0001's isolation. But nothing adds a table to an existing merchant schema: ADR-0001 has no migrations for them. `merchant_metadata.create_all(checkfirst=True)` on each schema could, but no deploy step runs it, and writing that runner is the start of merchant-schema migrations, a decision of its own. Without it, every live merchant on the server would need a drop and re-provision, which loses its bookings, and until then every update would fail with "relation does not exist". `public` already holds per-merchant rows keyed by slug (`guest_notices`), written in the same transaction as the merchant's own tables.
 
 ### Keep the last key on the `reservations` row — rejected
 
@@ -38,7 +38,9 @@ The gateway's description tells Claude to reuse the key to retry the same change
 
 - Positive: invariant 2 holds for updates in both modes, since MATP's AMEND calls the same service. Deploying is `make deploy` (it applies the migrations), with no re-provision.
 - Positive: a failed update doesn't use up its key: the guest can retry it once the cause is gone.
-- Negative: a merchant's data now lives in two schemas, its own and three tables of `public`. Deprovisioning relies on the cascade from the registry row.
+- Negative: a merchant's data now lives in two schemas, its own and three tables of `public`. Deprovisioning relies on the cascade from the registry row (tested).
+- Negative: this is the shared-table-with-`merchant_slug` pattern ADR-0001 rejected for bookings. Here every query filters on the slug, and a mistake would only reveal whether a key exists, not a booking.
+- Negative: update keys and creation keys are separate namespaces, so a creation key reused for an update is a new update.
 - Negative: rows are never pruned. That is fine for the POC; past it, prune keys older than a day.
 - This choice becomes wrong if: merchant schemas get migrations of their own, which would make the merchant schema the natural place.
 

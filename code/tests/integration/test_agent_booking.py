@@ -492,6 +492,22 @@ async def test_an_update_that_failed_does_not_use_up_its_key(
     assert moved.starts_at == at("22:00")
 
 
+async def test_an_update_refused_after_its_claim_does_not_use_up_its_key(
+    service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    # The key is claimed before the status check: the refusal must roll it back.
+    slug = await make_merchant()
+    cancelled = await book(service, slug, at("19:00"))
+    await service.cancel_reservation(slug, cancelled.id, by="guest", guest_name=GUEST)
+    with pytest.raises(NotFound):
+        await service.update_reservation(slug, cancelled.id, GUEST, "k1", starts_at=at("20:00"))
+    other = await book(service, slug, at("19:30"))
+
+    moved = await service.update_reservation(slug, other.id, GUEST, "k1", starts_at=at("20:00"))
+
+    assert moved.starts_at == at("20:00")
+
+
 async def test_two_concurrent_updates_with_one_key_apply_one_change(
     engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
 ) -> None:
