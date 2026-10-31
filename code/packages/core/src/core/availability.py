@@ -1,7 +1,13 @@
 """Pure availability rules: slot generation, table choice, blocked slots. No I/O.
 
 AGENTS.md §6. Times are aware datetimes in the merchant's timezone; `now` is always passed in,
-so the rules never read the clock.
+so the rules never read the clock. The grid of starts is local time; durations and
+comparisons of instants are done in UTC (#80):
+- Python adds a `timedelta` to a `ZoneInfo` datetime in wall-clock time, which makes a slot 1 or
+  3 real hours on a clock-change night;
+- in the hour that repeats when summer time ends, `==` between a `ZoneInfo` datetime and any
+  other tzinfo is always false (PEP 495), so a start sent back with a fixed offset would match
+  no start of the grid, and `<` between two `ZoneInfo` datetimes ignores which pass it is.
 """
 
 from collections.abc import Collection, Sequence
@@ -66,7 +72,9 @@ def bookable_starts(
 
 def is_bookable_start(services: Sequence[Service], start: datetime, tz: ZoneInfo) -> bool:
     """True when `start` is on the grid of one of the services, on its own local day."""
-    return start in bookable_starts(services, start.astimezone(tz).date(), tz)
+    instant = start.astimezone(UTC)
+    grid = bookable_starts(services, start.astimezone(tz).date(), tz)
+    return any(candidate.astimezone(UTC) == instant for candidate in grid)
 
 
 def pick_table(
@@ -77,6 +85,7 @@ def pick_table(
     busy: Sequence[BusyInterval],
 ) -> TableRow | None:
     """The smallest free table that seats the party, ties broken by label."""
+    start = start.astimezone(UTC)
     end = start + slot_length
     taken = {b.table_id for b in busy if b.start < end and start < b.end}
     fitting = (t for t in tables if t.seats >= party_size and t.id not in taken)
@@ -102,9 +111,11 @@ def find_slots(
     With `requested`, the starts closest to it win, the earlier one at equal distance;
     without it, the first starts of the day. Blocked and past starts (`<= now`) are skipped.
     """
+    blocked_at = {moment.astimezone(UTC) for moment in blocked}
+    now = now.astimezone(UTC)
     free: list[tuple[datetime, TableRow]] = []
     for start in bookable_starts(services, day, tz):
-        if start <= now or start in blocked:
+        if start.astimezone(UTC) <= now or start.astimezone(UTC) in blocked_at:
             continue
         table = pick_table(tables, party_size, start, slot_length, busy)
         if table is not None:

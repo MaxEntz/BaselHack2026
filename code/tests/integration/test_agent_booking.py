@@ -665,6 +665,49 @@ async def test_cancelling_an_already_cancelled_past_booking_stays_idempotent(
     assert again.status == "cancelled"
 
 
+@pytest.mark.parametrize("day", [date(2026, 3, 29), date(2026, 10, 25)])
+async def test_every_slot_offered_on_a_clock_change_night_can_be_booked(
+    engine: AsyncEngine,
+    service: PgAgentService,
+    make_merchant: MerchantFactory,
+    clock: Clock,
+    day: date,
+) -> None:
+    # Availability and the database must agree on how long a slot lasts that night (#80).
+    # Times go through ISO 8601, as from the gateway: a fixed offset, not a ZoneInfo.
+    clock.now = datetime(2026, 3, 1, 9, tzinfo=TZ)
+    slug = await make_merchant(tables=ONE_TABLE, services=[{"start": "00:00", "end": "04:00"}])
+    await book(service, slug, datetime.combine(day, time(3), tzinfo=TZ))
+
+    # Around 02:30: on 2026-10-25 that is the hour that repeats (02:00 and 02:30 CEST).
+    slots = await service.get_availability(slug, day, 2, "02:30")
+
+    assert slots
+    for slot in slots:
+        booked = await book(service, slug, datetime.fromisoformat(slot.starts_at.isoformat()))
+        async with merchant_conn(engine, slug) as conn:
+            during = await conn.scalar(
+                select(reservations_t.c.during).where(reservations_t.c.id == booked.id)
+            )
+        assert during.upper - during.lower == timedelta(hours=2)
+        await service.cancel_reservation(slug, booked.id, by="merchant")
+
+
+async def test_a_booking_made_with_local_time_lasts_two_real_hours_on_a_clock_change(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
+) -> None:
+    clock.now = datetime(2026, 3, 1, 9, tzinfo=TZ)
+    slug = await make_merchant(services=[{"start": "00:00", "end": "04:00"}])
+
+    booked = await book(service, slug, datetime.combine(date(2026, 3, 29), time(1), tzinfo=TZ))
+
+    async with merchant_conn(engine, slug) as conn:
+        during = await conn.scalar(
+            select(reservations_t.c.during).where(reservations_t.c.id == booked.id)
+        )
+    assert during.upper - during.lower == timedelta(hours=2)
+
+
 # find_guest_reservations
 
 

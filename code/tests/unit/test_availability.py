@@ -5,7 +5,7 @@ from itertools import pairwise
 from zoneinfo import ZoneInfo
 
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 
 from core import availability
@@ -340,3 +340,154 @@ def test_offered_slots_never_overlap_a_booking(
         assert is_bookable_start([LUNCH, DINNER], start, TZ)
         end = start + TWO_HOURS
         assert not any(b.table_id == table.id and b.start < end and start < b.end for b in taken)
+
+
+# Clock changes (#80): the grid of starts is local time, durations are elapsed time.
+
+SPRING_FORWARD = date(2026, 3, 29)  # 02:00 CET → 03:00 CEST
+FALL_BACK = date(2026, 10, 25)  # 03:00 CEST → 02:00 CET
+NIGHT = Service(start="00:00", end="04:00")
+BEFORE_THE_NIGHTS = datetime(2026, 1, 1, tzinfo=TZ)
+
+
+def test_a_slot_on_the_spring_forward_night_lasts_two_real_hours() -> None:
+    # 01:00 CET is 00:00 UTC: the slot runs to 02:00 UTC, which is 04:00 CEST, past a 03:00
+    # CEST booking. Wall-clock arithmetic ended it at "03:00", one real hour only.
+    start = datetime.combine(SPRING_FORWARD, time(1), tzinfo=TZ)
+    booked = datetime.combine(SPRING_FORWARD, time(3), tzinfo=TZ)
+
+    taken = [BusyInterval(T2.id, booked, booked + TWO_HOURS)]
+    assert pick_table([T2], 2, start, TWO_HOURS, taken) is None
+
+
+def test_a_slot_on_the_fall_back_night_lasts_two_real_hours() -> None:
+    # 01:00 CEST is 23:00 UTC: the slot ends at 01:00 UTC (02:00 CET, first pass). A booking
+    # from 01:30 UTC doesn't overlap; wall-clock arithmetic ran the slot to 02:00 UTC.
+    start = datetime.combine(FALL_BACK, time(1), tzinfo=TZ)
+    later = datetime(2026, 10, 25, 1, 30, tzinfo=UTC)
+
+    assert pick_table([T2], 2, start, TWO_HOURS, [BusyInterval(T2.id, later, later)]) == T2
+
+
+@pytest.mark.parametrize("hhmm", ["02:00", "02:30"])
+def test_a_start_in_the_repeated_hour_is_bookable_whatever_its_offset(hhmm: str) -> None:
+    # 02:00 and 02:30 CEST on 2026-10-25 are in the hour that repeats. PEP 495 makes `==` false
+    # between a ZoneInfo datetime there and any other tzinfo, so compare instants.
+    offered = datetime.combine(FALL_BACK, time.fromisoformat(hhmm), tzinfo=TZ)
+    from_the_gateway = datetime.fromisoformat(offered.isoformat())
+
+    assert is_bookable_start([NIGHT], from_the_gateway, TZ)
+    assert is_bookable_start([NIGHT], offered.astimezone(UTC), TZ)
+
+
+def test_a_blocked_start_in_the_repeated_hour_is_not_offered() -> None:
+    blocked = datetime.fromisoformat("2026-10-25T02:30:00+02:00")
+
+    found = find_slots(
+        services=[NIGHT],
+        tables=[T2],
+        busy=[],
+        blocked={blocked},
+        day=FALL_BACK,
+        tz=TZ,
+        party_size=2,
+        requested=time(2, 30),
+        now=BEFORE_THE_NIGHTS,
+        slot_length=TWO_HOURS,
+        limit=20,
+    )
+
+    offered = {start.astimezone(UTC) for start, _ in found}
+    assert offered  # the night has free starts: the test would pass on an empty list
+    assert blocked.astimezone(UTC) not in offered
+
+
+def test_a_start_already_past_in_the_repeated_hour_is_not_offered() -> None:
+    # 02:15 CET, second pass of the repeated hour, is after 02:30 CEST in real time.
+    now = datetime(2026, 10, 25, 1, 15, tzinfo=UTC).astimezone(TZ)
+
+    found = find_slots(
+        services=[NIGHT],
+        tables=[T2],
+        busy=[],
+        blocked=frozenset(),
+        day=FALL_BACK,
+        tz=TZ,
+        party_size=2,
+        requested=None,
+        now=now,
+        slot_length=TWO_HOURS,
+        limit=20,
+    )
+
+    assert all(start.astimezone(UTC) > now.astimezone(UTC) for start, _ in found)
+    assert [f"{start:%H:%M}" for start, _ in found] == ["03:00"]
+
+
+@st.composite
+def night_bookings(
+    draw: st.DrawFn, day: date
+) -> tuple[tuple[TableRow, ...], tuple[BusyInterval, ...]]:
+    """A floor plan and bookings that are real instants, every 30 real minutes from midnight."""
+    tables = draw(floor_plans())
+    midnight = datetime.combine(day, time(0), tzinfo=TZ).astimezone(UTC)
+    taken = tuple(
+        BusyInterval(
+            table.id,
+            midnight + timedelta(minutes=30 * step),
+            midnight + timedelta(minutes=30 * step + minutes),
+        )
+        for table, step, minutes in draw(
+            st.lists(
+                st.tuples(
+                    st.sampled_from(tables), st.integers(0, 10), st.sampled_from([30, 90, 120])
+                ),
+                max_size=10,
+            )
+        )
+    )
+    return tables, taken
+
+
+NIGHTS = st.sampled_from([SPRING_FORWARD, FALL_BACK]).flatmap(
+    lambda day: st.tuples(st.just(day), night_bookings(day))
+)
+
+
+# Without bookings, each night's whole grid: the repeated hour comes back with a fixed offset.
+@example(night=(SPRING_FORWARD, ((T2,), ())), party_size=2, requested=None)
+@example(night=(FALL_BACK, ((T2,), ())), party_size=2, requested="02:30")
+@given(
+    night=NIGHTS,
+    party_size=st.integers(1, 8),
+    requested=st.none() | st.sampled_from(["00:30", "01:30", "02:00", "02:30", "03:00"]),
+)
+def test_offered_slots_never_overlap_a_booking_on_clock_change_nights(
+    night: tuple[date, tuple[tuple[TableRow, ...], tuple[BusyInterval, ...]]],
+    party_size: int,
+    requested: str | None,
+) -> None:
+    day, (tables, taken) = night
+
+    found = find_slots(
+        services=[NIGHT],
+        tables=tables,
+        busy=taken,
+        blocked=frozenset(),
+        day=day,
+        tz=TZ,
+        party_size=party_size,
+        requested=time.fromisoformat(requested) if requested else None,
+        now=BEFORE_THE_NIGHTS,
+        slot_length=TWO_HOURS,
+        limit=20,
+    )
+
+    for start, table in found:
+        # Booked through the gateway, the same start comes back with a fixed offset.
+        assert is_bookable_start([NIGHT], datetime.fromisoformat(start.isoformat()), TZ)
+        real_start = start.astimezone(UTC)
+        end = real_start + TWO_HOURS
+        assert not any(
+            b.table_id == table.id and b.start < end and real_start < b.end for b in taken
+        )
