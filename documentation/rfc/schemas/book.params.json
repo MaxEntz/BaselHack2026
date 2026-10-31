@@ -4,11 +4,13 @@
   "additionalProperties": false,
   "properties": {
     "guest_name": {
+      "maxLength": 200,
       "minLength": 1,
       "title": "Guest Name",
       "type": "string"
     },
     "idempotency_key": {
+      "maxLength": 200,
       "minLength": 1,
       "title": "Idempotency Key",
       "type": "string"

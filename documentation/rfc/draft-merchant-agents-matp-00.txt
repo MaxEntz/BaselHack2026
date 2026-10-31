@@ -124,7 +124,7 @@ Internet-Draft                    MATP                      October 2026
      C.7.  AMEND params  . . . . . . . . . . . . . . . . . . . . . .  34
      C.8.  CANCEL params . . . . . . . . . . . . . . . . . . . . . .  35
      C.9.  RECALL params . . . . . . . . . . . . . . . . . . . . . .  36
-     C.10. RECALL result . . . . . . . . . . . . . . . . . . . . . .  36
+     C.10. RECALL result . . . . . . . . . . . . . . . . . . . . . .  37
      C.11. PING params and result  . . . . . . . . . . . . . . . . .  38
    Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  39
    Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  39
@@ -1744,11 +1744,13 @@ Internet-Draft                    MATP                      October 2026
      "additionalProperties": false,
      "properties": {
        "guest_name": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Guest Name",
          "type": "string"
        },
        "idempotency_key": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Idempotency Key",
          "type": "string"
@@ -1784,8 +1786,6 @@ C.6.  BOOK, AMEND and CANCEL result
        "Reservation": {
          "additionalProperties": false,
          "properties": {
-           "guest_name": {
-             "title": "Guest Name",
 
 
 
@@ -1794,6 +1794,8 @@ C.6.  BOOK, AMEND and CANCEL result
 Internet-Draft                    MATP                      October 2026
 
 
+           "guest_name": {
+             "title": "Guest Name",
              "type": "string"
            },
            "id": {
@@ -1840,8 +1842,6 @@ Internet-Draft                    MATP                      October 2026
          "required": [
            "id",
            "merchant",
-           "starts_at",
-           "party_size",
 
 
 
@@ -1850,6 +1850,8 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
+           "starts_at",
+           "party_size",
            "table_label",
            "status",
            "guest_name",
@@ -1881,11 +1883,13 @@ C.7.  AMEND params
      "additionalProperties": false,
      "properties": {
        "guest_name": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Guest Name",
          "type": "string"
        },
        "idempotency_key": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Idempotency Key",
          "type": "string"
@@ -1894,10 +1898,6 @@ C.7.  AMEND params
          "anyOf": [
            {
              "exclusiveMinimum": 0,
-             "type": "integer"
-           },
-           {
-             "type": "null"
 
 
 
@@ -1906,12 +1906,17 @@ C.7.  AMEND params
 Internet-Draft                    MATP                      October 2026
 
 
+             "type": "integer"
+           },
+           {
+             "type": "null"
            }
          ],
          "default": null,
          "title": "Party Size"
        },
        "reservation_id": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Reservation Id",
          "type": "string"
@@ -1952,11 +1957,6 @@ C.8.  CANCEL params
 
 
 
-
-
-
-
-
                            Expires 4 May 2027                  [Page 35]
 
 Internet-Draft                    MATP                      October 2026
@@ -1968,11 +1968,13 @@ Internet-Draft                    MATP                      October 2026
      "additionalProperties": false,
      "properties": {
        "guest_name": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Guest Name",
          "type": "string"
        },
        "reservation_id": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Reservation Id",
          "type": "string"
@@ -1994,6 +1996,7 @@ C.9.  RECALL params
      "additionalProperties": false,
      "properties": {
        "guest_name": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Guest Name",
          "type": "string"
@@ -2006,9 +2009,6 @@ C.9.  RECALL params
      "type": "object"
    }
 
-C.10.  RECALL result
-
-
 
 
 
@@ -2017,6 +2017,8 @@ C.10.  RECALL result
 
 Internet-Draft                    MATP                      October 2026
 
+
+C.10.  RECALL result
 
    {
      "$comment": "Generated from core.models.GetMyReservationsOutput",
@@ -2064,8 +2066,6 @@ Internet-Draft                    MATP                      October 2026
                "claude",
                "merchant",
                "website"
-             ],
-             "title": "Via",
 
 
 
@@ -2074,6 +2074,8 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
+             ],
+             "title": "Via",
              "type": "string"
            }
          },
@@ -2118,8 +2120,6 @@ Internet-Draft                    MATP                      October 2026
    }
 
 C.11.  PING params and result
-
-
 
 
 

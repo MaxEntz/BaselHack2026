@@ -11,7 +11,6 @@ import logging
 import re
 import unicodedata
 from collections.abc import Awaitable, Callable
-from datetime import date as Date
 from functools import partial
 from typing import Annotated, Any
 
@@ -19,7 +18,7 @@ from mcp.server import MCPServer
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.mcpserver import Context
 from mcp.types import ToolAnnotations
-from pydantic import AwareDatetime, Field, PositiveInt, ValidationError
+from pydantic import Field, PositiveInt, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.responses import PlainTextResponse
@@ -30,10 +29,12 @@ from core.config import Settings
 from core.db import merchants_t
 from core.models import (
     HHMM,
+    BookingDay,
+    BookingTime,
     CancelOutput,
     GetAvailabilityOutput,
+    GuestText,
     MerchantProfile,
-    NonEmptyStr,
     ReservationOutput,
     ToolError,
     UpdateReservationInput,
@@ -97,17 +98,17 @@ DESTRUCTIVE = ToolAnnotations(
 )
 
 GuestName = Annotated[
-    NonEmptyStr, Field(description="Guest's full name, the same one for the whole booking.")
+    GuestText, Field(description="Guest's full name, the same one for the whole booking.")
 ]
 PartySize = Annotated[PositiveInt, Field(description="Number of guests.")]
 StartsAt = Annotated[
-    AwareDatetime,
+    BookingTime,
     Field(description="Start time with its UTC offset, exactly as returned by get_availability."),
 ]
 IdempotencyKey = Annotated[
-    NonEmptyStr, Field(description="UUID you generate; reuse it only to retry the same action.")
+    GuestText, Field(description="UUID you generate; reuse it only to retry the same action.")
 ]
-ReservationId = Annotated[NonEmptyStr, Field(description="Booking reference, e.g. R-001.")]
+ReservationId = Annotated[GuestText, Field(description="Booking reference, e.g. R-001.")]
 
 
 def slug_of(request: Any) -> str:
@@ -227,7 +228,7 @@ def create_merchant_server(
 
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
-        date: Annotated[Date, Field(description="Requested day, YYYY-MM-DD.")],
+        date: Annotated[BookingDay, Field(description="Requested day, YYYY-MM-DD.")],
         party_size: PartySize,
         ctx: Context,
         time: Annotated[
@@ -265,7 +266,7 @@ def create_merchant_server(
         idempotency_key: IdempotencyKey,
         ctx: Context,
         starts_at: Annotated[
-            AwareDatetime | None,
+            BookingTime | None,
             Field(description="New start time with its UTC offset, from get_availability."),
         ] = None,
         party_size: Annotated[

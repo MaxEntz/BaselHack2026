@@ -486,7 +486,13 @@ async def test_a_booking_racing_a_floor_plan_change_takes_a_table_that_still_fit
             lambda s, slug: s.update_tables(slug, [TableSpec(label="T1", seats=3_000_000_000)]),
             "at most",
         ),
-        (lambda s, slug: s.update_tables(slug, [TableSpec(label="T\x001", seats=2)]), "printable"),
+        # The model refuses it too (#79); the service keeps its own guard behind it.
+        (
+            lambda s, slug: s.update_tables(
+                slug, [TableSpec.model_construct(label="T\x001", seats=2)]
+            ),
+            "printable",
+        ),
         (lambda s, slug: s.list_reservations(slug, date.max), "out of range"),
     ],
     ids=["huge-party", "huge-table", "nul-label", "last-date"],
