@@ -331,6 +331,9 @@ test("pausing the agent is the merchant's status, and requests filter by refusal
 
   assert.equal((await mock.pauseAgent(SLUG)).status, "down");
   assert.equal((await mock.merchant(SLUG)).status, "down");
+  // Like the server: publishing doesn't silently undo a pause.
+  await assert.rejects(mock.publish(SLUG), /resume it rather than publish it again/);
+  assert.equal((await mock.merchant(SLUG)).status, "down");
   assert.equal((await mock.resumeAgent(SLUG)).status, "live");
   const refused = await mock.agentRequests(SLUG, { date: TODAY, refused: true });
   const all = await mock.agentRequests(SLUG, { date: TODAY, refused: false });

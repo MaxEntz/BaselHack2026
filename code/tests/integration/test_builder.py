@@ -304,7 +304,7 @@ async def test_a_warm_cache_replays_the_steps_without_crawl_or_llm(
 
     assert (crawl.calls, llm.calls) == (1, 1)
     assert [(e.step, e.status) for e in run.events] == BUILT
-    assert run.events[1].detail == "2 pages read: homepage, reservation"
+    assert run.events[1].detail == "Read 2 pages: /, /reservation.html"
     assert again.profile == first.profile
     assert (again.facts, again.flags) == (first.facts, first.flags)
 

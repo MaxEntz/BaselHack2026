@@ -4,7 +4,6 @@
 export const ASSISTANT = "Claude";
 
 export const strings = {
-  onboardingGreeting: `Hi! I'm your platform assistant. I'll turn your website into a booking agent that ${ASSISTANT} can talk to.\n\n**What's your restaurant's website?**`,
   profileLive: `Live — discoverable from ${ASSISTANT}`,
   profileHidden: "Hidden from guests until you publish",
   viaAssistant: ASSISTANT,

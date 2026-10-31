@@ -169,7 +169,9 @@ async def test_reports_each_page_read_then_a_summary(demo: DemoCrawl) -> None:
         "Read reservation",
     ]
     assert steps[-1].status == "done"
-    assert steps[-1].detail == "5 pages read: homepage, carte, horaires, contact, reservation"
+    assert steps[-1].detail == (
+        "Read 5 pages: /, /carte.html, /horaires.html, /contact.html, /reservation.html"
+    )
     assert steps[-1].duration_ms is not None and steps[-1].duration_ms > 0
 
 
