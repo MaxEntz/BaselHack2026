@@ -9,6 +9,8 @@ import json
 from datetime import date, datetime, tzinfo
 from typing import Any
 
+from core.errors import STARTED
+
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -63,6 +65,17 @@ def describe(
                 f"{guest} tried to cancel a booking that had started",
                 "Bookings can only be changed before they start.",
             )
+        case 409 if intent == "AMEND" and _started(answer):
+            return (
+                f"{guest} tried to change a booking that had started",
+                "Bookings can only be changed before they start.",
+            )
+        case 409 if intent == "AMEND" and params.get("starts_at") is None:
+            # Same time, more guests: no table was free for them then.
+            return (
+                f"{guest} asked for more seats than were free",
+                "Their booking stays as it was.",
+            )
         case 409:
             return (
                 f"{guest} asked for a time that had just gone",
@@ -98,6 +111,11 @@ def _date(day: date) -> str:
     """ "Sat 31 Oct", the mockup's day (`sesame-management.html#agent`), whatever the server's
     locale."""
     return f"{WEEKDAYS[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
+
+
+def _started(answer: dict[str, Any]) -> bool:
+    message = _text(_object(answer.get("error")).get("message"))
+    return message is not None and message.endswith(STARTED)
 
 
 def _guests(n: int) -> str:
