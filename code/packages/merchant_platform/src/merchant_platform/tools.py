@@ -32,6 +32,7 @@ from core.models import (
     MerchantCancelOutcome,
     PolicyCard,
     ProfileCard,
+    PublishAgentInput,
     ReservationsCard,
     ReservationsCardData,
     SlotInput,
@@ -55,7 +56,8 @@ BuildAgent = Callable[
 ]
 
 NOT_ONBOARDED = "No agent yet: onboard the merchant first with build_agent."
-ALREADY_ONBOARDED = "This merchant already has a live agent: use the other tools to change it."
+ALREADY_ONBOARDED = "This merchant already has an agent: use the other tools to change it."
+PUBLISHED = "Your agent is live: Claude users can now book you."
 NOT_AVAILABLE = "Managing bookings isn't available yet on this platform."
 TOOL_FAILED = "The tool failed unexpectedly."
 SITE_TAKEN = (
@@ -103,11 +105,19 @@ class _Tool:
 TOOLS = (
     _Tool(
         "build_agent",
-        "Build and publish the merchant's booking agent from their website URL and a "
-        "description of how they work (hours, tables, group size, diets, terrace, children, "
-        "cancellation). Takes a few seconds; the merchant sees the progress and the profile.",
+        "Build the merchant's booking agent from their website URL and a description of how "
+        "they work (hours, tables, group size, diets, terrace, children, cancellation). Takes a "
+        "few seconds; the merchant sees the progress and the review card. The agent stays "
+        "hidden from guests until publish_agent.",
         "Building your agent…",
         BuildAgentInput,
+    ),
+    _Tool(
+        "publish_agent",
+        "Publish the merchant's agent, built and reviewed: guests and their assistants can book "
+        "it from now on. Only call it once the merchant said the review card is right.",
+        "Publishing your agent…",
+        PublishAgentInput,
     ),
     _Tool(
         "list_reservations",
@@ -166,6 +176,8 @@ _BY_NAME = {tool.name: tool for tool in TOOLS}
 CLAIM_SECONDS = 300
 # The secret link of a merchant just built, for its owner (#132).
 IssueLink = Callable[[str], Awaitable[IssuedLink]]
+# Publishes a merchant a build left waiting, streaming the `deploy` step (#136).
+Publish = Callable[[str, Emit], Awaitable[None]]
 
 
 class AdminTools:
@@ -180,6 +192,7 @@ class AdminTools:
         *,
         owned_merchant: str | None = None,
         issue_link: IssueLink | None = None,
+        publish: Publish | None = None,
     ) -> None:
         """`owned_merchant` (PLATFORM_MERCHANT) is the only existing merchant a session may
         take over by onboarding its website again (development only, §13, §15).
@@ -190,6 +203,7 @@ class AdminTools:
         self._today = today
         self._owned_merchant = owned_merchant
         self._issue_link = issue_link
+        self._publish = publish
 
     async def run(self, session: Session, call: ToolCall, emit: Emit) -> ToolResult:
         """Runs one call and logs it (§12): tool, merchant, latency, and `ok` or the error code.
@@ -254,6 +268,11 @@ class AdminTools:
             return await self._build(session, arguments, emit)
         slug = session.merchant_slug
         assert slug is not None
+        if isinstance(arguments, PublishAgentInput):
+            if self._publish is None:
+                raise AgentUnavailable(NOT_AVAILABLE)
+            await self._publish(slug, emit)
+            return self._confirmation(PUBLISHED)
         agent = self._require_agent()
         match name, arguments:
             case "list_reservations", ListReservationsInput(date=day):
@@ -304,7 +323,10 @@ class AdminTools:
         session.link = link.fingerprint if link else None
         # The building browser may claim its owner cookie once, shortly after (#132).
         session.claimable_until = time.monotonic() + CLAIM_SECONDS if link else None
-        data = output.model_dump(mode="json", exclude={"tools"})
+        # Never the facts: their values and quotes are the crawled site's own words, which must
+        # not reach a model that holds write tools (ARCHITECTURE.md §4). It reads the flags,
+        # which code writes; the merchant sees the facts on the card.
+        data = output.model_dump(mode="json", exclude={"tools", "facts"})
         # On the card only: the secret link never goes to the model or the history.
         return Outcome(
             {"shown_to_merchant": "profile card", **data},

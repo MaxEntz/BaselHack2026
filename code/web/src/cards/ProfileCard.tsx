@@ -2,12 +2,12 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import type { BuildAgentOutput } from "../types.ts";
 import { strings } from "../strings.ts";
-import { formatServices, plural } from "./format.ts";
+import { plural } from "./format.ts";
 
 type ProfileCardProps = { data: BuildAgentOutput; loginUrl?: string | null };
 
 export function ProfileCard({ data, loginUrl = null }: ProfileCardProps) {
-  const { profile, assumptions, tools, mcp_url } = data;
+  const { profile, facts, flags, status, tools, mcp_url } = data;
   // The tables are the source of truth for capacity (documentation/CONTRACTS.md).
   const seats = profile.tables.reduce((sum, table) => sum + table.seats, 0);
   const subtitle = [profile.location?.city, profile.price_level]
@@ -24,7 +24,9 @@ export function ProfileCard({ data, loginUrl = null }: ProfileCardProps) {
             <ExternalLink href={profile.website} />
           </p>
         </div>
-        <span className="pill pill-live">{strings.profileLive}</span>
+        <span className={status === "building" ? "pill" : "pill pill-live"}>
+          {status === "building" ? strings.profileHidden : strings.profileLive}
+        </span>
       </header>
 
       {profile.tags.length > 0 && (
@@ -38,25 +40,24 @@ export function ProfileCard({ data, loginUrl = null }: ProfileCardProps) {
       )}
 
       <dl className="facts">
-        <Fact label="Services">{formatServices(profile.services)}</Fact>
-        <Fact label="Floor plan">
+        {facts.map((fact) => (
+          <Fact key={fact.key} label={fact.label} source={fact.source}>
+            {fact.value}
+          </Fact>
+        ))}
+        <Fact label="Floor plan" source={null}>
           {plural(profile.tables.length, "table")} · {plural(seats, "seat")}
-        </Fact>
-        <Fact label="Max party size">{plural(profile.max_party_size, "guest")}</Fact>
-        <Fact label="Cancellation">
-          {profile.cancellation_policy ?? "No policy specified"}
-        </Fact>
-        <Fact label="Fallback">
-          <ExternalLink href={profile.fallback_url} />
         </Fact>
       </dl>
 
-      {assumptions.length > 0 && (
-        <div className="assumptions" role="note">
-          <strong>Assumed (not found on your site) — tell me if that's wrong:</strong>
+      {flags.length > 0 && (
+        <div className="assumptions" role="note" aria-label="Check these">
+          <strong>Check these before you publish:</strong>
           <ul>
-            {assumptions.map((assumption) => (
-              <li key={assumption}>{assumption}</li>
+            {flags.map((flag) => (
+              <li key={flag.title}>
+                <b>{flag.title}</b> {flag.detail}
+              </li>
             ))}
           </ul>
         </div>
@@ -86,11 +87,17 @@ export function ProfileCard({ data, loginUrl = null }: ProfileCardProps) {
   );
 }
 
-function Fact({ label, children }: { label: string; children: ReactNode }) {
+type FactProps = { label: string; source: string | null; children: ReactNode };
+
+// `source`: the page the value was read on, "you" for the owner's description (#136).
+function Fact({ label, source, children }: FactProps) {
   return (
     <div className="fact">
       <dt>{label}</dt>
-      <dd>{children}</dd>
+      <dd>
+        {children}
+        {source && <em className="fact-source"> {source === "you" ? "you said so" : source}</em>}
+      </dd>
     </div>
   );
 }

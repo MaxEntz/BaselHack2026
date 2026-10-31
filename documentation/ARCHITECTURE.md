@@ -43,7 +43,8 @@ flowchart TB
   ASSIST -->|"build_agent"| BU
   BU -->|"crawl (Playwright)"| SITE
   BU -->|"extract (strict function call)"| OAI["OpenAI API"]
-  BU -->|"provision, deploy"| AG
+  BU -->|"provision"| AG
+  ASSIST -->|"publish_agent: deploy"| AG
 
   DB -.->|"LISTEN/NOTIFY reservations"| PL
   PL -->|"GET /events (SSE)"| WEB

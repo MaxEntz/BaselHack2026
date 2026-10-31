@@ -332,10 +332,42 @@ class BuildAgentInput(_Model):
     description: str
 
 
+class PublishAgentInput(_Model):
+    """`publish_agent` takes nothing: it publishes the session's merchant (#136)."""
+
+
+FactKey = Literal[
+    "name", "hours", "tags", "max_party_size", "cancellation_policy", "price_level", "booking_page"
+]
+
+
+class BuildFact(_Model):
+    """One line of the review card (#136): what the profile says and where it came from."""
+
+    key: FactKey
+    label: str
+    value: str
+    # Path of the crawled page ("/", "/horaires.html"), "you" for the owner's description, None
+    # for a default or a value no quote could be found for.
+    source: str | None
+    # The exact words found there; never a quote the crawled text doesn't hold (ADR-0003).
+    quote: str | None
+
+
+class BuildFlag(_Model):
+    """Something to check before publishing, written by code: a bold line and why (#136)."""
+
+    title: str
+    detail: str
+
+
 class BuildAgentOutput(_Model):
     profile: MerchantProfile
-    status: Literal["live"]
+    # A build stops after `provision` (#136): hidden from guests until the owner publishes.
+    status: Literal["building"]
     assumptions: tuple[str, ...]
+    facts: tuple[BuildFact, ...]
+    flags: tuple[BuildFlag, ...]
     tools: tuple[GeneratedTool, ...]
     mcp_url: str
 
@@ -737,7 +769,8 @@ class ToolStartEvent(_Model):
 class StepEvent(_Model):
     type: Literal["step"] = "step"
     step: Literal["crawl", "extract", "validate", "provision", "deploy"]
-    status: Literal["running", "done", "error"]
+    # `waiting`: `deploy` after a build, until the owner publishes (#136).
+    status: Literal["running", "done", "error", "waiting"]
     detail: str | None = None
     duration_ms: int | None = None
 
