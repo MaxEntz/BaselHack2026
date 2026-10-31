@@ -11,7 +11,7 @@ import unicodedata
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import get_args
-from urllib.parse import urlsplit
+from urllib.parse import urldefrag, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError
 
@@ -225,15 +225,26 @@ def same_site(url: str, website: str) -> bool:
 
 
 def fallback_url(proposed: str | None, crawl: CrawlResult) -> str:
-    """The model's fallback if it is on the merchant's site; else the booking page the crawl
-    found; else the homepage. A link elsewhere (injected text, a booking platform) never wins."""
-    web_link = proposed and urlsplit(proposed).scheme in ("http", "https")
-    if proposed and web_link and same_site(proposed, crawl.website):
-        return proposed
+    """The model's fallback if it is a page the crawl actually read (a `#section` of it is
+    fine); else the booking page the crawl found; else the homepage. A guessed or foreign
+    link (injected text, a booking platform) never wins: guests only see it when the agent
+    has failed, so it must work."""
+    if proposed and same_site(proposed, crawl.website):
+        crawled = {_page_key(page.url) for page in crawl.pages} | {_page_key(crawl.website)}
+        if _page_key(urldefrag(proposed).url) in crawled:
+            return proposed
     for page in crawl.pages[1:]:
         if BOOKING_PAGE.search(page.url) or BOOKING_PAGE.search(page.title):
             return page.url
     return crawl.website
+
+
+def _page_key(url: str) -> str:
+    """Compare pages regardless of `www.`, a trailing slash or the fragment."""
+    parts = urlsplit(urldefrag(url).url)
+    host = (parts.hostname or "").removeprefix("www.")
+    port = f":{parts.port}" if parts.port else ""
+    return f"{host}{port}{parts.path.rstrip('/')}?{parts.query}"
 
 
 def describe(error: ValidationError) -> str:

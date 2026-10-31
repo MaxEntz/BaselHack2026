@@ -173,6 +173,13 @@ async def test_a_reply_without_the_tool_call_is_retried() -> None:
     ("proposed", "expected"),
     [
         ("http://localhost:8080/reservation.html", "http://localhost:8080/reservation.html"),
+        ("http://localhost:8080/#reserver", "http://localhost:8080/#reserver"),
+        (
+            "http://localhost:8080/reservation.html#form",
+            "http://localhost:8080/reservation.html#form",
+        ),
+        # On the right host but never crawled: a guess that may well 404.
+        ("http://localhost:8080/reservations", "http://localhost:8080/reservation.html"),
         ("https://www.thefork.com/le-petit-zinc", "http://localhost:8080/reservation.html"),
         ("javascript:alert(1)", "http://localhost:8080/reservation.html"),
         (None, "http://localhost:8080/reservation.html"),
