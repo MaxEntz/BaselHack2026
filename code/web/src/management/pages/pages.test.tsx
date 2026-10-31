@@ -106,9 +106,9 @@ describe("Guests", () => {
 
     expect([...lena.cells].map((cell) => cell.textContent)).toEqual([
       "Lena Becker",
-      "Sun 1 Nov, 12:00",
+      "Thu 5 Nov, 19:30",
+      "4",
       "2",
-      "1",
       "Agent",
     ]);
     expect(names()).toEqual(names().toSorted((a, b) => a!.localeCompare(b!)));
