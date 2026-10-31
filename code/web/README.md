@@ -10,10 +10,21 @@ VITE_MOCK=1 npm run dev    # no backend: replays src/mocks/*.json
 npm run build              # tsc (strict) + vite build
 npm run lint
 npm run check:contracts    # mocks vs src/types.ts
-npm test                   # tests/*.test.ts (the chat reducer), Node's own runner (Node version: ../README.md)
+npm test                   # tests/*.test.ts on Node's own runner (Node version: ../README.md), then Vitest (src/**/*.test.tsx)
+npx playwright install chromium   # once
+npm run test:e2e           # Playwright (e2e/), 1440 px, starts Vite in mock mode on :5179
 ```
 
-Open <http://localhost:5173/?gallery> to review every card and state (steps,
+Routes ([ADR-0017](../../documentation/adr/0017-router-and-test-tools-for-the-management-site.md)):
+`/` is Studio (today the chat below), `/manage/<slug>` and `/manage/<slug>/<page>`
+(`assistant`, `reservations`, `guests`, `hours`, `floor`, `rules`, `agent`, `settings`) the
+management site. An unknown page goes to that merchant's Home, any other path to `/`.
+
+`e2e/primitives.spec.ts` compares each management primitive's computed styles with the v10
+mockup (`documentation/design/poc-v10/sesame-management.html`); it is skipped while the
+mockup isn't in the tree, or point `SESAME_MOCKUP` at a copy.
+
+Open <http://localhost:5173/?gallery> to review every management primitive and every card and state (steps,
 profile, reservations incl. empty, stats, policy, notifications, errors).
 
 ## Environment
@@ -42,3 +53,11 @@ message replays `tonight.json`, and messages mentioning *block*, *busy*, *stats*
 - `src/components/`: header, message list (auto-scroll), composer.
 - `src/cards/`: rich messages rendered from `step`/`card` events and live
   notifications, never from the assistant's Markdown; `Gallery.tsx` is `/?gallery`.
+- `src/router.tsx`, `src/Studio.tsx`: the routes.
+- `src/management/`: the management site. `tokens.css` (scoped to `.mg`, light only),
+  `fonts.css` and `fonts/` (Fraunces Soft, Karla, self-hosted with their OFL licences),
+  `ui/` (Pill, Tag, Box, Blob, Under, Doodle, Seed, Icon, Field, Dialog, Toast, SaveBar),
+  `pages.ts` (page ids and titles), `PrimitivesGallery.tsx`.
+- `src/studio/fonts/`: Studio's fonts (Source Sans 3, Source Code Pro, Gloock), self-hosted.
+- `src/clock.ts`: the time pages read; tests fix it with `setClock(DEMO_NOW)` (Sat 31 Oct 2026, 19:40).
+- `src/strings.ts`: copy that names the guest's assistant (Claude), in one place for #71.

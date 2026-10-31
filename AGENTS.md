@@ -334,6 +334,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | Web unit tests on Node's test runner; an interrupted build step shows "Interrupted" | #86 |
 | 2026-10-31 | The BATP node follows the draft on duplicate ids, `merchant` per intent, malformed frames, `error` frames and its own `503` with the fallback URL | #93 |
 | 2026-10-31 | Product named **Sésame**; identifiers stay `merchant-agents` / `merchant_agents` | #105 |
+| 2026-10-31 | Web app: `react-router` (Studio at `/`, management pages at `/manage/<slug>/<page>`), Vitest + Testing Library, Playwright in CI; management tokens scoped to `.mg`, fonts self-hosted | [ADR-0017](documentation/adr/0017-router-and-test-tools-for-the-management-site.md), #130 |
 
 ## 15. Out of scope (POC)
 
