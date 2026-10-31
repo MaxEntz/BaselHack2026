@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import type { BuildAgentOutput } from "../types.ts";
+import { strings } from "../strings.ts";
 import { formatServices, plural } from "./format.ts";
 
 export function ProfileCard({ data }: { data: BuildAgentOutput }) {
@@ -21,7 +22,7 @@ export function ProfileCard({ data }: { data: BuildAgentOutput }) {
             <ExternalLink href={profile.website} />
           </p>
         </div>
-        <span className="pill pill-live">Live — discoverable from Claude</span>
+        <span className="pill pill-live">{strings.profileLive}</span>
       </header>
 
       {profile.tags.length > 0 && (

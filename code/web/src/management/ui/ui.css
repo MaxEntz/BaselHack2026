@@ -1,0 +1,118 @@
+/* Management primitives. Every rule is copied from
+   documentation/design/poc-v10/sesame-management.html and scoped to .mg (#130). */
+
+.mg {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 17px/1.4 var(--body);
+  font-synthesis: none;
+  -webkit-text-size-adjust: 100%;
+}
+.mg *, .mg *::before, .mg *::after { box-sizing: border-box; }
+.mg [hidden] { display: none !important; }
+.mg :is(h1, h2, h3, p, ul, ol, dl, dd, pre) { margin: 0; padding: 0; }
+.mg :is(ul, ol) { list-style: none; }
+.mg :is(button, input, select, textarea) { font: inherit; color: inherit; }
+.mg button { cursor: pointer; background: none; border: 0; padding: 0; }
+.mg a { color: inherit; }
+.mg :focus-visible { outline: 2px solid var(--brick); outline-offset: 2px; }
+.mg .on-dark :focus-visible, .mg .side :focus-visible { outline-color: var(--on); }
+.mg .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.mg .num { font-variant-numeric: tabular-nums; }
+
+/* Display type: the soft heavy italic. */
+.mg :is(.dsp, h1, dialog h2) {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 900;
+  font-variation-settings: "SOFT" 55, "opsz" 144;
+  letter-spacing: -.005em;
+}
+
+/* Icon, Doodle, Seed */
+.mg .ico { width: 1em; height: 1em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.mg .doodle { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.mg .seed { width: .73em; height: 1em; fill: currentColor; overflow: visible; }
+
+/* Under: the hand-drawn brick stroke */
+.mg .under { position: relative; display: inline-block; }
+.mg .under::after { content: ""; position: absolute; left: -8px; right: -24px; bottom: -.3em; height: .4em; background: var(--stroke-brick) center / 100% 100% no-repeat; pointer-events: none; }
+
+/* Pill */
+.mg .pill { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 7px 18px; border: 1px solid var(--olive); border-radius: 30px; font-weight: 600; font-size: 17px; line-height: 1; white-space: nowrap; text-decoration: none; transition: background .15s, color .15s; }
+.mg .pill:hover { background: rgb(0 0 0 / .05); }
+.mg .pill.pri { background: var(--brick); border-color: var(--brick); color: var(--on); box-shadow: 0 0 4px rgb(0 0 0 / .16); }
+.mg .pill.pri:hover { background: var(--brick-deep); border-color: var(--brick-deep); }
+.mg .pill.sm { min-height: 30px; padding: 4px 13px; font-size: 15px; font-weight: 500; }
+.mg .pill[aria-pressed="true"] { background: var(--olive); color: var(--on); }
+.mg .pill:disabled { opacity: .45; cursor: not-allowed; }
+.mg .on-dark .pill { border-color: var(--on); color: var(--on); }
+.mg .on-dark .pill:hover { background: rgb(255 255 255 / .12); }
+.mg .on-dark .pill[aria-pressed="true"] { background: var(--on); color: var(--ink); }
+.mg .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Tag */
+.mg .tag { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 12px; border: 1px solid var(--olive); border-radius: 30px; font-size: 15px; line-height: 1.1; }
+
+/* Box. Leather goes on .side, .box.olive and .room only. */
+.mg .box { padding: 22px 24px; border-radius: 30px; }
+.mg .box.olive { background: var(--olive-band) var(--leather); color: var(--on); }
+.mg .box.brick { background: var(--brick); color: var(--on); }
+.mg .box.cream { background: var(--cream); }
+.mg .side { background: var(--olive-band) var(--leather); color: var(--on); }
+.mg .room { border-radius: 30px; background: var(--olive-band) var(--leather); color: var(--on); }
+.mg .ag { border-radius: 30px; background: var(--brick); color: var(--on); }
+
+/* Blob */
+.mg .blob { display: block; width: 100%; height: 100%; overflow: visible; fill: var(--fill, var(--olive)); }
+
+/* Field */
+.mg .field { display: grid; gap: 5px; align-content: start; min-width: 0; font-weight: 600; font-size: 16px; }
+.mg .field small { font-weight: 400; font-size: 15px; color: var(--mut); }
+.mg :is(input[type="text"], input[type="url"], input[type="number"], input[type="time"], select, textarea) { width: 100%; min-height: 40px; padding: 7px 16px; border: 1px solid var(--line-2); border-radius: 22px; background: var(--bg); font-weight: 400; font-size: 17px; }
+.mg dialog :is(input[type="text"], input[type="number"], select) { background: var(--cream); }
+.mg textarea { resize: vertical; border-radius: 18px; }
+.mg :is(input, select, textarea):focus { outline: 2px solid var(--olive); outline-offset: 0; }
+.mg input[readonly] { background: transparent; color: var(--mut); }
+.mg .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; font-weight: 400; font-size: 16px; }
+.mg .checks label { display: inline-flex; align-items: center; gap: 7px; }
+.mg input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--olive); }
+
+/* SaveBar */
+.mg .savebar { position: sticky; bottom: 14px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 9px 18px; border-radius: 30px; background: var(--brick-deep); color: var(--on); box-shadow: 0 6px 18px rgb(0 0 0 / .25); }
+.mg .savebar span { flex: 1 1 160px; font-size: 16px; }
+.mg .savebar .pill { border-color: currentColor; color: inherit; }
+.mg .savebar .pill:hover { background: rgb(255 255 255 / .12); }
+.mg .savebar .pill.pri { background: var(--on); border-color: var(--on); color: var(--brick-deep); box-shadow: none; }
+
+/* Dialog */
+.mg dialog { width: min(480px, calc(100vw - 32px)); padding: 0; border: 0; border-radius: 30px; background: var(--bg); color: var(--ink); box-shadow: 0 12px 44px rgb(0 0 0 / .3); }
+.mg dialog::backdrop { background: rgb(52 46 34 / .45); }
+.mg .dlg { display: grid; gap: 15px; padding: 26px; }
+.mg .dlg-hd { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.mg dialog h2 { font-size: 34px; line-height: 1.03; color: var(--olive); overflow-wrap: anywhere; }
+.mg .dlg-x { display: grid; place-items: center; width: 34px; height: 34px; font-size: 20px; color: var(--olive); }
+.mg .dlg-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
+/* Toast */
+.mg .toasts { position: fixed; left: 50%; bottom: 18px; z-index: 40; display: grid; gap: 8px; width: min(440px, calc(100vw - 32px)); transform: translateX(-50%); }
+.mg .toast { display: flex; align-items: center; gap: 12px; padding: 11px 18px; border-radius: 22px; background: var(--brick-deep); color: var(--on); box-shadow: 0 8px 24px rgb(0 0 0 / .3); font-size: 16px; line-height: 1.25; }
+.mg .toast b { display: block; font-weight: 700; }
+.mg .toast button { margin-left: auto; font-weight: 700; text-decoration: underline; text-underline-offset: .2em; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mg *, .mg *::before, .mg *::after { animation: none !important; transition: none !important; }
+}
+
+/* /?gallery layout only */
+.mg-gallery { display: grid; gap: 34px; padding: 34px clamp(16px, 2.6vw, 34px) 60px; }
+.mg-gallery h1 { font-size: 48px; line-height: 1.02; color: var(--olive); }
+.mg-gallery-section { display: grid; gap: 14px; }
+.mg-gallery-section > h2 { font-size: 27px; line-height: 1.05; }
+.mg-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; align-items: start; }
+.mg-gallery-blob { position: relative; display: grid; place-items: center; width: 124px; aspect-ratio: 1 / .76; color: var(--on); }
+.mg-gallery-blob svg { position: absolute; inset: 0; }
+.mg-gallery-blob b { position: relative; font-size: 30px; line-height: 1; }
+.mg-gallery-doodle { width: 64px; height: 64px; color: var(--olive); }
+.mg-page main { display: grid; gap: 14px; min-height: 100vh; padding: 34px clamp(16px, 2.6vw, 34px); }
+.mg-page h1 { font-size: clamp(38px, 4.6cqw, 58px); line-height: 1.02; color: var(--olive); }

@@ -1,21 +1,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { RouterProvider } from "react-router";
 import "./index.css";
 import "./cards/cards.css";
-import App from "./App.tsx";
-import { Gallery } from "./cards/Gallery.tsx";
-
-// /?gallery shows every card and state from the mocks, for visual review.
-const gallery = new URLSearchParams(window.location.search).has("gallery");
+import "./studio/fonts.css";
+import { router } from "./router.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {gallery ? (
-      <div className="app">
-        <Gallery />
-      </div>
-    ) : (
-      <App />
-    )}
+    <RouterProvider router={router} />
   </StrictMode>,
 );
