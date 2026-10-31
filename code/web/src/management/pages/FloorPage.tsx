@@ -6,7 +6,7 @@ import { useClient, useLoad } from "../data.ts";
 import { addDays } from "../dates.ts";
 import { LeaveGuard } from "../LeaveGuard.tsx";
 import { PAGES } from "../pages.ts";
-import { startsOf, toMinutes } from "../services.ts";
+import { toMinutes } from "../services.ts";
 import { Blob, Icon, Pill, SaveBar, useToast } from "../ui/index.ts";
 import { useSavedForm } from "../useSavedForm.tsx";
 import { PageTitle } from "./PageTitle.tsx";
@@ -28,7 +28,8 @@ export function FloorPage({ slug, version }: { slug: string; version: number }) 
         client.merchant(slug, signal),
         client.tables(slug, signal),
       ]);
-      // The merchant's today and time are the platform's, never the browser's.
+      // The merchant's today and time are the platform's, never the browser's. Read once: while the
+      // page stays open, the default time and what has passed don't follow the clock.
       return { today: merchant.now.slice(0, 10), clock: merchant.now.slice(11, 16), tables };
     },
     [client, slug],
@@ -95,7 +96,8 @@ function Room({ slug, version, today, clock, tables }: FloorBase & { slug: strin
 
   const isToday = data.date === today;
   const service = chosen.service ?? defaultService(data.services, isToday, clock);
-  const starts = startsOf(data.services[service]);
+  const { start, end } = data.services[service];
+  const starts = data.starts.filter((time) => start <= time && time < end);
   const at =
     chosen.at && starts.includes(chosen.at)
       ? chosen.at
@@ -121,6 +123,7 @@ function Room({ slug, version, today, clock, tables }: FloorBase & { slug: strin
           tables={tables}
           at={at}
           starts={starts}
+          passed={isToday && at <= clock}
           onAt={(next) => setChosen({ service, at: next })}
         />
       </section>
@@ -134,6 +137,7 @@ function RoomAt({
   tables,
   at,
   starts,
+  passed,
   onAt,
 }: {
   slug: string;
@@ -141,6 +145,8 @@ function RoomAt({
   tables: TableSpec[];
   at: string;
   starts: string[];
+  // `at` has passed: no new booking there.
+  passed: boolean;
   onAt: (at: string) => void;
 }) {
   const navigate = useNavigate();
@@ -162,6 +168,7 @@ function RoomAt({
   function choose(table: TableSpec) {
     const booking = seated.get(table.label);
     if (booking) navigate(`${base}&booking=${encodeURIComponent(booking.id)}`);
+    else if (passed) toast(`${at} has passed.`);
     else if (blocked) toast(`${at} is blocked.`);
     else navigate(`${base}&new=${at}&guests=${Math.min(2, table.seats)}`);
   }

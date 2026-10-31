@@ -178,21 +178,31 @@ describe("Floor plan", () => {
 
     await act(() => router.navigate(`/manage/${SLUG}/floor`));
     await at();
-    fireEvent.click(table("T9"));
-    expect(router.state.location.search).toBe("?date=2026-10-31&new=19:30&guests=2");
+    fireEvent.click(screen.getByRole("button", { name: "20:30" }));
+    fireEvent.click(table("T4"));
+    expect(router.state.location.search).toBe("?date=2026-10-31&new=20:30&guests=2");
+  });
+
+  it("says when the time has passed", async () => {
+    const { router } = open("floor");
+    await at();
+    fireEvent.click(table("T4"));
+    expect(await screen.findByText("19:30 has passed.")).toBeTruthy();
+    expect(router.state.location.pathname).toBe(`/manage/${SLUG}/floor`);
   });
 
   it("says when the time is blocked", async () => {
     const { client } = open("floor");
-    await client.setBlocked(SLUG, "2026-10-31", ["19:30"]);
+    await client.setBlocked(SLUG, "2026-10-31", ["20:30"]);
     await at();
 
     click("Next day");
     click("Previous day");
     await screen.findByText("Saturday 31 October");
-    await waitFor(() => expect(screen.getByRole("button", { name: "19:30" }).className).toContain("off"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "20:30" }).className).toContain("off"));
+    fireEvent.click(screen.getByRole("button", { name: "20:30" }));
     fireEvent.click(table("T4"));
-    expect(await screen.findByText("19:30 is blocked.")).toBeTruthy();
+    expect(await screen.findByText("20:30 is blocked.")).toBeTruthy();
   });
 
   it("adds a table, and keeps one a booking refers to", async () => {
