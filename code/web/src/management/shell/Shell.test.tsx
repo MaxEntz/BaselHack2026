@@ -3,10 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import fixtureJson from "../../../../tests/fixtures/demo/la-graine-verte-management.json" with { type: "json" };
+import petitZinc from "../../../../tests/fixtures/le-petit-zinc.json" with { type: "json" };
 import { createMockManagementClient } from "../../mocks/managementClient.ts";
 import { routes } from "../../router.tsx";
-import type { ManagementFixture } from "../../types.ts";
+import type { Look, ManagementFixture } from "../../types.ts";
 import type { ManagementClient } from "../client.ts";
+import { announceChange } from "../changes.ts";
 import { ClientContext } from "../data.ts";
 import { NOTHING_FOUND } from "./TopBar.tsx";
 
@@ -260,5 +262,25 @@ describe("footer", () => {
   it("isn't on the Assistant page", () => {
     at(`/manage/${SLUG}/assistant`);
     expect(screen.queryByRole("contentinfo")).toBeNull();
+  });
+});
+
+describe("look (#150)", () => {
+  it("puts the merchant's look on the root, and a new one without a reload", async () => {
+    const client = mock();
+    let look: Look | null = null;
+    const merchant = client.merchant.bind(client);
+    client.merchant = async (slug, signal) => ({ ...(await merchant(slug, signal)), look });
+    at(`/manage/${SLUG}/hours`, client);
+    const root = document.querySelector<HTMLElement>(".mg-shell")!;
+    await screen.findByRole("heading", { name: "Opening hours" });
+    expect(root.getAttribute("style")).toBeNull();
+    expect(root.dataset.corners).toBe("organic");
+
+    look = petitZinc.look as Look;
+    announceChange(SLUG);
+    await waitFor(() => expect(root.style.getPropertyValue("--olive")).toBe("#8f2d2a"));
+    expect(root.dataset.corners).toBe("rounded");
+    expect(root.style.getPropertyValue("--radius")).toBe("10px");
   });
 });

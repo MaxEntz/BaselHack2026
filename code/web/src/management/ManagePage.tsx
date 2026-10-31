@@ -1,9 +1,11 @@
-import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
-import type { LiveEvent } from "../types.ts";
+import type { LiveEvent, MerchantOverview } from "../types.ts";
 import { announcingChanges, onChange } from "./changes.ts";
 import { ClientContext, useClient, useLoad } from "./data.ts";
-import { RefreshContext, type RefreshStore, createRefreshStore, useLatestVersion, usePageVersion } from "./live.ts";
+import { RefreshContext, type RefreshStore, createRefreshStore, usePageVersion } from "./live.ts";
+import "./look.css";
+import { cornersOf, lookStyle } from "./look.ts";
 import { AgentPage } from "./pages/AgentPage.tsx";
 import { FloorPage } from "./pages/FloorPage.tsx";
 import { GuestsPage } from "./pages/GuestsPage.tsx";
@@ -47,14 +49,24 @@ function ManageShell({ slug, page }: { slug: string; page: PageId }) {
   const [store] = useState(createRefreshStore);
   const [assistantOpen, setAssistantOpen] = useAssistantOpen();
   const full = page === "assistant";
+  // The brand and the look follow every change, held or not: they can't replace the merchant's work.
+  const latest = useSyncExternalStore(store.subscribe, store.latest);
+  const loadMerchant = useCallback((signal: AbortSignal) => client.merchant(slug, signal), [client, slug]);
+  const merchant = useLoad(loadMerchant, latest, false).data ?? null;
   return (
     <ClientContext.Provider value={client}>
       <RefreshContext.Provider value={store}>
-        <div className={["mg", "mg-shell", assistantOpen && !full && "asst-on"].filter(Boolean).join(" ")} data-page={page}>
+        <div
+          className={["mg", "mg-shell", assistantOpen && !full && "asst-on"].filter(Boolean).join(" ")}
+          data-page={page}
+          data-corners={cornersOf(merchant?.look)}
+          style={lookStyle(merchant?.look)}
+        >
           <ToastProvider>
             <Shell
               slug={slug}
               page={page}
+              merchant={merchant}
               store={store}
               assistantShown={full || assistantOpen}
               setAssistantOpen={setAssistantOpen}
@@ -69,12 +81,14 @@ function ManageShell({ slug, page }: { slug: string; page: PageId }) {
 function Shell({
   slug,
   page,
+  merchant,
   store,
   assistantShown,
   setAssistantOpen,
 }: {
   slug: string;
   page: PageId;
+  merchant: MerchantOverview | null;
   store: RefreshStore;
   assistantShown: boolean;
   setAssistantOpen: (open: boolean) => void;
@@ -83,12 +97,9 @@ function Shell({
   const navigate = useNavigate();
   const toast = useToast();
   const version = usePageVersion();
-  const latest = useLatestVersion();
   const [unseen, setUnseen] = useState(0);
   const full = page === "assistant";
 
-  const loadMerchant = useCallback((signal: AbortSignal) => client.merchant(slug, signal), [client, slug]);
-  const merchant = useLoad(loadMerchant, latest, false).data ?? null;
   const name = merchant?.name ?? nameFromSlug(slug);
 
   // The live handler reads the latest render's state; the subscription itself stays open.
