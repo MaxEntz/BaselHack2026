@@ -68,10 +68,11 @@ the code once and removes it from the address bar.
   `fonts.css` and `fonts/` (Fraunces Soft, Karla, self-hosted with their OFL licences),
   `ui/` (Pill, Tag, Box, Blob, Under, Doodle, Seed, Icon, Field, Dialog, Toast, SaveBar, Source),
   `pages.ts` (page ids and titles), `PrimitivesGallery.tsx`. `pages/` holds the pages built
-  so far (Opening hours, Booking rules, Settings, Guests; #145, #144), styled by `pages.css`;
+  so far (Home, Opening hours, Booking rules, Settings, Guests, Floor plan), styled by `pages.css`;
   they read through `data.ts` (`useClient`, which tests provide, and `useLoad`), save through
   `useSavedForm.tsx` and ask before leaving unsaved changes (`LeaveGuard.tsx`). `problems.ts`
-  words the rule a form broke; `BlockDialog.tsx` sets a day's blocked times.
+  words the rule a form broke; `DayBar.tsx` picks a day of the next 7 and a service;
+  `BlockDialog.tsx` sets a day's blocked times.
 - `src/studio/fonts/`: Studio's fonts (Source Sans 3, Source Code Pro, Gloock), self-hosted.
 - `src/clock.ts`: the time pages read; tests fix it with `setClock(DEMO_NOW)` (Sat 31 Oct 2026, 19:40).
 - `src/strings.ts`: copy that names the guest's assistant (Claude), in one place for #71.
