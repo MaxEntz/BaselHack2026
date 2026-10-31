@@ -2,7 +2,7 @@
 
 > Let Claude book with any merchant, straight from their website.
 
-This file is the single source of truth for this repository. Read it fully before writing code. When something is not specified here, follow **§11 Default decisions** instead of asking, and record any new decision in **§13 Decision log**.
+This file is the single source of truth for this repository. Read it fully before writing code. When something is not specified here, follow **§13 Default decisions** instead of asking, and record any new decision in **§14 Decision log**.
 
 `CLAUDE.md` only imports this file (`@AGENTS.md`), so Claude Code and opencode read the same instructions. Edit this file, never `CLAUDE.md`.
 
@@ -111,16 +111,20 @@ Reasons for each choice: [ADR-0002](documentation/adr/0002-python-mcp-v2-fastapi
 - Table assignment: smallest table with `seats >= party_size` that has **no overlapping reservation** and whose start time is **not blocked**.
 - `party_size > max_party_size`, or no table that fits → `party_too_large` + `fallback_url`.
 - Availability search returns up to **3 slots**, closest to the requested time, sorted by time.
-- **Every write initiated from Claude requires explicit user confirmation** in the conversation, after Claude has shown what it will book. A confirmation given before that summary doesn't count, and a write never goes in the same reply as the `search_merchants` or `get_availability` call the summary is based on. Enforced by the tool descriptions and by `idempotency_key` on writes (#14, #109).
+- **Every write initiated from Claude requires explicit user confirmation** in the conversation, after Claude has shown what it will book. A confirmation given before that summary doesn't count, and a write never goes in the same reply as the `search_merchants` or `get_availability` call the summary is based on. A re-check of availability after the yes may go with the booking, unless it no longer offers the confirmed time: then Claude shows the new times and asks again. Enforced by the tool descriptions and by `idempotency_key` on writes (#14, #109).
 - A guest can move or cancel a booking only before it starts; updates and cancellations also need `guest_name`.
 - A merchant cancelling a booking **notifies the guest**: a stored notice, returned by `get_my_reservations` for 24 hours after it is first returned.
 - Blocking a slot never removes existing bookings; it only prevents new ones at that start time.
 
 ## 7. Data model
 
-**`MerchantProfile`** (`core/models.py`): `slug`, `name`, `website`, `vertical` (`restaurant`), `location?` (`city`, `lat`, `lng`), `seats`, `services` (`[{start, end}]`, `HH:MM`), `max_party_size`, `tables` (`[{label, seats}]`), `tags` (`gluten-free`, `vegetarian`, `vegan`, `halal`, `kosher`, `terrace`, `kid-friendly`), `price_level` (`€`…`€€€€`), `cancellation_policy?`, `fallback_url`. The LLM **only fills a schema** (`ProfileDraft`): it never generates code, SQL or tool definitions ([ADR-0003](documentation/adr/0003-llm-fills-a-schema-never-generates-code.md)).
+### 7.1 MerchantProfile
 
-**Database** ([ADR-0001](documentation/adr/0001-one-postgres-schema-per-merchant.md)). Source of truth: `code/packages/core/src/core/db.py` and `code/migrations/versions/`.
+`core.models.MerchantProfile`: `slug`, `name`, `website`, `vertical` (`restaurant`), `location?` (`city`, `lat`, `lng`), `seats`, `services` (`[{start, end}]`, `HH:MM`), `max_party_size`, `tables` (`[{label, seats}]`), `tags` (`gluten-free`, `vegetarian`, `vegan`, `halal`, `kosher`, `terrace`, `kid-friendly`), `price_level` (`€`…`€€€€`), `cancellation_policy?`, `fallback_url`. The LLM **only fills a schema** (`ProfileDraft`): it never generates code, SQL or tool definitions ([ADR-0003](documentation/adr/0003-llm-fills-a-schema-never-generates-code.md)).
+
+### 7.2 Database
+
+One Postgres schema per merchant ([ADR-0001](documentation/adr/0001-one-postgres-schema-per-merchant.md)). Source of truth: `code/packages/core/src/core/db.py` and `code/migrations/versions/`.
 
 | Where | Tables |
 |---|---|
@@ -133,11 +137,13 @@ Rules for DB code:
 - Always query merchant tables through `merchant_conn(engine, slug)` (`schema_translate_map` → `m_<slug>`) with Core constructs, **never `text()`**, which is not translated.
 - Schema name = `m_` + slug with `-` → `_`; slugs are ≤ 61 characters (Postgres identifiers: 63 bytes). Turn a slug into a schema only with `schema_for(slug)`. Reservation IDs come from `next_reservation_id(conn)`.
 
-## 8. Tools and builder
+## 8. Tool contracts
 
 Exact fields, bounds and error cases: [`documentation/CONTRACTS.md`](documentation/CONTRACTS.md). Tools take flat typed arguments (the fields of the `*Input` models in `core/models.py`) and return `<Result> | ToolError`.
 
-**User tools** (gateway, `/mcp`; the descriptions tell Claude to confirm writes, pass preferences as `filters`, and give any `fallback_url` to the user):
+### 8.1 User tools
+
+Gateway, `/mcp` (the descriptions tell Claude to confirm writes, pass preferences as `filters`, and give any `fallback_url` to the user):
 
 - `search_merchants`: live merchants matching the query, tags and price, with `suggestions` of filters to drop and `ignored_filters`.
 - `get_availability`: up to 3 slots.
@@ -147,9 +153,13 @@ Exact fields, bounds and error cases: [`documentation/CONTRACTS.md`](documentati
 
 Each merchant also has `/m/<slug>/mcp` with the 4 booking tools, without `merchant` ([ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md)).
 
-**Admin tools** (platform assistant only): `build_agent`, `list_reservations`, `get_stats`, `block_slot`, `unblock_slot`, `update_policy`, `update_tables`, `cancel_reservation` (as the merchant, with a guest notice).
+### 8.2 Admin tools
 
-**Builder steps** (streamed as events into the merchant chat):
+Platform assistant only, never exposed to Claude users: `build_agent`, `list_reservations`, `get_stats`, `block_slot`, `unblock_slot`, `update_policy`, `update_tables`, `cancel_reservation` (as the merchant, with a guest notice).
+
+### 8.3 Builder steps
+
+Streamed as events into the merchant chat:
 
 1. `crawl`: Playwright loads the homepage + up to 5 same-domain pages whose path or link text matches `menu|carte|karte|hours|horaires|zeiten|contact|kontakt|book|reserv` (accents ignored).
 2. `extract`: a forced strict function call fills `ProfileDraft` from the crawled text and the description (the description wins on conflicts).
@@ -157,7 +167,9 @@ Each merchant also has `/m/<slug>/mcp` with the 4 booking tools, without `mercha
 4. `provision`: schema `m_<slug>`, tables, policy, registry row in `building`.
 5. `deploy`: `status = 'live'`; the merchant is now discoverable.
 
-**Errors**: `{ "error": <code>, "message": str, "fallback_url"?: str }`.
+### 8.4 Errors
+
+Every tool error is `{ "error": <code>, "message": str, "fallback_url"?: str }`.
 
 | Code | When | `fallback_url` |
 |---|---|---|
@@ -167,12 +179,25 @@ Each merchant also has `/m/<slug>/mcp` with the 4 booking tools, without `mercha
 | `not_found` | Unknown merchant or reservation | no |
 | `invalid_input` | Validation error | no |
 
-## 9. Module rules
+## 9. Conversations to support (acceptance scenarios)
 
-- **Provisioning** (`agent/provisioning.py`): `provision(profile)` (one transaction: schema, tables, policy, registry row in `building`), `deploy(slug)` / `set_status(slug, "live"|"down")`, `deprovision(slug)` (idempotent). Each takes an optional `engine=`: long-running processes pass theirs; scripts omit it and get a short-lived engine on `DATABASE_URL`. A slug in use raises `SlugTaken` (an `InvalidInput`). `default_tables(seats)` and `generated_tools(profile)` are pure; `templates/restaurant.json` is validated at import.
-- **Merchant operations** (`agent/admin.py`): one `merchant_conn` transaction each, so the merchant schema and the registry's `profile` change together. The merchant's `tables` and `policy` rows are authoritative; `profile` is a display copy kept in sync. They load the merchant with `merchant_side=True` (a `building` merchant is editable by its owner, hidden from guests). Input outside the database's range is `InvalidInput`, never a raw DB error.
-- **Gateway** (`gateway/`): only `fallback.py` turns failures into `ToolError`; arguments the SDK rejects also answer `invalid_input`. `search_merchants` answers `agent_unavailable` + `fallback_url` when its query names a `down` merchant and no live one. Fault injection: `CHAOS_DELAY_MS`, `CHAOS_MERCHANTS`. As a bridge, it still reads the registry for the `down` status and the fallback URL.
-- **BATP**: the library (`packages/batp/`) depends only on `core`, so the gateway can import its client. Change the protocol in `PROTOCOL.md`, the draft in `documentation/rfc/`, the library and its tests together.
+**User ↔ Claude (via the gateway)**
+- "Table for 4 tonight at 8pm" → `search_merchants` with preference filters → `get_availability` → Claude proposes slots → user picks → Claude asks to confirm → `create_reservation` → booking card.
+- "Move it to 9pm" → `update_reservation`. "Cancel my booking" → `cancel_reservation`.
+- Vegan preference on, merchant not tagged vegan → no match, Claude offers to drop the filter.
+- "Table for 8" when max is 6 → `party_too_large` → Claude gives the fallback link.
+- Agent down → `agent_unavailable` → Claude gives the fallback link.
+
+**Merchant ↔ platform assistant**
+- Onboarding: assistant asks for the website → asks for the description → calls `build_agent` → shows step progress → shows the agent profile card.
+- "What bookings do I have tonight?" → `list_reservations` → table message.
+- "Block 21:00 tonight" → `block_slot`; Claude users no longer get 21:00.
+- "Set max party size to 6" → `update_policy`.
+- "How busy are we tonight?" → `get_stats`.
+- "Cancel R-001" → `cancel_reservation(by="merchant")` → guest notice created.
+- A booking made through Claude appears in the merchant chat as a **"New booking via Claude"** notification within 2 s (SSE).
+
+How to run them against the deployed gateway: [connector runbook](documentation/runbooks/connector.md), step 4.
 
 ## 10. Commands
 
@@ -193,30 +218,35 @@ make deploy     # gateway + node to the team server
 
 Env (`code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `PLATFORM_MERCHANT`.
 
-## 11. Default decisions (apply without asking)
+## 11. Milestones
 
-- **One agent per merchant** is a logical boundary: one multi-tenant `AgentService` keyed by slug, data isolated by Postgres schema. No per-merchant processes.
-- **Gateway and agents**: separate processes through BATP when deployed; the same process without `BATP_URL`.
-- **Auth:** the public gateway only lets Anthropic's range through ([ADR-0010](documentation/adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)); `GATEWAY_TOKEN` is optional. Merchant platform: single hard-coded merchant session.
-- **Guest identity:** the `guest_name` Claude passes; no accounts.
-- **Guest notices** (merchant cancellations): stored per guest name and returned by `get_my_reservations`; no push to Claude.
-- **Fallback depth:** return the URL only; Claude does not drive the website.
-- **Timezone:** `Europe/Zurich` everywhere; store `timestamptz`.
-- **Discovery:** single city, filter by tags and price only; no ranking beyond name order.
-- **Preferences** are never stored server-side; they only arrive as `filters`.
-- Missing info in a merchant description → template defaults (`slot_length_min=120`, `max_party_size=8`, services `19:00–22:00`), and the merchant is told in chat what was assumed.
+All done; open work is tracked in [#26](https://github.com/MaxEntz/BaselHack2026/issues/26).
+
+- **M1, core and agent runtime:** pure availability rules, provisioning from a fixture, and two concurrent bookings of one table and slot → exactly one succeeds (real Postgres).
+- **M2, gateway:** the §8.1 tools, preference filtering, 2 s timeout, §8.4 errors; e2e through an MCP client; connected to Claude.
+- **M3, merchant side:** `/chat` with the §8.2 admin tools, `/events` SSE from `LISTEN/NOTIFY`, the web chat's rich messages.
+- **M4, builder:** crawl, extraction, validation and provisioning streamed into the chat; profiles of 3 real restaurant websites stored as fixtures (`code/tests/fixtures/generated/`).
+
+**Definition of done (POC):** the whole §9 list runs end to end: the merchant onboards by chat, a user books from Claude, the merchant sees it live and blocks a slot, an outage triggers the fallback.
 
 ## 12. Conventions
 
 - Business logic lives in `core` and `agent` as **plain functions/classes**; MCP, BATP and HTTP layers are thin adapters.
 - No raw SQL string building from user input; parameterized queries only. Schema names come from validated slugs.
-- Every tool validates input with Pydantic and returns §8 errors, never stack traces.
+- Every tool validates input with Pydantic and returns §8.4 errors, never stack traces.
 - Log every tool call (tool, merchant, latency, outcome) as structured JSON; never log guest names at INFO.
 - Tests first for `availability.py` and anything touching the exclusion constraint.
 - Commits: Conventional Commits (`feat:`, `fix:`, `test:` …).
 - **Contracts** (`core/models.py`, the `AgentService` protocol, `web/src/types.ts`) change only in a dedicated PR announced to the team.
 - **Living docs, same PR as the code**: update `documentation/ARCHITECTURE.md` when you add, rename or remove a component, change the main flow, the stack, a protocol or data format, or a guarantee. A new or replaced technology or a structural choice gets a new ADR in `documentation/adr/` (never edit an accepted one: supersede it).
 - Everything in the repo is in **English**: code, comments, docs, commits, PRs, issues. Only the demo sites' content is in French.
+
+## Module rules
+
+- **Provisioning** (`agent/provisioning.py`): `provision(profile)` (one transaction: schema, tables, policy, registry row in `building`), `deploy(slug)` / `set_status(slug, "live"|"down")`, `deprovision(slug)` (idempotent). Each takes an optional `engine=`: long-running processes pass theirs; scripts omit it and get a short-lived engine on `DATABASE_URL`. A slug in use raises `SlugTaken` (an `InvalidInput`). `default_tables(seats)` and `generated_tools(profile)` are pure; `templates/restaurant.json` is validated at import.
+- **Merchant operations** (`agent/admin.py`): one `merchant_conn` transaction each, so the merchant schema and the registry's `profile` change together. The merchant's `tables` and `policy` rows are authoritative; `profile` is a display copy kept in sync. They load the merchant with `merchant_side=True` (a `building` merchant is editable by its owner, hidden from guests). Input outside the database's range is `InvalidInput`, never a raw DB error.
+- **Gateway** (`gateway/`): only `fallback.py` turns failures into `ToolError`; arguments the SDK rejects also answer `invalid_input`. `search_merchants` answers `agent_unavailable` + `fallback_url` when its query names a `down` merchant and no live one. Fault injection: `CHAOS_DELAY_MS`, `CHAOS_MERCHANTS`. As a bridge, it still reads the registry for the `down` status and the fallback URL.
+- **BATP**: the library (`packages/batp/`) depends only on `core`, so the gateway can import its client. Change the protocol in `PROTOCOL.md`, the draft in `documentation/rfc/`, the library and its tests together.
 
 ## Team server (LXC)
 
@@ -233,7 +263,20 @@ We have a server: use it to test anything Claude.ai must reach, instead of openi
 - **Firewall (`/etc/nftables.conf`):** only ports 22, 80 and 443 are open inbound, and new outbound connections to private networks are refused. A new service needs a rule there. `fail2ban` bans IPs that repeatedly fail SSH logins.
 - **Postgres:** `postgresql-16` on the server, listening on localhost only, database `merchant_agents` (UTF-8), credentials in `/opt/merchant-agents/code/.env`. `make deploy` applies the migrations but doesn't seed. `make outage` and `make seed` act on your local database: for the server's, see the runbook.
 
-## 13. Decision log
+## 13. Default decisions (apply without asking)
+
+- **One agent per merchant** is a logical boundary: one multi-tenant `AgentService` keyed by slug, data isolated by Postgres schema. No per-merchant processes.
+- **Gateway and agents**: separate processes through BATP when deployed; the same process without `BATP_URL`.
+- **Auth:** the public gateway only lets Anthropic's range through ([ADR-0010](documentation/adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)); `GATEWAY_TOKEN` is optional. Merchant platform: single hard-coded merchant session.
+- **Guest identity:** the `guest_name` Claude passes; no accounts.
+- **Guest notices** (merchant cancellations): stored per guest name and returned by `get_my_reservations`; no push to Claude.
+- **Fallback depth:** return the URL only; Claude does not drive the website.
+- **Timezone:** `Europe/Zurich` everywhere; store `timestamptz`.
+- **Discovery:** single city, filter by tags and price only; no ranking beyond name order.
+- **Preferences** are never stored server-side; they only arrive as `filters`.
+- Missing info in a merchant description → template defaults (`slot_length_min=120`, `max_party_size=8`, services `19:00–22:00`), and the merchant is told in chat what was assumed.
+
+## 14. Decision log
 
 Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 
@@ -286,17 +329,17 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | `AGENT_TIMEOUT_MS` is one deadline per tool call | #92 |
 | 2026-10-31 | A query names a merchant only when it holds every distinctive word of its name | #89 |
 | 2026-10-31 | `GET /session` tells the web which merchant its chat session works on | #88 |
-| 2026-10-31 | Write confirmation: a pre-confirmation doesn't count; no write in the same reply as the call the summary is based on, a re-check after the yes may go with the booking | #14, #109 |
+| 2026-10-31 | Write confirmation: a pre-confirmation doesn't count; no write in the same reply as the call the summary is based on, a re-check after the yes may go with the booking, unless the confirmed time is gone (then new times and a new question) | #14, #109 |
 | 2026-10-31 | The assistant's prompt gives today's UTC offset and the next clock change; `block_slot` / `unblock_slot` refuse a wrong offset | #83 |
 | 2026-10-31 | Web unit tests on Node's test runner; an interrupted build step shows "Interrupted" | #86 |
 | 2026-10-31 | The BATP node follows the draft on duplicate ids, `merchant` per intent, malformed frames, `error` frames and its own `503` with the fallback URL | #93 |
 | 2026-10-31 | Product named **Sésame**; identifiers stay `merchant-agents` / `merchant_agents` | #105 |
 
-## 14. Out of scope (POC)
+## 15. Out of scope (POC)
 
 Payments/deposits/no-show fees · other verticals · sync with existing booking/POS software · merchant ownership verification · multi-city discovery and ranking · mobile apps · i18n beyond English UI.
 
-## 15. Open questions (do not block on these; use §11 meanwhile)
+## 16. Open questions (do not block on these; use §13 meanwhile)
 
 - How to rank merchants when many match (distance, availability, preferences)?
 - How to verify that the person onboarding owns the website?
@@ -305,6 +348,6 @@ Payments/deposits/no-show fees · other verticals · sync with existing booking/
 - One template per vertical, or a generic template?
 - Business model: per booking, subscription, or free at first?
 
-## 16. Reference: interactive prototype
+## 17. Reference: interactive prototype
 
 The design canvas *Merchant agents* (pages **Overview**, **Architecture**, **POC**) has a clickable prototype of both conversations. Use it as the UX reference for message types and wording; this file is the reference for behaviour.
