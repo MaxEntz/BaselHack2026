@@ -4,7 +4,7 @@ DEPLOY_HOST ?= root@191.96.88.152
 DEPLOY_SSH ?= ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes
 DEPLOY_DIR := /opt/merchant-agents/code
 
-.PHONY: setup db migrate gateway platform web site tunnel deploy seed demo-reset test lint fmt
+.PHONY: setup db migrate gateway platform web site sites tunnel deploy seed demo-reset test lint fmt
 
 setup: ## .env, Python deps, Chromium for the crawler, web deps
 	test -f .env || cp .env.example .env
@@ -28,6 +28,14 @@ web: ## Merchant chat UI -> http://localhost:5173
 	cd web && npm run dev
 
 site: ## Demo restaurant website -> http://localhost:8080
+	@echo "Open http://localhost:8080 (localhost, not 127.0.0.1: the booking form's CORS origin)"
+	uv run python -m http.server 8080 -b 127.0.0.1 -d sites/le-petit-zinc
+
+sites: ## The 3 demo websites -> http://localhost:8080 (Le Petit Zinc), :8081, :8082
+	@echo "Open http://localhost:8080, :8081, :8082 (localhost, not 127.0.0.1: the booking form's CORS origin)"
+	@trap 'kill $$pids 2>/dev/null' INT TERM EXIT; \
+	uv run python -m http.server 8081 -b 127.0.0.1 -d sites/la-graine-verte & pids="$$!"; \
+	uv run python -m http.server 8082 -b 127.0.0.1 -d sites/maison-albane & pids="$$pids $$!"; \
 	uv run python -m http.server 8080 -b 127.0.0.1 -d sites/le-petit-zinc
 
 tunnel: ## Expose a local gateway through ngrok (the team URL is served by `make deploy`)
@@ -75,7 +83,7 @@ test:
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy packages/core
+	uv run mypy packages/core packages/agent packages/gateway
 
 fmt:
 	uv run ruff check --fix .
