@@ -73,6 +73,10 @@ NOTICE_WINDOW = timedelta(hours=24)
 Outcome = Literal["done", "taken", "key_taken"]
 
 
+# What the merchant can switch its published agent to: paused (`down`) or `live` (#146).
+AgentStatus = Literal["live", "down"]
+
+
 @dataclass(frozen=True)
 class MerchantCancellation:
     """The booking after a merchant's cancellation, and what was done: the merchant must never
@@ -141,6 +145,10 @@ class AgentService(Protocol):
     ) -> Policy: ...
 
     async def update_tables(self, slug: str, tables: Sequence[TableSpec]) -> list[TableSpec]: ...
+
+    async def set_status(self, slug: str, status: AgentStatus) -> None:
+        """Pause (`down`) or resume (`live`) the merchant's agent (#146)."""
+        ...
 
 
 def same_guest(given: str, booked: str) -> bool:
@@ -630,6 +638,12 @@ class PgAgentService:
             plan = await admin.update_tables(conn, slug, tables, self.clock(), self.tz)
         log.info("floor plan updated", extra={"merchant": slug, "tables": len(plan)})
         return plan
+
+    async def set_status(self, slug: str, status: AgentStatus) -> None:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            await admin.set_status(conn, slug, status)
+        log.info("agent paused" if status == "down" else "agent resumed", extra={"merchant": slug})
 
     async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation:
         async with merchant_conn(self.engine, slug) as conn:

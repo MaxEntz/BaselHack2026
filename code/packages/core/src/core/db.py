@@ -39,11 +39,13 @@ MERCHANT = "merchant"
 _SLUG = TypeAdapter(Slug)
 
 
-def make_engine(url: str | None = None) -> AsyncEngine:
-    """Async engine on `url`, or DATABASE_URL (driver `postgresql+psycopg`). One per process."""
+def make_engine(url: str | None = None, **pool: int) -> AsyncEngine:
+    """Async engine on `url`, or DATABASE_URL (driver `postgresql+psycopg`). One per process,
+    plus a small one for a side job that must never take the main pool's connections (`pool`:
+    `pool_size`, `max_overflow`)."""
     # hide_parameters: a DB error never carries guest names into logs or messages.
     return create_async_engine(
-        url or get_settings().database_url, pool_pre_ping=True, hide_parameters=True
+        url or get_settings().database_url, pool_pre_ping=True, hide_parameters=True, **pool
     )
 
 
@@ -115,6 +117,23 @@ reservation_changes_t = Table(
     Column("starts_at", DateTime(timezone=True)),
     Column("party_size", Integer),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# What other agents asked each merchant's agent over BATP, with both frames, kept 7 days
+# (#146, migration 0003). Holds guest names: only the merchant's own session reads it.
+agent_requests_t = Table(
+    "agent_requests",
+    public_metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column(
+        "merchant_slug", Text, ForeignKey(merchants_t.c.slug, ondelete="CASCADE"), nullable=False
+    ),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("agent_name", Text, nullable=False),
+    Column("intent", Text, nullable=False),
+    Column("status", Integer, nullable=False),
+    Column("request", JSONB, nullable=False),
+    Column("response", JSONB, nullable=False),
 )
 
 # Merchant schema: created by provisioning (`merchant_metadata.create_all` on a translated

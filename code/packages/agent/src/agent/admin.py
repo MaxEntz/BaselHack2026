@@ -13,7 +13,7 @@ guest's.
 
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import TypeAdapter, ValidationError
@@ -140,6 +140,19 @@ async def block_slot(
 
 async def unblock_slot(conn: AsyncConnection, starts_at: datetime) -> None:
     await conn.execute(delete(blocked_slots_t).where(blocked_slots_t.c.starts_at == starts_at))
+
+
+async def set_status(conn: AsyncConnection, slug: str, status: Literal["live", "down"]) -> None:
+    """Pause (`down`) or resume (`live`) a published agent. `down` sends other agents and Claude
+    to the merchant's booking page; its website keeps booking. A `building` merchant isn't
+    published yet: only `deploy` makes it `live`."""
+    result = await conn.execute(
+        update(merchants_t)
+        .where(merchants_t.c.slug == slug, merchants_t.c.status.in_(("live", "down")))
+        .values(status=status)
+    )
+    if result.rowcount == 0:
+        raise InvalidInput("This agent isn't published yet: publish it first")
 
 
 async def _update_profile(conn: AsyncConnection, slug: str, changes: dict[str, Any]) -> None:
