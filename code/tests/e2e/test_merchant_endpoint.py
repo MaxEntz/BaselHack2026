@@ -1,6 +1,8 @@
 """Each merchant's own MCP endpoint, /m/<slug>/mcp (#23), through a real MCP client."""
 
+import asyncio
 import json
+import time
 from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -14,6 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import deploy, provision, set_status
 from agent.service import PgAgentService
+from core.config import Settings
+from gateway import discovery
+from tests.e2e.conftest import running_gateway
 
 pytestmark = pytest.mark.integration
 
@@ -211,3 +216,33 @@ async def test_the_shared_protocol_is_unchanged(gateway_base_url: str) -> None:
 
     assert len(tools) == 6
     assert "merchant" in {t.name: t for t in tools}["get_availability"].input_schema["properties"]
+
+
+async def test_the_slug_check_and_the_tool_share_one_budget(
+    e2e_database_url: str, e2e_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Each registry read takes 60 % of a 500 ms budget: the endpoint's slug check, then the
+    # tool's own lookup. With one budget each, the call answered after 600 ms or more (#92).
+    budget_s = 0.5
+    find_merchant = discovery.find_merchant
+
+    async def slow_find(slug: str, *, engine: AsyncEngine) -> discovery.RegistryEntry | None:
+        await asyncio.sleep(budget_s * 0.6)
+        return await find_merchant(slug, engine=engine)
+
+    monkeypatch.setattr(discovery, "find_merchant", slow_find)
+    settings = Settings(
+        _env_file=None, database_url=e2e_database_url, agent_timeout_ms=round(budget_s * 1000)
+    )
+    with running_gateway(settings) as base_url:
+        async with Client(endpoint(base_url, ZINC)) as client:
+            # The client lists the tools to check a result's schema: not part of the call.
+            await client.list_tools()
+            started = time.perf_counter()
+            answer = await call(
+                client, "get_availability", date=day_ahead().isoformat(), party_size=2
+            )
+            elapsed = time.perf_counter() - started
+
+    assert answer["error"] == "agent_unavailable"
+    assert elapsed < budget_s + 0.15
