@@ -47,6 +47,8 @@ tunnel: ## Expose a local gateway through ngrok (the team URL is served by `make
 	ngrok http --url="$(GATEWAY_PUBLIC_URL)" 8001
 
 web-dist: ## Build the merchant web app (web/dist) for make deploy
+	@test -z "$$VITE_MOCK" || { echo "VITE_MOCK is set: web-dist would build the mock app" >&2; exit 1; }
+	@! grep -sEq '^[[:space:]]*(export[[:space:]]+)?VITE_MOCK[[:space:]]*=[[:space:]]*[^[:space:]#]' web/.env web/.env.local web/.env.production web/.env.production.local || { echo "VITE_MOCK is set in a web/.env* file: web-dist would build the mock app" >&2; exit 1; }
 	test -d web/node_modules || (cd web && npm ci)
 	cd web && npm run build
 
