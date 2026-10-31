@@ -38,16 +38,16 @@ def registry_row(slug: str, name: str, **overrides: Any) -> dict[str, Any]:
 
 @pytest.fixture
 async def token(engine: AsyncEngine) -> AsyncIterator[str]:
-    """A word only this test's merchants have in their name: the query isolates them from
-    whatever else the shared session database holds."""
+    """A word only this test's merchants have in their name, the only distinctive one (#89):
+    the query isolates them from whatever else the shared session database holds."""
     token = f"zq{uuid4().hex[:6]}"
     rows = [
-        registry_row(f"{token}-a", f"Alpha {token}", tags=["vegan"], price_level="€"),
-        registry_row(f"{token}-b", f"Bravo {token}", status="down"),
-        registry_row(f"{token}-c", f"Charlie {token}", status="building"),
-        registry_row(f"{token}-d", f"Delta {token}", tags=["terrace"], price_level="€€€"),
+        registry_row(f"{token}-a", f"Brasserie {token}", tags=["vegan"], price_level="€"),
+        registry_row(f"{token}-b", f"Bistro {token}", status="down"),
+        registry_row(f"{token}-c", f"Cafe {token}", status="building"),
+        registry_row(f"{token}-d", f"Maison {token}", tags=["terrace"], price_level="€€€"),
         # Not a contract tag: this row is skipped, the others are still found.
-        registry_row(f"{token}-e", f"Echo {token}", tags=["rooftop"]),
+        registry_row(f"{token}-e", f"Chez {token}", tags=["rooftop"]),
     ]
     async with engine.begin() as conn:
         await conn.execute(insert(merchants_t), rows)
@@ -59,7 +59,7 @@ async def token(engine: AsyncEngine) -> AsyncIterator[str]:
 async def test_search_only_returns_live_merchants(engine: AsyncEngine, token: str) -> None:
     result = await search(token, None, None, None, engine=engine)
 
-    assert [m.name for m in result.merchants] == [f"Alpha {token}", f"Delta {token}"]
+    assert [m.name for m in result.merchants] == [f"Brasserie {token}", f"Maison {token}"]
     assert str(result.merchants[0].website) == f"http://{token}-a.example/"
     assert (result.suggestions, result.ignored_filters) == ((), ())
 
@@ -91,9 +91,9 @@ async def test_find_merchant_returns_what_routing_needs(engine: AsyncEngine, tok
 async def test_find_named_down_merchant(engine: AsyncEngine, token: str) -> None:
     down = registry_row(f"{token}-down", f"Zinc{token} Bistro", status="down")
     building = registry_row(f"{token}-build", f"Build{token} Bistro", status="building")
-    # A live merchant sharing a word with a down one wins: the query may mean it.
-    shared_down = registry_row(f"{token}-shared-down", f"Shared{token} Down", status="down")
-    shared_live = registry_row(f"{token}-shared-live", f"Shared{token} Live", status="live")
+    # A live merchant the query names as well wins: the query may mean it.
+    shared_down = registry_row(f"{token}-shared-down", f"Brasserie Shared{token}", status="down")
+    shared_live = registry_row(f"{token}-shared-live", f"Bistro Shared{token}", status="live")
     async with engine.begin() as conn:
         await conn.execute(insert(merchants_t), [down, building, shared_down, shared_live])
 
@@ -140,3 +140,26 @@ async def test_find_named_merchant_is_live_or_down_but_not_building(
     assert await named(f"off{token}") == f"{token}-off"
     assert await named(f"new{token}") is None
     assert await named("un petit restaurant") is None
+
+
+async def test_an_article_never_turns_a_generic_search_into_an_outage(
+    engine: AsyncEngine, token: str
+) -> None:
+    # The issue's case (#89): "the" used to name The Green Door, so the query answered with
+    # its fallback link while Le Petit Zinc was live.
+    rows = [
+        registry_row(f"{token}-zinc", f"Le Petit Zinc{token}"),
+        registry_row(f"{token}-green", f"The Green Door{token}", status="down"),
+    ]
+    async with engine.begin() as conn:
+        await conn.execute(insert(merchants_t), rows)
+    query = "Book a table for the four of us tonight"
+
+    assert await find_named_down_merchant(query, engine=engine) is None
+    assert await find_named_merchant(query, engine=engine) is None
+    found = {m.slug for m in (await search(query, None, None, None, engine=engine)).merchants}
+    assert f"{token}-zinc" in found
+    assert f"{token}-green" not in found
+    named = await find_named_down_merchant(f"a table at the green door{token}", engine=engine)
+    assert named is not None
+    assert named.slug == f"{token}-green"

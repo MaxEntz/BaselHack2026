@@ -21,7 +21,6 @@ from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.sql import Executable
-from sqlalchemy.sql.elements import ColumnElement
 
 from agent import admin
 from core.availability import (
@@ -61,6 +60,7 @@ Clock = Callable[[], datetime]
 _Row = Row[*tuple[Any, ...]]
 
 EXCLUSION_VIOLATION = "23P01"
+UNIQUE_VIOLATION = "23505"
 IDEMPOTENCY_CONSTRAINT = "reservations_idempotency_key_key"
 # A notice comes back on every lookup for this long after the first one that returned it, so
 # that an answer lost on its way to the guest doesn't lose the notice (#91).
@@ -129,17 +129,17 @@ class AgentService(Protocol):
 
 
 def same_guest(given: str, booked: str) -> bool:
-    """Guest names match ignoring case and spacing: Claude may not repeat them verbatim."""
+    """Guest names match ignoring case and spacing: Claude may not repeat them verbatim.
+
+    The only definition of a guest: bookings, changes and lookups all use it (#77). Spacing is
+    any Unicode whitespace (a non-breaking space too), and case is `casefold` ("Weiß" is
+    "weiss"), which SQL's `lower` and `\\s` don't match.
+    """
     return _normalize(given) == _normalize(booked)
 
 
 def _normalize(name: str) -> str:
     return " ".join(name.split()).casefold()
-
-
-def _normalized_column(column: ColumnElement[str]) -> ColumnElement[str]:
-    """SQL side of `_normalize`, for lookups by guest name."""
-    return func.lower(func.regexp_replace(func.btrim(column), r"\s+", " ", "g"))
 
 
 def candidate_tables(
@@ -205,7 +205,7 @@ async def _attempt(
     except DBAPIError as error:
         if _sqlstate(error) == EXCLUSION_VIOLATION:
             return "taken"
-        if _constraint(error) == IDEMPOTENCY_CONSTRAINT:
+        if _sqlstate(error) == UNIQUE_VIOLATION and _constraint(error) == IDEMPOTENCY_CONSTRAINT:
             return "key_taken"
         raise
     return "done"
@@ -369,13 +369,12 @@ class PgAgentService:
             current = await self._own_booking(conn, reservation_id, guest_name)
             if current.status != "confirmed":
                 _not_found(reservation_id)
+            self._check_not_started(current)
             new_start = starts_at or current.during.lower
             new_party = party_size or current.party_size
             merchant.check_party(new_party)
             if new_start != current.during.lower:
                 await self._check_new_start(conn, merchant, new_start)
-            elif new_start <= self.clock():
-                raise SlotUnavailable(f"Booking {current.id} has already started")
 
             during = Range(new_start, new_start + merchant.slot_length, bounds="[)")
             for table in candidate_tables(merchant.tables, new_party, current_id=current.table_id):
@@ -431,6 +430,7 @@ class PgAgentService:
             await self._load(conn, slug)
             current = await self._own_booking(conn, reservation_id, guest_name)
             if current.status == "confirmed":
+                self._check_not_started(current)
                 await conn.execute(
                     update(reservations_t)
                     .where(reservations_t.c.id == current.id)
@@ -450,14 +450,19 @@ class PgAgentService:
             current.via,
         )
 
+    def _check_not_started(self, booking: _Row) -> None:
+        """A guest changes a booking only before it starts: after, it's the merchant's (#79)."""
+        if booking.during.lower <= self.clock():
+            raise SlotUnavailable(f"Booking {booking.id} has already started")
+
     async def find_guest_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
         """Upcoming confirmed bookings at every live merchant, and the guest's notices.
 
         A notice is returned from its first lookup until `NOTICE_WINDOW` later, then never
-        again; `delivered_at` keeps the time of that first lookup. A simple loop over merchants
-        is fine for the POC's handful of them.
+        again; `delivered_at` keeps the time of that first lookup. Names are compared in Python
+        with `same_guest` on every upcoming booking and live notice: fine for the POC's handful
+        of merchants and notices (past that, store a normalized key at insert time).
         """
-        name = _normalize(guest_name)
         now = self.clock()
         async with self.engine.connect() as conn:
             slugs = list(
@@ -476,26 +481,36 @@ class PgAgentService:
                     .where(
                         reservations_t.c.status == "confirmed",
                         func.lower(reservations_t.c.during) > now,
-                        _normalized_column(reservations_t.c.guest_name) == name,
                     )
                 )
-                reservations += [self._from_row(slug, row) for row in rows]
+                reservations += [
+                    self._from_row(slug, row)
+                    for row in rows
+                    if same_guest(guest_name, row.guest_name)
+                ]
 
         async with self.engine.begin() as conn:
-            delivered = await conn.execute(
-                update(guest_notices_t)
+            live = await conn.execute(
+                select(
+                    guest_notices_t.c.id, guest_notices_t.c.guest_name, guest_notices_t.c.message
+                )
                 .where(
                     or_(
                         guest_notices_t.c.delivered_at.is_(None),
                         # In UTC: 24 real hours, also across a clock change.
                         guest_notices_t.c.delivered_at > now.astimezone(UTC) - NOTICE_WINDOW,
-                    ),
-                    _normalized_column(guest_notices_t.c.guest_name) == name,
+                    )
                 )
-                .values(delivered_at=func.coalesce(guest_notices_t.c.delivered_at, now))
-                .returning(guest_notices_t.c.id, guest_notices_t.c.message)
+                .order_by(guest_notices_t.c.id)
             )
-            notices = [row.message for row in sorted(delivered, key=lambda row: row.id)]
+            mine = [row for row in live if same_guest(guest_name, row.guest_name)]
+            if mine:
+                await conn.execute(
+                    update(guest_notices_t)
+                    .where(guest_notices_t.c.id.in_([row.id for row in mine]))
+                    .values(delivered_at=func.coalesce(guest_notices_t.c.delivered_at, now))
+                )
+            notices = [row.message for row in mine]
         reservations.sort(key=lambda r: (r.starts_at, r.merchant, r.id))
         return reservations, notices
 

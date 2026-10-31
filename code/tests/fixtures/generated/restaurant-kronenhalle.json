@@ -1,0 +1,65 @@
+{
+  "slug": "restaurant-kronenhalle",
+  "name": "Restaurant Kronenhalle",
+  "website": "https://www.kronenhalle.com/",
+  "vertical": "restaurant",
+  "location": {
+    "city": "Zürich",
+    "lat": 47.3676255,
+    "lng": 8.543626
+  },
+  "seats": 40,
+  "services": [
+    {
+      "start": "12:00",
+      "end": "22:30"
+    }
+  ],
+  "max_party_size": 8,
+  "tables": [
+    {
+      "label": "T1",
+      "seats": 4
+    },
+    {
+      "label": "T2",
+      "seats": 4
+    },
+    {
+      "label": "T3",
+      "seats": 4
+    },
+    {
+      "label": "T4",
+      "seats": 4
+    },
+    {
+      "label": "T5",
+      "seats": 4
+    },
+    {
+      "label": "T6",
+      "seats": 4
+    },
+    {
+      "label": "T7",
+      "seats": 4
+    },
+    {
+      "label": "T8",
+      "seats": 4
+    },
+    {
+      "label": "T9",
+      "seats": 2
+    },
+    {
+      "label": "T10",
+      "seats": 6
+    }
+  ],
+  "tags": [],
+  "price_level": "€€",
+  "cancellation_policy": null,
+  "fallback_url": "https://www.kronenhalle.com/"
+}

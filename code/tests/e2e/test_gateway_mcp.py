@@ -329,6 +329,60 @@ async def test_a_search_beyond_the_node_s_bounds_is_invalid_input_in_both_modes(
     assert result["fallback_url"] is None
 
 
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        ("get_my_reservations", {"guest_name": "Ada\x00Lovelace"}),
+        ("get_availability", {"merchant": ZINC, "date": "9999-12-31", "party_size": 2}),
+        (
+            "create_reservation",
+            {
+                "merchant": ZINC,
+                "starts_at": "0001-01-01T00:00:00+01:00",
+                "party_size": 2,
+                "guest_name": "Ada Lovelace",
+                "idempotency_key": "far-past",
+            },
+        ),
+        (
+            "cancel_reservation",
+            {"merchant": ZINC, "reservation_id": "R-\x00", "guest_name": "Ada Lovelace"},
+        ),
+        (
+            "update_reservation",
+            {
+                "merchant": ZINC,
+                "reservation_id": "R-001",
+                "guest_name": "Ada Lovelace",
+                "starts_at": "9999-12-31T23:30:00-05:00",
+                "idempotency_key": "far-future",
+            },
+        ),
+        (
+            "create_reservation",
+            {
+                "merchant": ZINC,
+                "starts_at": at(day_ahead(), "20:00"),
+                "party_size": 2,
+                "guest_name": "Ada Lovelace",
+                "idempotency_key": "k" * 8000,
+            },
+        ),
+    ],
+)
+async def test_inputs_postgres_or_dates_cannot_hold_are_invalid_input_not_an_outage(
+    gateway_base_url: str, tool: str, arguments: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    # They used to reach Postgres or date arithmetic and come back as an outage (#79).
+    with caplog.at_level(logging.ERROR, logger="gateway.tools"):
+        async with Client(f"{gateway_base_url}/mcp") as client:
+            result = await call(client, tool, **arguments)
+
+    assert result["error"] == "invalid_input"
+    assert result["fallback_url"] is None
+    assert "tool_failed" not in caplog.text
+
+
 async def test_calls_are_logged_fast_and_without_guest_names(
     gateway_base_url: str, caplog: pytest.LogCaptureFixture
 ) -> None:

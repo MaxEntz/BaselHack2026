@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
@@ -23,11 +23,12 @@ from core.config import Settings, get_settings
 from core.db import make_engine
 from core.errors import AgentError, AgentUnavailable
 from core.models import (
+    BookingTime,
     ChatEvent,
     DoneEvent,
     ErrorCode,
     ErrorEvent,
-    NonEmptyStr,
+    GuestText,
     ReservationOutput,
     SessionMerchant,
     SessionOutput,
@@ -78,10 +79,10 @@ class ResetSessionRequest(_Body):
 class PublicReservationInput(_Body):
     """The showcase site's booking form (the merchant comes from the URL)."""
 
-    starts_at: AwareDatetime
+    starts_at: BookingTime
     party_size: PositiveInt
-    guest_name: NonEmptyStr
-    idempotency_key: NonEmptyStr
+    guest_name: GuestText
+    idempotency_key: GuestText
 
 
 def create_app(
@@ -199,7 +200,8 @@ def create_app(
         if agent is None:
             raise AgentUnavailable("Online booking is not available yet.")
         started = time.perf_counter()
-        outcome = "ok"
+        # `ok` only once booked: a crash or a cancelled request is never logged as `ok` (#79).
+        outcome = "error"
         try:
             reservation = await agent.create_reservation(
                 slug,
@@ -209,6 +211,7 @@ def create_app(
                 body.idempotency_key,
                 via="website",
             )
+            outcome = "ok"
         except AgentError as error:
             outcome = error.code
             raise
