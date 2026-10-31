@@ -459,9 +459,9 @@ async def test_a_booking_racing_a_floor_plan_change_takes_a_table_that_still_fit
     raced: list[bool] = []
 
     async def load_then_change_the_plan(
-        self: PgAgentService, conn: AsyncConnection, merchant_slug: str
+        self: PgAgentService, conn: AsyncConnection, merchant_slug: str, **options: Any
     ) -> Any:
-        merchant = await original_load(self, conn, merchant_slug)
+        merchant = await original_load(self, conn, merchant_slug, **options)
         if not raced:  # once: the floor plan changes right after the booking read it
             raced.append(True)
             await other.update_tables(slug, new_plan)
@@ -523,3 +523,19 @@ async def test_cancelling_a_finished_booking_sends_no_notice(
 
     assert cancelled.status == "cancelled"
     assert notices == []
+
+
+async def test_the_merchant_can_fix_its_agent_before_it_goes_live(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    # Still `building`: guests can't reach it (#8), the merchant can correct it (#9).
+    slug = await make_merchant(live=False)
+
+    await service.update_tables(slug, [TableSpec(label="T1", seats=4)])
+    policy = await service.update_policy(slug, max_party_size=4)
+    stats = await service.get_stats(slug, DAY)
+
+    assert await floor_plan(engine, slug) == [("T1", 4)]
+    assert (policy.max_party_size, stats.seats) == (4, 4)
+    with pytest.raises(NotFound):
+        await service.get_availability(slug, DAY, 2)

@@ -60,17 +60,15 @@ flowchart TB
 > **Status:** this section describes the target flow.
 > - **Built:**
 >   - the data layer: `core/db.py`, `core/availability.py`, provisioning, and the trigger that sends `NOTIFY`;
->   - the platform API, with the `/chat` and `/events` streams (#15);
+>   - the `AgentService` on Postgres: Claude-side bookings (#8) and merchant operations (#9);
+>   - the platform API, with the `/chat` and `/events` streams and the public booking API (#15);
 >   - the live-event listener (#18);
->   - the merchant assistant (#17). Until the builder lands, it builds the agent from the Le Petit Zinc fixture;
+>   - the merchant assistant (#17) and the builder it calls (#21, #22);
 >   - the web chat;
 >   - the demo data and the three demo websites (#10, #16);
 >   - the gateway's user tools, discovery and timeout/fallback layer (#11, #12, #13, #14).
-> - **Not built yet:**
->   - the `AgentService` implementation (#8, #9: PRs #42 and #47);
->   - the builder (#21, #22: PRs #44 and #48).
 >
-> So steps 2–14 below are not wired end to end yet.
+> Claude reaches the agent through the gateway. Live notifications still need the platform on the gateway's Postgres: see the open question on the demo topology (#25).
 >
 > §4 gives the state of each component.
 
@@ -133,11 +131,11 @@ Paths are relative to `code/`.
 | Availability rules | `packages/core/src/core/availability.py` | Pure functions: bookable start times, table choice, slot search (up to 3) | No database access; never reads the clock (`now` is passed in) | ✅ #5 |
 | DB layer | `packages/core/src/core/db.py`, `migrations/versions/0001_public_schema.py` | Engine; `schema_for(slug)`; merchant tables declared once, with the exclusion constraint, the notify trigger, and a trigger that skips updates that change nothing (an idempotent replay sends no notification); `merchant_conn` (one transaction, schema translation); registry and guest notices in `public` | No business rules; no migrations for merchant schemas (drop + re-provision) | ✅ #6 |
 | Provisioning | `packages/agent/src/agent/provisioning.py`, `packages/agent/src/agent/templates/restaurant.json` | `MerchantProfile` → merchant schema, floor plan, policy, registry row (all or nothing); `deploy` / `set_status` / `deprovision`; default floor plan; generated tool descriptions | Never calls an LLM, never builds SQL from profile text, never takes bookings | ✅ #7 |
-| Agent service | `packages/agent/src/agent/service.py` (`PgAgentService`) | Bookings (availability, create, update, cancel), merchant operations (list, stats, block, policy, tables), guest notices | Knows nothing of MCP or HTTP; no authentication | 🚧 #8, #9 |
-| Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `agent_client.py`, `discovery.py`, `fallback.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, optional bearer token, the 6 user tools, preference filtering, 2 s timeout and `fallback_url`, one JSON log line per call, `GET /health` | Never stores preferences; never exposes admin tools; never returns a stack trace | ✅ #3, #11, #12, #13, #14 (Claude.ai validation pending, see the runbook) |
-| Builder | `packages/builder/src/builder/crawl.py`, `extract.py`, `build.py` | Website + description → validated `MerchantProfile` → provision → deploy, streamed as steps; cache for the demo | Never writes SQL or code; never decides a value the schema doesn't allow | 🚧 #21, #22 (extraction validated by the spike, `scripts/spike_extract.py`) |
-| Platform API | `packages/merchant_platform/src/merchant_platform/api.py`, `sessions.py`, `logs.py` | Endpoints: `POST /chat` (SSE stream of `ChatEvent`, one turn at a time per session), `GET /events?merchant=` (SSE `LiveEvent`), `POST /public/{slug}/reservations` (the showcase site's form, CORS-limited), `/health`, dev-only `/dev/reset-session`. Also: in-memory sessions, JSON logs | No business logic: delegates to the assistant and the `AgentService`. Until #8 plugs the service in, the public booking API answers `agent_unavailable` | ✅ #15 |
-| Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py`, `tools.py`, `llm.py`, `build_stub.py` | Tool-use loop over the admin tools (at most 8 steps per turn) through an `LLMClient` interface (OpenAI Responses API, `store=False`); onboarding questions; `tools.py` runs each tool and builds its card from the tool's result | Never puts crawled website text in the prompt (only the validated profile); never formats results itself; never reachable by Claude users | ✅ #17 (`build_agent` provisions the Le Petit Zinc fixture until #22) |
+| Agent service | `packages/agent/src/agent/service.py` (`PgAgentService`), `admin.py` | Claude-side bookings: availability, create, update, cancel. Each candidate table is tried in its own SAVEPOINT under a row lock, with its seats re-read under that lock; the exclusion constraint is the guarantee. Merchant operations in `admin.py`: list, stats, block and unblock, policy, floor plan, and cancellation with a guest notice. A `building` merchant is hidden from guests but the merchant can still edit it | Knows nothing of MCP or HTTP; no authentication; never cancels a booking when a slot is blocked or the policy changes; never removes a table that past bookings refer to | ✅ #8, #9 |
+| Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `agent_client.py`, `discovery.py`, `fallback.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, optional bearer token, the 6 user tools, preference filtering, 2 s timeout and `fallback_url`, one JSON log line per call, `GET /health` | Never stores preferences; never exposes admin tools; never returns a stack trace | ✅ #3, #11, #12, #13, #14 (one scenario left to retest from Claude Desktop, see the runbook) |
+| Builder | `packages/builder/src/builder/crawl.py`, `extract.py`, `build.py`, `cache.py`, `llm.py` | Website + description → validated `MerchantProfile` → provision → deploy, streamed as steps. Playwright crawl, with every request checked after DNS resolution (SSRF) and redirects followed hop by hop. Extraction by a forced tool call, with the code owning `slug`, `website`, the tags and the floor plan, and one retry on validation errors. On-disk cache (`BUILDER_CACHE`). `llm.py` is the provider-neutral LLM client, shared with the assistant | Never writes SQL or code; never decides a value the schema doesn't allow; DNS rebinding is not covered (known limit) | ✅ #21, #22 |
+| Platform API | `packages/merchant_platform/src/merchant_platform/api.py`, `sessions.py`, `logs.py` | Endpoints: `POST /chat` (SSE stream of `ChatEvent`, one turn at a time per session), `GET /events?merchant=` (SSE `LiveEvent`), `POST /public/{slug}/reservations` (the showcase site's form, CORS-limited), `/health`, dev-only `/dev/reset-session`. Also: in-memory sessions, JSON logs | No business logic: delegates to the assistant and the `AgentService`. The public booking API books through `PgAgentService`; a `building` merchant is a 404 | ✅ #15 |
+| Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py`, `tools.py` | Tool-use loop over the admin tools (at most 8 steps per turn) through the `LLMClient` interface (`builder/llm.py`, OpenAI Responses API, `store=False`); onboarding questions; `build_agent` runs the builder; `tools.py` runs each tool and builds its card from the tool's result | Never puts crawled website text in the prompt (only the validated profile); never formats results itself; never reachable by Claude users | ✅ #17 |
 | Live events | `packages/merchant_platform/src/merchant_platform/events.py` | `LiveListener` holds a `LISTEN reservations` connection, reads the booking row for each notification, and turns it into a `LiveEvent` (`new_booking`, `updated`, `cancelled`). `LiveBus` fans it out to that merchant's open `/events` streams | Does not poll the database; does not trust the payload beyond identifiers | ✅ #18 |
 | Web chat | `web/` | Merchant chat: SSE client, one component per card kind, live notifications, mock mode (`VITE_MOCK=1`, `/?gallery`) | No business logic, no forms | ✅ #19, #20 |
 | Demo sites | `sites/le-petit-zinc/`, `sites/la-graine-verte/`, `sites/maison-albane/` (`make site`, `make sites` on :8080–:8082) | Fictional restaurant sites (in French): crawl target, fallback URL, and Le Petit Zinc's booking form, which posts to the platform's public booking API | — | ✅ #16 |
@@ -169,7 +167,7 @@ Paths are relative to `code/`.
 
 Breaking one of these is a bug.
 
-1. **No double booking.** Two confirmed reservations never overlap on the same table. The database enforces it with `EXCLUDE USING gist (table_id WITH =, during WITH &&) WHERE (status = 'confirmed')`, and `during` must not be empty (`core/db.py`).
+1. **No double booking.** Two confirmed reservations never overlap on the same table. The database enforces it with `EXCLUDE USING gist (table_id WITH =, during WITH &&) WHERE (status = 'confirmed')`, and `during` must not be empty (`core/db.py`). A booking re-reads its table's seats under the table's lock, so a floor-plan change never leaves it on a removed or too small table.
 2. **Every write from Claude is confirmed; creations and updates are idempotent.** The tool descriptions tell Claude to confirm with the user before `create_reservation`, `update_reservation` or `cancel_reservation`. `create_reservation` and `update_reservation` carry an `idempotency_key`, unique per merchant. `cancel_reservation` has no key: cancelling an already cancelled booking must leave it cancelled (#8).
 3. **Blocking a slot never deletes a reservation.** It only stops new bookings at that start time.
 4. **Never a stack trace in a tool response.** Errors are `{error, message, fallback_url?}` with the codes of AGENTS.md §8.4. `fallback_url` is set for `agent_unavailable` and `party_too_large`.
@@ -249,4 +247,4 @@ In this order, to rebuild the project yourself:
 
 ---
 
-*Last updated: 2026-10-31, describing `main` at commit `045fa64`.*
+*Last updated: 2026-10-31, describing `main` at commit `283179b` plus #42 (#8) and #47 (#9).*
