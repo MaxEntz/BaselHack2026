@@ -112,3 +112,33 @@ def test_menu_marks_diets_and_prices_mains_at_mid_range() -> None:
     assert "(V)" in menu
     assert "(SG)" in menu
     assert (min(prices), max(prices)) == (16, 24)
+
+
+def test_la_graine_verte_keeps_what_the_builder_reads(
+    demo_profiles: dict[str, MerchantProfile],
+) -> None:
+    """#148 restyled the page; the facts of its fixture stay word for word."""
+    page = (SITES / "la-graine-verte" / "index.html").read_text(encoding="utf-8")
+    profile = demo_profiles["la-graine-verte"]
+
+    for fact in (
+        f"Tables de 1 à {profile.max_party_size} personnes.",
+        "03 89 00 00 11",
+        "Ouvert tous les jours.",
+        "11h30 \u2013 14h30",  # en dashes, as on the page
+        "18h30 \u2013 21h30",
+        "12 €",
+        "restaurant fictif",
+    ):
+        assert fact in page
+    assert str(profile.fallback_url).endswith("#reserver")
+    assert 'id="reserver"' in page
+
+
+def test_self_hosted_fonts_ship_with_their_licence() -> None:
+    fonts = list(SITES.glob("*/fonts/*.woff2"))
+
+    assert fonts
+    for font in fonts:
+        family = font.stem.split("-")[0].capitalize()
+        assert (font.parent / f"OFL-{family}.txt").is_file(), font.relative_to(SITES)

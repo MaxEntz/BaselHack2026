@@ -19,13 +19,13 @@ Open [`la-graine-verte.html`](la-graine-verte.html) in a browser. It is one long
 
 A merchant's management site should look like their restaurant's own website, because dashboards read as AI-made. So this page is one long site with big soft italic titles, organic shapes and curved bands, and each section does a management job: tonight's next arrivals, the room at a chosen time, the bookings, what the agent did today, and the settings. The tables on the floor plan take the same organic shapes.
 
-The layout, measurements and colours are adapted from a real restaurant's website, which the user chose as the reference. Its photos, logo, drawings, text and paid typeface are not used. Karla is the reference's body face, Fraunces replaces its display face, and the drawings are our own. La Graine Verte is the fictional restaurant from `code/tests/fixtures`, so this look differs from its demo site in `code/sites`.
+The layout, measurements and colours are adapted from a real restaurant's website, which the user chose as the reference. Its photos, logo, drawings, text and paid typeface are not used. Karla is the reference's body face, Fraunces replaces its display face, and the drawings are our own. La Graine Verte is the fictional restaurant from `code/tests/fixtures`; its demo site in `code/sites` has had this look since #148.
 
 The data is generated with the rules of §6 and covers 7 days from Saturday 31 October, with the clock fixed at 19:40. Six seconds after opening, a demo booking arrives through Claude. Nothing leaves the page and nothing is saved.
 
 ## The public site in that look
 
-Open [`la-graine-verte-public.html`](la-graine-verte-public.html) in a browser. It is the restaurant's public website from the demo video, in the look above, and also works offline. Its prices, hours, address, phone and group size are those of `code/sites/la-graine-verte`, in French, with the notice that the restaurant is fictional. It adds a menu bar and one line under "À la carte". #148 rebuilds the demo site from it, because a real build reads the public site.
+Open [`la-graine-verte-public.html`](la-graine-verte-public.html) in a browser. It is the restaurant's public website from the demo video, in the look above, and also works offline. Its prices, hours, address, phone and group size are those of `code/sites/la-graine-verte`, in French, with the notice that the restaurant is fictional. It adds a menu bar and one line under "À la carte". #148 rebuilt the demo site from it, because a real build reads the public site.
 
 ## Earlier management sites
 
