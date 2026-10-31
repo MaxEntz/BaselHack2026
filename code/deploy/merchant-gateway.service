@@ -1,0 +1,23 @@
+[Unit]
+Description=Merchant Agents MCP gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=gateway
+WorkingDirectory=/opt/merchant-agents/code
+ExecStart=/opt/merchant-agents/code/.venv/bin/python -m gateway
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

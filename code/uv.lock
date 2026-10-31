@@ -369,6 +369,7 @@ dependencies = [
     { name = "agent" },
     { name = "core" },
     { name = "mcp" },
+    { name = "starlette" },
     { name = "uvicorn" },
 ]
 
@@ -377,6 +378,7 @@ requires-dist = [
     { name = "agent", editable = "packages/agent" },
     { name = "core", editable = "packages/core" },
     { name = "mcp", specifier = ">=2.3,<3" },
+    { name = "starlette", specifier = ">=1.10" },
     { name = "uvicorn", specifier = ">=0.54" },
 ]
 
