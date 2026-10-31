@@ -7,11 +7,9 @@ Real Postgres, platform (`default_app`), gateway and web app; only the model and
 fakes. Needs `npm run build` in `web/` first: CI builds it, a local run without it is skipped.
 """
 
-import asyncio
 import json
 import os
 import re
-import time
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -36,8 +34,7 @@ from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
 from core.config import Settings
 from core.models import StepEvent
 from merchant_platform.api import default_app
-from merchant_platform.events import LiveBus
-from tests.e2e.conftest import free_port, running_gateway, serving
+from tests.e2e.conftest import free_port, running_gateway, serving, subscribed
 
 pytestmark = [pytest.mark.integration, pytest.mark.browser]
 
@@ -149,15 +146,6 @@ async def browser() -> AsyncIterator[Browser]:
         browser = await playwright.chromium.launch()
         yield browser
         await browser.close()
-
-
-async def subscribed(bus: LiveBus, slug: str) -> None:
-    """Until a page listens to `slug`'s live events. The browser's `open` is no sign: the
-    stream sends its headers before it subscribes to the bus (#216)."""
-    deadline = time.monotonic() + 5
-    while bus.subscriber_count(slug) == 0:
-        assert time.monotonic() < deadline, f"no page listens to {slug}'s live events"
-        await asyncio.sleep(0.05)
 
 
 def tomorrow() -> date:

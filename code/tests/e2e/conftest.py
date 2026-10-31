@@ -4,6 +4,7 @@ Every e2e scenario runs twice: with the agent in the gateway's process, and with
 a bridge to a real BATP node (#61).
 """
 
+import asyncio
 import os
 import signal
 import socket
@@ -24,6 +25,7 @@ from starlette.types import ASGIApp
 from core.config import Settings
 from core.db import make_engine
 from gateway.server import create_app
+from merchant_platform.events import LiveBus
 
 # A process importing everything for the first time, right after `uv sync`, can take a while.
 STARTUP_SECONDS = 30.0
@@ -157,3 +159,12 @@ def bridge_base_url(batp_node: BatpNode, e2e_database_url: str) -> Iterator[str]
     settings = Settings(_env_file=None, database_url=e2e_database_url, batp_url=batp_node.url)
     with running_gateway(settings) as url:
         yield url
+
+
+async def subscribed(bus: LiveBus, slug: str) -> None:
+    """Until a client listens to `slug`'s live events. An open stream is no sign: it sends its
+    headers before it subscribes to the bus (#216)."""
+    deadline = time.monotonic() + 5
+    while bus.subscriber_count(slug) == 0:
+        assert time.monotonic() < deadline, f"nothing listens to {slug}'s live events"
+        await asyncio.sleep(0.05)
