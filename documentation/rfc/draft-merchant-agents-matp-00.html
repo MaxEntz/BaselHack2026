@@ -2264,8 +2264,10 @@ agent cannot serve the request.<a href="#section-7.2-3.3.1" class="pilcrow">¶</
 carry out the requests of one session concurrently, and <span class="bcp14">MAY</span> answer them in
 any order. A caller <span class="bcp14">MUST</span> match responses to requests by <code>id</code> only.<a href="#section-7.3-1" class="pilcrow">¶</a></p>
 <p id="section-7.3-2">A node <span class="bcp14">MUST</span> accept at least 32 requests in flight per session. A node <span class="bcp14">MAY</span>
-answer a request beyond its limit with status 400 and code
-<code>invalid_input</code>, without carrying it out.<a href="#section-7.3-2" class="pilcrow">¶</a></p>
+answer a request beyond its limit with status 429 and code
+<code>too_many_requests</code>, without carrying it out. The request itself is
+valid: the caller <span class="bcp14">MAY</span> send it again once one of its earlier requests has
+been answered.<a href="#section-7.3-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="idle-sessions">
@@ -2482,11 +2484,16 @@ free that day for that party.<a href="#section-8.2-2" class="pilcrow">¶</a></p>
 <code>idempotency_key</code> (non-empty string).<a href="#section-8.3-1" class="pilcrow">¶</a></p>
 <p id="section-8.3-2">Result: <code>reservation</code>, with <code>id</code> (the merchant's reference, for example
 "R-001"), <code>merchant</code>, <code>starts_at</code>, <code>party_size</code>, <code>table_label</code>, <code>status</code>
-("confirmed"), <code>guest_name</code> and <code>via</code>. The node records how the booking was
-made: in the reference implementation, <code>via</code> is "claude" for a
-<code>user-agent</code> caller and "merchant" for a <code>merchant-agent</code> caller.<a href="#section-8.3-2" class="pilcrow">¶</a></p>
-<p id="section-8.3-3"><code>starts_at</code> <span class="bcp14">MUST</span> be a start time the merchant offers; AVAILABILITY returns
-such times. Errors: 400, 404, 409, 413, 503.<a href="#section-8.3-3" class="pilcrow">¶</a></p>
+("confirmed"), <code>guest_name</code> and <code>via</code>.<a href="#section-8.3-2" class="pilcrow">¶</a></p>
+<p id="section-8.3-3"><code>via</code> is the booking channel, as the merchant sees it. Version 0.1 defines
+"claude", "merchant" and "website"; "website" is never set by MATP. A node
+<span class="bcp14">MUST</span> record "merchant" when the caller's <code>agent.kind</code> is <code>merchant-agent</code>,
+and "claude" when it is <code>user-agent</code>, whatever assistant the caller is. So
+in this version, <code>via</code> is only accurate for callers behind the reference
+bridge (<a href="#security" class="auto internal xref">Section 12</a>). A later version may add a value for other
+assistants.<a href="#section-8.3-3" class="pilcrow">¶</a></p>
+<p id="section-8.3-4"><code>starts_at</code> <span class="bcp14">MUST</span> be a start time the merchant offers; AVAILABILITY returns
+such times. Errors: 400, 404, 409, 413, 503.<a href="#section-8.3-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="amend">
@@ -2566,7 +2573,8 @@ the node <span class="bcp14">MUST NOT</span> return it again in a later RECALL.<
             <td class="text-left" rowspan="1" colspan="1">
               <code>invalid_input</code>
 </td>
-            <td class="text-left" rowspan="1" colspan="1">Invalid params, unknown intent, missing or unexpected <code>merchant</code>, too many requests in flight</td>
+            <td class="text-left" rowspan="1" colspan="1">Invalid params, unknown intent, missing or unexpected <code>merchant</code>
+</td>
             <td class="text-left" rowspan="1" colspan="1">no</td>
           </tr>
           <tr>
@@ -2604,6 +2612,14 @@ the node <span class="bcp14">MUST NOT</span> return it again in a later RECALL.<
             <td class="text-left" rowspan="1" colspan="1">426</td>
             <td class="text-left" rowspan="1" colspan="1">none</td>
             <td class="text-left" rowspan="1" colspan="1">Unsupported major version (in <code>reject</code> only)</td>
+            <td class="text-left" rowspan="1" colspan="1">no</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">429</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>too_many_requests</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">Too many requests in flight in the session; retry after an earlier response</td>
             <td class="text-left" rowspan="1" colspan="1">no</td>
           </tr>
           <tr>
@@ -2695,33 +2711,42 @@ sessions per peer and per agent. A node <span class="bcp14">MUST</span> stop rea
 size limit instead of buffering it.<a href="#section-12-1.6.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
-<dt id="section-12-1.7">Writes without confirmation:</dt>
+<dt id="section-12-1.7">Booking channel:</dt>
         <dd style="margin-left: 1.5em" id="section-12-1.8">
-          <p id="section-12-1.8.1">A misbehaving caller can book, amend or cancel without asking the guest.
-The node cannot detect it. Idempotency keys prevent duplicate bookings
-on retries, not unwanted ones.<a href="#section-12-1.8.1" class="pilcrow">¶</a></p>
+          <p id="section-12-1.8.1">In version 0.1, a node records every <code>user-agent</code> booking with <code>via</code>
+"claude" (<a href="#intents" class="auto internal xref">Section 8</a>), and the merchant is told the booking came
+through Claude. With other assistants, that is wrong. A merchant <span class="bcp14">SHOULD</span>
+read <code>via</code> as "an assistant" until a later version names the calling
+agent in it.<a href="#section-12-1.8.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
-<dt id="section-12-1.9">Guest identity:</dt>
+<dt id="section-12-1.9">Writes without confirmation:</dt>
         <dd style="margin-left: 1.5em" id="section-12-1.10">
-          <p id="section-12-1.10.1">In this version, a booking belongs to whoever gives its guest name and
+          <p id="section-12-1.10.1">A misbehaving caller can book, amend or cancel without asking the guest.
+The node cannot detect it. Idempotency keys prevent duplicate bookings
+on retries, not unwanted ones.<a href="#section-12-1.10.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-12-1.11">Guest identity:</dt>
+        <dd style="margin-left: 1.5em" id="section-12-1.12">
+          <p id="section-12-1.12.1">In this version, a booking belongs to whoever gives its guest name and
 reference. Any authenticated caller that knows both can amend or cancel
 it, and RECALL returns the bookings of any name. This is acceptable only
 in an experiment with trusted callers. A deployment beyond that needs
-guest authentication, which a later version would define.<a href="#section-12-1.10.1" class="pilcrow">¶</a></p>
+guest authentication, which a later version would define.<a href="#section-12-1.12.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
-<dt id="section-12-1.11">Error messages:</dt>
-        <dd style="margin-left: 1.5em" id="section-12-1.12">
-          <p id="section-12-1.12.1"><code>error.message</code> reaches people. A node <span class="bcp14">MUST NOT</span> put stack traces,
-internal names or data of other guests in it.<a href="#section-12-1.12.1" class="pilcrow">¶</a></p>
-</dd>
-        <dd class="break"></dd>
-<dt id="section-12-1.13">Fallback URLs:</dt>
+<dt id="section-12-1.13">Error messages:</dt>
         <dd style="margin-left: 1.5em" id="section-12-1.14">
-          <p id="section-12-1.14.1">A caller passes <code>fallback_url</code> to a person. A caller <span class="bcp14">SHOULD</span> only offer
+          <p id="section-12-1.14.1"><code>error.message</code> reaches people. A node <span class="bcp14">MUST NOT</span> put stack traces,
+internal names or data of other guests in it.<a href="#section-12-1.14.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-12-1.15">Fallback URLs:</dt>
+        <dd style="margin-left: 1.5em" id="section-12-1.16">
+          <p id="section-12-1.16.1">A caller passes <code>fallback_url</code> to a person. A caller <span class="bcp14">SHOULD</span> only offer
 <code>https</code> URLs, and a node <span class="bcp14">SHOULD</span> only send URLs on the merchant's own
-website.<a href="#section-12-1.14.1" class="pilcrow">¶</a></p>
+website.<a href="#section-12-1.16.1" class="pilcrow">¶</a></p>
 </dd>
       <dd class="break"></dd>
 </dl>
@@ -2987,7 +3012,9 @@ trip to the node. A timeout, a lost session or a 503 becomes an
 </li>
         <li class="normal" id="appendix-A-3.3">
           <p id="appendix-A-3.3.1">A status and its <code>error</code> object become the tool error <code>{"error": code,
-"message": ..., "fallback_url": ...}</code>.<a href="#appendix-A-3.3.1" class="pilcrow">¶</a></p>
+"message": ..., "fallback_url": ...}</code>.
+<code>too_many_requests</code> is not a tool error code: the bridge stays under the
+limit, and would report a 429 as <code>agent_unavailable</code>.<a href="#appendix-A-3.3.1" class="pilcrow">¶</a></p>
 </li>
       </ul>
 </section>

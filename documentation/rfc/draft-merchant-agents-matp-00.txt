@@ -83,24 +83,24 @@ Table of Contents
      7.1.  request . . . . . . . . . . . . . . . . . . . . . . . . .   9
      7.2.  response  . . . . . . . . . . . . . . . . . . . . . . . .  10
      7.3.  Concurrency . . . . . . . . . . . . . . . . . . . . . . .  11
-     7.4.  Idle sessions . . . . . . . . . . . . . . . . . . . . . .  11
+     7.4.  Idle sessions . . . . . . . . . . . . . . . . . . . . . .  12
      7.5.  Session errors  . . . . . . . . . . . . . . . . . . . . .  12
      7.6.  Idempotency . . . . . . . . . . . . . . . . . . . . . . .  12
      7.7.  Confirmation before writes  . . . . . . . . . . . . . . .  13
    8.  Intents . . . . . . . . . . . . . . . . . . . . . . . . . . .  13
-     8.1.  DISCOVER  . . . . . . . . . . . . . . . . . . . . . . . .  13
+     8.1.  DISCOVER  . . . . . . . . . . . . . . . . . . . . . . . .  14
      8.2.  AVAILABILITY  . . . . . . . . . . . . . . . . . . . . . .  14
      8.3.  BOOK  . . . . . . . . . . . . . . . . . . . . . . . . . .  14
-     8.4.  AMEND . . . . . . . . . . . . . . . . . . . . . . . . . .  14
+     8.4.  AMEND . . . . . . . . . . . . . . . . . . . . . . . . . .  15
      8.5.  CANCEL  . . . . . . . . . . . . . . . . . . . . . . . . .  15
      8.6.  RECALL  . . . . . . . . . . . . . . . . . . . . . . . . .  15
      8.7.  PING  . . . . . . . . . . . . . . . . . . . . . . . . . .  15
    9.  Status Codes  . . . . . . . . . . . . . . . . . . . . . . . .  15
-   10. Events  . . . . . . . . . . . . . . . . . . . . . . . . . . .  16
-   11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  16
+   10. Events  . . . . . . . . . . . . . . . . . . . . . . . . . . .  17
+   11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  17
    12. Security Considerations . . . . . . . . . . . . . . . . . . .  17
    13. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  18
-   14. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  18
+   14. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  19
    15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  19
      15.1.  Normative References . . . . . . . . . . . . . . . . . .  19
      15.2.  Informative References . . . . . . . . . . . . . . . . .  20
@@ -114,20 +114,20 @@ Table of Contents
 Internet-Draft                    MATP                      October 2026
 
 
-   Appendix C.  JSON Schemas . . . . . . . . . . . . . . . . . . . .  23
-     C.1.  DISCOVER params . . . . . . . . . . . . . . . . . . . . .  23
-     C.2.  DISCOVER result . . . . . . . . . . . . . . . . . . . . .  25
-     C.3.  AVAILABILITY params . . . . . . . . . . . . . . . . . . .  28
-     C.4.  AVAILABILITY result . . . . . . . . . . . . . . . . . . .  29
-     C.5.  BOOK params . . . . . . . . . . . . . . . . . . . . . . .  30
-     C.6.  BOOK, AMEND and CANCEL result . . . . . . . . . . . . . .  31
-     C.7.  AMEND params  . . . . . . . . . . . . . . . . . . . . . .  33
-     C.8.  CANCEL params . . . . . . . . . . . . . . . . . . . . . .  34
-     C.9.  RECALL params . . . . . . . . . . . . . . . . . . . . . .  35
-     C.10. RECALL result . . . . . . . . . . . . . . . . . . . . . .  35
-     C.11. PING params and result  . . . . . . . . . . . . . . . . .  37
-   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  38
-   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  38
+   Appendix C.  JSON Schemas . . . . . . . . . . . . . . . . . . . .  24
+     C.1.  DISCOVER params . . . . . . . . . . . . . . . . . . . . .  24
+     C.2.  DISCOVER result . . . . . . . . . . . . . . . . . . . . .  26
+     C.3.  AVAILABILITY params . . . . . . . . . . . . . . . . . . .  29
+     C.4.  AVAILABILITY result . . . . . . . . . . . . . . . . . . .  30
+     C.5.  BOOK params . . . . . . . . . . . . . . . . . . . . . . .  31
+     C.6.  BOOK, AMEND and CANCEL result . . . . . . . . . . . . . .  32
+     C.7.  AMEND params  . . . . . . . . . . . . . . . . . . . . . .  34
+     C.8.  CANCEL params . . . . . . . . . . . . . . . . . . . . . .  35
+     C.9.  RECALL params . . . . . . . . . . . . . . . . . . . . . .  36
+     C.10. RECALL result . . . . . . . . . . . . . . . . . . . . . .  36
+     C.11. PING params and result  . . . . . . . . . . . . . . . . .  38
+   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  39
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  39
 
 1.  Introduction
 
@@ -601,14 +601,14 @@ Internet-Draft                    MATP                      October 2026
    by id only.
 
    A node MUST accept at least 32 requests in flight per session.  A
-   node MAY answer a request beyond its limit with status 400 and code
-   invalid_input, without carrying it out.
+   node MAY answer a request beyond its limit with status 429 and code
+   too_many_requests, without carrying it out.  The request itself is
+   valid: the caller MAY send it again once one of its earlier requests
+   has been answered.
 
-7.4.  Idle sessions
 
-   A node SHOULD close a session that has received no frame for 60
-   seconds, and MUST NOT close it for idleness sooner.  A caller that
-   wants to keep a session open sends PING (Section 8.7).
+
+
 
 
 
@@ -617,6 +617,12 @@ Internet-Draft                    MATP                      October 2026
 
 Internet-Draft                    MATP                      October 2026
 
+
+7.4.  Idle sessions
+
+   A node SHOULD close a session that has received no frame for 60
+   seconds, and MUST NOT close it for idleness sooner.  A caller that
+   wants to keep a session open sends PING (Section 8.7).
 
 7.5.  Session errors
 
@@ -659,12 +665,6 @@ Internet-Draft                    MATP                      October 2026
       another.  If the params differ, it MUST answer status 400 with
       code invalid_input.
 
-   *  An AMEND sent again with the same params MUST leave the booking as
-      the first one left it, and return it.
-
-   *  CANCEL is idempotent without a key: cancelling a booking already
-      cancelled by the guest returns it again, with status 200.
-
 
 
 
@@ -673,6 +673,12 @@ Internet-Draft                    MATP                      October 2026
 
 Internet-Draft                    MATP                      October 2026
 
+
+   *  An AMEND sent again with the same params MUST leave the booking as
+      the first one left it, and return it.
+
+   *  CANCEL is idempotent without a key: cancelling a booking already
+      cancelled by the guest returns it again, with status 200.
 
 7.7.  Confirmation before writes
 
@@ -716,12 +722,6 @@ Internet-Draft                    MATP                      October 2026
 
                          Table 9: MATP 0.1 intents
 
-8.1.  DISCOVER
-
-   Params: query (string), and optionally near (string), date, and
-   filters with tags (array of strings) and max_price: one to four EURO
-   SIGN characters (U+20AC), from "€" (cheapest) to "€€€€".
-
 
 
 
@@ -729,6 +729,12 @@ Internet-Draft                    MATP                      October 2026
 
 Internet-Draft                    MATP                      October 2026
 
+
+8.1.  DISCOVER
+
+   Params: query (string), and optionally near (string), date, and
+   filters with tags (array of strings) and max_price: one to four EURO
+   SIGN characters (U+20AC), from "€" (cheapest) to "€€€€".
 
    Result: merchants, the live merchants matching the query and all
    filters, each with slug, name, city, tags, price_level and website.
@@ -761,9 +767,24 @@ Internet-Draft                    MATP                      October 2026
 
    Result: reservation, with id (the merchant's reference, for example
    "R-001"), merchant, starts_at, party_size, table_label, status
-   ("confirmed"), guest_name and via.  The node records how the booking
-   was made: in the reference implementation, via is "claude" for a
-   user-agent caller and "merchant" for a merchant-agent caller.
+   ("confirmed"), guest_name and via.
+
+   via is the booking channel, as the merchant sees it.  Version 0.1
+   defines "claude", "merchant" and "website"; "website" is never set by
+   MATP.  A node MUST record "merchant" when the caller's agent.kind is
+   merchant-agent, and "claude" when it is user-agent, whatever
+   assistant the caller is.  So in this version, via is only accurate
+   for callers behind the reference bridge (Section 12).  A later
+   version may add a value for other assistants.
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 14]
+
+Internet-Draft                    MATP                      October 2026
+
 
    starts_at MUST be a start time the merchant offers; AVAILABILITY
    returns such times.  Errors: 400, 404, 409, 413, 503.
@@ -778,13 +799,6 @@ Internet-Draft                    MATP                      October 2026
    Result: reservation, as amended.
 
    Errors: 400, 404, 409, 413, 503.
-
-
-
-                           Expires 4 May 2027                  [Page 14]
-
-Internet-Draft                    MATP                      October 2026
-
 
 8.5.  CANCEL
 
@@ -812,28 +826,14 @@ Internet-Draft                    MATP                      October 2026
 
 9.  Status Codes
 
-   +========+===================+=======================+==============+
-   | Status | error.code        | Meaning               | fallback_url |
-   +========+===================+=======================+==============+
-   | 200    | none              | Success               | no           |
-   +--------+-------------------+-----------------------+--------------+
-   | 400    | invalid_input     | Invalid params,       | no           |
-   |        |                   | unknown intent,       |              |
-   |        |                   | missing or            |              |
-   |        |                   | unexpected            |              |
-   |        |                   | merchant, too many    |              |
-   |        |                   | requests in flight    |              |
-   +--------+-------------------+-----------------------+--------------+
-   | 401    | none              | hello refused (in     | no           |
-   |        |                   | reject only)          |              |
-   +--------+-------------------+-----------------------+--------------+
-   | 404    | not_found         | Unknown merchant,     | no           |
-   |        |                   | merchant not yet      |              |
-   |        |                   | live, unknown         |              |
-   |        |                   | booking, or a         |              |
-   |        |                   | booking that is       |              |
-   |        |                   | not the guest's       |              |
-   +--------+-------------------+-----------------------+--------------+
+     +========+===================+===================+==============+
+     | Status | error.code        | Meaning           | fallback_url |
+     +========+===================+===================+==============+
+     | 200    | none              | Success           | no           |
+     +--------+-------------------+-------------------+--------------+
+     | 400    | invalid_input     | Invalid params,   | no           |
+     |        |                   | unknown intent,   |              |
+     |        |                   | missing or        |              |
 
 
 
@@ -842,31 +842,61 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
-   | 409    | slot_unavailable  | The time is taken,    | no           |
-   |        |                   | blocked, in the       |              |
-   |        |                   | past, or not one      |              |
-   |        |                   | the merchant          |              |
-   |        |                   | offers                |              |
-   +--------+-------------------+-----------------------+--------------+
-   | 413    | party_too_large   | The party is above    | yes          |
-   |        |                   | the merchant's        |              |
-   |        |                   | online limit, or      |              |
-   |        |                   | no table fits it      |              |
-   +--------+-------------------+-----------------------+--------------+
-   | 426    | none              | Unsupported major     | no           |
-   |        |                   | version (in reject    |              |
-   |        |                   | only)                 |              |
-   +--------+-------------------+-----------------------+--------------+
-   | 503    | agent_unavailable | The merchant agent    | yes          |
-   |        |                   | is down, failed,      |              |
-   |        |                   | or timed out          |              |
-   +--------+-------------------+-----------------------+--------------+
+     |        |                   | unexpected        |              |
+     |        |                   | merchant          |              |
+     +--------+-------------------+-------------------+--------------+
+     | 401    | none              | hello refused (in | no           |
+     |        |                   | reject only)      |              |
+     +--------+-------------------+-------------------+--------------+
+     | 404    | not_found         | Unknown merchant, | no           |
+     |        |                   | merchant not yet  |              |
+     |        |                   | live, unknown     |              |
+     |        |                   | booking, or a     |              |
+     |        |                   | booking that is   |              |
+     |        |                   | not the guest's   |              |
+     +--------+-------------------+-------------------+--------------+
+     | 409    | slot_unavailable  | The time is       | no           |
+     |        |                   | taken, blocked,   |              |
+     |        |                   | in the past, or   |              |
+     |        |                   | not one the       |              |
+     |        |                   | merchant offers   |              |
+     +--------+-------------------+-------------------+--------------+
+     | 413    | party_too_large   | The party is      | yes          |
+     |        |                   | above the         |              |
+     |        |                   | merchant's online |              |
+     |        |                   | limit, or no      |              |
+     |        |                   | table fits it     |              |
+     +--------+-------------------+-------------------+--------------+
+     | 426    | none              | Unsupported major | no           |
+     |        |                   | version (in       |              |
+     |        |                   | reject only)      |              |
+     +--------+-------------------+-------------------+--------------+
+     | 429    | too_many_requests | Too many requests | no           |
+     |        |                   | in flight in the  |              |
+     |        |                   | session; retry    |              |
+     |        |                   | after an earlier  |              |
+     |        |                   | response          |              |
+     +--------+-------------------+-------------------+--------------+
+     | 503    | agent_unavailable | The merchant      | yes          |
+     |        |                   | agent is down,    |              |
+     |        |                   | failed, or timed  |              |
+     |        |                   | out               |              |
+     +--------+-------------------+-------------------+--------------+
 
                       Table 10: MATP 0.1 status codes
 
    The status values 400 and 413 also appear in error frames
    (Section 7.5), which carry no error.code; there, 413 means a frame
    above the size limit.
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 16]
+
+Internet-Draft                    MATP                      October 2026
+
 
    A node MUST answer 503 to AVAILABILITY, BOOK, AMEND and CANCEL when
    the merchant is marked as down, without consulting the merchant
@@ -889,14 +919,6 @@ Internet-Draft                    MATP                      October 2026
 11.  Versioning and Extensibility
 
    A version is written major.minor:
-
-
-
-
-                           Expires 4 May 2027                  [Page 16]
-
-Internet-Draft                    MATP                      October 2026
-
 
    version = 1*DIGIT "." 1*DIGIT
 
@@ -924,6 +946,14 @@ Internet-Draft                    MATP                      October 2026
       except on the loopback interface, and SHOULD be long random
       strings that a node can revoke individually.
 
+
+
+
+                           Expires 4 May 2027                  [Page 17]
+
+Internet-Draft                    MATP                      October 2026
+
+
    Transport:  Without TLS, anyone on the path reads guest names,
       bookings and tokens, and can change them.  Section 4 therefore
       requires TLS 1.3 off the loopback interface.  A node bound to the
@@ -936,24 +966,18 @@ Internet-Draft                    MATP                      October 2026
       agent.  A node MUST stop reading a frame at the size limit instead
       of buffering it.
 
+   Booking channel:  In version 0.1, a node records every user-agent
+      booking with via "claude" (Section 8), and the merchant is told
+      the booking came through Claude.  With other assistants, that is
+      wrong.  A merchant SHOULD read via as "an assistant" until a later
+      version names the calling agent in it.
+
    Writes without confirmation:  A misbehaving caller can book, amend or
       cancel without asking the guest.  The node cannot detect it.
       Idempotency keys prevent duplicate bookings on retries, not
       unwanted ones.
 
    Guest identity:  In this version, a booking belongs to whoever gives
-
-
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 17]
-
-Internet-Draft                    MATP                      October 2026
-
-
       its guest name and reference.  Any authenticated caller that knows
       both can amend or cancel it, and RECALL returns the bookings of
       any name.  This is acceptable only in an experiment with trusted
@@ -979,6 +1003,13 @@ Internet-Draft                    MATP                      October 2026
       halal, kosher).  A node MUST NOT store them beyond the request or
       link them to a guest.
 
+
+
+                           Expires 4 May 2027                  [Page 18]
+
+Internet-Draft                    MATP                      October 2026
+
+
    Recall:  As Section 12 says, RECALL returns the bookings of any name
       it is given.  Callers SHOULD only send the name of the guest they
       act for.
@@ -1001,14 +1032,6 @@ Internet-Draft                    MATP                      October 2026
       with this template:
 
       *  Scheme name: matp
-
-
-
-
-                           Expires 4 May 2027                  [Page 18]
-
-Internet-Draft                    MATP                      October 2026
-
 
       *  Status: Provisional
 
@@ -1033,6 +1056,16 @@ Internet-Draft                    MATP                      October 2026
               DOI 10.17487/RFC2119, March 1997,
               <https://www.rfc-editor.org/rfc/rfc2119>.
 
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 19]
+
+Internet-Draft                    MATP                      October 2026
+
+
    [RFC3339]  Klyne, G. and C. Newman, "Date and Time on the Internet:
               Timestamps", RFC 3339, DOI 10.17487/RFC3339, July 2002,
               <https://www.rfc-editor.org/rfc/rfc3339>.
@@ -1054,17 +1087,6 @@ Internet-Draft                    MATP                      October 2026
    [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
               2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
               May 2017, <https://www.rfc-editor.org/rfc/rfc8174>.
-
-
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 19]
-
-Internet-Draft                    MATP                      October 2026
-
 
    [RFC8259]  Bray, T., Ed., "The JavaScript Object Notation (JSON) Data
               Interchange Format", STD 90, RFC 8259,
@@ -1089,6 +1111,17 @@ Internet-Draft                    MATP                      October 2026
               <https://datatracker.ietf.org/doc/html/draft-bhutton-json-
               schema-01>.
 
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 20]
+
+Internet-Draft                    MATP                      October 2026
+
+
    [I-D.hood-independent-agtp]
               Hood, C., "Agent Transfer Protocol (AGTP)", Work in
               Progress, Internet-Draft, draft-hood-independent-agtp-10,
@@ -1112,16 +1145,6 @@ Internet-Draft                    MATP                      October 2026
               RFC 6335, DOI 10.17487/RFC6335, August 2011,
               <https://www.rfc-editor.org/rfc/rfc6335>.
 
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 20]
-
-Internet-Draft                    MATP                      October 2026
-
-
    [RFC7595]  Thaler, D., Ed., Hansen, T., and T. Hardie, "Guidelines
               and Registration Procedures for URI Schemes", BCP 35,
               RFC 7595, DOI 10.17487/RFC7595, June 2015,
@@ -1137,6 +1160,23 @@ Appendix A.  The MCP Bridge
    node.  The reference bridge opens one session with agent.id
    urn:matp:agent:claude-gateway and agent.kind user-agent, and maps its
    tools to intents:
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 21]
+
+Internet-Draft                    MATP                      October 2026
+
 
    +=====================+==============+=============================+
    | MCP tool            | MATP intent  | Notes                       |
@@ -1169,14 +1209,9 @@ Appendix A.  The MCP Bridge
       fallback_url.
 
    *  A status and its error object become the tool error {"error":
-      code, "message": ..., "fallback_url": ...}.
-
-
-
-                           Expires 4 May 2027                  [Page 21]
-
-Internet-Draft                    MATP                      October 2026
-
+      code, "message": ..., "fallback_url": ...}. too_many_requests is
+      not a tool error code: the bridge stays under the limit, and would
+      report a 429 as agent_unavailable.
 
 Appendix B.  Example Session
 
@@ -1184,6 +1219,20 @@ Appendix B.  Example Session
    caller to the node, and lines starting with "N:" from the node to the
    caller.  Long frames are wrapped here for readability: on the wire,
    each is one line.
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 22]
+
+Internet-Draft                    MATP                      October 2026
+
 
 C: {"type": "hello", "matp": "0.1",
     "agent": {"id": "urn:matp:agent:claude-gateway",
@@ -1229,7 +1278,14 @@ N: {"type": "response", "id": "r-2", "status": 200,
 
 
 
-                           Expires 4 May 2027                  [Page 22]
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 23]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1285,7 +1341,7 @@ C.1.  DISCOVER params
 
 
 
-                           Expires 4 May 2027                  [Page 23]
+                           Expires 4 May 2027                  [Page 24]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1341,7 +1397,7 @@ Internet-Draft                    MATP                      October 2026
 
 
 
-                           Expires 4 May 2027                  [Page 24]
+                           Expires 4 May 2027                  [Page 25]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1397,7 +1453,7 @@ C.2.  DISCOVER result
 
 
 
-                           Expires 4 May 2027                  [Page 25]
+                           Expires 4 May 2027                  [Page 26]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1453,7 +1509,7 @@ Internet-Draft                    MATP                      October 2026
 
 
 
-                           Expires 4 May 2027                  [Page 26]
+                           Expires 4 May 2027                  [Page 27]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1509,7 +1565,7 @@ Internet-Draft                    MATP                      October 2026
 
 
 
-                           Expires 4 May 2027                  [Page 27]
+                           Expires 4 May 2027                  [Page 28]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1565,7 +1621,7 @@ C.3.  AVAILABILITY params
 
 
 
-                           Expires 4 May 2027                  [Page 28]
+                           Expires 4 May 2027                  [Page 29]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1621,7 +1677,7 @@ C.4.  AVAILABILITY result
 
 
 
-                           Expires 4 May 2027                  [Page 29]
+                           Expires 4 May 2027                  [Page 30]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1677,7 +1733,7 @@ C.5.  BOOK params
 
 
 
-                           Expires 4 May 2027                  [Page 30]
+                           Expires 4 May 2027                  [Page 31]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1733,7 +1789,7 @@ C.6.  BOOK, AMEND and CANCEL result
 
 
 
-                           Expires 4 May 2027                  [Page 31]
+                           Expires 4 May 2027                  [Page 32]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1789,7 +1845,7 @@ Internet-Draft                    MATP                      October 2026
 
 
 
-                           Expires 4 May 2027                  [Page 32]
+                           Expires 4 May 2027                  [Page 33]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1845,7 +1901,7 @@ C.7.  AMEND params
 
 
 
-                           Expires 4 May 2027                  [Page 33]
+                           Expires 4 May 2027                  [Page 34]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1901,7 +1957,7 @@ C.8.  CANCEL params
 
 
 
-                           Expires 4 May 2027                  [Page 34]
+                           Expires 4 May 2027                  [Page 35]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -1957,7 +2013,7 @@ C.10.  RECALL result
 
 
 
-                           Expires 4 May 2027                  [Page 35]
+                           Expires 4 May 2027                  [Page 36]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -2013,7 +2069,7 @@ Internet-Draft                    MATP                      October 2026
 
 
 
-                           Expires 4 May 2027                  [Page 36]
+                           Expires 4 May 2027                  [Page 37]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -2069,7 +2125,7 @@ C.11.  PING params and result
 
 
 
-                           Expires 4 May 2027                  [Page 37]
+                           Expires 4 May 2027                  [Page 38]
 
 Internet-Draft                    MATP                      October 2026
 
@@ -2125,4 +2181,4 @@ Author's Address
 
 
 
-                           Expires 4 May 2027                  [Page 38]
+                           Expires 4 May 2027                  [Page 39]

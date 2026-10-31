@@ -115,7 +115,7 @@ The node answers with one of these:
 |---|---|---|---|---|
 | `DISCOVER` | — | `SearchMerchantsInput` | `SearchMerchantsOutput` | `gateway.discovery.search` |
 | `AVAILABILITY` | required | `GetAvailabilityInput` without `merchant` | `GetAvailabilityOutput` | `AgentService.get_availability` |
-| `BOOK` | required | `CreateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.create_reservation` (`via` from the caller's kind) |
+| `BOOK` | required | `CreateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.create_reservation` (`via`: `merchant` for a `merchant-agent`, `claude` for any `user-agent`, so only accurate behind our bridge) |
 | `AMEND` | required | `UpdateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.update_reservation` |
 | `CANCEL` | required | `CancelReservationInput` without `merchant` | `ReservationOutput` | `AgentService.cancel_reservation(by="guest")` |
 | `RECALL` | — | `GetMyReservationsInput` | `GetMyReservationsOutput` | `AgentService.find_guest_reservations` |
@@ -131,12 +131,13 @@ The node answers with one of these:
 | Status | `error.code` | When | `fallback_url` |
 |---|---|---|---|
 | 200 | — | Success | — |
-| 400 | `invalid_input` | Unknown intent, invalid params, missing or unexpected `merchant`, too many requests in flight | no |
+| 400 | `invalid_input` | Unknown intent, invalid params, missing or unexpected `merchant` | no |
 | 401 | — | `hello` refused (unknown agent or token) | no |
 | 404 | `not_found` | Unknown or not live merchant, unknown booking | no |
 | 409 | `slot_unavailable` | Slot taken or blocked | no |
 | 413 | `party_too_large` | Party above the limit or no table fits (a frame above 64 KiB gets an `error` frame with `413` instead) | yes |
 | 426 | — | Unsupported `matp` version | no |
+| 429 | `too_many_requests` | Too many requests in flight; retry after an earlier response | no |
 | 503 | `agent_unavailable` | Merchant `down`, agent error or timeout | yes |
 
 ## 9. Events (reserved)
@@ -150,7 +151,7 @@ through the guest notice returned by `RECALL`.
 - **Identity:** every request is attributed to the `agent.id` of its session, in the node's logs. Guest names are never logged at INFO (AGENTS.md §12).
 - **Credentials:** one token per known agent (node configuration), compared in constant time.
 - **Exposure:** in the POC the node listens on `127.0.0.1:4710`, and only the gateway on the same host reaches it. Opening 4710 on the team server needs TLS and a firewall rule on a shared machine, so ask first (AGENTS.md §0).
-- **Limits:** 64 KiB per frame, 60 s idle timeout, at least 32 requests in flight per session: beyond the node's limit, extra requests get `400` until earlier ones are answered.
+- **Limits:** 64 KiB per frame, 60 s idle timeout, at least 32 requests in flight per session: beyond the node's limit, extra requests get `429 too_many_requests` and may be sent again once earlier ones are answered.
 - **Guest identity** is only the guest name and the booking reference (AGENTS.md §13). Fine for the POC with trusted callers; the draft's Security Considerations say what a real deployment needs.
 
 ## 11. Example session

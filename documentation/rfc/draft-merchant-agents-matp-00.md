@@ -371,8 +371,10 @@ carry out the requests of one session concurrently, and MAY answer them in
 any order. A caller MUST match responses to requests by `id` only.
 
 A node MUST accept at least 32 requests in flight per session. A node MAY
-answer a request beyond its limit with status 400 and code
-`invalid_input`, without carrying it out.
+answer a request beyond its limit with status 429 and code
+`too_many_requests`, without carrying it out. The request itself is
+valid: the caller MAY send it again once one of its earlier requests has
+been answered.
 
 ## Idle sessions
 
@@ -479,9 +481,15 @@ Params: `starts_at`, `party_size`, `guest_name` (non-empty string),
 
 Result: `reservation`, with `id` (the merchant's reference, for example
 "R-001"), `merchant`, `starts_at`, `party_size`, `table_label`, `status`
-("confirmed"), `guest_name` and `via`. The node records how the booking was
-made: in the reference implementation, `via` is "claude" for a
-`user-agent` caller and "merchant" for a `merchant-agent` caller.
+("confirmed"), `guest_name` and `via`.
+
+`via` is the booking channel, as the merchant sees it. Version 0.1 defines
+"claude", "merchant" and "website"; "website" is never set by MATP. A node
+MUST record "merchant" when the caller's `agent.kind` is `merchant-agent`,
+and "claude" when it is `user-agent`, whatever assistant the caller is. So
+in this version, `via` is only accurate for callers behind the reference
+bridge ({{security}}). A later version may add a value for other
+assistants.
 
 `starts_at` MUST be a start time the merchant offers; AVAILABILITY returns
 such times. Errors: 400, 404, 409, 413, 503.
@@ -526,12 +534,13 @@ Errors: none defined.
 | Status | `error.code` | Meaning | `fallback_url` |
 |---|---|---|---|
 | 200 | none | Success | no |
-| 400 | `invalid_input` | Invalid params, unknown intent, missing or unexpected `merchant`, too many requests in flight | no |
+| 400 | `invalid_input` | Invalid params, unknown intent, missing or unexpected `merchant` | no |
 | 401 | none | `hello` refused (in `reject` only) | no |
 | 404 | `not_found` | Unknown merchant, merchant not yet live, unknown booking, or a booking that is not the guest's | no |
 | 409 | `slot_unavailable` | The time is taken, blocked, in the past, or not one the merchant offers | no |
 | 413 | `party_too_large` | The party is above the merchant's online limit, or no table fits it | yes |
 | 426 | none | Unsupported major version (in `reject` only) | no |
+| 429 | `too_many_requests` | Too many requests in flight in the session; retry after an earlier response | no |
 | 503 | `agent_unavailable` | The merchant agent is down, failed, or timed out | yes |
 {: title="MATP 0.1 status codes"}
 
@@ -598,6 +607,13 @@ Limits and denial of service:
   timeout bound what one session costs a node. A node SHOULD also limit
   sessions per peer and per agent. A node MUST stop reading a frame at the
   size limit instead of buffering it.
+
+Booking channel:
+: In version 0.1, a node records every `user-agent` booking with `via`
+  "claude" ({{intents}}), and the merchant is told the booking came
+  through Claude. With other assistants, that is wrong. A merchant SHOULD
+  read `via` as "an assistant" until a later version names the calling
+  agent in it.
 
 Writes without confirmation:
 : A misbehaving caller can book, amend or cancel without asking the guest.
@@ -697,6 +713,8 @@ tools to intents:
   `agent_unavailable` tool error with the merchant's `fallback_url`.
 - A status and its `error` object become the tool error `{"error": code,
   "message": ..., "fallback_url": ...}`.
+  `too_many_requests` is not a tool error code: the bridge stays under the
+  limit, and would report a 429 as `agent_unavailable`.
 
 # Example Session
 
