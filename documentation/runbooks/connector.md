@@ -24,7 +24,7 @@ Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not f
 | Claude.ai's calls accepted by the server | ✅ validated | coming from `160.79.106.x`, all `200`, no `Host` or `Origin` rejected in the logs |
 | Anthropic's calls through the filter | ✅ validated | Claude Desktop's tool calls came from `160.79.106.x`, all `200`, with the deployed Caddyfile |
 | Caddy IP filter (#45): `403` outside `160.79.104.0/21` | ✅ validated | `403` and `server: Caddy` on `/mcp`, `/health` and `/.env` from outside, on the LXC |
-| MATP node on the LXC (#62) | ⏳ waits for #60, #61 | unit and `make deploy` ready; port 4710 already unreachable from outside (firewall) |
+| MATP node on the LXC (#62) | ✅ validated | SDK client on the LXC, over MATP: booking, move, cancellation, party too large, outage and restore. `127.0.0.1:4710` only, closed from outside. Node stopped: the gateway stays up, gives the fallback link, and recovers without a restart |
 | SSH tunnel (`ssh -L`) | ❌ refused | `AllowTcpForwarding no` in the server's SSH hardening |
 | MCP Inspector | ✅ validated | `tools/list` locally: the 6 tools, their schemas and annotations |
 | ngrok tunnel (steps 1 to 3) | ⏳ not tested | alternative if the LXC is no longer available |

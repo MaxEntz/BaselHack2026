@@ -193,7 +193,7 @@ node logs as `request`. Without `MATP_URL`, the gateway calls the agent in its o
 | Messages, framing, status codes, client, generic node | `code/packages/matp/` (`matp.messages`, `matp.codec`, `matp.status`, `matp.client`, `matp.server`) | ✅ #60 |
 | The node of this backend | `code/packages/merchant_node/` (`make node`, `uv run python -m merchant_node`), settings `MATP_HOST`, `MATP_PORT`, `MATP_TOKENS` | ✅ #60 |
 | The MCP gateway as a bridge | `gateway/agent_client.py` (`MatpAgentClient`), settings `MATP_URL`, `MATP_TOKEN` | ✅ #61 |
-| The node on the team server (loopback) | `code/deploy/` | 🚧 #62 |
+| The node on the team server (loopback) | `code/deploy/merchant-node.service`, `make deploy` | ✅ #62 |
 | RFC-style Internet-Draft of this spec | `documentation/rfc/` | 🚧 #63 |
 
 Without `MATP_TOKENS`, the node lets any agent in, and refuses to start unless it listens on loopback.
