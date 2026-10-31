@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import fixture from "../../../../tests/fixtures/demo/la-graine-verte-management.json" with { type: "json" };
 import { createMockManagementClient } from "../../mocks/managementClient.ts";
 import type { ManagementFixture } from "../../types.ts";
 import type { ManagementClient } from "../client.ts";
 import { ClientContext } from "../data.ts";
+import { RefreshContext, createRefreshStore } from "../live.ts";
 import { ToastProvider } from "../ui/index.ts";
 import { AgentPage, PAUSED_TOAST, RESUMED_TOAST } from "./AgentPage.tsx";
 
@@ -79,6 +80,22 @@ describe("Agent", () => {
 
     await waitFor(() => expect(rows()[1].open).toBe(true));
     expect([...rows()].filter((r) => r.open)).toHaveLength(1);
+  });
+
+  it("holds the live refresh while a row is open (#137)", async () => {
+    const store = createRefreshStore();
+    render(<RefreshContext.Provider value={store}>{page(mock())}</RefreshContext.Provider>);
+    await waitFor(() => expect(rows()).toHaveLength(10));
+    const second = rows()[1];
+    second.open = true;
+    fireEvent(second, new Event("toggle"));
+
+    act(() => store.bump());
+    expect(store.applied()).toBe(0);
+
+    second.open = false;
+    fireEvent(second, new Event("toggle"));
+    await waitFor(() => expect(store.applied()).toBe(1));
   });
 
   it("pauses and resumes the agent", async () => {

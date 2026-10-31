@@ -22,6 +22,9 @@ class Session:
     needs_cookie: bool = False
     # Until when the browser that built the merchant may claim its owner cookie, once (#132).
     claimable_until: float | None = None
+    # The history's length when this session built its merchant: publishing waits for a
+    # merchant message after it, so the review card is always seen first (#136, #152).
+    built_at: int | None = None
     # Held for the whole turn: one turn at a time per session.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # The running turn, kept referenced so it isn't garbage-collected mid-flight.

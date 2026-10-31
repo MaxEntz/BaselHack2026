@@ -107,6 +107,11 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 |---|---|---|
 | `build_agent` | `BuildAgentInput`: `website`, `description` | `BuildAgentOutput`: `profile`, `status: "building"`, `assumptions`, `facts` (`BuildFact`: `key`, `label`, `value`, `source` = a crawled page's path, `"you"` or null, `quote`), `flags` (`BuildFlag`: `title`, `detail`), `tools`, `mcp_url`; streams 4 steps, then `deploy` `waiting` ("Waiting for you.") (#136) |
 | `publish_agent` | `PublishAgentInput` (empty) | Confirmation "Your agent is live: Claude users can now book you."; streams `deploy` `running` then `done`. A live agent stays live, a paused (`down`) one is refused (#136) |
+| `update_rules` | `cancellation_policy` (empty removes it) | `diff` card; "Saved. Claude reads this before it cancels for a guest." The largest group stays `update_policy`'s (#152) |
+| `try_request` | `party_size`, `date?`, `time?` | What an agent gets: the times, or the 413 with the booking page; "Agents get a 404 until you publish" while `building` |
+| `send_test_booking` | (none) | A booking for 2 at the first free time, made through `AgentService.create_reservation` with `via="claude"` as the node's `BOOK` would; refused while `building` |
+| `update_look` | `accent?`, `accent_2?` (`#rrggbb`), `display_font?`, `corners?`, `reset` | `diff` card(s), "See it" opens the management pane. A colour under 3:1 on `bg` is adjusted (`readable()`) and said so; `reset` reads the website's look again. Stored in the registry's profile copy, read by `GET /merchants/{slug}` |
+| `show_view` | `view`: `agent` or `manage` | A `view` card: Studio switches its canvas, the plain chat shows nothing |
 | `list_reservations` | `date` | Rows `{id, time, guest_name, party_size, table_label, via, status}` |
 | `get_stats` | `date` | `{bookings, guests, seats, blocked: [HH:MM]}` |
 | `block_slot` / `unblock_slot` | `starts_at` | Confirmation |
@@ -288,7 +293,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
   `profile` in step with the merchant's rows, so the gateway's discovery, the fallback link and
   the tool descriptions on `/m/<slug>/mcp` follow at the next call, with no restart.
 - `GET /hours` lists services by start; `PUT /hours` is `update_policy(services=…)`, which stores
-  them by start too, so the same hours in another order are no change ([#201](https://github.com/MaxEntz/BaselHack2026/issues/201)).
+  them by start too, like `provision`, so the same hours in another order are no change ([#201](https://github.com/MaxEntz/BaselHack2026/issues/201)).
 - `GET /tables` answers the plan in the order it was last saved. `PUT /tables` is
   `update_tables`: tables are matched by label (a rename is a removal plus an addition). It refuses
   to remove a table a booking refers to (`table_in_use`, upcoming or past) or to shrink one below an
@@ -298,7 +303,8 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
   booking page must stay on the merchant's website: same host (`www.` aside) and same port, else
   `booking_page_off_site`. `slot_length_min` stays read-only. A stored policy reads as one
   paragraph of at most 500 characters (`agent.provisioning.one_line`); saved back as it was read,
-  it keeps its full stored text and writes no activity line ([#201](https://github.com/MaxEntz/BaselHack2026/issues/201)).
+  it keeps its full stored text and writes no activity line ([#201](https://github.com/MaxEntz/BaselHack2026/issues/201)); an
+  edited one replaces the whole stored text with what was sent.
 - `PUT /settings` saves name, city, price and tags (duplicates dropped); the website stays.
 - `PUT /blocked?date=` sets the day's blocked starts still to come, the ones `GET /blocked`
   lists. Every time must be one of the day's starts (`invalid_input` otherwise, nothing changed);

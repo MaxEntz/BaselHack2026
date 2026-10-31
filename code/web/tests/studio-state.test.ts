@@ -304,3 +304,22 @@ test("tiles take two letters, without the articles", () => {
   assert.equal(initials("Maison Albane"), "MA");
   assert.equal(initials("Noma"), "No");
 });
+
+test("a change shows as a diff card, and a view card isn't a message (#152)", () => {
+  const state = run(
+    reviewing(),
+    { type: "send", text: "Change the main colour to #2450c8" },
+    chat({
+      type: "card",
+      kind: "diff",
+      data: { label: "Main colour", before: "#727f55", after: "#2450c8", view: "manage" },
+    }),
+    chat({ type: "card", kind: "view", data: { view: "agent" } }),
+    chat({ type: "done" }),
+  );
+
+  const kinds = feedOf(state).map((entry) => entry.kind);
+  assert.equal(kinds.filter((kind) => kind === "card").length, 1);
+  const card = feedOf(state).findLast((entry) => entry.kind === "card");
+  assert.ok(card?.kind === "card" && card.card.kind === "diff");
+});

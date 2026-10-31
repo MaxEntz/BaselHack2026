@@ -1,0 +1,15 @@
+/* The merchant's corners (#150), set as `data-corners` on the site's root. `organic` keeps the
+   mockup's blobs, strokes and doodles; `rounded` and `square` draw plain boxes in --radius. */
+.mg:is([data-corners="rounded"], [data-corners="square"]) .doodle { display: none; }
+.mg[data-corners="rounded"] .under::after,
+.mg[data-corners="square"] .under::after { display: none; }
+
+.mg:is([data-corners="rounded"], [data-corners="square"]) .blob path { display: none; }
+.mg:is([data-corners="rounded"], [data-corners="square"]) .blob { border-radius: var(--radius); background: var(--fill, var(--olive)); }
+
+/* The floor plan's tables and Home's minis are outlines, filled when taken. */
+.mg:is([data-corners="rounded"], [data-corners="square"]) .tb > .blob { background: none; border: 1.5px solid var(--on); }
+.mg:is([data-corners="rounded"], [data-corners="square"]) .tb.busy > .blob { background: var(--on); border-color: transparent; }
+.mg:is([data-corners="rounded"], [data-corners="square"]) .tb.soon > .blob { border: 2px dashed var(--on); }
+.mg:is([data-corners="rounded"], [data-corners="square"]) .mini .blob { background: none; border: 1.4px solid var(--olive); }
+.mg:is([data-corners="rounded"], [data-corners="square"]) .mini.on .blob { background: var(--olive); border-color: transparent; }

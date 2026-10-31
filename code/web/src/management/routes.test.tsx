@@ -24,11 +24,20 @@ function at(path: string) {
 }
 
 describe("management routes", () => {
-  const others = (Object.keys(PAGES) as PageId[]).filter((page) => page !== "home");
+  const others = (Object.keys(PAGES) as PageId[]).filter((page) => page !== "home" && page !== "assistant");
   it.each(others)("/manage/:slug/%s has its title", (page) => {
     at(`/manage/la-graine-verte/${page}`);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(PAGES[page]);
     expect(document.title).toBe(`La Graine Verte · ${PAGES[page]}`);
+  });
+
+  it("/manage/:slug/assistant is the assistant on the whole page", () => {
+    at("/manage/la-graine-verte/assistant");
+    const panel = screen.getByRole("complementary", { name: "Assistant" });
+    expect(panel.hidden).toBe(false);
+    expect(screen.getByRole("heading", { level: 2, name: "Assistant" })).toBeTruthy();
+    expect(screen.queryByRole("main")).toBeNull();
+    expect(document.title).toBe("La Graine Verte · Assistant");
   });
 
   it("/manage/:slug is Home, which greets the owner", async () => {

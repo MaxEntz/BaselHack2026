@@ -147,6 +147,8 @@ export function feedOf(state: ChatState): FeedEntry[] {
             loginUrl: item.card.login_url ?? null,
             pages: pagesRead(build),
           });
+        } else if (item.card.kind === "view") {
+          // Not a message: Studio switches its canvas (#152).
         } else if (!(item.card.kind === "confirmation" && followsSteps(items, item))) {
           entries.push({ key, kind: "card", card: item.card });
         }

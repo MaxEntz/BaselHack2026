@@ -60,3 +60,28 @@ describe("review card (#136)", () => {
     expect(screen.queryByText("Reading your website")).toBeNull();
   });
 });
+
+describe("change cards (#152)", () => {
+  it("strikes the old value and bolds the new one", () => {
+    const { container } = render(
+      <CardView
+        card={{
+          type: "card",
+          kind: "diff",
+          data: { label: "Cancelling", before: "None", after: "Free up to 2 hours before", view: null },
+        }}
+      />,
+    );
+
+    expect(container.querySelector("s")?.textContent).toBe("None");
+    expect(container.querySelector("b")?.textContent).toBe("Free up to 2 hours before");
+  });
+
+  it("shows nothing for a view card in the plain chat", () => {
+    const { container } = render(
+      <CardView card={{ type: "card", kind: "view", data: { view: "agent" } }} />,
+    );
+
+    expect(container.textContent).toBe("");
+  });
+});

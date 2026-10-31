@@ -14,22 +14,27 @@ from openai import AsyncOpenAI, Timeout
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.provisioning import generated_tools
 from agent.service import AgentService
 from builder.build import Builder, gateway_mcp_url, publish
 from builder.cache import BuildCache
-from builder.crawl import StepEmitter
+from builder.crawl import StepEmitter, crawl
 from builder.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
+from builder.look import read_look
 from core.config import Settings
 from core.db import merchants_t
 from core.models import (
     BuildAgentInput,
     BuildAgentOutput,
     ErrorEvent,
+    Look,
     MerchantProfile,
     MerchantStatus,
+    StepEvent,
     TextEvent,
 )
 from merchant_platform.accounts import Accounts, IssuedLink, issued
+from merchant_platform.overview import look_store, registry_records
 from merchant_platform.sessions import Session
 from merchant_platform.tools import SPECS, AdminTools, Emit
 
@@ -85,11 +90,24 @@ card shows what you assumed, and the merchant corrects it there.
 OPERATIONS_PROMPT = """\
 Mode: operations. The merchant has an agent.
 {status}- Use the tools for bookings, figures, blocked times, the booking policy and the floor plan.
-- Right after build_agent in this conversation, the review card is shown: read out its flags \
+- Right after build_agent in this conversation, the review card is shown: call no other tool \
+in that reply; read out its flags \
 (each bold line and why) and ask the merchant to confirm or correct them. Corrections go \
 through update_policy or update_tables. Once the merchant says it's right, call publish_agent \
 (unless its status is already live), then wrap up with: "Your agent is live: Claude users can \
 now book you."
+- A merchant who asks to publish has checked: call publish_agent at once, without asking again.
+- update_rules changes the cancellation policy; try_request shows what \
+an agent gets for a party; send_test_booking books a test table as an agent would, only when \
+asked; update_look changes the management site's colours, headings' font or corners; \
+show_view shows Studio's agent or management pane. Say what the tool's result says.
+- Never change the merchant's own website. Asked to, answer exactly: "No. Sésame only reads \
+your public site. It stays as it is, and it's where guests land when the agent can't help."
+- A colour, font or shape request about the agent site: answer exactly: "Your agent site has \
+no interface, so there's nothing to colour. It answers in JSON. I can change the management \
+site."
+- What agents read is the tool descriptions listed under "What agents read" below: quote them \
+rather than describe them in your own words.
 - Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel. \
 If its result says the guest won't be notified, say why in a few words.
 
@@ -158,6 +176,9 @@ def system_prompt(
         parts.append(
             OPERATIONS_PROMPT.format(status=line, profile=profile.model_dump_json(indent=1))
         )
+        # Code-written from the template, merchant free text left out (#23): what agents read.
+        read = "\n".join(f"- {t.name}: {t.description}" for t in generated_tools(profile))
+        parts.append(f"What agents read:\n{read}")
     return "\n".join(parts)
 
 
@@ -306,6 +327,10 @@ async def run_turn(session: Session, user_message: str, emit: Emit) -> None:
     await emit(TextEvent(delta="The platform assistant needs an OpenAI API key (OPENAI_API_KEY)."))
 
 
+async def _no_steps(_: StepEvent) -> None:
+    """A look read again isn't a build: no steps to show."""
+
+
 def default_assistant(
     settings: Settings,
     engine: AsyncEngine,
@@ -345,6 +370,17 @@ def default_assistant(
     async def publish_agent(slug: str, emit: Emit) -> None:
         await publish(slug, emit, engine=engine)
 
+    merchants = registry_records(engine)
+
+    async def site_look(slug: str) -> Look | None:
+        """The merchant website's own look, read again (#152's "back to the look from your
+        site"): the homepage only, through the builder's checked crawl."""
+        record = await merchants(slug)
+        if record is None:
+            return None
+        crawled = await crawl(record.website, _no_steps, max_pages=0)
+        return read_look(crawled.pages[0].look)[0]
+
     tools = AdminTools(
         agent,
         build,
@@ -353,6 +389,9 @@ def default_assistant(
         owned_merchant=settings.platform_merchant,
         issue_link=issue_link if accounts else None,
         publish=publish_agent,
+        merchant=merchants,
+        save_look=look_store(engine),
+        site_look=site_look,
     )
     return Assistant(
         llm,
