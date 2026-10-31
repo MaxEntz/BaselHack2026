@@ -28,10 +28,10 @@ const draftOf = (settings: MerchantSettings): SettingsDraft => ({
   tags: TAGS.filter((tag) => settings.tags.includes(tag)),
 });
 
-export function SettingsPage({ slug }: { slug: string }) {
+export function SettingsPage({ slug, version }: { slug: string; version: number }) {
   const client = useClient();
   const load = useCallback((signal: AbortSignal) => client.settings(slug, signal), [client, slug]);
-  const { data, error } = useLoad(load);
+  const { data, error } = useLoad(load, version);
 
   return (
     <>

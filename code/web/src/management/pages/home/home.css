@@ -45,8 +45,6 @@
 .mg .t-name { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mg .t-det { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mg .t-row.off .t-name, .mg .t-row.off .t-det { color: var(--mut); text-decoration: line-through; }
-.mg .fresh { animation: mg-fresh 3.6s ease-out; }
-@keyframes mg-fresh { 0%, 50% { background: rgb(147 80 70 / .22); } 100% { background: transparent; } }
 
 /* Next 7 days */
 .mg .bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
