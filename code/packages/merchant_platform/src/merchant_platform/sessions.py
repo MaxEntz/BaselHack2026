@@ -1,10 +1,24 @@
 """In-memory merchant chat sessions (POC: one hard-coded merchant session, lost on restart)."""
 
 import asyncio
+import secrets
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.models import (
+    AssistantItem,
+    CardItem,
+    ChatEvent,
+    ConversationItem,
+    ErrorEvent,
+    ErrorItem,
+    TextEvent,
+    UserItem,
+)
+
 DEFAULT_SESSION = "default"
+# What the management site's panel gets back after a reload (#140): the last items only.
+MAX_ITEMS = 200
 
 
 @dataclass(eq=False)
@@ -25,15 +39,54 @@ class Session:
     # The history's length when this session built its merchant: publishing waits for a
     # merchant message after it, so the review card is always seen first (#136, #152).
     built_at: int | None = None
+    # The conversation as the web shows it (#140): what the merchant said, the replies, the
+    # cards and the errors, never the steps.
+    items: list[ConversationItem] = field(default_factory=list)
     # Held for the whole turn: one turn at a time per session.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # The running turn, kept referenced so it isn't garbage-collected mid-flight.
     turn: asyncio.Task[None] | None = None
 
+    def said(self, text: str) -> None:
+        self._keep(UserItem(text=text))
+
+    def record(self, event: ChatEvent) -> None:
+        """Folds a chat event into the items, as the web's reducer does: deltas extend the
+        reply they follow, a card or an error comes after it."""
+        if isinstance(event, TextEvent):
+            last = self.items[-1] if self.items else None
+            if isinstance(last, AssistantItem):
+                self.items[-1] = AssistantItem(text=last.text + event.delta)
+            else:
+                self._keep(AssistantItem(text=event.delta))
+        elif isinstance(event, ErrorEvent):
+            self._keep(ErrorItem(message=event.message))
+        elif event.type == "card":
+            self._keep(CardItem(card=event))
+
+    def _keep(self, item: ConversationItem) -> None:
+        self.items.append(item)
+        del self.items[:-MAX_ITEMS]
+
 
 class SessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, Session] = {}
+        # The management site's conversation of each owner link (#140): (slug, link) → id.
+        self._owners: dict[tuple[str, str | None], str] = {}
+
+    def for_owner(self, slug: str, link: str | None) -> Session:
+        """The owner's own conversation, shared by every device signed in with that link. Its
+        id is the platform's and unguessable; once bound, `/chat` also needs the cookie. The
+        development merchant's (no link) works without one, as its sessions do."""
+        known = self._sessions.get(self._owners.get((slug, link), ""))
+        if known is not None and known.merchant_slug == slug and known.link == link:
+            return known
+        session_id = f"o-{secrets.token_urlsafe(24)}"
+        session = self._sessions[session_id] = Session(id=session_id)
+        session.merchant_slug, session.link, session.needs_cookie = slug, link, link is not None
+        self._owners[(slug, link)] = session_id
+        return session
 
     def get(self, session_id: str | None) -> Session:
         """The session for `session_id` (the default one when missing), created on first use."""

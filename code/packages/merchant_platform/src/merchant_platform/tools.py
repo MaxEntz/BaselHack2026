@@ -43,9 +43,12 @@ from core.models import (
     DiffCardData,
     ErrorCode,
     GetStatsInput,
+    LinkPageInput,
     ListReservationsInput,
     Look,
     MerchantCancelOutcome,
+    PageCard,
+    PageCardData,
     PolicyCard,
     ProfileCard,
     PublishAgentInput,
@@ -97,6 +100,16 @@ UNREVIEWED = (
 )
 LOOK_RESET = "Back to the look from your site."
 NO_SITE_LOOK = "I couldn't read your site's look again, so I kept this one."
+# What the merchant sees under the link card (web: PageLink), for the model to stay in step.
+PAGE_LINKS = {
+    "reservations": "You can see them in Reservations.",
+    "guests": "You can see them in Guests.",
+    "hours": "You can change this in Opening hours.",
+    "floor": "You can change this in Floor plan.",
+    "rules": "You can change this in Booking rules.",
+    "agent": "You can see what it did on the Agent page.",
+    "settings": "You can change this in Settings.",
+}
 VIEWS = {
     "agent": "Here's your agent site: what an agent reads and gets back.",
     "manage": "Here's your management site.",
@@ -210,6 +223,14 @@ TOOLS = (
         "`manage` (the management site).",
         "Opening the view…",
         ShowViewInput,
+    ),
+    _Tool(
+        "link_page",
+        "Put a link under your reply to the management site's page that shows or changes what "
+        "you answered about: reservations, guests, hours (opening hours and blocked times), "
+        "floor (tables), rules (booking rules: largest group, cancelling), agent, settings.",
+        "Adding a link…",
+        LinkPageInput,
     ),
     _Tool(
         "list_reservations",
@@ -380,6 +401,11 @@ class AdminTools:
             return self._confirmation(PUBLISHED)
         if isinstance(arguments, UpdateLookInput):
             return await self._look(slug, arguments, emit)
+        if isinstance(arguments, LinkPageInput):
+            return Outcome(
+                {"shown_to_merchant": "page link", "text": PAGE_LINKS[arguments.page]},
+                PageCard(data=PageCardData(page=arguments.page)),
+            )
         if isinstance(arguments, ShowViewInput):
             return Outcome(
                 {"shown_to_merchant": arguments.view, "text": VIEWS[arguments.view]},

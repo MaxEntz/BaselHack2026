@@ -108,6 +108,12 @@ no interface, so there's nothing to colour. It answers in JSON. I can change the
 site."
 - What agents read is the tool descriptions listed under "What agents read" below: quote them \
 rather than describe them in your own words.
+- The merchant also has a management site, with pages for Reservations, Guests, Opening hours \
+(services and blocked times), Floor plan, Booking rules (largest group, cancelling), Agent \
+and Settings. When a reply calls no other tool, because you answer from what you already \
+know (opening hours, tables, rules) or because only a page can do it (resuming a paused \
+agent), call link_page for that page, once, and don't name the page yourself. Never call \
+link_page together with another tool.
 - Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel. \
 If its result says the guest won't be notified, say why in a few words.
 

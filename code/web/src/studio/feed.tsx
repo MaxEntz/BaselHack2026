@@ -332,6 +332,7 @@ function ResultCard({
       );
     }
     case "view":
+    case "page":
       return null;
     case "reservations": {
       const when = describeDate(card.data.date);

@@ -58,7 +58,7 @@ A contract change needs a dedicated PR and a message to the team, with Python an
 - `MerchantProfile.look` (#149) is never part of the model's schema: `builder.look.read_look` fills it from the homepage's computed styles (`Page.look`, sampled by `crawl._LOOK`, colours and numbers only). Profiles stored before it have `look: null`, which means the default look (#150). Its review-card line is the `look` fact ("Olive, brick and cream. Soft italic titles. Organic shapes.").
 - `MerchantProfile.model_json_schema()` is the source of the builder tool's `parameters`. Tests resolve its `$defs`/`$ref` against `code/tests/fixtures/le-petit-zinc.json`.
 - OpenAI strict mode rejects `format: uri` and properties missing from `required`: pass the schema through `builder.llm.strict_schema()` (`code/packages/builder/src/builder/llm.py`). `code/scripts/spike_extract.py` keeps its own copy for the [#4](https://github.com/MaxEntz/BaselHack2026/issues/4) spike only.
-- `BuildAgentInput.website` takes any HTTP(S) URL, `localhost` included. The crawler refuses private addresses unless `CRAWL_ALLOW_PRIVATE=1`, and link-local ones (169.254.169.254) always, checking every request and redirect hop after DNS resolution.
+- `BuildAgentInput.website` takes any HTTP(S) URL, `localhost` included. The crawler refuses private addresses and ports other than 80 and 443 unless `CRAWL_ALLOW_PRIVATE=1` (#142), and link-local ones (169.254.169.254) always, checking every request and redirect hop after DNS resolution.
 
 ## Gateway tools: `/mcp`
 
@@ -112,6 +112,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 | `send_test_booking` | (none) | A booking for 2 at the first free time, made through `AgentService.create_reservation` with `via="claude"` as the node's `BOOK` would; refused while `building` |
 | `update_look` | `accent?`, `accent_2?` (`#rrggbb`), `display_font?`, `corners?`, `reset` | `diff` card(s), "See it" opens the management pane. A colour under 3:1 on `bg` is adjusted (`readable()`) and said so; `reset` reads the website's look again. Stored in the registry's profile copy, read by `GET /merchants/{slug}` |
 | `show_view` | `view`: `agent` or `manage` | A `view` card: Studio switches its canvas, the plain chat shows nothing |
+| `link_page` | `page`: `reservations`, `guests`, `hours`, `floor`, `rules`, `agent` or `settings` | A `page` card: the management site's panel shows "You can change this in <Opening hours>." with the link (code's words, `tools.PAGE_LINKS` and the web's `PAGE_LINKS`); Studio and the plain chat show nothing. Only in a reply that calls no other tool (#140) |
 | `list_reservations` | `date` | Rows `{id, time, guest_name, party_size, table_label, via, status}` |
 | `get_stats` | `date` | `{bookings, guests, seats, blocked: [HH:MM]}` |
 | `block_slot` / `unblock_slot` | `starts_at` | Confirmation |
@@ -216,6 +217,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 | `GET /site` | | `PublicSite`: the screenshots stored with the build, `{path, width, height, image}` with `image` a `data:` URL; no pages for a merchant built before #151 | #151 |
 | `POST /agent/try` | `AgentTryInput` (`intent`) | `AgentTryOutput`: both frames as text and the node's `status`. One real frame through the BATP node as `urn:batp:agent:sesame-studio`, with the platform choosing its params; the node's refusals are answers (`404` until published). `agent_unavailable` without `BATP_URL`. BOOK makes a real booking under the test guest | #151 |
 | `POST /publish` | | `MerchantOverview`, now `live`: publishes the agent a build left `building`. A paused (`down`) agent is refused with `invalid_input` | #136 |
+| `GET /assistant` | | `AssistantConversation`: `{session_id, items}`, the owner's conversation with the assistant. One platform-made session per owner link (`o-` + 24 random bytes), shared by every device signed in with it; `/chat` on it still needs the owner's cookie. `items` are the web chat's shapes (`user`, `assistant`, `card`, `notification`, `error`; never the steps), the last 200, kept in memory until the platform restarts | #140 |
 | `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
 | `GET /reservations?date=` | | `ReservationDay`: the day's services, every start of its grid, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |
 | `POST /reservations` | `MerchantBookingInput` | `201` + `ManagedReservation`, `via="merchant"` | #134 |

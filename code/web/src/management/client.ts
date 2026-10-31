@@ -5,6 +5,7 @@ import type {
   PublicSite,
   AgentRequests,
   AgentStatusOutput,
+  AssistantConversation,
   BlockedTimes,
   Dashboard,
   DaySlots,
@@ -65,6 +66,8 @@ export type ManagementClient = {
   pauseAgent: (slug: string) => Promise<AgentStatusOutput>;
   resumeAgent: (slug: string) => Promise<AgentStatusOutput>;
   agentRequests: (slug: string, query: RequestsQuery, signal?: AbortSignal) => Promise<AgentRequests>;
+  // The owner's conversation with the assistant, and its session (#140).
+  assistant: (slug: string, signal?: AbortSignal) => Promise<AssistantConversation>;
   // Guests' changes, live (GET /events); returns the unsubscribe function.
   subscribe: (slug: string, handlers: LiveHandlers) => () => void;
 };
@@ -136,6 +139,7 @@ const id = (value: string) => encodeURIComponent(value);
 
 export const httpManagementClient: ManagementClient = {
   merchant: (slug, signal) => call("GET", slug, "", { signal }),
+  assistant: (slug, signal) => call("GET", slug, "/assistant", { signal }),
   dashboard: (slug, signal) => call("GET", slug, "/dashboard", { signal }),
   reservations: (slug, date, signal) =>
     call("GET", slug, `/reservations${query({ date })}`, { signal }),

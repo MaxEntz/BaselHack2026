@@ -25,6 +25,7 @@ from core.models import (
     AgentStatusOutput,
     AgentTryInput,
     AgentTryOutput,
+    AssistantConversation,
     BlockedDayInput,
     BlockedTimes,
     BookingDay,
@@ -56,6 +57,7 @@ from merchant_platform.accounts import Owner
 from merchant_platform.agent_try import try_intent
 from merchant_platform.auth import owner_of_path
 from merchant_platform.overview import RegistryLookup, merchant_overview
+from merchant_platform.sessions import SessionStore
 
 router = APIRouter(
     prefix="/merchants/{slug}", tags=["management"], dependencies=[Depends(owner_of_path)]
@@ -95,6 +97,17 @@ async def overview(
         raise NotFound(f"No merchant {slug!r}.")
     settings: Settings = request.app.state.settings
     return merchant_overview(record, owner.name, settings, datetime.now(UTC))
+
+
+@router.get("/assistant")
+async def assistant_conversation(
+    request: Request, owner: Annotated[Owner, Depends(owner_of_path)]
+) -> AssistantConversation:
+    """The owner's conversation with the assistant (#140): the same on every device signed
+    in with the owner's link, kept until the platform restarts."""
+    sessions: SessionStore = request.app.state.sessions
+    session = sessions.for_owner(owner.slug, owner.fingerprint or None)
+    return AssistantConversation(session_id=session.id, items=tuple(session.items))
 
 
 @router.post("/publish")
