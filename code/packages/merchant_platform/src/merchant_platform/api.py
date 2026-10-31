@@ -1,4 +1,5 @@
-"""FastAPI app: `/chat` (SSE), `/events` (SSE), the public booking API and `/health`."""
+"""FastAPI app: `/chat` (SSE), `/events` (SSE), `/session`, the public booking API and
+`/health`."""
 
 import asyncio
 import logging
@@ -28,10 +29,19 @@ from core.models import (
     ErrorEvent,
     NonEmptyStr,
     ReservationOutput,
+    SessionMerchant,
+    SessionOutput,
     Slug,
     ToolError,
 )
-from merchant_platform.assistant import RunTurn, default_assistant, run_turn
+from merchant_platform.assistant import (
+    ProfileLookup,
+    RunTurn,
+    default_assistant,
+    registry_profiles,
+    run_turn,
+    session_merchant,
+)
 from merchant_platform.events import LiveBus, LiveListener
 from merchant_platform.logs import configure_logging
 from merchant_platform.sessions import Session, SessionStore
@@ -79,6 +89,7 @@ def create_app(
     *,
     assistant: RunTurn = run_turn,
     agent: AgentService | None = None,
+    profiles: ProfileLookup | None = None,
     bus: LiveBus | None = None,
     listener: LiveListener | None = None,
     engine: AsyncEngine | None = None,
@@ -86,8 +97,9 @@ def create_app(
 ) -> FastAPI:
     """Build the platform API around its collaborators (injected by tests).
 
-    Without `agent`, the public booking API answers `agent_unavailable`. `listener` feeds
-    `bus` while the app runs; `engine` is disposed at shutdown.
+    Without `agent`, the public booking API answers `agent_unavailable`. Without `profiles`
+    (the registry), `/session` reports no merchant. `listener` feeds `bus` while the app
+    runs; `engine` is disposed at shutdown.
     """
     sessions = SessionStore()
     live = bus or LiveBus()
@@ -147,6 +159,24 @@ def create_app(
         # reads the stream.
         session.turn = asyncio.create_task(_run(assistant, session, body.message, queue))
         return EventSourceResponse(_chat_stream(queue, session.turn), ping=heartbeat_seconds)
+
+    @app.get("/session")
+    async def session_info(
+        session_id: Annotated[str | None, Query(max_length=100)] = None,
+    ) -> SessionOutput:
+        """The merchant the chat session works on, so that the web finds it after a reload.
+
+        Read-only: an unknown session isn't created, and reports PLATFORM_MERCHANT like a new
+        one, since its first message attaches it.
+        """
+        if profiles is None:
+            return SessionOutput(merchant=None)
+        profile = await session_merchant(
+            sessions.find(session_id), settings.platform_merchant, profiles
+        )
+        if profile is None:
+            return SessionOutput(merchant=None)
+        return SessionOutput(merchant=SessionMerchant(slug=profile.slug, name=profile.name))
 
     @app.get("/events", response_class=EventSourceResponse)
     async def events(merchant: Annotated[Slug, Query()]) -> EventSourceResponse:
@@ -272,6 +302,7 @@ def _default_app() -> FastAPI:
         settings,
         assistant=default_assistant(settings, engine, agent),
         agent=agent,
+        profiles=registry_profiles(engine),
         bus=bus,
         listener=listener,
         engine=engine,
