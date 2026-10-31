@@ -102,6 +102,19 @@ guest_notices_t = Table(
     Column("delivered_at", DateTime(timezone=True)),
 )
 
+# One row per update a guest applied, by its idempotency key (#78). In `public`, managed by
+# Alembic like the notices, so existing merchant schemas need no re-provision (ADR-0013).
+reservation_changes_t = Table(
+    "reservation_changes",
+    public_metadata,
+    Column("merchant_slug", Text, ForeignKey(merchants_t.c.slug), primary_key=True),
+    Column("idempotency_key", Text, primary_key=True),
+    Column("reservation_id", Text, nullable=False),
+    Column("starts_at", DateTime(timezone=True)),
+    Column("party_size", Integer),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 # Merchant schema: created by provisioning (`merchant_metadata.create_all` on a translated
 # connection), one copy per merchant.
 

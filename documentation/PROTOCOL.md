@@ -121,7 +121,7 @@ The node answers with one of these:
 | `RECALL` | — | `GetMyReservationsInput` | `GetMyReservationsOutput` | `AgentService.find_guest_reservations` |
 | `PING` | — | `{}` | `{"pong": true, "server_time": …}` | the node |
 
-- `BOOK` and `AMEND` require `params.idempotency_key`. A `BOOK` replay with the same key (per merchant) and the same params returns the first booking; the same key with other params gets `400 invalid_input`. `CANCEL` is idempotent without a key.
+- `BOOK` and `AMEND` require `params.idempotency_key`. A `BOOK` replay with the same key (per merchant) and the same params returns the first booking; the same key with other params gets `400 invalid_input`. An `AMEND` replay with a key already applied (per merchant), for the same booking and params, changes nothing and returns the booking as it is now, so a late retry never undoes a newer change; another booking or other params get `400 invalid_input`, and a failed `AMEND` doesn't use up its key (#78). `CANCEL` is idempotent without a key.
 - `RECALL` returns a notice on every call for 24 hours after the first one that returned it, then never again (#91). An answer lost in transit (dropped session, the caller's timeout) loses no notice as long as the next `RECALL` comes within those 24 hours, so `RECALL` is safe to send again, and `MatpClient` resends it after a lost session like the read-only intents.
 - For a merchant marked `down`, the node itself answers `503` with the fallback URL to the addressed intents.
 - Writes (`BOOK`, `AMEND`, `CANCEL`) are only sent after the guest confirmed (AGENTS.md §6). The bridge enforces it through the MCP tool descriptions; another caller is expected to do the same.

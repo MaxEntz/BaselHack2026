@@ -2359,8 +2359,13 @@ first request created, and <span class="bcp14">MUST NOT</span> create another. I
 it <span class="bcp14">MUST</span> answer status 400 with code <code>invalid_input</code>.<a href="#section-7.6-2.2.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-7.6-2.3">
-            <p id="section-7.6-2.3.1">An AMEND sent again with the same params <span class="bcp14">MUST</span> leave the booking as the
-first one left it, and return it.<a href="#section-7.6-2.3.1" class="pilcrow">¶</a></p>
+            <p id="section-7.6-2.3.1">For AMEND, the key is scoped to the merchant too. A node that receives an
+AMEND with a key it already applied, for the same booking and the same
+<code>starts_at</code> and <code>party_size</code>, <span class="bcp14">MUST NOT</span> change the booking again and <span class="bcp14">MUST</span>
+return it as it is now, with status 200: a late retry never undoes a
+later change. If the booking or the params differ, it <span class="bcp14">MUST</span> answer status
+400 with code <code>invalid_input</code>. An AMEND that failed does not use up its
+key.<a href="#section-7.6-2.3.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-7.6-2.4">
             <p id="section-7.6-2.4.1">CANCEL is idempotent without a key: cancelling a booking already

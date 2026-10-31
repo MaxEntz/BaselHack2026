@@ -31,7 +31,7 @@ from core.db import (
 
 pytestmark = pytest.mark.integration
 
-PUBLIC_TABLES = {"merchants", "guest_notices"}
+PUBLIC_TABLES = {"merchants", "guest_notices", "reservation_changes"}
 MERCHANT_TABLES = {"tables", "policy", "blocked_slots", "reservations"}
 MIGRATED = {
     "tables": PUBLIC_TABLES,

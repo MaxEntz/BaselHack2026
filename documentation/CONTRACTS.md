@@ -30,7 +30,10 @@ update, also on the platform's public booking API) lie between 2000-01-01 and 20
 refuses the past with its own. They hold at the boundaries (gateway tools, MATP node, platform
 API); the service trusts inputs that went through them. A guest can no longer move, resize or
 cancel a booking once it has started (`slot_unavailable`); after that it is the merchant's
-(#79). `update_reservation` needs `starts_at` or `party_size`, and
+(#79). `update_reservation` needs `starts_at` or `party_size`, and its `idempotency_key` is
+stored with the change it applied (`public.reservation_changes`, #78): the same key for the
+same booking and parameters returns the booking as it is now without changing it, and the
+same key for anything else is `invalid_input`. A failed update doesn't use up its key. And
 `update_policy` needs `max_party_size` or `services`.
 
 A floor plan has at least one table and unique labels. The builder must fill a
