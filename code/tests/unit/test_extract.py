@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -301,9 +302,24 @@ def test_slugify(name: str, website: str, slug: str) -> None:
     assert slugify(name, website) == slug
 
 
+def logged(record: logging.LogRecord) -> str:
+    """What a log call put in `record`: its message and its `extra` fields. The record's own
+    attributes (creation time, thread and process ids…) can hold any digits (#171)."""
+    own = logging.LogRecord("", logging.INFO, "", 0, "", None, None).__dict__.keys()
+    return repr((record.getMessage(), {k: v for k, v in record.__dict__.items() if k not in own}))
+
+
+def test_the_log_check_sees_the_message_and_the_extra_fields() -> None:
+    assert "4711" in logged(logging.makeLogRecord({"msg": "invalid %s", "args": (4711,)}))
+    assert "4711" in logged(logging.makeLogRecord({"msg": "invalid", "tags": ["vegan", 4711]}))
+
+
 async def test_the_retry_logs_the_invalid_fields_without_their_values(
-    caplog: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The CI run of #171: the record's creation time held the invalid value.
+    monkeypatch.setattr(time, "time", lambda: 1793471147.874)
+    monkeypatch.setattr(time, "time_ns", lambda: 1793471147874000000)
     caplog.set_level(logging.INFO, logger="builder.extract")
     llm = FakeLLM(draft(max_party_size=0, tags=["vegan", 4711]), draft())
 
@@ -313,7 +329,8 @@ async def test_the_retry_logs_the_invalid_fields_without_their_values(
     assert record.levelno == logging.INFO
     assert record.__dict__["fields"] == ["max_party_size", "tags.1"]
     assert record.__dict__["attempt"] == 0
-    assert "4711" not in repr(record.__dict__)
+    assert "4711" in repr(record.created)
+    assert "4711" not in logged(record)
 
 
 @pytest.mark.parametrize(
