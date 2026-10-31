@@ -2,8 +2,9 @@
 
 import os
 import sys
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import psycopg
@@ -15,7 +16,11 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine
 from testcontainers.community.postgres import PostgresContainer
 
+from agent.provisioning import deploy, deprovision, provision
 from core.db import make_engine
+from core.models import MerchantProfile
+
+MerchantFactory = Callable[..., Awaitable[str]]
 
 ALEMBIC_INI = Path(__file__).parents[2] / "alembic.ini"
 
@@ -80,3 +85,27 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
     engine = make_engine(database_url)
     yield engine
     await engine.dispose()
+
+
+@pytest.fixture
+async def make_merchant(
+    engine: AsyncEngine, profile_data: dict[str, Any]
+) -> AsyncIterator[MerchantFactory]:
+    """Provision Le Petit Zinc under a unique slug, with profile overrides; dropped afterwards.
+
+    `live=False` leaves it in `building`. The session database is shared between tests.
+    """
+    slugs: list[str] = []
+
+    async def make(*, live: bool = True, **overrides: Any) -> str:
+        slug = f"zinc-{uuid4().hex[:8]}"
+        profile = MerchantProfile.model_validate({**profile_data, **overrides, "slug": slug})
+        await provision(engine, profile)
+        slugs.append(slug)
+        if live:
+            await deploy(engine, slug)
+        return slug
+
+    yield make
+    for slug in slugs:
+        await deprovision(engine, slug)

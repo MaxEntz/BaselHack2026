@@ -395,6 +395,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | `GATEWAY_TOKEN` is optional; public URL = team LXC behind Caddy (`https://191-96-88-152.sslip.io/mcp`), ngrok as documented alternative; gateway binds `127.0.0.1` | Static header auth on Claude.ai connectors is a beta for limited organizations; fixed URL independent of a laptop and of hackathon Wi-Fi; only Caddy reaches the gateway |
 | 2026-10-31 | OpenAI API for every backend LLM call (replaces the "Claude API" row above) | The team's API key is an OpenAI one; still one SDK. Spike #4 validated strict function calling for the extraction |
 | 2026-10-31 | One Postgres schema per merchant, tables declared once in Core and translated per merchant; no migrations for merchant schemas (drop + re-provision) | Structural isolation, per-merchant exclusion constraint and sequence, no SQL built from slugs ([ADR-0001](documentation/adr/0001-one-postgres-schema-per-merchant.md)) |
+| 2026-10-31 | Booking writes lock the table's row (`SELECT … FOR UPDATE`) inside each SAVEPOINT before inserting or moving a reservation (#8) | Without it, concurrent writers checking the exclusion constraint wait on each other's uncommitted rows and deadlock (`40P01`, ~1 s each). The lock only queues writers per table; the constraint stays what prevents double booking (with the lock but without the constraint, 10 concurrent bookings all succeed) |
 
 ## 15. Out of scope (POC)
 
