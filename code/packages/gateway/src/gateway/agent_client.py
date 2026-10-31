@@ -39,7 +39,7 @@ from matp.messages import DEFAULT_PORT, AgentIdentity, Intent
 
 GATEWAY_AGENT = AgentIdentity(
     id="urn:matp:agent:claude-gateway",
-    name="Claude via the merchant-agents gateway",
+    name="Claude via the Sésame gateway",
     kind="user-agent",
     operator="merchant-agents",
 )

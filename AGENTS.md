@@ -1,4 +1,4 @@
-# AGENTS.md — Merchant Agents
+# AGENTS.md — Sésame
 
 > Let Claude book with any merchant, straight from their website.
 
@@ -430,6 +430,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | The `llm` tests run in a separate workflow (`.github/workflows/llm.yml`) on pushes to `main` and `workflow_dispatch`, never on pull requests, with the `OPENAI_API_KEY` repository secret, skipped with a notice without it; they assert what the sites state and when `build_agent` runs, never the assistant's wording (#75) | Cost and secrets: a fork's pull request must not read the key. Model replies vary: a wording assertion failed 1 run in 9, facts held 8 runs out of 8 |
 | 2026-10-31 | `AGENT_TIMEOUT_MS` is one deadline per tool call, shared by the registry lookup, the agent call and, on `/m/<slug>/mcp`, the endpoint's slug check (passed in the ASGI scope's `state`); only the fallback-link lookup of a timed-out `search_merchants` gets 10 % more (#92) | Each step had its own 2 s: `search_merchants` could take 4 s, a per-merchant tool 6 s. A search that timed out still gives the named restaurant's link (§1) |
 | 2026-10-31 | A query names a merchant only when it holds every distinctive word of its name (not an article or connector, a tag spelling, a generic word or the merchant's city); a name made only of such words needs the whole name. Same rule in `search` and for the `down`/fallback lookups (#89) | Any single 3-letter word used to name one: "the", "les", "terrasse" or "Mulhouse" narrowed a generic search to one merchant, or turned it into an outage. A partial name ("graine" for La Graine Verte) no longer narrows: the search stays generic and still lists the restaurant |
+| 2026-10-31 | The product is named **Sésame** (wordmark in `assets/logo/`); only display names change, identifiers stay `merchant-agents` / `merchant_agents` (deploy directory, systemd units, database, workspace, MCP server names, MATP URNs and `operator`, the draft's file name) (#105) | Renaming identifiers touches the shared server and every teammate's setup for no visible gain |
 
 ## 15. Out of scope (POC)
 

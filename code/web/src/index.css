@@ -80,6 +80,14 @@ a {
   min-width: 0;
 }
 
+.brand {
+  flex: none;
+  width: auto;
+  height: 28px;
+  padding-right: 12px;
+  border-right: 1px solid var(--border);
+}
+
 .header h1 {
   margin: 0;
   font-size: 1.3rem;

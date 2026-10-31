@@ -16,7 +16,7 @@ from matp.messages import Hello, NodeIdentity
 from matp.server import NodeServer
 from merchant_node.agents import MerchantAgents
 
-NODE = NodeIdentity(id="urn:matp:node:merchant-agents", name="Merchant Agents")
+NODE = NodeIdentity(id="urn:matp:node:merchant-agents", name="Sésame")
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 MIN_TOKEN = 16
 

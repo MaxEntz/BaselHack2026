@@ -36,7 +36,7 @@ DAY = date(2026, 11, 2)
 GUEST = "Ada Lovelace"
 GATEWAY = AgentIdentity(
     id="urn:matp:agent:claude-gateway",
-    name="Claude via the merchant-agents gateway",
+    name="Claude via the Sésame gateway",
     kind="user-agent",
     operator="merchant-agents",
 )

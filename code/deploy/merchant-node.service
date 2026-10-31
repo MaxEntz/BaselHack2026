@@ -1,5 +1,5 @@
 [Unit]
-Description=Merchant Agents MATP node
+Description=Sésame MATP node
 After=network-online.target postgresql.service
 Wants=network-online.target
 

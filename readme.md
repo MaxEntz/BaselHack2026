@@ -1,4 +1,6 @@
-# Merchant Agents
+<p align="center"><img src="assets/logo/sesame-wordmark.png" alt="Sésame" width="380"></p>
+
+# Sésame
 
 > Let Claude book with any merchant, straight from their website.
 

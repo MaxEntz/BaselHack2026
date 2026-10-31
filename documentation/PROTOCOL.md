@@ -59,7 +59,7 @@ The caller speaks first. Until the node answers `WELCOME`, any other frame close
 
 ```json
 {"type": "hello", "matp": "0.1",
- "agent": {"id": "urn:matp:agent:claude-gateway", "name": "Claude via the merchant-agents gateway",
+ "agent": {"id": "urn:matp:agent:claude-gateway", "name": "Claude via the Sésame gateway",
            "kind": "user-agent", "operator": "merchant-agents"},
  "token": "…"}
 ```
@@ -72,7 +72,7 @@ The node answers with one of these:
 
 ```json
 {"type": "welcome", "matp": "0.1",
- "node": {"id": "urn:matp:node:merchant-agents", "name": "Merchant Agents"},
+ "node": {"id": "urn:matp:node:merchant-agents", "name": "Sésame"},
  "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"],
  "session": "s-2f6c…"}
 ```
@@ -167,7 +167,7 @@ through the guest notice returned by `RECALL`.
 
 ```text
 → {"type":"hello","matp":"0.1","agent":{"id":"urn:matp:agent:claude-gateway","name":"…","kind":"user-agent","operator":"merchant-agents"}}
-← {"type":"welcome","matp":"0.1","node":{"id":"urn:matp:node:merchant-agents","name":"Merchant Agents"},"intents":["DISCOVER",…],"session":"s-1"}
+← {"type":"welcome","matp":"0.1","node":{"id":"urn:matp:node:merchant-agents","name":"Sésame"},"intents":["DISCOVER",…],"session":"s-1"}
 → {"type":"request","id":"r-1","intent":"DISCOVER","params":{"query":"table for 4 tonight","filters":{"tags":["vegetarian"],"max_price":"€€"}}}
 ← {"type":"response","id":"r-1","status":200,"result":{"merchants":[…],"suggestions":[],"ignored_filters":[]}}
 → {"type":"request","id":"r-2","intent":"BOOK","merchant":"le-petit-zinc","params":{"starts_at":"2026-11-02T20:00:00+01:00","party_size":4,"guest_name":"Ada","idempotency_key":"k-9"}}

@@ -1,4 +1,4 @@
-# Merchant Agents — code
+# Sésame — code
 
 Spec: [`AGENTS.md`](../AGENTS.md) (also loaded by Claude Code through `CLAUDE.md`). Run every command from this `code/` directory.
 

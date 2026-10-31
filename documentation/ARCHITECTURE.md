@@ -1,4 +1,4 @@
-# Merchant Agents — Architecture
+# Sésame — Architecture
 
 > Living document: update it **in the same PR** as the code that makes it wrong.
 > Decisions and their reasons are in [`adr/`](adr/README.md); the full spec is [`AGENTS.md`](../AGENTS.md).
