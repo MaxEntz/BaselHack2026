@@ -45,12 +45,12 @@ We have a server: use it to test anything Claude.ai must reach, instead of openi
 
 A merchant (first vertical: **restaurants**) brings **their existing website** and a **short description** of how they work. Our AI reads the site, combines it with the description, and **generates a dedicated agent** for that merchant: its own data (tables, time slots, reservations, policies) and its own **MCP tools**.
 
-Two conversational experiences sit on top:
+Two experiences sit on top:
 
 1. **User side, in Claude.** A user asks Claude: *"Table for 4 tonight at 8pm."* Claude calls our **protocol** (one remote MCP server, added once as a connector). The protocol applies the user's **preferences** as filters, finds the merchant, and routes the call to the merchant's agent, which books. **If the agent fails, the protocol returns a fallback URL to the merchant's original website.**
-2. **Merchant side, on our platform.** The merchant manages everything **by chatting with a platform assistant**: onboarding (give the URL, describe the business, the agent gets built), then day-to-day operations (*"What bookings do I have tonight?"*, *"Block 21:00 tonight"*, *"Set max party size to 6"*, *"Cancel R-001"*). New bookings made through Claude show up **live** in the merchant's conversation.
+2. **Merchant side, on our platform.** The merchant onboards and asks for anything **by chatting with a platform assistant**: onboarding (give the URL, describe the business, the agent gets built), then day-to-day operations (*"What bookings do I have tonight?"*, *"Block 21:00 tonight"*, *"Set max party size to 6"*, *"Cancel R-001"*). A **management site** in the restaurant's own look offers the same operations as ordinary pages and forms ([ADR-0015](documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md), being built: #127). New bookings made through Claude show up **live** in the merchant's conversation.
 
-There is **no form-based UI** on either side: everything is a conversation. Structured results (booking card, reservations table, agent profile) are rendered as rich messages inside the chat.
+Guests have no page of ours: their agent reaches the merchant through the protocol, and the agent site has no interface. In the chat, structured results (booking card, reservations table, agent profile) are rendered as rich messages.
 
 ## 2. Glossary
 
@@ -62,6 +62,9 @@ There is **no form-based UI** on either side: everything is a conversation. Stru
 | **Platform assistant** | The LLM assistant merchants chat with on our platform. Uses admin tools on the merchant's agent. |
 | **MerchantProfile** | Validated JSON describing a merchant (§7.1). Single input to provisioning. |
 | **Fallback URL** | Link to the merchant's own booking page, returned whenever the agent can't serve a request. |
+| **Studio** | The chat page where a merchant gives their website and gets their sites built. |
+| **Management site** | A merchant's own pages and forms for running their restaurant, in the restaurant's look, next to the chat. |
+| **Agent site** | A merchant's agent as agents see it: an address and the protocol, with no interface. |
 
 ## 3. Architecture
 
@@ -83,7 +86,7 @@ flowchart LR
     DB -. LISTEN/NOTIFY .-> Platform
   end
 
-  subgraph MERCHANT[Merchant side · chat UI]
+  subgraph MERCHANT[Merchant side · chat + management site]
     Merchant <-->|chat + SSE events| Platform
   end
 
@@ -146,7 +149,7 @@ merchant-agents/
 | Crawl | **Playwright** (Chromium) | Handles JS-rendered restaurant sites. | requests + BeautifulSoup (misses JS content). |
 | LLM | **OpenAI Python SDK** (Responses API), model from env `OPENAI_MODEL` | Structured extraction via a forced strict function call; platform assistant via tool-use loop. | Anthropic SDK (§14: the team's key is an OpenAI one). |
 | Live events | Postgres **LISTEN/NOTIFY → SSE** | No extra broker; one-way server→client is all we need. | Redis pub/sub, WebSockets (unneeded complexity). |
-| Front | **Vite + React + TypeScript** | Minimal chat UI with rich message components. | Next.js (SSR not needed). |
+| Front | **Vite + React + TypeScript** | A chat with rich message components, and a management site of ordinary pages ([ADR-0015](documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). | Next.js (SSR not needed). |
 | Tests | **pytest**, **pytest-asyncio**, **testcontainers** (Postgres) | Real Postgres in tests: the exclusion constraint must be tested for real. | Mocked DB. |
 | Lint/format | **ruff** (lint + format), **mypy --strict** on `core` | | |
 
@@ -374,7 +377,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 
 - **One agent per merchant** is a logical boundary: implemented as one multi-tenant `AgentService` keyed by merchant slug, data isolated by Postgres schema. No per-merchant processes in the POC.
 - **Gateway and agent runtime** run in the same process in the POC, behind an `AgentClient` interface so they can be split later.
-- **Auth:** none in M1–M2 local dev; for the Claude connector in M2, add OAuth 2.1 (as the MCP spec describes) only if the connector requires it, otherwise a static bearer token via env. Merchant platform: single hard-coded merchant session in the POC.
+- **Auth:** none in M1–M2 local dev; for the Claude connector in M2, add OAuth 2.1 (as the MCP spec describes) only if the connector requires it, otherwise a static bearer token via env. Merchant platform: single hard-coded merchant session until merchant accounts land (#132); then a secret link opens a merchant's management site (ADR-0015).
 - **Guest identity:** the `guest_name` Claude passes; no accounts.
 - **Guest notices** (merchant cancellations): stored per guest name and returned by `get_my_reservations`; no push to Claude.
 - **Fallback depth:** return the URL only; Claude does not drive the website.
@@ -441,6 +444,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | The BATP node follows the draft on duplicate ids, `merchant` per intent, malformed-frame count and `error` frames; its own `503` gets the merchant's `fallback_url` through a `NodeServer(fallback_url=…)` callback (`MerchantAgents.fallback_url`), looked up within 1 s and left out if that fails (#93) | Any other agent implementing the draft must get what it says (ADR-0011). The link is BATP's promise (§1), but a registry problem must not turn a 503 into no answer. Only `via` stays listed in PROTOCOL.md §15 |
 | 2026-10-31 | Our agent protocol MATP is renamed **BATP, Broad Agent Transfer Protocol**, wire included: library `batp`, HELLO field `batp`, `urn:batp:`, `batp://`, `BATP_*` settings, draft `draft-merchant-agents-batp-00`; `make deploy` renames the keys in the server's `.env`; accepted ADRs keep "MATP" (#119) | The protocol is open to any agent (ADR-0011), not only merchants'; nothing outside the repo speaks it yet, so the wire can still change ([ADR-0014](documentation/adr/0014-rename-matp-to-batp.md)) |
 | 2026-10-31 | The product is named **Sésame** (wordmark in `assets/logo/`); only display names change, identifiers stay `merchant-agents` / `merchant_agents` (deploy directory, systemd units, database, workspace, MCP server names, BATP URNs and `operator`, the draft's file name) (#105) | Renaming identifiers touches the shared server and every teammate's setup for no visible gain |
+| 2026-10-31 | Merchants get a management site next to the chat (replaces the "Both sides are chat-only" row above). The chat stays the way to onboard and to ask for anything; pages and forms are a second path to the same `AgentService` operations. The agent site has no interface, only BATP and the MCP bridge. Mockups in `documentation/design/poc-v10/`: `sesame-studio.html` (the conversation that builds the sites), `sesame-management.html` (the reference for the management site), `la-graine-verte.html` (the look) and `la-graine-verte-public.html` (the public site in that look) | Guests arrive through agents, so their side needs a protocol and no page. A merchant looks at the evening's list, room and next arrival all the time, and a chat scrolls them away. Dashboards read as AI-made, so the site takes the form of a restaurant's own website ([ADR-0015](documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md)) |
 
 ## 15. Out of scope (POC)
 

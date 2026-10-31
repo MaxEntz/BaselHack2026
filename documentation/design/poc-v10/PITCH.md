@@ -27,7 +27,7 @@ Each note opens with the team's script in French, followed by the English versio
 
 - **Slide 2:** "2035s" is the wording the team chose. The standard form for a decade would be "2030s".
 - **Slide 3:** it draws the model. Today Claude goes through the gateway over HTTPS, the other agents are not connected, and only restaurants exist.
-- **Slide 4:** Sésame does not generate a control site yet. `code/web` is a chat, and a management site with ordinary pages goes beyond the chat-only rule of AGENTS.md §1, which the team still has to agree on.
+- **Slide 4:** Sésame does not generate a control site yet: `code/web` is a chat. The management site is being built ([ADR-0015](../../adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #127).
 - **Slide 7:** the cost claim comes from [Taalas](https://taalas.com/the-path-to-ubiquitous-ai/) alone, and the slide says so.
 
 ## Transitions

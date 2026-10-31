@@ -1,7 +1,11 @@
-# Merchant chat (web)
+# Merchant web app
 
-Single-column chat where merchants onboard and run their booking agent
+Today, a single-column chat where merchants onboard and run their booking agent
 (`AGENTS.md` §1). Vite + React + TypeScript, plain CSS.
+
+The Sésame site replaces this page with Studio at `/` and adds a management site at
+`/manage/<slug>`, next to the chat (#127, [ADR-0015](../../documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). Mockups:
+[`documentation/design/poc-v10/`](../../documentation/design/poc-v10/README.md).
 
 ```sh
 npm ci
