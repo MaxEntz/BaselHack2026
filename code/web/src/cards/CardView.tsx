@@ -7,7 +7,7 @@ import { StatsCard } from "./StatsCard.tsx";
 export function CardView({ card }: { card: CardEvent }) {
   switch (card.kind) {
     case "profile":
-      return <ProfileCard data={card.data} />;
+      return <ProfileCard data={card.data} loginUrl={card.login_url ?? null} />;
     case "reservations":
       return <ReservationsCard data={card.data} />;
     case "stats":

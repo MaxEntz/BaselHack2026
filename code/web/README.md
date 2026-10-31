@@ -1,7 +1,8 @@
-# Merchant chat (web)
+# Merchant web app
 
-Single-column chat where merchants onboard and run their booking agent
-(`AGENTS.md` §1). Vite + React + TypeScript, plain CSS.
+A single-column chat where merchants onboard and run their booking agent (`AGENTS.md` §1), and
+the management site next to it (#127, [ADR-0015](../../documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). Vite + React +
+TypeScript, plain CSS. Mockups: [`documentation/design/poc-v10/`](../../documentation/design/poc-v10/README.md).
 
 ```sh
 npm ci
@@ -21,8 +22,7 @@ Routes ([ADR-0017](../../documentation/adr/0017-router-and-test-tools-for-the-ma
 management site. An unknown page goes to that merchant's Home, any other path to `/`.
 
 `e2e/primitives.spec.ts` compares each management primitive's computed styles with the v10
-mockup (`documentation/design/poc-v10/sesame-management.html`); it is skipped while the
-mockup isn't in the tree, or point `SESAME_MOCKUP` at a copy.
+mockup (`documentation/design/poc-v10/sesame-management.html`). `SESAME_MOCKUP` points it at another copy.
 
 Open <http://localhost:5173/?gallery> to review every management primitive and every card and state (steps,
 profile, reservations incl. empty, stats, policy, notifications, errors).
@@ -43,6 +43,13 @@ replay `onboarding.json`. A "new booking via Claude" notification
 message replays `tonight.json`, and messages mentioning *block*, *busy*, *stats*,
 *policy* or *party* replay `cards.json`.
 
+## Accounts (#132)
+
+After a build, the profile card shows the owner's private link, once: it opens the management site
+in any browser (`/api/login?token=…` sets the owner cookie). When the platform sets
+`PLATFORM_INVITE_CODE`, a new build needs the invitation link, `/?invite=<code>`: the Studio sends
+the code once and removes it from the address bar.
+
 ## Layout
 
 - `src/chat/state.ts`: `ChatItem` union and the pure reducer that turns `ChatEvent`
@@ -59,8 +66,13 @@ message replays `tonight.json`, and messages mentioning *block*, *busy*, *stats*
 - `src/router.tsx`, `src/Studio.tsx`: the routes.
 - `src/management/`: the management site. `tokens.css` (scoped to `.mg`, light only),
   `fonts.css` and `fonts/` (Fraunces Soft, Karla, self-hosted with their OFL licences),
-  `ui/` (Pill, Tag, Box, Blob, Under, Doodle, Seed, Icon, Field, Dialog, Toast, SaveBar),
-  `pages.ts` (page ids and titles), `PrimitivesGallery.tsx`.
+  `ui/` (Pill, Tag, Box, Blob, Under, Doodle, Seed, Icon, Field, Dialog, Toast, SaveBar, Source),
+  `pages.ts` (page ids and titles), `PrimitivesGallery.tsx`. `pages/` holds the pages built
+  so far (Home, Opening hours, Booking rules, Settings, Guests, Floor plan), styled by `pages.css`;
+  they read through `data.ts` (`useClient`, which tests provide, and `useLoad`), save through
+  `useSavedForm.tsx` and ask before leaving unsaved changes (`LeaveGuard.tsx`). `problems.ts`
+  words the rule a form broke; `DayBar.tsx` picks a day of the next 7 and a service;
+  `BlockDialog.tsx` sets a day's blocked times.
 - `src/studio/fonts/`: Studio's fonts (Source Sans 3, Source Code Pro, Gloock), self-hosted.
 - `src/clock.ts`: the time pages read; tests fix it with `setClock(DEMO_NOW)` (Sat 31 Oct 2026, 19:40).
 - `src/strings.ts`: copy that names the guest's assistant (Claude), in one place for #71.

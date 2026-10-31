@@ -1,0 +1,83 @@
+/* Shared page styles: title, form cards, tables, the block dialog, from sesame-management.html. */
+.mg .ttl { display: grid; gap: 14px; justify-items: start; }
+.mg .ttl > p { font-size: 19px; }
+.mg .err { color: var(--red); font-weight: 600; font-size: 15px; }
+
+.mg .forms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+.mg .fs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; padding: 22px 24px; border-radius: 30px; background: var(--cream); }
+.mg :is(.fs > h3, .tb b) { font-family: var(--display); font-style: italic; font-weight: 900; font-variation-settings: "SOFT" 55, "opsz" 144; letter-spacing: -.005em; }
+.mg .fs > h3 { font-size: 27px; line-height: 1.05; color: var(--olive); }
+.mg .fs > p { margin-top: -6px; font-size: 16px; color: var(--mut); }
+.mg .fs.tight { gap: 8px; }
+.mg .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+.mg .svs { display: grid; gap: 8px; }
+.mg .sv { display: grid; grid-template-columns: 72px minmax(0, 160px) minmax(0, 160px) minmax(0, 1fr); align-items: center; gap: 8px; }
+.mg .sv b { font-weight: 600; }
+.mg .sv small { font-size: 15px; color: var(--mut); }
+
+.mg .reads li { display: grid; gap: 1px; padding: 9px 0; border-top: 1px solid var(--line); }
+.mg .reads code { font: 600 14px var(--mono); }
+.mg .reads span { font-size: 16px; }
+
+.mg .none { padding: 26px 0; color: var(--mut); font-size: 19px; }
+.mg .tbl-wrap { overflow-x: auto; }
+.mg .tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.mg .tbl th { padding: 8px 14px 8px 0; font-weight: 600; font-size: 15px; color: var(--mut); text-align: left; white-space: nowrap; }
+.mg .tbl td { padding: 9px 14px 9px 0; border-top: 1px solid var(--line); white-space: nowrap; }
+.mg .tbl :is(button, b) { font-weight: 600; text-align: left; }
+.mg .tbl button:hover { color: var(--brick); }
+
+.mg .dlg-form { display: contents; }
+.mg fieldset { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+.mg legend { padding: 0 0 6px; font-weight: 700; }
+.mg .pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.mg .pick label { display: grid; place-items: center; min-height: 36px; border: 1px solid var(--olive); border-radius: 30px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; }
+.mg .pick input { position: absolute; opacity: 0; pointer-events: none; }
+.mg .pick label:has(input:checked) { background: var(--brick); border-color: var(--brick); color: var(--on); }
+.mg .pick label:has(input:focus-visible) { outline: 2px solid var(--brick); outline-offset: 2px; }
+.mg .note { padding: 9px 15px; border-radius: 18px; background: var(--cream); font-size: 16px; }
+.mg .note.bad { color: var(--red); font-weight: 600; }
+
+
+/* Day bar and Floor plan (#143) */
+.mg .m-hd { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; }
+.mg .m-hd > span { font-size: 15px; color: var(--mut); }
+.mg .bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.mg .date { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; font-size: 19px; }
+.mg .round { display: inline-grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--brick); color: var(--on); font-size: 18px; }
+.mg .round:hover { background: var(--brick-deep); }
+.mg .round:disabled { opacity: .35; cursor: not-allowed; }
+.mg .room h2 { font-size: 34px; line-height: 1.05; }
+.mg .floor { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
+.mg .tb { position: relative; display: grid; place-content: center; justify-items: center; width: clamp(96px, 13cqw, 150px); aspect-ratio: 1 / .9; padding: 6px; color: var(--on); line-height: 1.15; text-align: center; transform: translateY(var(--y, 0)); transition: transform .18s; }
+.mg .tb.s4 { width: clamp(128px, 18cqw, 206px); aspect-ratio: 1 / .76; }
+.mg .tb:hover { transform: translateY(calc(var(--y, 0px) - 3px)); }
+.mg .tb > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: none; stroke: var(--on); stroke-width: 1.5; opacity: .62; }
+.mg .tb > span { position: relative; }
+.mg .tb b { display: block; font-size: 28px; line-height: 1; font-variant-numeric: lining-nums; }
+.mg .tb small { display: block; max-width: 10ch; font-size: 15px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg .tb.busy { color: var(--ink); filter: drop-shadow(0 4px 7px rgb(0 0 0 / .18)); }
+.mg .tb.busy > svg { fill: var(--on); stroke: none; opacity: 1; }
+.mg .tb.soon > svg { stroke-dasharray: 5 6; stroke-width: 2; opacity: 1; }
+.mg .lg { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 22px; font-size: 16px; }
+.mg .lg i { display: inline-block; width: 16px; height: 13px; margin-right: 7px; vertical-align: -1px; border: 1.5px solid var(--on); border-radius: 48% 52% 46% 54%; opacity: .75; }
+.mg .lg i.f { background: var(--on); opacity: 1; }
+.mg .lg i.d { border-style: dashed; opacity: 1; }
+.mg .tbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); gap: 8px 16px; }
+.mg .tbr { display: grid; grid-template-columns: 30px 72px auto; align-items: center; justify-content: start; gap: 6px; }
+.mg .tbr input { padding-inline: 12px; }
+.mg .tbr button { padding: 2px; color: var(--brick); }
+.mg .tbr button .ico { display: block; width: 16px; height: 16px; }
+.mg .room { display: grid; gap: 22px; padding: 26px clamp(18px, 2.6vw, 34px) 30px; }
+.mg .room .pill.off { text-decoration: line-through; }
+
+@container (max-width: 540px) {
+  .mg .sv { grid-template-columns: 62px minmax(0, 1fr) minmax(0, 1fr); }
+  .mg .sv small { grid-column: 2 / -1; margin-top: -4px; }
+  .mg .two { grid-template-columns: minmax(0, 1fr); }
+  .mg .tb { width: calc(33.33% - 11px); --y: 0px !important; }
+  .mg .tb.s4 { width: calc(50% - 8px); }
+  .mg .tb b { font-size: 24px; }
+  .mg .tb small { font-size: 13.5px; max-width: 9ch; }
+}

@@ -17,6 +17,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     Sequence,
@@ -32,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 from core.config import get_settings
 from core.errors import InvalidInput
-from core.models import ReservationStatus, Slug, Via
+from core.models import ActivityKind, ReservationStatus, Slug, Via
 
 MERCHANT = "merchant"
 
@@ -66,13 +67,23 @@ async def merchant_conn(engine: AsyncEngine, slug: str) -> AsyncIterator[AsyncCo
         yield await conn.execution_options(schema_translate_map=translate)
 
 
+# Who writes in a transaction, for the live events (#134): `notify_reservation()` passes it on
+# (migration 0005), and the listener sends the merchant only its guests' changes.
+ACTOR_SETTING = "sesame.actor"
+
+
+async def as_merchant(conn: AsyncConnection) -> None:
+    """Mark the transaction's reservation writes as the merchant's own (transaction-local)."""
+    await conn.execute(select(func.set_config(ACTOR_SETTING, "merchant", True)))
+
+
 def _one_of(name: str, values: tuple[str, ...]) -> CheckConstraint:
     """`name IN (...)` from the contract's Literal values (code constants, never input)."""
     allowed = ", ".join(f"'{value}'" for value in values)
     return CheckConstraint(f"{name} IN ({allowed})")
 
 
-# public: managed by Alembic (migration 0001), declared here to query it.
+# public: managed by Alembic (migrations 0001-0006), declared here to query it.
 
 public_metadata = MetaData(schema="public")
 
@@ -132,9 +143,38 @@ agent_requests_t = Table(
     Column("agent_name", Text, nullable=False),
     Column("intent", Text, nullable=False),
     Column("status", Integer, nullable=False),
-    # The frames as the text that was on the wire, never re-serialized (migration 0004).
+    # The frames as the text that was on the wire, never re-serialized (migration 0007).
     Column("request", Text, nullable=False),
     Column("response", Text, nullable=False),
+)
+
+merchant_owners_t = Table(
+    "merchant_owners",
+    public_metadata,
+    Column(
+        "merchant_slug", Text, ForeignKey(merchants_t.c.slug, ondelete="CASCADE"), primary_key=True
+    ),
+    Column("owner_name", Text),
+    # SHA-256 of the secret link's token (#132, migration 0004): the token is never stored.
+    Column("token_hash", Text, nullable=False, unique=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# What changed at each merchant, worded at read time for Home's feed (#135, migration 0006).
+# Holds guest names: only the merchant's owner reads it.
+merchant_activity_t = Table(
+    "merchant_activity",
+    public_metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column(
+        "merchant_slug", Text, ForeignKey(merchants_t.c.slug, ondelete="CASCADE"), nullable=False
+    ),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("kind", Text, _one_of("kind", get_args(ActivityKind)), nullable=False),
+    Column("source", Text, _one_of("source", get_args(Via)), nullable=False),
+    Column("reservation_id", Text),
+    Column("details", JSONB, nullable=False, server_default=text("'{}'")),
+    Index("merchant_activity_latest", "merchant_slug", text("at DESC")),
 )
 
 # Merchant schema: created by provisioning (`merchant_metadata.create_all` on a translated

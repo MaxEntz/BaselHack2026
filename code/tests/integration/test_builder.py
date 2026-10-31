@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator, Sequence
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -11,19 +11,23 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.provisioning import SlugTaken, deprovision
-from builder.build import GENERATED_DIR, AlreadyProvisioned, Builder
+from agent.provisioning import SlugTaken, deprovision, set_status
+from agent.service import PgAgentService
+from batp.messages import AgentIdentity, Request
+from builder.build import GENERATED_DIR, AlreadyProvisioned, BeingBuilt, Builder, publish
 from builder.cache import BuildCache
 from builder.crawl import CrawlResult, Page, StepEmitter
 from builder.extract import TOOL_NAME, ExtractionFailed
 from builder.llm import LLMReply, LLMUnavailable, Message, OnText, ToolCall, ToolSpec
 from core.config import Settings
 from core.db import merchants_t, schema_for
-from core.errors import AgentUnavailable
+from core.errors import AgentUnavailable, InvalidInput, NotFound
 from core.models import BuildAgentInput, BuildAgentOutput, StepEvent
+from gateway.discovery import search
+from merchant_node.agents import MerchantAgents
 from merchant_platform.api import create_app
 from merchant_platform.assistant import Assistant, registry_profiles
 from merchant_platform.tools import AdminTools
@@ -32,7 +36,14 @@ pytestmark = pytest.mark.integration
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())
 MCP_URL = "https://gateway.example/mcp"
+GATEWAY = AgentIdentity(
+    id="urn:batp:agent:test-gateway", name="Gateway", kind="user-agent", operator="tests"
+)
 STEPS = ("crawl", "extract", "validate", "provision", "deploy")
+# A build stops after provision: deploy waits for the owner to publish (#136).
+BUILT = [(step, status) for step in STEPS[:-1] for status in ("running", "done")] + [
+    ("deploy", "waiting")
+]
 
 
 def draft(name: str, **overrides: Any) -> dict[str, Any]:
@@ -140,7 +151,7 @@ async def status_of(engine: AsyncEngine, slug: str) -> str | None:
         return await conn.scalar(select(merchants_t.c.status).where(merchants_t.c.slug == slug))
 
 
-async def test_build_agent_runs_the_five_steps_and_publishes_the_agent(
+async def test_a_build_stops_before_publishing_and_publish_puts_it_live(
     engine: AsyncEngine, tmp_path: Path, slugs: list[str]
 ) -> None:
     site, name = unique_site()
@@ -151,18 +162,76 @@ async def test_build_agent_runs_the_five_steps_and_publishes_the_agent(
     )
     slugs.append(output.profile.slug)
 
-    assert [(e.step, e.status) for e in run.events] == [
-        (step, status) for step in STEPS for status in ("running", "done")
-    ]
+    assert [(e.step, e.status) for e in run.events] == BUILT
+    assert run.events[-1].detail == "Waiting for you."
     assert all(e.duration_ms is not None for e in run.events if e.status == "done")
-    assert output.status == "live"
+    assert output.status == "building"
+    assert await status_of(engine, output.profile.slug) == "building"
     assert output.mcp_url == MCP_URL
     assert str(output.profile.website) == site
     assert str(output.profile.fallback_url) == f"{site}reservation.html"
     assert {tool.name for tool in output.tools} >= {"get_availability", "create_reservation"}
-    assert await status_of(engine, output.profile.slug) == "live"
+    assert [fact.key for fact in output.facts][-1] == "booking_page"
     saved = tmp_path / "generated" / f"{output.profile.slug}.json"
     assert json.loads(saved.read_text())["slug"] == output.profile.slug
+
+    published = Run()
+    await publish(output.profile.slug, published.emit, engine=engine)
+
+    assert [(e.step, e.status) for e in published.events] == [
+        ("deploy", "running"),
+        ("deploy", "done"),
+    ]
+    assert published.events[-1].detail == "Your agent is live."
+    assert await status_of(engine, output.profile.slug) == "live"
+
+
+async def test_guests_and_agents_only_see_a_merchant_once_published(
+    engine: AsyncEngine, tmp_path: Path, slugs: list[str]
+) -> None:
+    site, name = unique_site()
+    output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
+    slug = output.profile.slug
+    slugs.append(slug)
+    node = MerchantAgents(engine, PgAgentService(engine, tz=ZoneInfo("Europe/Zurich")))
+    availability = Request(
+        id="r-1",
+        intent="AVAILABILITY",
+        merchant=slug,
+        params={"date": date.today().isoformat(), "party_size": 2},
+    )
+
+    hidden = await search(name, None, None, None, engine=engine)
+    with pytest.raises(NotFound):
+        await node(GATEWAY, availability)
+
+    await publish(slug, Run().emit, engine=engine)
+
+    shown = await search(name, None, None, None, engine=engine)
+    assert [m.slug for m in hidden.merchants] == []
+    assert [m.slug for m in shown.merchants] == [slug]
+    assert "slots" in await node(GATEWAY, availability)
+
+
+async def test_publish_keeps_a_live_agent_and_refuses_a_paused_one(
+    engine: AsyncEngine, tmp_path: Path, slugs: list[str]
+) -> None:
+    site, name = unique_site()
+    output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
+    slug = output.profile.slug
+    slugs.append(slug)
+    await publish(slug, Run().emit, engine=engine)
+
+    again = Run()
+    await publish(slug, again.emit, engine=engine)
+    await set_status(slug, "down", engine=engine)
+
+    assert [(e.step, e.status) for e in again.events] == [("deploy", "done")]
+    with pytest.raises(InvalidInput, match="paused"):
+        await publish(slug, Run().emit, engine=engine)
+    assert await status_of(engine, slug) == "down"
+    with pytest.raises(NotFound):
+        await publish(f"{slug}-unknown", Run().emit, engine=engine)
 
 
 async def test_a_taken_slug_gets_a_suffix_and_a_known_site_is_refused(
@@ -175,6 +244,7 @@ async def test_a_taken_slug_gets_a_suffix_and_a_known_site_is_refused(
 
     first = await build.build_agent(site, "", Run().emit)
     slugs.append(first.profile.slug)
+    await publish(first.profile.slug, Run().emit, engine=engine)
     second = await build.build_agent(other_site, "", Run().emit)
     slugs.append(second.profile.slug)
     run = Run()
@@ -233,11 +303,10 @@ async def test_a_warm_cache_replays_the_steps_without_crawl_or_llm(
     slugs.append(again.profile.slug)
 
     assert (crawl.calls, llm.calls) == (1, 1)
-    assert [(e.step, e.status) for e in run.events] == [
-        (step, status) for step in STEPS for status in ("running", "done")
-    ]
+    assert [(e.step, e.status) for e in run.events] == BUILT
     assert run.events[1].detail == "2 pages read: homepage, reservation"
     assert again.profile == first.profile
+    assert (again.facts, again.flags) == (first.facts, first.flags)
 
 
 @pytest.mark.parametrize("mode", ["read_only", "off"])
@@ -286,11 +355,11 @@ async def test_onboarding_through_the_chat_api(
         for line in response.text.splitlines()
         if line.startswith("data: ")
     ]
-    slug = events[11]["data"]["profile"]["slug"]
+    slug = events[10]["data"]["profile"]["slug"]
     slugs.append(slug)
     assert [e.get("kind", e["type"]) for e in events] == [
         "tool_start",
-        *["step"] * 10,
+        *["step"] * 9,
         "profile",
         "text",
         "done",
@@ -298,53 +367,56 @@ async def test_onboarding_through_the_chat_api(
     assert app.state.sessions.get("s").merchant_slug == slug
 
 
-@pytest.mark.parametrize("stop", [RuntimeError("deploy failed"), asyncio.CancelledError()])
-async def test_a_build_stopped_before_deploy_leaves_nothing_behind(
-    engine: AsyncEngine,
-    tmp_path: Path,
-    slugs: list[str],
-    monkeypatch: pytest.MonkeyPatch,
-    stop: BaseException,
+@pytest.mark.parametrize("stop", [RuntimeError("client gone"), asyncio.CancelledError()])
+async def test_a_build_stopped_inside_provision_leaves_nothing_behind(
+    engine: AsyncEngine, tmp_path: Path, slugs: list[str], stop: BaseException
 ) -> None:
     site, name = unique_site()
 
-    async def failing_deploy(slug: str, *, engine: AsyncEngine | None = None) -> None:
-        raise stop
+    async def leaves(event: StepEvent) -> None:
+        # The merchant leaves as provision reports: its tables exist, its owner never saw them.
+        if event.step == "provision" and event.status == "done":
+            raise stop
 
-    monkeypatch.setattr("builder.build.deploy", failing_deploy)
-    run = Run()
     with pytest.raises(type(stop)):
-        await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", run.emit)
+        await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", leaves)
 
     async with engine.connect() as conn:
         left = await conn.scalar(select(merchants_t.c.slug).where(merchants_t.c.website == site))
     assert left is None
-    monkeypatch.undo()
     # The site can be onboarded again straight away.
     output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
     slugs.append(output.profile.slug)
-    assert await status_of(engine, output.profile.slug) == "live"
+    assert await status_of(engine, output.profile.slug) == "building"
 
 
-async def test_a_building_leftover_does_not_block_its_site(
+async def test_an_agent_waiting_to_be_published_holds_its_site_for_24_hours(
     engine: AsyncEngine, tmp_path: Path, slugs: list[str]
 ) -> None:
     site, name = unique_site()
-    leftover = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(
+    waiting = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(
         site, "", Run().emit
     )
-    slugs.append(leftover.profile.slug)
+    slugs.append(waiting.profile.slug)
+
+    run = Run()
+    with pytest.raises(BeingBuilt) as held:
+        await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", run.emit)
+    assert held.value.slug == waiting.profile.slug
+    assert "private link" in str(held.value)
+    assert run.events == []
+
+    # A day later nobody published it: another account replaces it, under the same slug.
     async with engine.begin() as conn:
         await conn.execute(
             merchants_t.update()
-            .where(merchants_t.c.slug == leftover.profile.slug)
-            .values(status="building")
+            .where(merchants_t.c.slug == waiting.profile.slug)
+            .values(created_at=func.now() - timedelta(hours=25))
         )
-
     output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
-    slugs.append(output.profile.slug)
 
-    assert output.profile.slug == f"{leftover.profile.slug}-2"
+    assert output.profile.slug == waiting.profile.slug
+    assert await status_of(engine, output.profile.slug) == "building"
 
 
 def test_generated_profiles_stay_out_of_the_source_tree() -> None:
@@ -369,7 +441,7 @@ async def test_a_build_that_loses_the_slug_race_leaves_the_winner_alone(
         await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(other_site, "", run.emit)
 
     assert [(e.step, e.status) for e in run.events][-1] == ("provision", "error")
-    assert await status_of(engine, winner.profile.slug) == "live"
+    assert await status_of(engine, winner.profile.slug) == "building"
     async with engine.connect() as conn:
         schema = await conn.scalar(
             text("SELECT count(*) FROM pg_namespace WHERE nspname = :name"),

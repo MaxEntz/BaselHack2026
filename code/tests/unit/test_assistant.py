@@ -32,17 +32,21 @@ from core.models import (
     AdminReservationRow,
     BuildAgentInput,
     BuildAgentOutput,
+    BuildFact,
+    BuildFlag,
     ChatEvent,
     GeneratedTool,
     MerchantCancelOutcome,
     MerchantProfile,
     Policy,
+    ProfileCard,
     Reservation,
     Service,
     Stats,
     StepEvent,
     TableSpec,
 )
+from merchant_platform.accounts import IssuedLink
 from merchant_platform.assistant import (
     INTERRUPTED,
     MAX_ITERATIONS,
@@ -189,13 +193,24 @@ class FakeAgent:
 
 
 async def fake_build(arguments: BuildAgentInput, emit: Any) -> BuildAgentOutput:
-    for step in ("crawl", "extract", "validate", "provision", "deploy"):
+    for step in ("crawl", "extract", "validate", "provision"):
         await emit(StepEvent(step=step, status="running"))  # type: ignore[arg-type]
         await emit(StepEvent(step=step, status="done", duration_ms=1))  # type: ignore[arg-type]
+    await emit(StepEvent(step="deploy", status="waiting", detail="Waiting for you."))
     return BuildAgentOutput(
         profile=PROFILE,
-        status="live",
+        status="building",
         assumptions=("Bookings last 120 minutes (default).",),
+        facts=(
+            BuildFact(
+                key="max_party_size",
+                label="Largest group",
+                value='6, from "jusqu\'à 6 personnes"',
+                source="/reservation.html",
+                quote="jusqu'à 6 personnes",
+            ),
+        ),
+        flags=(BuildFlag(title="No cancellation policy on your site.", detail="Guests see none."),),
         tools=(GeneratedTool(name="get_availability", description="Free tables."),),
         mcp_url="http://localhost:8001/mcp",
     )
@@ -206,13 +221,20 @@ def call(name: str, call_id: str | None = None, **arguments: Any) -> ToolCall:
 
 
 class Harness:
-    def __init__(self, llm: LLMClient, *, agent: FakeAgent | None = None) -> None:
+    def __init__(
+        self, llm: LLMClient, *, agent: FakeAgent | None = None, can_publish: bool = True
+    ) -> None:
         self.llm = llm
         self.agent = agent
         self.events: list[ChatEvent] = []
         self.provisioned: set[str] = set()
+        self.published: list[str] = []
         tools = AdminTools(
-            cast(AgentService, agent) if agent else None, self._build, TZ, today=lambda: TODAY
+            cast(AgentService, agent) if agent else None,
+            self._build,
+            TZ,
+            today=lambda: TODAY,
+            publish=self._publish if can_publish else None,
         )
         self.assistant = Assistant(llm, tools, self._profiles, TZ, clock=lambda: NOW)
 
@@ -220,6 +242,11 @@ class Harness:
         output = await fake_build(arguments, emit)
         self.provisioned.add(output.profile.slug)
         return output
+
+    async def _publish(self, slug: str, emit: Any) -> None:
+        await emit(StepEvent(step="deploy", status="running"))
+        self.published.append(slug)
+        await emit(StepEvent(step="deploy", status="done", detail="Your agent is live."))
 
     async def _profiles(self, slug: str) -> MerchantProfile | None:
         return PROFILE if slug in self.provisioned else None
@@ -438,7 +465,7 @@ async def test_build_agent_streams_steps_shows_the_profile_and_switches_mode() -
 
     events = await harness.turn(session, "12 tables, groups up to 6")
 
-    assert kinds(events) == ["tool_start", *["step"] * 10, "profile", "text"]
+    assert kinds(events) == ["tool_start", *["step"] * 9, "profile", "text"]
     assert session.merchant_slug == SLUG
     assert "Mode: onboarding" in llm.calls[0]["instructions"]
     assert "Mode: operations" in llm.calls[1]["instructions"]
@@ -733,6 +760,48 @@ def test_compact_cuts_long_tool_results_from_old_turns_only() -> None:
     assert history[1]["content"] == long  # the stored history is untouched
 
 
+# The owner's secret link after a build (#132)
+
+LINK = IssuedLink("https://sesame.example/api/login?token=s3cr3t", "fp-1")
+
+
+async def run_build(issue_link: Any) -> tuple[Session, Any, list[ChatEvent]]:
+    tools = AdminTools(None, fake_build, TZ, today=lambda: TODAY, issue_link=issue_link)
+    session = Session(id="s")
+    events: list[ChatEvent] = []
+
+    async def emit(event: ChatEvent) -> None:
+        events.append(event)
+
+    call_ = call("build_agent", website="http://localhost:8080/", description="Bistro.")
+    result = await tools.run(session, call_, emit)
+    return session, result, events
+
+
+async def test_a_build_shows_the_link_on_the_card_only() -> None:
+    async def issue_link(slug: str) -> IssuedLink:
+        return LINK
+
+    session, result, events = await run_build(issue_link)
+
+    cards = [e for e in events if isinstance(e, ProfileCard)]
+    assert [card.login_url for card in cards] == [LINK.url]
+    assert "s3cr3t" not in result.content  # the model reads the tool result: never the link
+    assert (session.merchant_slug, session.link) == (SLUG, "fp-1")
+    assert "s3cr3t" not in json.dumps(session.messages)
+
+
+async def test_a_link_that_cant_be_stored_leaves_the_session_unattached() -> None:
+    async def failing(slug: str) -> IssuedLink:
+        raise RuntimeError("database down")
+
+    session, result, events = await run_build(failing)
+
+    assert result.is_error
+    assert (session.merchant_slug, session.link) == (None, None)
+    assert not [e for e in events if isinstance(e, ProfileCard)]
+
+
 def test_block_slot_confirmation_names_the_day() -> None:
     tools = AdminTools(None, fake_build, TZ, today=lambda: TODAY)
     tomorrow_noon = datetime.combine(TODAY + timedelta(days=1), datetime.min.time(), TZ).replace(
@@ -867,3 +936,53 @@ def test_a_model_call_that_stops_sending_gives_up_after_60_s(
 def test_every_cancellation_outcome_has_its_wording() -> None:
     # A new outcome (own_booking, #129) must never reach the card as a KeyError.
     assert set(CANCELLED) == set(get_args(MerchantCancelOutcome))
+
+
+# Publishing (#136)
+
+
+async def test_publish_agent_publishes_the_sessions_merchant() -> None:
+    llm = ScriptedLLM(([], [call("publish_agent")]), (["Done."], []))
+    harness = Harness(llm)
+    harness.provisioned.add(SLUG)
+
+    events = await harness.turn(onboarded(), "Looks right, publish it.")
+
+    assert harness.published == [SLUG]
+    assert kinds(events) == ["tool_start", "step", "step", "confirmation", "text"]
+    assert events[3]["data"]["text"] == "Your agent is live: Claude users can now book you."
+
+
+async def test_publish_agent_needs_a_merchant_and_a_platform_that_publishes() -> None:
+    no_merchant = ScriptedLLM(([], [call("publish_agent")]), (["Sorry."], []))
+    await Harness(no_merchant).turn(Session(id="new"), "Publish it.")
+    no_publish = ScriptedLLM(([], [call("publish_agent")]), (["Sorry."], []))
+    harness = Harness(no_publish, can_publish=False)
+    harness.provisioned.add(SLUG)
+    await harness.turn(onboarded(), "Publish it.")
+
+    assert harness.published == []
+    assert "onboard the merchant first" in json.dumps(no_merchant.calls[-1]["history"])
+    assert "isn't available" in json.dumps(no_publish.calls[-1]["history"])
+
+
+async def test_the_crawled_quotes_never_reach_the_model() -> None:
+    # A quote is the site's own text: on the card for the merchant, never in the tool result
+    # read by a model that can publish (#182 review).
+    llm = ScriptedLLM(
+        ([], [call("build_agent", website="https://zinc.example/", description="")]),
+        (["Done."], []),
+    )
+    harness = Harness(llm)
+
+    events = await harness.turn(Session(id="s"), "Build it")
+
+    [message] = [m for m in llm.calls[-1]["history"] if m["role"] == "tool"]
+    result = json.loads(message["content"])
+    assert "facts" not in result
+    assert result["flags"] == [
+        {"title": "No cancellation policy on your site.", "detail": "Guests see none."}
+    ]
+    assert "6 personnes" not in message["content"]
+    [card] = [e for e in events if e.get("kind") == "profile"]
+    assert card["data"]["facts"][0]["quote"] == "jusqu'à 6 personnes"

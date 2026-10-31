@@ -3,8 +3,8 @@
 `jsonb` re-serializes what it stores (key order, spacing), and the Agent page shows the frames
 as sent, never re-serialized (#129, CONTRACTS.md): `request` and `response` become `text`.
 
-Revision ID: 0004
-Revises: 0003
+Revision ID: 0007
+Revises: 0006
 Create Date: 2026-10-31 19:00:00
 
 """
@@ -14,8 +14,8 @@ from collections.abc import Sequence
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "0004"
-down_revision: str | Sequence[str] | None = "0003"
+revision: str = "0007"
+down_revision: str | Sequence[str] | None = "0006"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

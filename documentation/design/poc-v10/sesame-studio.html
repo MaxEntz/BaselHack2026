@@ -1,0 +1,1508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sésame Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gloock&family=Source+Code+Pro:wght@400;600&family=Source+Sans+3:wght@400;600;700;900&display=swap">
+<style>
+/* Layout: the page is the conversation. It starts centred, and makes room for a gray pasteboard once there is a site to show.
+   The chrome stays neutral so that the only colour on screen is the merchant's own. The agent site has no look at all. */
+:root {
+  --bg: #fff; --bg-2: #f4f4f4; --bg-3: #e8e8e8; --paste: #dcdcdc;
+  --ink: #111; --ink-2: #474747; --ink-3: #686868;
+  --line: #d9d9d9; --line-2: #a8a8a8;
+  --pri: #111; --on-pri: #fff;
+  --sel: #2f5bff; --on-sel: #fff;
+  --ok: #0b7a43; --warn: #955000; --bad: #c0262e;
+  --seed: #c96f4a; --seed-vein: #f6dfd2;
+  --lift: 0 1px 2px rgb(0 0 0 / .14), 0 10px 28px rgb(0 0 0 / .14);
+  --sans: "Source Sans 3", "Source Sans Pro", "Segoe UI", system-ui, sans-serif;
+  --mono: "Source Code Pro", ui-monospace, Menlo, Consolas, monospace;
+  --logo: "Gloock", Georgia, serif;
+  --gut: clamp(16px, 3.4vw, 56px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1b1b; --bg-2: #262626; --bg-3: #333; --paste: #101010;
+    --ink: #f5f5f5; --ink-2: #c9c9c9; --ink-3: #a0a0a0;
+    --line: #3a3a3a; --line-2: #666;
+    --pri: #f5f5f5; --on-pri: #111;
+    --sel: #86a2ff; --on-sel: #0a1238;
+    --ok: #55c98f; --warn: #eaa84c; --bad: #ff8585;
+    --seed: #e08a66;
+    --lift: 0 1px 2px rgb(0 0 0 / .5), 0 10px 28px rgb(0 0 0 / .5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1b1b; --bg-2: #262626; --bg-3: #333; --paste: #101010;
+  --ink: #f5f5f5; --ink-2: #c9c9c9; --ink-3: #a0a0a0;
+  --line: #3a3a3a; --line-2: #666;
+  --pri: #f5f5f5; --on-pri: #111;
+  --sel: #86a2ff; --on-sel: #0a1238;
+  --ok: #55c98f; --warn: #eaa84c; --bad: #ff8585;
+  --seed: #e08a66;
+  --lift: 0 1px 2px rgb(0 0 0 / .5), 0 10px 28px rgb(0 0 0 / .5);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; height: 100%; }
+body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 400 1.125rem/1.45 var(--sans); }
+h1, h2, h3, p, ul, ol, dl, dd, figure, blockquote { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+a { color: inherit; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; padding: 0; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ico { width: 1.1em; height: 1.1em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Wordmark rebuilt in Gloock until the vector file exists; the seed colour stays a token. */
+.logo { display: inline-block; font-family: var(--logo); font-weight: 400; line-height: 1; white-space: nowrap; color: var(--ink); text-decoration: none; }
+.acc { position: relative; }
+.acc svg { position: absolute; left: .19em; top: .15em; width: .19em; height: .26em; overflow: visible; color: var(--seed); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: .5em; min-height: 44px; padding: 0 1.25em; border-radius: 999px; font-weight: 700; font-size: 1.0625rem; text-decoration: none; white-space: nowrap; transition: background .15s, color .15s, border-color .15s; }
+.btn.pri { background: var(--pri); color: var(--on-pri); }
+.btn.pri:not(:disabled):hover { background: var(--ink-2); }
+.btn.out { border: 2px solid var(--ink); }
+.btn.out:hover { background: var(--ink); color: var(--bg); }
+.btn.sm { min-height: 34px; font-size: .9375rem; padding: 0 1em; }
+.btn.pri:disabled, .btn:disabled { background: var(--bg-3); color: var(--ink-3); border-color: transparent; }
+.chip { display: inline-flex; align-items: center; min-height: 34px; padding: 0 .85em; border: 1px solid var(--line-2); border-radius: 999px; font-size: .9375rem; font-weight: 600; text-align: left; transition: background .15s, border-color .15s; }
+.chip:hover { border-color: var(--ink); background: var(--bg-2); }
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+
+/* App tiles: two letters per site, in the merchant's own colour once one is known. */
+.app { display: inline-grid; place-items: center; width: var(--s, 44px); height: var(--s, 44px); flex: none; border-radius: calc(var(--s, 44px) * .22); background: var(--app-bg, var(--pri)); color: var(--app-ink, var(--on-pri)); font: 700 calc(var(--s, 44px) * .44)/1 var(--sans); letter-spacing: -.01em; }
+
+.dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .18); }
+.dots { display: inline-flex; gap: 3px; }
+
+/* ---------- Studio ---------- */
+#studio { position: fixed; inset: 0; z-index: 50; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); background: var(--bg); padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.st-top { display: flex; align-items: center; gap: 12px; min-height: 56px; padding-inline: 16px; border-bottom: 1px solid var(--line); }
+.st-top .logo { font-size: 1.5rem; }
+.st-sep { width: 1px; height: 22px; background: var(--line-2); }
+.st-name { flex: 0 1 auto; min-width: 0; font-weight: 700; font-size: 1.0625rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; background: var(--bg-3); color: var(--ink-2); font-size: .875rem; font-weight: 600; white-space: nowrap; }
+.status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+.status.live { color: var(--ok); }
+.status.live i { background: var(--ok); }
+.st-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+#st-new { display: none; }
+
+.st-body { display: grid; grid-template-columns: 76px minmax(0, 1fr); min-height: 0; }
+#studio[data-split="1"] .st-body { grid-template-columns: 76px minmax(380px, 40%) minmax(0, 1fr); }
+.rail { display: flex; flex-direction: column; gap: 8px; padding: 12px 6px; border-right: 1px solid var(--line); overflow-y: auto; }
+.rail button { display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border-radius: 10px; font-size: .75rem; font-weight: 600; line-height: 1.1; text-align: center; --s: 36px; }
+.rail button:hover { background: var(--bg-2); }
+.rail button[aria-current="true"] { background: var(--bg-3); }
+.rail-label { padding-top: 8px; border-top: 1px solid var(--line); font-size: .6875rem; color: var(--ink-3); text-align: center; }
+.app.plus { background: none; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line-2); font-weight: 400; }
+.pane-switch { display: none; }
+.chat { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; min-width: 0; }
+#studio[data-split="1"] .chat { border-right: 1px solid var(--line); }
+#studio[data-split="0"] #feed { padding-inline: max(20px, calc((100% - 780px) / 2)); }
+#studio[data-split="0"] .composer { padding-inline: max(16px, calc((100% - 780px) / 2)); }
+.chat[data-empty] { grid-template-rows: auto auto; align-content: center; }
+.chat[data-empty] #feed { overflow: visible; padding-block: 0 20px; }
+.chat[data-empty] .box { padding: 14px 12px 12px 18px; border-color: var(--ink); border-radius: 20px; }
+.chat[data-empty] .box textarea { min-height: 3em; font-size: 1.25rem; }
+.chat[data-empty] .send { width: 44px; height: 44px; }
+.hello { display: grid; gap: 14px; }
+.hello h1 { font-weight: 900; font-size: clamp(2.5rem, 5.4vw, 4.75rem); line-height: .98; letter-spacing: -.028em; text-wrap: balance; }
+.hello p { font-size: clamp(1.1875rem, 1.6vw, 1.4375rem); line-height: 1.32; color: var(--ink-2); max-width: 34em; }
+#feed { display: flex; flex-direction: column; gap: 14px; padding: 20px 20px 8px; overflow-y: auto; overscroll-behavior: contain; font-size: 1.0625rem; line-height: 1.42; }
+.msg { min-width: 0; overflow-wrap: anywhere; }
+.msg.me { align-self: flex-end; max-width: 86%; padding: 9px 14px; border-radius: 18px 18px 4px 18px; background: var(--bg-3); white-space: pre-wrap; }
+.msg.bot { align-self: stretch; }
+.thinking { color: var(--ink-3); font-size: 1rem; }
+.card { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); font-size: 1rem; }
+.card > h3 { padding: 10px 14px 8px; font-size: 1rem; font-weight: 700; }
+.step { display: grid; grid-template-columns: 20px 1fr; gap: 2px 8px; padding: 7px 14px; border-top: 1px solid var(--line); align-items: start; }
+.step .tick { width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; border: 2px solid var(--line-2); display: grid; place-items: center; color: var(--bg); }
+.step.run .tick { border-color: var(--ink) transparent var(--ink) var(--ink); animation: spin .8s linear infinite; }
+.step.done .tick { background: var(--ok); border-color: var(--ok); }
+.step.wait .tick { border-style: dashed; }
+.step .tick svg { width: 10px; height: 10px; stroke-width: 3.4; }
+.step b { font-weight: 600; }
+.step code { font: 600 .875rem var(--mono); }
+.step p { grid-column: 2; color: var(--ink-2); font-size: .9375rem; line-height: 1.3; overflow-wrap: anywhere; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.fact { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; width: 100%; padding: 8px 14px; border-top: 1px solid var(--line); text-align: left; align-items: baseline; }
+button.fact:hover { background: var(--bg-2); }
+.fact small { grid-column: 1 / -1; font-size: .8125rem; color: var(--ink-3); }
+.fact span { min-width: 0; }
+.fact em { font: 400 .8125rem var(--mono); color: var(--ink-3); white-space: nowrap; }
+.fact[aria-pressed="true"] { background: var(--bg-2); box-shadow: inset 3px 0 0 var(--sel); }
+.flag { display: grid; gap: 2px; padding: 8px 14px; border-top: 1px solid var(--line); line-height: 1.3; }
+.flag b { font-weight: 600; }
+.flag span { color: var(--ink-2); font-size: .9375rem; }
+.opens { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.open-site { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; text-align: left; align-items: center; --s: 36px; }
+.open-site:hover { border-color: var(--ink); }
+.open-site b { font-weight: 700; font-size: 1rem; line-height: 1.15; }
+.diff { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 9px 14px; }
+.diff s { color: var(--ink-3); }
+.diff b { font-weight: 700; }
+.diff button { margin-left: auto; font-size: .9375rem; font-weight: 600; text-decoration: underline; text-underline-offset: .2em; }
+.tbl { width: 100%; border-collapse: collapse; font-size: .9375rem; font-variant-numeric: tabular-nums; }
+.tbl td { padding: 7px 8px; border-top: 1px solid var(--line); }
+.tbl td:first-child { padding-left: 14px; font-weight: 700; }
+.tbl td:last-child { padding-right: 14px; text-align: right; color: var(--ink-2); }
+.nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.nums div { padding: 10px 14px; }
+.nums b { display: block; font-size: 1.75rem; font-weight: 900; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.nums small { font-size: .875rem; color: var(--ink-2); }
+.ping { display: grid; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--ping-bg, var(--pri)); color: var(--ping-ink, var(--on-pri)); }
+.ping small { font-size: .875rem; opacity: .85; }
+.ping b { font-size: 1.1875rem; font-weight: 700; line-height: 1.2; }
+.url { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; align-items: center; padding: 9px 14px; border-top: 1px solid var(--line); }
+.url small { grid-column: 1; font-size: .875rem; color: var(--ink-2); }
+.url code { grid-column: 1; font: 400 .8125rem/1.3 var(--mono); overflow-wrap: anywhere; }
+.url button { grid-column: 2; grid-row: 1 / span 2; padding: 6px; border-radius: 8px; }
+.url button:hover { background: var(--bg-3); }
+
+.composer { display: grid; gap: 8px; padding: 10px 16px 12px; background: var(--bg); }
+#chips { display: flex; gap: 6px; margin-inline: -16px; padding-inline: 16px; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+#chips::-webkit-scrollbar { display: none; }
+#chips:empty { display: none; }
+#chips .chip { flex: none; white-space: nowrap; }
+#chips.wrap { flex-wrap: wrap; -webkit-mask-image: none; mask-image: none; }
+#chips.wrap .chip { flex: initial; white-space: normal; padding-block: 4px; }
+.box { display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 14px; border: 2px solid var(--line-2); border-radius: 18px; background: var(--bg); }
+.box:focus-within { border-color: var(--ink); }
+.box textarea { flex: 1; min-width: 0; max-height: 9em; padding-block: 5px; border: 0; outline: 0; resize: none; background: none; font-size: 1.0625rem; line-height: 1.3; }
+.box textarea::placeholder { color: var(--ink-3); }
+.send { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--pri); color: var(--on-pri); }
+.send:disabled { background: var(--bg-3); color: var(--ink-3); }
+.fine { font-size: .8125rem; color: var(--ink-3); }
+
+.canvas { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; background: var(--paste); }
+.cv-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 12px; background: var(--bg); }
+.seg button { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px 0 6px; border-radius: 9px; font-size: .9375rem; font-weight: 600; white-space: nowrap; --s: 24px; }
+.seg button.plain { padding-left: 12px; }
+.seg button:hover { background: var(--bg-2); }
+.seg button[aria-pressed="true"] { background: var(--bg-3); }
+.seg button:disabled { opacity: .45; }
+.zoom { margin-left: auto; font: 400 .8125rem var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+#paste { overflow: auto; padding: 8px 24px 96px; display: flex; gap: 24px; align-items: flex-start; justify-content: center; overscroll-behavior: contain; }
+#paste.stack { flex-direction: column; align-items: center; justify-content: flex-start; }
+.frame { flex: none; display: grid; gap: 6px; }
+.frame-name { font-size: .875rem; font-weight: 600; color: var(--ink-2); }
+.bw { position: relative; overflow: hidden; box-shadow: var(--lift); background: #fff; }
+.bw > .b { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.dock { position: absolute; left: 50%; bottom: 16px; z-index: 3; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 6px 8px 6px 14px; border-radius: 999px; background: var(--bg); box-shadow: var(--lift); font-size: .9375rem; }
+.dock .dots button { display: block; border-radius: 50%; }
+.dock-font { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock-sep { width: 1px; height: 20px; background: var(--line-2); flex: none; }
+.moments { display: flex; gap: 2px; }
+.moments button { min-height: 32px; padding: 0 10px; border-radius: 999px; font-size: .875rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.moments button:hover { background: var(--bg-2); }
+.moments button[aria-pressed="true"] { background: var(--pri); color: var(--on-pri); }
+.toast { position: fixed; left: 50%; bottom: 24px; z-index: 80; transform: translateX(-50%); padding: 9px 16px; border-radius: 10px; background: var(--pri); color: var(--on-pri); font-weight: 600; font-size: 1rem; }
+
+/* ---------- Artboards: every value below comes from the merchant's look ---------- */
+.b { container-type: inline-size; min-height: 560px; background: var(--b-bg); color: var(--b-ink); font: 400 17px/1.5 var(--b-body); }
+.b h1, .b h2, .b h3 { margin: 0; font-family: var(--b-disp); font-weight: var(--b-dw); line-height: 1.12; letter-spacing: var(--b-dt); text-wrap: balance; }
+.b p { margin: 0; }
+.b ul { margin: 0; padding: 0; list-style: none; }
+.b a { color: var(--b-ac); text-underline-offset: .18em; }
+.band.kelsch { height: 12px; background-color: var(--b-bg); background-image: linear-gradient(90deg, color-mix(in srgb, var(--b-ac) 50%, transparent) 50%, transparent 0), linear-gradient(color-mix(in srgb, var(--b-ac) 50%, transparent) 50%, transparent 0); background-size: 12px 12px; }
+.band.bar { height: 8px; background: var(--b-ac); }
+.band.none { height: 0; }
+.b-pad { padding-inline: 44px; }
+.b-brand { font-family: var(--b-disp); font-weight: var(--b-bw); font-size: var(--b-bs); letter-spacing: var(--b-bt); text-transform: var(--b-bc); color: var(--b-brand); line-height: 1.1; }
+.b-btn { display: inline-flex; align-items: center; min-height: 42px; padding: 0 18px; border: 0; border-radius: var(--b-rb); background: var(--b-ac); color: var(--b-on); font: 600 16px/1 var(--b-body); }
+.b-btn.ghost { background: none; box-shadow: inset 0 0 0 1.5px var(--b-ac); color: var(--b-ac); }
+.b-tag { display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 999px; background: var(--b-tag); color: var(--b-tag-ink); font-size: 14px; font-weight: 600; }
+.b-card { padding: 20px 22px; background: var(--b-sf); border: 1px solid var(--b-ln); border-radius: var(--b-r); min-width: 0; }
+.b-card h3 { font-size: 21px; margin-bottom: 6px; color: var(--b-h3); }
+.b-mut { color: var(--b-mut); }
+.b-mono { font: 400 13px/1.45 var(--mono); }
+.b-panel { background: var(--b-panel); color: var(--b-panel-ink); border-radius: var(--b-r); border: var(--b-panel-bd); }
+
+/* Public site, as read */
+.p-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: var(--b-just); gap: 10px 24px; padding-block: 18px; }
+.p-head nav { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-left: auto; font-size: 15px; font-weight: 600; }
+.p-head small { display: block; font: 400 13px var(--b-body); color: var(--b-mut); }
+.p-hero { display: grid; gap: 32px; padding-block: 36px 40px; }
+.p-hero.split { grid-template-columns: 1.15fr 1fr; align-items: center; }
+.p-hero.mid { text-align: center; justify-items: center; padding-block: 56px; }
+.p-hero h1 { font-size: 58px; margin-bottom: 14px; }
+.p-eyebrow { color: var(--b-ac); font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.p-lead { font-size: 19px; color: var(--b-mut); max-width: 34em; }
+.p-acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.p-slate { padding: 20px 24px; background: var(--b-panel); color: var(--b-panel-ink); border: 10px solid var(--b-wood); border-radius: 6px; }
+.p-slate h2 { font-size: 24px; font-style: italic; text-align: center; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px dashed color-mix(in srgb, currentColor 40%, transparent); }
+.p-price { display: flex; justify-content: space-between; gap: 12px; padding-block: 5px; }
+.p-price span:last-child { white-space: nowrap; }
+.p-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--b-gap); padding-bottom: 28px; }
+.p-alt { padding-block: 26px; background: var(--b-sf2); }
+.p-alt h2 { font-size: 30px; margin-bottom: 14px; }
+.p-strip { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding-block: 24px; }
+.p-strip h2 { font-size: 28px; }
+.p-book { padding: 26px 30px; border-radius: var(--b-r); }
+.p-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.p-rule { width: 64px; height: 1px; background: var(--b-ac); }
+.p-note { padding: 18px 0 26px; font-size: 13px; color: var(--b-mut); }
+.p-wire { display: grid; place-items: center; min-height: 520px; text-align: center; }
+
+/* Agent site: no interface, so no merchant colours either. It looks like what it is, frames on a wire. */
+.b.wire { min-height: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.45 var(--sans); }
+.w { display: grid; gap: 20px; padding-block: 28px 32px; }
+.w-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.w-addr { font: 600 26px/1.2 var(--mono); letter-spacing: -.01em; overflow-wrap: anywhere; }
+.w-live { font-weight: 600; font-size: 15px; color: var(--ink-3); white-space: nowrap; }
+.w-live.on { color: var(--ok); }
+.w-note { max-width: 44em; font-size: 18px; color: var(--ink-2); }
+.w-warn { padding: 9px 14px; border-radius: 8px; background: var(--bg-3); font-size: 15px; font-weight: 600; }
+.w section { display: grid; gap: 8px; min-width: 0; }
+.b.wire h3 { font: 700 17px/1.2 var(--sans); letter-spacing: 0; }
+.w-log { display: grid; gap: 3px; padding: 12px 14px; border-radius: 10px; background: var(--bg-2); font: 400 13.5px/1.5 var(--mono); }
+.w-f { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px; }
+.w-f code { font: inherit; overflow-wrap: anywhere; }
+.w-f.in { color: var(--ink-2); }
+.w-s { font-weight: 600; }
+.w-s.ok { color: var(--ok); }
+.w-s.bad { color: var(--bad); }
+.w-send { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.w-send button { min-height: 30px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; color: var(--ink); font: 600 13px var(--mono); }
+.w-send button:hover { border-color: var(--ink); background: var(--bg-2); }
+.w-bridge { font: 400 14px/1.4 var(--mono); overflow-wrap: anywhere; }
+.w-tools li { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 1fr); gap: 2px 16px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 15px; line-height: 1.35; }
+.w-tools code { font: 600 13.5px/1.5 var(--mono); }
+.w-fb { padding-top: 7px; border-top: 1px solid var(--line); font-size: 15px; color: var(--ink-2); overflow-wrap: anywhere; }
+.w-fb code { font: 400 13.5px var(--mono); color: var(--ink); }
+
+/* Management site */
+.m-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding-block: 18px; border-bottom: 1px solid var(--b-ln); }
+.m-when { color: var(--b-mut); font-size: 15px; font-variant-numeric: tabular-nums; }
+.m-state { margin-left: auto; font-size: 14px; font-weight: 600; color: var(--b-mut); }
+.m-state.live { color: var(--b-ac); }
+.m-main { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 24px; padding-block: 24px 28px; }
+.m-title { font-size: 40px; margin-bottom: 4px; }
+.m-sum { font-size: 18px; margin-bottom: 16px; color: var(--b-mut); }
+.m-panel { padding: 22px 24px; }
+.m-panel .m-sum { color: inherit; opacity: .78; }
+.m-tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 6px; font: 600 12px var(--b-body); vertical-align: middle; box-shadow: inset 0 0 0 1px currentColor; }
+.m-rows { width: 100%; border-collapse: collapse; font-size: 19px; font-variant-numeric: tabular-nums; }
+.m-rows td { padding: 11px 10px 11px 0; border-top: 1px solid color-mix(in srgb, currentColor 22%, transparent); }
+.m-rows td:first-child { font-family: var(--b-disp); font-weight: var(--b-dw); font-size: 24px; white-space: nowrap; }
+.m-rows td:last-child { padding-right: 0; text-align: right; font-size: 14px; opacity: .78; white-space: nowrap; }
+.m-next-time { font-family: var(--b-disp); font-weight: var(--b-dw); font-size: 132px; line-height: .95; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.m-next-who { font-family: var(--b-disp); font-weight: var(--b-dw); font-size: 38px; line-height: 1.1; margin-top: 8px; }
+.m-next-sub { font-size: 22px; opacity: .85; margin-top: 2px; }
+.m-then { margin-top: 18px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, currentColor 22%, transparent); font-size: 18px; }
+.m-svc { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 16px; padding: 14px 0; border-top: 1px solid var(--b-ln); align-items: baseline; }
+.m-svc b { font-family: var(--b-disp); font-weight: var(--b-dw); font-size: 26px; line-height: 1.1; }
+.m-svc span { font-size: 18px; font-variant-numeric: tabular-nums; }
+.m-svc small { grid-column: 1 / -1; color: var(--b-mut); font-size: 15px; }
+.m-check { display: grid; gap: 6px; margin-top: 16px; font-size: 16px; }
+.m-check li { padding: 10px 14px; background: var(--b-sf); border: 1px solid var(--b-ln); border-radius: var(--b-r); }
+.m-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.m-stats b { display: block; font-family: var(--b-disp); font-weight: var(--b-dw); font-size: 64px; line-height: 1; font-variant-numeric: tabular-nums; }
+.m-stats small { font-size: 15px; opacity: .8; }
+.m-side { display: grid; gap: 18px; align-content: start; min-width: 0; }
+.m-side h3 { font-size: 21px; margin-bottom: 8px; }
+.floor { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; grid-auto-flow: dense; }
+.tb { display: grid; place-items: center; min-height: 48px; border: 1.5px solid var(--b-ln); border-radius: var(--b-r); background: var(--b-sf); font-size: 13px; font-weight: 600; line-height: 1.05; text-align: center; color: var(--b-mut); font-variant-numeric: tabular-nums; }
+.tb.s2 { grid-column: span 3; }
+.tb.s4 { grid-column: span 4; }
+.tb.s6 { grid-column: span 6; }
+.tb small { display: block; font-weight: 400; font-size: 11px; }
+.tb.next { border-color: var(--b-ac); color: var(--b-ink); }
+.tb.busy { background: var(--b-ac); border-color: var(--b-ac); color: var(--b-on); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 13px; color: var(--b-mut); }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; border: 1.5px solid var(--b-ac); }
+.legend i.f { background: var(--b-ac); }
+.m-blocked { display: flex; flex-wrap: wrap; gap: 6px; }
+.m-none { color: var(--b-mut); font-size: 15px; }
+.m-empty { padding: 30px 24px; }
+.m-empty b { display: block; font-family: var(--b-disp); font-weight: var(--b-dw); font-size: 30px; line-height: 1.1; margin-bottom: 6px; }
+
+@container (max-width: 860px) {
+  .b-pad { padding-inline: 22px; }
+  .m-main { grid-template-columns: minmax(0, 1fr); }
+  .p-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .w-addr { font-size: 22px; }
+  .w-tools li { grid-template-columns: minmax(0, 1fr); }
+  .p-hero.split { grid-template-columns: minmax(0, 1fr); }
+  .p-hero h1 { font-size: 42px; }
+  .m-next-time { font-size: 104px; }
+  .m-stats b { font-size: 50px; }
+}
+@container (max-width: 480px) {
+  .p-grid { grid-template-columns: minmax(0, 1fr); }
+  .p-hero h1 { font-size: 34px; }
+  .w-addr { font-size: 18px; }
+  .w-note { font-size: 16px; }
+  .m-next-time { font-size: 84px; }
+  .m-rows { font-size: 16px; }
+  .m-rows td:first-child { font-size: 19px; }
+  .m-stats b { font-size: 38px; }
+  .p-head nav { margin-left: 0; }
+}
+
+/* What just changed: an editor's selection box, on the merchant's artboard */
+.is-sel { position: relative; outline: 2px solid #3f69ff; outline-offset: 4px; }
+.is-sel::before { content: ""; position: absolute; inset: -8px; pointer-events: none; z-index: 4;
+  background:
+    linear-gradient(#fff, #fff) 0 0 / 8px 8px no-repeat, linear-gradient(#fff, #fff) 100% 0 / 8px 8px no-repeat,
+    linear-gradient(#fff, #fff) 0 100% / 8px 8px no-repeat, linear-gradient(#fff, #fff) 100% 100% / 8px 8px no-repeat;
+  box-shadow: none; }
+.is-sel::after { content: attr(data-tag); position: absolute; left: -6px; bottom: calc(100% + 8px); z-index: 5; padding: 2px 8px; border-radius: 4px; background: #3f69ff; color: #fff; font: 600 13px/1.4 var(--sans); letter-spacing: 0; text-transform: none; white-space: nowrap; }
+
+tr.is-sel::after, .w-f.is-sel::after { left: auto; right: -6px; }
+
+@media (max-width: 900px) {
+  .st-body, #studio[data-split="1"] .st-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .rail { display: none; }
+  #st-new { display: inline-flex; }
+  .chat, .canvas { grid-row: 2; grid-column: 1; }
+  .pane-switch { grid-row: 1; display: flex; gap: 2px; margin: 8px 16px; padding: 3px; border-radius: 12px; background: var(--bg-3); }
+  .pane-switch button { flex: 1; min-height: 36px; border-radius: 9px; font-weight: 600; font-size: 1rem; }
+  .pane-switch button[aria-pressed="true"] { background: var(--bg); }
+  #studio[data-split="1"] .chat { border-right: 0; }
+  #studio[data-pane="chat"] .canvas, #studio[data-pane="canvas"] .chat { display: none; }
+  #paste { padding: 8px 16px 104px; justify-content: flex-start; }
+  .seg button[data-view="both"], .zoom { display: none; }
+  .seg { display: flex; width: 100%; }
+  .seg button { flex: 1; justify-content: center; padding: 0 6px; font-size: .875rem; }
+  .seg button .app { display: none; }
+  .dock { left: 8px; right: 8px; transform: none; border-radius: 16px; flex-wrap: wrap; justify-content: center; max-width: none; padding: 6px; gap: 6px 10px; }
+  .dock-font { display: none; }
+  .moments button { padding: 0 8px; font-size: .8125rem; }
+  .st-sep { display: none; }
+  .st-top { gap: 8px; }
+  .st-top .logo { font-size: 1.25rem; }
+  .status { padding: 6px; }
+  .status span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .btn.sm { padding: 0 .8em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="seed" viewBox="0 0 44 60" overflow="visible"><path fill="currentColor" d="M3 60C-3 38 8 8 30 1 43-3 47 10 43 22 37 40 21 53 3 60Z"/><path fill="none" stroke="var(--seed-vein)" stroke-width="2.2" stroke-linecap="round" d="M6 54C18 42 30 26 35 9"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M8 16L18 6M9 6h9v9"/></symbol>
+</svg>
+
+<section id="studio" data-pane="chat" data-split="0" aria-label="Sésame">
+  <header class="st-top">
+    <span class="logo" data-logo></span>
+    <span class="st-sep" id="st-sep" hidden></span>
+    <span class="st-name" id="st-name" hidden></span>
+    <span class="status" id="st-status" hidden><i></i><span></span></span>
+    <div class="st-actions">
+      <button class="btn out sm" id="st-new" type="button">New</button>
+      <button class="btn pri sm" id="st-publish" type="button" hidden>Publish</button>
+    </div>
+  </header>
+  <div class="st-body">
+    <nav class="rail" id="rail" aria-label="Restaurants"></nav>
+    <div class="pane-switch" id="pane-switch" role="group" aria-label="Pane" hidden>
+      <button type="button" data-pane-to="chat" aria-pressed="true">Conversation</button>
+      <button type="button" data-pane-to="canvas" aria-pressed="false">Your sites</button>
+    </div>
+    <div class="chat" id="chat" data-empty="1">
+      <div id="feed" role="log" aria-live="polite" aria-label="Conversation"></div>
+      <form class="composer" id="composer">
+        <div id="chips"></div>
+        <div class="box">
+          <label class="sr" for="input">Message</label>
+          <textarea id="input" rows="1"></textarea>
+          <button class="send" id="send" type="submit" aria-label="Send" disabled><svg class="ico"><use href="#i-up"/></svg></button>
+        </div>
+        <p class="fine">Static preview: a fixed script answers here, and nothing is read or saved.</p>
+      </form>
+    </div>
+    <div class="canvas" id="canvas" hidden>
+      <div class="cv-top">
+        <div class="seg" id="tabs" role="group" aria-label="Which site to show">
+          <button type="button" data-view="agent"><span class="app">Ag</span>Agent site</button>
+          <button type="button" data-view="manage"><span class="app">Mg</span>Management</button>
+          <button type="button" class="plain" data-view="both">Both</button>
+          <button type="button" data-view="public"><span class="app">Ws</span>Your public site</button>
+        </div>
+        <span class="zoom" id="zoom"></span>
+      </div>
+      <div id="paste" tabindex="0" aria-label="Site preview"></div>
+      <div class="dock" id="dock" hidden></div>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const icon = n => `<svg class="ico" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const LOGO = `<span aria-hidden="true">S<span class="acc">e<svg><use href="#seed"/></svg></span>same</span>`;
+const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const toHM = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const one = w => w.replace(/s$/, '');
+const count = (n, w) => `${n} ${n === 1 ? one(w) : w}`;
+const CONNECTOR = 'https://191-96-88-152.sslip.io';
+const TODAY = 'Saturday 31 October';
+
+/* ---------- the three demo restaurants: text, hours and colours come from code/sites and tests/fixtures ---------- */
+const SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, P052, "URW Palladio L", Georgia, serif';
+const SYS = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+const tablesOf = (...sizes) => sizes.map((seats, i) => ({ label: `T${i + 1}`, seats }));
+
+const SITES = {
+  'le-petit-zinc': {
+    slug: 'le-petit-zinc', name: 'Le Petit Zinc', host: 'lepetitzinc.example', city: 'Mulhouse', price: '€€',
+    line: 'Bistrot alsacien · Mulhouse', kind: 'Bistro, 44 seats, lunch and dinner', stage: '#8f2d2a',
+    pages: ['/', '/carte.html', '/horaires.html', '/contact.html', '/reservation.html'],
+    services: [{ name: 'Lunch', start: '12:00', end: '14:00' }, { name: 'Dinner', start: '19:00', end: '22:00' }],
+    tables: tablesOf(2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 6, 6), maxParty: 6, tags: ['vegetarian', 'gluten-free', 'terrace', 'kid-friendly'],
+    policy: null, fallback: 'https://lepetitzinc.example/reservation.html',
+    sample: [['Alex Martin', '19:00', 2, 'website'], ['Sam Dupont', '20:00', 4, 'claude'], ['Nora Haas', '21:00', 3, 'claude']],
+    brief: '44 seats on 12 tables. Groups up to 6. Open every day.',
+    swatchNames: 'wine, paper and slate', font: 'Iowan Old Style', band: 'kelsch',
+    facts: [
+      ['name', 'Name', 'Le Petit Zinc', '/'],
+      ['hours', 'Hours', 'Lunch 12:00–14:00, dinner 19:00–22:00', '/horaires.html'],
+      ['tags', 'Tags', 'Vegetarian, gluten-free, terrace, kid-friendly', '/'],
+      ['price', 'Price level', '€€, from your slate and your page data', '/'],
+      ['booking', 'Booking page', '/reservation.html, used as the fallback', '/'],
+      ['look', 'Look', 'Wine, paper and slate. Iowan Old Style. The kelsch band.', 'style.css'],
+    ],
+    flags: [
+      ['No cancellation policy on your site.', 'Guests see none until you give me one.'],
+      ['Your site says "Groupes : nous contacter" without a number.', 'I used the limit from your description, and larger groups go to your booking page.'],
+      ['Your tonight list uses your slate.', 'It is the "À l\'ardoise" board from your home page. Say so if you\'d rather have something plainer.'],
+    ],
+    look: {
+      light: { bg: '#f7f2e8', sf: '#fffaf0', sf2: '#efe5d2', ink: '#2a2320', mut: '#62564d', ln: '#dccfb8', ac: '#8f2d2a', on: '#fff8ee', brand: '#8f2d2a', h3: '#8f2d2a', tag: '#efe5d2', tagInk: '#6e1f1d', panel: '#27302f', panelInk: '#f1ede4', panelBd: '10px solid #94704b', wood: '#94704b' },
+      dark: { bg: '#1e2423', sf: '#27302f', sf2: '#27302f', ink: '#f1ede4', mut: '#bdb6a8', ln: '#3e4a48', ac: '#e8928c', on: '#2a1110', brand: '#e8928c', h3: '#e8928c', tag: '#3e4a48', tagInk: '#f1ede4', panel: '#27302f', panelInk: '#f1ede4', panelBd: '10px solid #94704b', wood: '#94704b' },
+      base: 'light', disp: SERIF, body: SYS, dw: 700, dt: '-.01em', bw: 700, bs: '28px', bt: '0', bc: 'none', r: '10px', rb: '999px', gap: '16px', ta: 'left', jc: 'start', just: 'flex-start',
+    },
+  },
+  'la-graine-verte': {
+    slug: 'la-graine-verte', name: 'La Graine Verte', host: 'lagraineverte.example', city: 'Mulhouse', price: '€',
+    line: 'Cantine 100 % végétale · Mulhouse', kind: 'Vegan canteen, 24 seats, two quick services', stage: '#2f6b45',
+    pages: ['/'],
+    services: [{ name: 'Lunch', start: '11:30', end: '14:30' }, { name: 'Dinner', start: '18:30', end: '21:30' }],
+    tables: tablesOf(2, 2, 2, 2, 2, 2, 4, 4, 4), maxParty: 4, tags: ['vegan', 'vegetarian', 'gluten-free'],
+    policy: 'Free cancellation up to 1 hour before the booking.', fallback: 'https://lagraineverte.example/#reserver',
+    sample: [['Noa Keller', '18:30', 2, 'merchant'], ['Lou Fischer', '19:00', 4, 'claude'], ['Eli Brun', '20:30', 2, 'claude']],
+    brief: '24 seats, 6 tables of 2 and 3 tables of 4. Lunch is the busy one.',
+    swatchNames: 'green, sprout and cream', font: 'System sans', band: 'bar',
+    facts: [
+      ['name', 'Name', 'La Graine Verte', '/'],
+      ['hours', 'Hours', 'Lunch 11:30–14:30, dinner 18:30–21:30', '/'],
+      ['tags', 'Tags', 'Vegan, vegetarian, gluten-free', '/'],
+      ['max', 'Largest group', '4, from "Tables de 1 à 4 personnes"', '/'],
+      ['policy', 'Cancelling', 'Free up to 1 hour before', '/'],
+      ['price', 'Price level', '€, from your menu prices', '/'],
+      ['booking', 'Booking page', '/#reserver, used as the fallback', '/'],
+      ['look', 'Look', 'Green, sprout and cream. Heavy sans. Rounded cards and pills.', '/'],
+    ],
+    flags: [
+      ['Your site only takes bookings by phone.', 'The fallback link goes to that section, so a guest who can\'t book through Claude still finds your number.'],
+      ['"Sans gluten pour la plupart des plats" became the gluten-free tag.', 'Tags can\'t say "most dishes". Tell me if you\'d rather drop it.'],
+    ],
+    look: {
+      light: { bg: '#f4f1e6', sf: '#fffdf7', sf2: '#ebe7d5', ink: '#1f2a22', mut: '#56625a', ln: '#d8d6c4', ac: '#2f6b45', on: '#ffffff', brand: '#2f6b45', h3: '#1f2a22', tag: '#a9c46c', tagInk: '#234f33', panel: '#2f6b45', panelInk: '#f4f1e6', panelBd: '0', wood: '#234f33' },
+      dark: { bg: '#16211a', sf: '#1f2e24', sf2: '#1f2e24', ink: '#f4f1e6', mut: '#b5bfae', ln: '#32443a', ac: '#a9c46c', on: '#16211a', brand: '#a9c46c', h3: '#f4f1e6', tag: '#32443a', tagInk: '#d2e3a3', panel: '#234f33', panelInk: '#f4f1e6', panelBd: '0', wood: '#234f33' },
+      base: 'light', disp: SYS, body: SYS, dw: 800, dt: '-.02em', bw: 800, bs: '26px', bt: '-.02em', bc: 'none', r: '16px', rb: '999px', gap: '18px', ta: 'left', jc: 'start', just: 'flex-start',
+    },
+  },
+  'maison-albane': {
+    slug: 'maison-albane', name: 'Maison Albane', host: 'maisonalbane.example', city: 'Mulhouse', price: '€€€€',
+    line: 'Table gastronomique · Mulhouse', kind: 'Fine dining, 22 seats, one evening service', stage: '#151413',
+    pages: ['/'],
+    services: [{ name: 'Dinner', start: '19:30', end: '22:30' }],
+    tables: tablesOf(2, 2, 2, 2, 2, 4, 4, 4), maxParty: 6, tags: ['vegetarian', 'terrace'],
+    policy: 'Free cancellation up to 24 hours before the booking.', fallback: 'https://maisonalbane.example/#reserver',
+    sample: [['Claire Roth', '19:30', 2, 'merchant'], ['Yann Meyer', '20:30', 4, 'claude'], ['Ines Vogt', '21:30', 2, 'claude']],
+    brief: '22 seats, 5 tables of 2 and 3 tables of 4. One service each evening.',
+    swatchNames: 'near-black and gold', font: 'Iowan Old Style', band: 'none',
+    facts: [
+      ['name', 'Name', 'Maison Albane', '/'],
+      ['hours', 'Hours', 'Dinner 19:30–22:30, every evening', '/'],
+      ['tags', 'Tags', 'Vegetarian on request, garden terrace', '/'],
+      ['max', 'Largest group', '6, from "plus de 6 personnes, contactez-nous"', '/'],
+      ['policy', 'Cancelling', 'Free up to 24 hours before', '/'],
+      ['price', 'Price level', '€€€€, from your menus at 95 € and 135 €', '/'],
+      ['booking', 'Booking page', '/#reserver, used as the fallback', '/'],
+      ['look', 'Look', 'Near-black and gold. Light serif, wide-set name. Square corners.', '/'],
+    ],
+    flags: [
+      ['Your largest table seats 4 and you accept groups up to 6.', 'A group of 5 or 6 goes to your booking page until you add a larger table.'],
+      ['"Terrasse sur jardin en été" became the terrace tag.', 'Tags have no seasons, so guests see it all year.'],
+      ['You take phone bookings from 15:00.', 'Guests using Claude can book at any hour.'],
+    ],
+    look: {
+      dark: { bg: '#151413', sf: '#1e1c1a', sf2: '#1e1c1a', ink: '#efe9df', mut: '#b3aa9c', ln: '#3a3530', ac: '#c8a96a', on: '#151413', brand: '#c8a96a', h3: '#c8a96a', tag: '#2a2622', tagInk: '#e2cc9b', panel: '#1e1c1a', panelInk: '#efe9df', panelBd: '1px solid #c8a96a', wood: '#c8a96a' },
+      light: { bg: '#f3eee4', sf: '#faf7f0', sf2: '#ebe4d6', ink: '#1c1a18', mut: '#5d564c', ln: '#d6ccb9', ac: '#7f6426', on: '#ffffff', brand: '#7f6426', h3: '#7f6426', tag: '#ebe4d6', tagInk: '#5a4615', panel: '#151413', panelInk: '#efe9df', panelBd: '1px solid #c8a96a', wood: '#c8a96a' },
+      base: 'dark', disp: SERIF, body: SYS, dw: 400, dt: '0', bw: 400, bs: '16px', bt: '.4em', bc: 'uppercase', r: '0px', rb: '0px', gap: '1px', ta: 'center', jc: 'center', just: 'center',
+    },
+  },
+};
+
+function customSite(host) {
+  const words = host.replace(/^www\./, '').split('.').slice(0, -1).join(' ').replace(/[-_]+/g, ' ').trim() || 'Your restaurant';
+  const name = words.split(' ').map(cap).join(' ');
+  const slug = words.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 61).padEnd(3, 'x');
+  const neutral = { bg: '#ffffff', sf: '#f6f6f6', sf2: '#f0f0f0', ink: '#141414', mut: '#5c5c5c', ln: '#dddddd', ac: '#141414', on: '#ffffff', brand: '#141414', h3: '#141414', tag: '#ececec', tagInk: '#141414', panel: '#141414', panelInk: '#f5f5f5', panelBd: '0', wood: '#141414' };
+  return {
+    slug, name, host, city: null, price: '€€', custom: true, line: host, kind: '', stage: '#333',
+    pages: [], services: [{ name: 'Dinner', start: '19:00', end: '22:00' }],
+    tables: defaultTables(40), maxParty: 8, tags: [], policy: null, fallback: `https://${host}/`,
+    sample: [['Alex Martin', '19:00', 2, 'website'], ['Sam Dupont', '20:00', 4, 'claude'], ['Nora Haas', '21:00', 3, 'claude']],
+    brief: '40 seats. Groups up to 8.', swatchNames: 'black and white', font: 'System sans', band: 'none',
+    facts: [], flags: [],
+    look: { light: neutral, dark: { ...neutral, bg: '#161616', sf: '#222', sf2: '#222', ink: '#f5f5f5', mut: '#b5b5b5', ln: '#3a3a3a', ac: '#f5f5f5', on: '#161616', brand: '#f5f5f5', h3: '#f5f5f5', tag: '#333', tagInk: '#f5f5f5', panel: '#262626' },
+      base: 'light', disp: SYS, body: SYS, dw: 800, dt: '-.02em', bw: 800, bs: '26px', bt: '0', bc: 'none', r: '12px', rb: '999px', gap: '16px', ta: 'left', jc: 'start', just: 'flex-start' },
+  };
+}
+
+/* ---------- domain rules (AGENTS.md §6, same as core/availability and agent/provisioning) ---------- */
+const SLOT_MIN = 120;
+const startsOf = svc => { const out = []; for (let m = toMin(svc.start); m <= toMin(svc.end) - 60; m += 30) out.push(toHM(m)); return out; };
+const allStarts = s => s.services.flatMap(startsOf);
+const overlap = (a, b) => a < b + SLOT_MIN && b < a + SLOT_MIN;
+const confirmed = s => s.bookings.filter(b => b.status === 'confirmed').sort((a, b) => toMin(a.time) - toMin(b.time));
+const seatsOf = s => s.tables.reduce((n, t) => n + t.seats, 0);
+const largest = s => Math.max(0, ...s.tables.map(t => t.seats));
+const lastService = s => s.services[s.services.length - 1];
+function pickTable(s, party, time) {
+  const t = toMin(time);
+  return [...s.tables].sort((a, b) => a.seats - b.seats).find(tb => tb.seats >= party && !confirmed(s).some(b => b.table === tb.label && overlap(toMin(b.time), t)));
+}
+function defaultTables(seats) {
+  const large = seats >= 30 ? 6 : 0;
+  const rest = seats - large;
+  const sizes = [...Array(Math.floor(rest / 4)).fill(4), ...Array(Math.ceil((rest % 4) / 2)).fill(2), ...(large ? [large] : [])];
+  return tablesOf(...sizes);
+}
+const nextId = s => `R-${String(s.bookings.length + 1).padStart(3, '0')}`;
+function addBooking(s, guest, time, party, via) {
+  const tb = pickTable(s, party, time);
+  if (!tb) return null;
+  const b = { id: nextId(s), guest, time, party, via, table: tb.label, status: 'confirmed' };
+  s.bookings.push(b);
+  return b;
+}
+function makeState(site) {
+  const s = structuredClone(site);
+  s.bookings = []; s.blocked = []; s.published = false; s.samples = true;
+  s.mode = { manage: s.look.base };
+  s.over = {};
+  s.log = []; s.reqN = 1; s.notices = [];
+  s.words = { guests: 'guests', bookings: 'bookings', tables: 'tables' };
+  s.moment = 'before';
+  s.sample.forEach(([g, t, p, v]) => addBooking(s, g, t, p, v));
+  return s;
+}
+
+const MOMENTS = [
+  { id: 'morning', label: 'Morning', at: () => '10:00' },
+  { id: 'before', label: 'Before service', at: s => toHM(toMin(lastService(s).start) - 60) },
+  { id: 'service', label: 'During service', at: s => toHM(toMin(lastService(s).start) + 90) },
+  { id: 'after', label: 'After service', at: s => toHM(Math.min(toMin(lastService(s).end) + 60, 1439)) },
+];
+
+/* ---------- colour guard: the look can change, contrast can't get worse than 3:1 ---------- */
+const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+const hexOf = rgb => '#' + rgb.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+const lum = hex => { const [r, g, b] = rgbOf(hex).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + .05) / (y + .05); };
+function readable(accent, bg, min = 3) {
+  let c = accent, guard = 0;
+  const towards = lum(bg) > .4 ? 0 : 255;
+  while (contrast(c, bg) < min && guard++ < 40) c = hexOf(rgbOf(c).map(v => v + (towards - v) * .08));
+  return c;
+}
+const onColour = bg => contrast('#ffffff', bg) >= contrast('#111111', bg) ? '#ffffff' : '#111111';
+
+function vars(s, which) {
+  const L = s.look, m = { ...L[which === 'public' ? L.base : s.mode.manage] };
+  const ov = which === 'public' ? {} : s.over;
+  if (ov.accent) { const ac = readable(ov.accent, m.bg); Object.assign(m, { ac, on: onColour(ac), brand: ac, h3: ac }); }
+  const disp = ov.disp || L.disp;
+  const r = ov.r ?? L.r;
+  return [
+    `--b-bg:${m.bg}`, `--b-sf:${m.sf}`, `--b-sf2:${m.sf2}`, `--b-ink:${m.ink}`, `--b-mut:${m.mut}`, `--b-ln:${m.ln}`, `--b-ac:${m.ac}`, `--b-on:${m.on}`,
+    `--b-brand:${m.brand}`, `--b-h3:${m.h3}`, `--b-tag:${m.tag}`, `--b-tag-ink:${m.tagInk}`, `--b-panel:${m.panel}`, `--b-panel-ink:${m.panelInk}`, `--b-panel-bd:${m.panelBd}`, `--b-wood:${m.wood}`,
+    `--b-disp:${disp.replace(/"/g, "'")}`, `--b-body:${L.body.replace(/"/g, "'")}`, `--b-dw:${L.dw}`, `--b-dt:${L.dt}`, `--b-bw:${L.bw}`, `--b-bs:${L.bs}`, `--b-bt:${L.bt}`, `--b-bc:${L.bc}`,
+    `--b-r:${r}`, `--b-rb:${L.rb}`, `--b-gap:${L.gap}`, `--b-ta:${L.ta}`, `--b-jc:${L.jc}`, `--b-just:${L.just}`,
+  ].join(';');
+}
+const paletteOf = s => { const m = s.look[s.mode.manage || s.look.base]; return [s.over.accent ? readable(s.over.accent, m.bg) : m.ac, m.bg, m.panel, m.tag]; };
+
+/* ---------- artboards ---------- */
+const bandOf = s => `<div class="band ${s.band}"></div>`;
+const tagName = t => cap(t.replace('-', ' ').replace('gluten free', 'gluten-free').replace('kid friendly', 'kid-friendly'));
+const serviceLine = sv => `${sv.name} ${sv.start}–${sv.end}`;
+
+function publicBoard(s) {
+  if (s.slug === 'le-petit-zinc') return `${bandOf(s)}
+    <div class="b-pad p-head"><div data-f="name"><div class="b-brand">Le Petit Zinc</div><small>Bistrot alsacien · Mulhouse</small></div><nav><span>Accueil</span><span>La carte</span><span>Horaires</span><span>Contact</span><span class="b-btn" data-f="booking">Réserver</span></nav></div>
+    <section class="b-pad p-hero split"><div><p class="p-eyebrow">Bistrot alsacien · Mulhouse</p><h1 data-f="look">Le Petit Zinc</h1><p class="p-lead">Une cuisine de marché faite maison, les recettes de nos grands-mères alsaciennes et un vieux comptoir en zinc où l'on prend le temps. Midi et soir, tous les jours.</p><div class="p-acts"><span class="b-btn">Réserver une table</span><span class="b-btn ghost">Découvrir la carte</span></div></div>
+      <aside class="p-slate" data-f="price"><h2>À l'ardoise</h2><p class="p-price"><span>Formule du midi</span><span>19,50 €</span></p><p class="p-price"><span>Tarte flambée traditionnelle</span><span>12 €</span></p><p class="p-price"><span>Spaetzle aux champignons des Vosges</span><span>17 €</span></p><p class="p-price"><span>Kougelhopf glacé au kirsch</span><span>8 €</span></p></aside></section>
+    <section class="p-alt"><div class="b-pad"><h2>Un bistrot de quartier, depuis 2009</h2><div class="p-grid" data-f="tags" style="padding-bottom:0"><div class="b-card"><h3>Tout est fait maison</h3><p>Chaque jour, des plats végétariens et plusieurs plats sans gluten.</p></div><div class="b-card"><h3>La terrasse en été</h3><p>À l'ombre des tilleuls de la place.</p></div><div class="b-card"><h3>Les enfants bienvenus</h3><p>Menu enfant, chaises hautes et crayons de couleur.</p></div></div></div></section>
+    <section class="b-pad p-strip" data-f="hours"><div><h2>Ouvert tous les jours</h2><p>Déjeuner 12h – 14h · Dîner 19h – 22h</p></div><span class="b-btn ghost">Horaires et accès</span></section>`;
+  if (s.slug === 'la-graine-verte') return `${bandOf(s)}
+    <div class="b-pad p-head"><div class="b-brand" data-f="name">La Graine Verte</div></div>
+    <section class="b-pad p-hero"><div><h1 data-f="look">Cantine 100 % végétale</h1><p class="p-lead">Des bols de saison, des légumes de maraîchers du Haut-Rhin et des desserts gourmands, sans aucun produit animal. À petits prix, midi et soir.</p><div class="p-pills" data-f="tags"><span class="b-tag">100 % végétal</span><span class="b-tag">Végétarien</span><span class="b-tag">Sans gluten pour la plupart des plats</span></div></div></section>
+    <div class="b-pad p-grid"><section class="b-card" data-f="price"><h3>À la carte</h3><p class="p-price"><span>Bol du jour</span><span>12 €</span></p><p class="p-price"><span>Dahl de lentilles corail, riz complet</span><span>11 €</span></p><p class="p-price"><span>Formule bol + dessert</span><span>15 €</span></p></section><section class="b-card" data-f="hours"><h3>Horaires</h3><p>Ouvert tous les jours.</p><p>Déjeuner : 11h30 – 14h30<br>Dîner : 18h30 – 21h30</p></section><section class="b-card"><h3>Adresse</h3><p>7 passage des Semis<br>68100 Mulhouse</p></section></div>
+    <div class="b-pad"><section class="p-book b-panel" data-f="booking"><h2 style="font-size:26px;margin-bottom:6px">Réserver une table</h2><p>Réservez par téléphone, aux heures d'ouverture : <b>03 89 00 00 11</b></p><p data-f="max" style="display:inline-block">Tables de 1 à 4 personnes.</p> <p data-f="policy" style="display:inline-block">Annulation gratuite jusqu'à 1 heure avant le repas.</p></section></div><div style="height:28px"></div>`;
+  if (s.slug === 'maison-albane') return `
+    <div class="b-pad p-head" style="padding-top:28px"><div class="b-brand" data-f="name">Maison Albane</div></div>
+    <section class="b-pad p-hero mid"><h1 data-f="look">Une table de saison, le soir seulement</h1><p class="p-lead">Une cuisine d'auteur autour des produits d'Alsace et de Franche-Comté, servie en menus dégustation dans une ancienne maison de maître.</p><div class="p-rule"></div></section>
+    <div class="b-pad"><div class="p-grid" style="background:var(--b-ln);border:1px solid var(--b-ln);padding:0"><section class="b-card" data-f="price" style="border:0"><h3>Menus</h3><p class="p-price"><span>Menu en cinq temps</span><span>95 €</span></p><p class="p-price"><span>Menu en sept temps</span><span>135 €</span></p><p class="p-price"><span>Accords mets et vins</span><span>65 €</span></p></section><section class="b-card" data-f="hours" style="border:0"><h3>Horaires</h3><p>Tous les soirs, de 19h30 à 22h30.</p><p class="b-mut" data-f="tags">Terrasse sur jardin en été. Menu végétarien sur demande.</p></section><section class="b-card" style="border:0"><h3>Adresse</h3><p>3 cour des Glycines<br>68100 Mulhouse</p></section></div></div>
+    <div class="b-pad" style="padding-block:28px"><section class="p-book" data-f="booking" style="border:1px solid var(--b-ac);text-align:center"><h2 style="font-size:26px;color:var(--b-ac);margin-bottom:6px">Réservation</h2><p>Par téléphone, tous les jours à partir de 15h : <b>03 89 00 00 22</b></p><p class="b-mut"><span data-f="max" style="display:inline-block">Pour les tables de plus de 6 personnes, contactez-nous.</span> <span data-f="policy" style="display:inline-block">Annulation gratuite jusqu'à 24 heures avant le dîner.</span></p></section></div>`;
+  return `<div class="p-wire b-pad"><div><div class="b-brand" style="margin-bottom:8px">${esc(s.host)}</div><p class="b-mut" style="max-width:30em">This static preview can't open real addresses. The builder would show your homepage here, plus up to 5 pages whose links mention the menu, hours, contact or booking.</p></div></div>`;
+}
+
+/* The agent site has no pages. It is this: frames over BATP (documentation/PROTOCOL.md) and, for Claude, tools over the MCP bridge. */
+const BATP_HOST = '191-96-88-152.sslip.io';
+const DATE = '2026-10-31';
+const BATP_INTENTS = ['DISCOVER', 'AVAILABILITY', 'BOOK', 'AMEND', 'CANCEL', 'RECALL', 'PING'];
+const stamp = t => `${DATE}T${t}:00+01:00`;
+const HELLO = { type: 'hello', batp: '0.1', agent: { id: 'urn:batp:agent:claude-gateway', name: 'Claude via the Sésame gateway', kind: 'user-agent', operator: 'merchant-agents' }, token: '…' };
+const WELCOME = { type: 'welcome', batp: '0.1', node: { id: 'urn:batp:node:merchant-agents', name: 'Sésame' }, intents: BATP_INTENTS, session: 's-1' };
+const frameReq = (id, intent, params, merchant) => ({ type: 'request', id, intent, ...(merchant ? { merchant } : {}), params });
+const frameRes = (id, body) => ({ type: 'response', id, ...body });
+const notLive = s => ({ status: 404, error: { code: 'not_found', message: `Merchant '${s.slug}' is not live yet` } });
+const wireRes = (s, b) => ({ id: b.id, merchant: s.slug, starts_at: stamp(b.time), party_size: b.party, table_label: b.table, status: b.status, guest_name: b.guest, via: b.via });
+const toolsOf = s => {
+  const services = s.services.map(v => `${v.start}-${v.end}`).join(', ');
+  return [
+    { sel: 'max services', name: 'get_availability', description: `Check free tables at ${s.name} (${s.city || 'unknown city'}). Services: ${services}. Groups up to ${s.maxParty}.` },
+    { sel: 'create', name: 'create_reservation', description: `Book a table at ${s.name}. Always confirm with the guest first.` },
+    { sel: 'update', name: 'update_reservation', description: `Move or resize a booking at ${s.name}.` },
+    { sel: 'policy', name: 'cancel_reservation', description: `Cancel a booking at ${s.name}. Policy: ${(s.policy || 'none stated').replace(/\.$/, '')}.` },
+  ];
+};
+function availability(s, time, party) {
+  const limit = Math.min(s.maxParty, largest(s));
+  if (party > limit) return { status: 413, error: { code: 'party_too_large', message: `${s.name} takes online bookings for up to ${limit} guests`, fallback_url: s.fallback } };
+  const near = allStarts(s).filter(t => !s.blocked.includes(t)).map(t => ({ t, tb: pickTable(s, party, t) })).filter(x => x.tb)
+    .sort((a, b) => Math.abs(toMin(a.t) - toMin(time)) - Math.abs(toMin(b.t) - toMin(time))).slice(0, 3)
+    .sort((a, b) => toMin(a.t) - toMin(b.t));
+  return { status: 200, result: { slots: near.map(x => ({ starts_at: stamp(x.t), table_label: x.tb.label })) } };
+}
+const wireLine = (dir, obj, sel = '') => `<div class="w-f ${dir}"${sel ? ` data-sel="${sel}"` : ''}><span aria-hidden="true">${dir === 'out' ? '→' : '←'}</span><code>${esc(JSON.stringify(obj)).replace(/&quot;status&quot;:(\d{3})/, (_, c) => `&quot;status&quot;:<b class="w-s ${c === '200' ? 'ok' : 'bad'}">${c}</b>`)}</code></div>`;
+const exampleAsk = s => {
+  const starts = startsOf(lastService(s));
+  return { time: s.blocked[s.blocked.length - 1] || starts[starts.length - 1], party: Math.max(1, Math.min(4, s.maxParty, largest(s))) };
+};
+function agentBoard(s) {
+  const ex = exampleAsk(s);
+  return `<div class="w b-pad">
+    <div class="w-top"><code class="w-addr">batp://${BATP_HOST}/${esc(s.slug)}</code><span class="w-live ${s.published ? 'on' : ''}">${s.published ? 'Live' : 'Not live'}</span></div>
+    <p class="w-note">No pages, no buttons, no design. Agents open a session on port 4710 and exchange one JSON frame per line. This is the whole site.</p>
+    ${s.published ? '' : '<p class="w-warn">Right now every agent gets a 404. The first answer below is what they get once you publish.</p>'}
+    <section aria-label="Protocol session"><h3>A session with your agent</h3>
+      <div class="w-log">${wireLine('out', HELLO)}${wireLine('in', WELCOME)}
+        ${wireLine('out', frameReq('r-1', 'AVAILABILITY', { date: DATE, time: ex.time, party_size: ex.party }, s.slug))}${wireLine('in', frameRes('r-1', availability(s, ex.time, ex.party)), 'avail')}
+        ${s.log.map((f, i) => wireLine('out', f.out) + wireLine('in', f.in, i === s.log.length - 1 ? 'last' : '')).join('')}</div>
+      <div class="w-send" role="group" aria-label="Send a request"><span>Send</span>${BATP_INTENTS.map(i => `<button type="button" data-send="${i}">${i}</button>`).join('')}</div>
+    </section>
+    <section aria-label="MCP bridge"><h3>What Claude reads through the MCP bridge</h3>
+      <code class="w-bridge">${CONNECTOR}/m/${esc(s.slug)}/mcp</code>
+      <ul class="w-tools">${toolsOf(s).map(t => `<li data-sel="${t.sel}"><code>${t.name}</code><span>${esc(t.description)}</span></li>`).join('')}</ul>
+      <p class="w-fb" data-sel="fallback">When the agent can't answer, the guest gets your own page: <code>${esc(s.fallback)}</code></p>
+    </section></div>`;
+}
+
+const TEST_GUESTS = ['Kim Weber', 'Jo Bauer', 'Mia Klein', 'Tom Graf', 'Eva Roth', 'Max Lang'];
+const guestBookings = s => confirmed(s).filter(b => b.via === 'claude');
+function sendFrame(s, intent, o = {}) {
+  const id = `r-${++s.reqN}`, live = s.published || o.preview, last = guestBookings(s).slice(-1)[0];
+  const answer = (params, merchant, body, extra = {}) => { s.log.push({ out: frameReq(id, intent, params, merchant), in: frameRes(id, body) }); return { body, ...extra }; };
+  const unknown = { status: 404, error: { code: 'not_found', message: 'Unknown reservation' } };
+  if (intent === 'PING') return answer({}, null, { status: 200, result: { pong: true, server_time: stamp(MOMENTS.find(m => m.id === s.moment).at(s)) } });
+  if (intent === 'DISCOVER') {
+    const merchants = live ? [{ slug: s.slug, name: s.name, city: s.city, tags: s.tags, price_level: s.price, website: `https://${s.host}/` }] : [];
+    return answer({ query: 'table for 4 tonight' }, null, { status: 200, result: { merchants, suggestions: [], ignored_filters: [] } });
+  }
+  if (intent === 'RECALL') {
+    const guest = last ? last.guest : TEST_GUESTS[0];
+    return answer({ guest_name: guest }, null, { status: 200, result: { reservations: live ? confirmed(s).filter(b => b.guest === guest).map(b => wireRes(s, b)) : [], notices: s.notices } });
+  }
+  if (intent === 'AVAILABILITY') {
+    const ex = exampleAsk(s), time = o.time || ex.time, party = o.party || ex.party;
+    return answer({ date: DATE, time, party_size: party }, s.slug, live ? availability(s, time, party) : notLive(s));
+  }
+  if (intent === 'BOOK') {
+    const guest = TEST_GUESTS[s.bookings.length % TEST_GUESTS.length], party = Math.min(2, s.maxParty);
+    const starts = startsOf(lastService(s)).filter(t => !s.blocked.includes(t) && pickTable(s, party, t)).reverse();
+    const params = t => ({ starts_at: stamp(t), party_size: party, guest_name: guest, idempotency_key: `k-${s.reqN}` });
+    if (!live) return answer(params(exampleAsk(s).time), s.slug, notLive(s));
+    if (!starts.length) return answer(params(exampleAsk(s).time), s.slug, { status: 409, error: { code: 'slot_unavailable', message: 'Slot taken or blocked' } });
+    const b = addBooking(s, guest, starts[0], party, 'claude');
+    return answer(params(starts[0]), s.slug, { status: 200, result: { reservation: wireRes(s, b) } }, { booking: b });
+  }
+  if (intent === 'AMEND') {
+    const fallbackParams = { reservation_id: 'R-001', guest_name: TEST_GUESTS[0], starts_at: stamp(exampleAsk(s).time), idempotency_key: `k-${s.reqN}` };
+    if (!live) return answer(fallbackParams, s.slug, notLive(s));
+    if (!last) return answer(fallbackParams, s.slug, unknown);
+    last.status = 'moving';
+    const t = startsOf(lastService(s)).filter(x => x !== last.time && !s.blocked.includes(x)).find(x => pickTable(s, last.party, x));
+    const tb = t && pickTable(s, last.party, t);
+    last.status = 'confirmed';
+    const params = { reservation_id: last.id, guest_name: last.guest, starts_at: stamp(t || last.time), idempotency_key: `k-${s.reqN}` };
+    if (!tb) return answer(params, s.slug, { status: 409, error: { code: 'slot_unavailable', message: 'Slot taken or blocked' } });
+    last.time = t; last.table = tb.label;
+    return answer(params, s.slug, { status: 200, result: { reservation: wireRes(s, last) } }, { moved: last });
+  }
+  /* CANCEL */
+  const params = last ? { reservation_id: last.id, guest_name: last.guest } : { reservation_id: 'R-001', guest_name: TEST_GUESTS[0] };
+  if (!live) return answer(params, s.slug, notLive(s));
+  if (!last) return answer(params, s.slug, unknown);
+  last.status = 'cancelled';
+  return answer(params, s.slug, { status: 200, result: { reservation: wireRes(s, last) } }, { cancelled: last });
+}
+
+const viaLabel = v => ({ claude: 'via Claude', website: 'via website', merchant: 'taken by you' }[v] || v);
+const rows = (s, list) => `<table class="m-rows"><caption class="sr">${esc(cap(s.words.bookings))}</caption><tbody>${list.map(b => `<tr data-sel="b-${b.id}"><td>${b.time}</td><td>${esc(b.guest)}</td><td>${count(b.party, s.words.guests)}</td><td>${esc(b.table)}</td><td>${viaLabel(b.via)}</td></tr>`).join('')}</tbody></table>`;
+const inService = (s, sv) => confirmed(s).filter(b => toMin(b.time) >= toMin(sv.start) && toMin(b.time) < toMin(sv.end));
+const sampleTag = s => s.samples ? '<span class="m-tag">Samples</span>' : '';
+
+function momentPanel(s) {
+  const w = s.words, sv = lastService(s), list = inService(s, sv), guests = list.reduce((n, b) => n + b.party, 0), at = MOMENTS.find(m => m.id === s.moment).at(s);
+  if (s.moment === 'morning') {
+    const checks = [];
+    if (!s.policy) checks.push('No cancellation policy yet. Guests see none.');
+    if (s.blocked.length) checks.push(`${s.blocked.join(', ')} blocked tonight.`);
+    if (s.maxParty > largest(s)) checks.push(`Groups up to ${s.maxParty}, but your largest table seats ${largest(s)}.`);
+    return `<h1 class="m-title">Today</h1><p class="m-sum">${count(s.services.length, 'services')}, ${count(seatsOf(s), 'seats')}.</p>
+      ${s.services.map(v => { const l = inService(s, v), g = l.reduce((n, b) => n + b.party, 0); return `<div class="m-svc" data-sel="services"><b>${v.name}</b><span>${v.start}–${v.end}</span><small>${count(l.length, w.bookings)}, ${count(g, w.guests)} ${sampleTag(s)}</small></div>`; }).join('')}
+      ${checks.length ? `<ul class="m-check" data-sel="checks">${checks.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}`;
+  }
+  if (!list.length && s.moment !== 'after') {
+    return `<div class="b-panel m-empty" data-sel="list"><b>No ${esc(w.bookings)} yet.</b><p>They appear here the moment a guest books through Claude.</p></div>`;
+  }
+  if (s.moment === 'before') {
+    return `<div class="b-panel m-panel" data-sel="list"><h1 class="m-title">Tonight ${sampleTag(s)}</h1><p class="m-sum">${count(list.length, w.bookings)}, ${count(guests, w.guests)} of ${seatsOf(s)} seats.</p>${rows(s, list)}</div>`;
+  }
+  if (s.moment === 'service') {
+    const t = toMin(at), next = list.filter(b => toMin(b.time) > t), seated = list.filter(b => toMin(b.time) <= t && t < toMin(b.time) + SLOT_MIN);
+    const n = next[0];
+    return `<div class="b-panel m-panel" data-sel="list">
+      ${n ? `<p style="font-size:18px;opacity:.8">Next ${sampleTag(s)}</p><div class="m-next-time" data-sel="b-${n.id}">${n.time}</div><div class="m-next-who">${esc(n.guest)}</div><div class="m-next-sub">${count(n.party, w.guests)}, ${esc(one(w.tables))} ${esc(n.table)}</div>` : `<div class="m-next-who">No more arrivals tonight.</div>`}
+      ${next[1] ? `<p class="m-then">Then ${next[1].time}, ${esc(next[1].guest)}, ${count(next[1].party, w.guests)}</p>` : ''}
+      <p class="m-then">Seated now: ${seated.length ? seated.map(b => `${esc(b.table)} ${esc(b.guest)}`).join(', ') : 'nobody'}</p></div>`;
+  }
+  const claude = list.filter(b => b.via === 'claude').length;
+  return `<div class="b-panel m-panel" data-sel="list"><h1 class="m-title">Tonight, done ${sampleTag(s)}</h1><p class="m-sum">${esc(sv.name)} service, ${sv.start}–${sv.end}.</p><div class="m-stats"><div><b>${guests}</b><small>${esc(w.guests)}</small></div><div><b>${list.length}</b><small>${esc(w.bookings)}</small></div><div><b>${claude}</b><small>via Claude</small></div></div></div>`;
+}
+
+function floorOf(s) {
+  const at = toMin(MOMENTS.find(m => m.id === s.moment).at(s));
+  const list = inService(s, lastService(s));
+  const busy = new Set(), next = new Set();
+  if (s.moment === 'service') list.forEach(b => { if (toMin(b.time) <= at && at < toMin(b.time) + SLOT_MIN) busy.add(b.table); else if (toMin(b.time) > at) next.add(b.table); });
+  if (s.moment === 'before') list.forEach(b => next.add(b.table));
+  return `<div class="floor" data-sel="floor">${s.tables.map(t => `<div class="tb s${t.seats >= 6 ? 6 : t.seats >= 4 ? 4 : 2} ${busy.has(t.label) ? 'busy' : next.has(t.label) ? 'next' : ''}" data-sel="tb-${esc(t.label)}">${esc(t.label)}<small>${t.seats}</small></div>`).join('')}</div>
+    ${s.moment === 'service' || s.moment === 'before' ? `<div class="legend">${s.moment === 'service' ? '<span><i class="f"></i>Seated</span>' : ''}<span><i></i>Booked</span></div>` : ''}`;
+}
+
+function manageBoard(s) {
+  const at = MOMENTS.find(m => m.id === s.moment).at(s);
+  return `${bandOf(s)}<header class="b-pad m-head"><div class="b-brand">${esc(s.name)}</div><span class="m-when">${TODAY}, ${at}</span><span class="m-state ${s.published ? 'live' : ''}">${s.published ? 'Live' : 'Hidden from guests'}</span></header>
+    <div class="b-pad m-main"><section data-sel="moment">${momentPanel(s)}</section>
+      <aside class="m-side"><div><h3>${esc(cap(s.words.tables))}</h3>${floorOf(s)}</div>
+        <div data-sel="blocked"><h3>Blocked tonight</h3>${s.blocked.length ? `<div class="m-blocked">${s.blocked.map(t => `<span class="b-tag">${t}</span>`).join('')}</div>` : '<p class="m-none">Nothing. Ask to block a time.</p>'}</div>
+        <div data-sel="rules"><h3>Rules</h3><p data-sel="max">Groups up to ${s.maxParty}</p><p data-sel="services" class="b-mut">${s.services.map(serviceLine).join(', ')}</p><p data-sel="policy" class="b-mut">${s.policy ? esc(s.policy) : 'No cancellation policy'}</p></div>
+      </aside></div>`;
+}
+
+/* ---------- studio state ---------- */
+let S = null, phase = 'address', view = 'public', busy = false, instant = false, selected = [];
+const sessions = {};
+const wait = ms => new Promise(r => setTimeout(r, calm || instant ? 0 : ms));
+const feed = $('#feed'), input = $('#input'), sendBtn = $('#send'), chat = $('#chat');
+
+function scrollFeed() { feed.scrollTop = feed.scrollHeight; }
+function add(html, cls) { const el = document.createElement('div'); el.className = cls; el.innerHTML = html; feed.append(el); scrollFeed(); return el; }
+const me = t => add(esc(t), 'msg me');
+const bot = html => add(html, 'msg bot');
+function setChips(list = []) {
+  const box = $('#chips');
+  box.innerHTML = list.map(c => `<button type="button" class="chip" data-say="${esc(c)}">${esc(c)}</button>`).join('');
+  box.classList.toggle('wrap', list.length <= 3);
+  scrollFeed();
+}
+function setBusy(v) { busy = v; syncSend(); }
+function syncSend() { sendBtn.disabled = busy || !input.value.trim(); }
+function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 2200); }
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); toast('Copied'); }
+  catch { toast(`Copy this: ${text}`); }
+}
+
+function setStatus() {
+  const st = $('#st-status'), has = !!S, split = !!(S && S.read);
+  ['#st-name', '#st-status', '#st-sep'].forEach(q => { $(q).hidden = !has; });
+  st.classList.toggle('live', !!(S && S.published));
+  $('span', st).textContent = !S || !S.built ? 'Not built yet' : S.published ? 'Live' : 'Hidden from guests';
+  $('#st-name').textContent = S ? S.name : '';
+  const pub = $('#st-publish');
+  pub.hidden = !(S && S.built);
+  pub.disabled = phase !== 'review' || busy;
+  pub.textContent = S && S.published ? 'Published' : 'Publish';
+  $('#studio').dataset.split = split ? '1' : '0';
+  $('#canvas').hidden = !split;
+  $('#pane-switch').hidden = !split;
+  if (!split) showPane('chat');
+  $$('#rail [data-rail]').forEach(b => { if (S && b.dataset.rail === S.slug) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); });
+  const root = $('#studio');
+  if (S && S.built) {
+    const m = S.look[S.look.base];
+    root.style.setProperty('--app-bg', m.ac); root.style.setProperty('--app-ink', m.on);
+  } else { root.style.removeProperty('--app-bg'); root.style.removeProperty('--app-ink'); }
+}
+
+/* ---------- canvas ---------- */
+const NAMES = { public: 'Your public site, as read', agent: 'Agent site, no interface', manage: 'Management site' };
+const boardHTML = k => k === 'public' ? publicBoard(S) : k === 'agent' ? agentBoard(S) : manageBoard(S);
+
+function paint() {
+  const paste = $('#paste');
+  if (view === 'both' && innerWidth <= 900) view = 'manage';
+  $$('#tabs button').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.view === view));
+    b.disabled = !S || (b.dataset.view !== 'public' && !S.built) || (b.dataset.view === 'public' && !S.read);
+  });
+  if (!S || !S.read) { paste.innerHTML = ''; $('#dock').hidden = true; $('#zoom').textContent = ''; return; }
+  const scrollY = paste.scrollTop;
+  paste.innerHTML = (view === 'both' ? ['agent', 'manage'] : [view]).map(k => `<div class="frame" data-board="${k}"><div class="frame-name">${NAMES[k]}</div><div class="bw"><div class="b ${k === 'agent' ? 'wire' : ''}" style="${k === 'agent' ? '' : vars(S, k)}">${boardHTML(k)}</div></div></div>`).join('');
+  paste.scrollTop = scrollY;
+  paintDock();
+  fit();
+}
+function fit() {
+  const paste = $('#paste');
+  const frames = $$('.frame', paste);
+  if (!frames.length) return;
+  const cs = getComputedStyle(paste);
+  const aw = paste.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const narrow = innerWidth <= 900, both = view === 'both' && !narrow, across = both && aw >= 1240;
+  const W = narrow ? aw : across ? 760 : 1000;
+  const k = Math.min(1, (across ? (aw - 24) / 2 : aw) / W);
+  paste.classList.toggle('stack', both && !across);
+  frames.forEach(f => {
+    const b = $('.b', f), bw = $('.bw', f);
+    b.style.width = `${W}px`;
+    b.style.transform = k === 1 ? '' : `scale(${k})`;
+    bw.style.width = `${W * k}px`;
+    bw.style.height = `${b.offsetHeight * k}px`;
+    f.style.width = `${W * k}px`;
+  });
+  $('#zoom').textContent = `${Math.round(k * 100)}%`;
+}
+function paintDock() {
+  const dock = $('#dock');
+  dock.hidden = !S || !S.built || (view !== 'manage' && view !== 'both');
+  if (dock.hidden) return;
+  dock.innerHTML = `<span class="dots">${paletteOf(S).map(c => `<button type="button" class="dot" style="background:${c}" data-fill="Change the main colour to " aria-label="Change the colours"></button>`).join('')}</span><span class="dock-font">${esc(S.over.disp ? (S.over.disp === SERIF ? 'Serif' : 'Sans') : S.font)}</span>
+    <span class="dock-sep"></span><div class="moments" role="group" aria-label="Time of day">${MOMENTS.map(m => `<button type="button" data-moment="${m.id}" aria-pressed="${S.moment === m.id}" title="${m.label}">${m.at(S)}</button>`).join('')}</div>`;
+}
+function showPane(p) {
+  $('#studio').dataset.pane = p;
+  $$('.pane-switch button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.paneTo === p)));
+  if (p === 'canvas') requestAnimationFrame(fit);
+  else scrollFeed();
+}
+function setView(v, pane) {
+  view = v; paint();
+  if (pane) showPane('canvas');
+}
+function clearSel() { selected.forEach(el => { el.classList.remove('is-sel'); delete el.dataset.tag; }); selected = []; }
+function flash(attr, pairs) {
+  clearSel();
+  pairs.forEach(([key, tag]) => $$(`#paste [data-${attr}~="${key}"]`).forEach(el => { el.classList.add('is-sel'); el.dataset.tag = tag; selected.push(el); }));
+  if (selected[0]) {
+    const paste = $('#paste'), r = selected[0].getBoundingClientRect(), p = paste.getBoundingClientRect();
+    if (r.top < p.top + 30 || r.bottom > p.bottom - 90) paste.scrollTo({ top: paste.scrollTop + r.top - p.top - 80, behavior: calm ? 'auto' : 'smooth' });
+  }
+}
+function changed(pairs, onto) {
+  if (view === 'public') view = 'both';
+  if (onto && view !== onto && view !== 'both') view = onto;
+  paint(); flash('sel', pairs); setStatus();
+}
+
+/* ---------- conversation cards ---------- */
+const TICK = `<span class="tick"><svg class="ico"><use href="#i-check"/></svg></span>`;
+const stepRow = (name, title) => `<div class="step" data-step="${name}">${TICK}<div><b>${title}</b> <code>${name}</code></div><p></p></div>`;
+function stepCard() {
+  return add(`<div class="card"><h3>Building ${esc(S.name)}</h3>${stepRow('crawl', 'Reading your site')}${stepRow('extract', 'Filling your profile')}${stepRow('validate', 'Checking it')}${stepRow('provision', 'Setting up your bookings')}${stepRow('deploy', 'Going live')}</div>`, 'msg bot');
+}
+function step(card, name, state, note) {
+  const el = $(`[data-step="${name}"]`, card);
+  el.className = `step ${state}`;
+  if (note !== undefined) $('p', el).textContent = note;
+  scrollFeed();
+}
+const factsCard = s => `<div class="card"><h3>What went into your profile</h3>
+  ${s.facts.map(([k, label, val, src]) => `<button type="button" class="fact" data-fact="${k}" data-label="${esc(label)}" aria-pressed="false"><small>${esc(label)}</small><span>${esc(val)}</span><em>${esc(src)}</em></button>`).join('')}
+  ${s.told.map(([label, val]) => `<div class="fact"><small>${esc(label)}</small><span>${esc(val)}</span><em>you</em></div>`).join('')}</div>`;
+const flagsCard = s => `<div class="card"><h3>Check these</h3>${s.flags.map(([a, b]) => `<div class="flag"><b>${esc(a)}</b><span>${esc(b)}</span></div>`).join('')}</div>`;
+const openCard = () => `<div class="opens">
+  <button type="button" class="open-site" data-open="agent"><span class="app">Ag</span><b>Agent site</b></button>
+  <button type="button" class="open-site" data-open="manage"><span class="app">Mg</span><b>Management site</b></button></div>`;
+const diffCard = (label, from, to, opens) => `<div class="card"><div class="diff"><span>${esc(label)}</span>${from !== null ? `<s>${esc(from)}</s>` : ''}<b>${esc(to)}</b>${opens ? `<button type="button" data-open="${opens}">See it</button>` : ''}</div></div>`;
+const listCard = s => {
+  const sv = lastService(s), l = inService(s, sv);
+  if (!l.length) return `<div class="card"><h3>No ${esc(s.words.bookings)} tonight yet</h3></div>`;
+  return `<div class="card"><h3>${esc(cap(s.words.bookings))} tonight${s.samples ? ' (samples)' : ''}</h3><table class="tbl"><tbody>${l.map(b => `<tr><td>${b.time}</td><td>${esc(b.guest)}</td><td>${b.party}</td><td>${esc(b.table)}</td><td>${viaLabel(b.via)}</td></tr>`).join('')}</tbody></table></div>`;
+};
+const statsCard = s => {
+  const l = inService(s, lastService(s)), g = l.reduce((n, b) => n + b.party, 0);
+  return `<div class="card"><h3>Tonight${s.samples ? ' (samples)' : ''}</h3><div class="nums"><div><b>${l.length}</b><small>${esc(s.words.bookings)}</small></div><div><b>${g}</b><small>${esc(s.words.guests)}</small></div><div><b>${seatsOf(s)}</b><small>seats</small></div></div></div>`;
+};
+const liveCard = s => `<div class="card"><h3>Your addresses</h3>
+  ${[['Agent site, for any agent', `batp://${BATP_HOST}/${s.slug}`], ['Agent site, for Claude', `${CONNECTOR}/m/${s.slug}/mcp`], ['Management site', `https://${s.slug}.sesame.example`]].map(([l, u]) => `<div class="url"><small>${l}</small><code>${esc(u)}</code><button type="button" data-copy="${esc(u)}" aria-label="Copy ${l}">${icon('copy')}</button></div>`).join('')}</div>`;
+
+/* ---------- starting a conversation ---------- */
+function parseAddress(text) {
+  const t = text.trim(), low = t.toLowerCase();
+  for (const x of Object.values(SITES)) {
+    for (const needle of [x.host, x.name.toLowerCase(), x.slug]) {
+      if (low.includes(needle)) return { site: x, rest: t.replace(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '').replace(/^[\s,.:;-]+/, '').trim() };
+    }
+  }
+  const m = t.match(/(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(\/\S*)?/i);
+  if (m) return { site: customSite(m[1].toLowerCase().replace(/^www\./, '')), rest: t.replace(m[0], '').replace(/^[\s,.:;-]+/, '').trim() };
+  return null;
+}
+
+function greet() {
+  chat.dataset.empty = '1';
+  feed.innerHTML = `<div class="hello"><h1>What's your website's address?</h1><p>I'll read it and ask what it doesn't say. Then I'll build your agent site, which has no interface and answers agents directly, and your management site, in your own colours. Your public site doesn't change.</p></div>`;
+  input.placeholder = 'Paste your website address and tell me how you work. 40 seats, groups up to 8…';
+  setChips(Object.values(SITES).map(x => x.host));
+}
+function leaveHello() {
+  if (chat.dataset.empty === undefined) return;
+  delete chat.dataset.empty;
+  feed.innerHTML = '';
+  input.placeholder = 'Paste your website address';
+}
+function saveSession() { if (S && S.read) sessions[S.slug] = { S, phase, view, html: feed.innerHTML }; }
+function newChat() {
+  if (busy) return;
+  saveSession();
+  S = null; phase = 'address'; view = 'public'; selected = [];
+  input.value = ''; autoGrow(); syncSend();
+  greet(); setStatus(); paint();
+  input.focus({ preventScroll: true });
+}
+const initials = n => (n.split(/\s+/).filter(w => !/^(le|la|les|chez|the)$/i.test(w)).slice(0, 2).map(w => w[0].toUpperCase()).join('') || n.slice(0, 2)).padEnd(2, n[1] || '');
+function railItem(x) {
+  const m = x.look[x.look.base];
+  return `<button type="button" data-rail="${esc(x.slug)}"><span class="app" style="--app-bg:${m.ac};--app-ink:${m.on}">${esc(initials(x.name))}</span>${esc(x.name)}</button>`;
+}
+async function openSite(slug) {
+  if (busy) return;
+  saveSession();
+  const x = sessions[slug];
+  if (x) {
+    S = x.S; phase = x.phase; view = x.view;
+    delete chat.dataset.empty;
+    feed.innerHTML = x.html;
+    input.placeholder = 'Ask for a change';
+    setChips(phase === 'live' ? liveChips() : reviewChips());
+    setStatus(); paint();
+    return;
+  }
+  S = null; phase = 'address'; view = 'public';
+  greet(); setStatus(); paint();
+  instant = true;
+  await submit(`${SITES[slug].host}, ${SITES[slug].brief}`);
+  instant = false;
+}
+async function handleAddress(text) {
+  const found = parseAddress(text);
+  if (!found) {
+    bot('I need an address to start, like <b>lepetitzinc.example</b>. Sésame reads your public site for your hours, your rules and your colours.');
+    setChips(Object.values(SITES).map(x => x.host));
+    return;
+  }
+  S = makeState(found.site); S.told = []; S.built = false; S.read = false; S.asked = new Set();
+  if (S.custom && !$(`#rail [data-rail="${S.slug}"]`)) $('#rail').insertAdjacentHTML('beforeend', railItem(S));
+  setStatus();
+  if (found.rest.split(/\s+/).filter(Boolean).length >= 3) return build(found.rest);
+  phase = 'describe';
+  input.placeholder = 'Seats, tables, the largest group you take';
+  bot(S.custom
+    ? `This preview can't open <b>${esc(S.host)}</b>, because a static page can't read other sites. I'll build from what you tell me and from Sésame's defaults, and the colours will be plain until you pick some. How many seats do you have, and what's the largest group you take?`
+    : `I can read <b>${esc(S.host)}</b>. Websites rarely say how the room works, so tell me first: how many seats and tables, and what's the largest group you take?`);
+  setChips([S.brief, 'Skip this, use the defaults']);
+}
+
+/* ---------- description wins over the site (§8.3) ---------- */
+function applyBrief(s, text) {
+  const told = [];
+  if (/^skip\b/i.test(text.trim())) {
+    if (s.custom) {
+      s.flags.push(['No floor plan from you.', 'I drafted 40 seats on ' + s.tables.length + ' tables, with Sésame\'s default rule. Correct it by asking.']);
+      s.flags.push(['Groups up to 8 and dinner 19:00–22:00 are defaults.', 'Tell me your real limits and hours.']);
+    } else {
+      s.flags.unshift(['You skipped the floor plan.', `I drafted ${s.tables.length} tables for ${seatsOf(s)} seats. Correct it by asking.`]);
+    }
+    return told;
+  }
+  const seats = text.match(/(\d+)\s*(?:seats?|covers?|couverts?|places?)/i);
+  if (seats && +seats[1] !== seatsOf(s) && +seats[1] > 0 && +seats[1] <= 400) {
+    s.tables = defaultTables(+seats[1]);
+    s.flags.unshift(['I drafted your floor plan from the seat count.', `${s.tables.length} tables for ${+seats[1]} seats. Correct it by asking.`]);
+    s.bookings = []; s.sample.forEach(([g, t, p, v]) => addBooking(s, g, t, p, v));
+  }
+  told.push(['Room', `${seatsOf(s)} seats on ${s.tables.length} tables`]);
+  const max = text.match(/(?:groups?|party|parties|max)\D{0,16}(\d+)/i);
+  if (max && +max[1] > 0) {
+    if (!s.custom && +max[1] !== s.maxParty) s.flags.unshift(['Your description and your site disagree on group size.', `Your site suggests ${s.maxParty}, you said ${+max[1]}. Your words win.`]);
+    s.maxParty = +max[1];
+  }
+  told.push(['Largest group', String(s.maxParty)]);
+  const hours = [...text.matchAll(/(\d{1,2})[:h]?(\d{2})?\s*(?:-|–|to)\s*(\d{1,2})[:h]?(\d{2})?/g)]
+    .map(m => ({ start: toHM(+m[1] * 60 + +(m[2] || 0)), end: toHM(+m[3] * 60 + +(m[4] || 0)) }))
+    .filter(v => toMin(v.end) - toMin(v.start) >= 60 && toMin(v.end) < 1440);
+  if (hours.length) {
+    s.services = hours.map(v => ({ ...v, name: toMin(v.start) < 960 ? 'Lunch' : 'Dinner' }));
+    told.push(['Hours', s.services.map(serviceLine).join(', ')]);
+    s.bookings = []; s.sample.forEach(([g, t, p, v]) => { if (allStarts(s).includes(t)) addBooking(s, g, t, p, v); });
+  }
+  return told;
+}
+
+async function highlightFacts(s) {
+  for (const [k, label] of s.facts) { flash('f', [[k, label]]); await wait(520); }
+  clearSel();
+}
+async function build(brief) {
+  phase = 'building';
+  setBusy(true); setChips();
+  S.told = applyBrief(S, brief);
+  await wait(260);
+  const card = stepCard();
+  step(card, 'crawl', 'run');
+  await wait(320);
+  S.read = true; view = 'public'; paint(); setStatus();
+  await wait(1000);
+  step(card, 'crawl', 'done', S.custom ? 'Not possible in this preview, so nothing was read.' : `Read ${count(S.pages.length, 'pages')}: ${S.pages.join(', ')}`);
+  step(card, 'extract', 'run');
+  if (S.custom) await wait(700); else await highlightFacts(S);
+  step(card, 'extract', 'done', S.custom ? 'Filled from your message and the defaults.' : `Found ${count(S.facts.length, 'details')}, including your ${S.swatchNames}.`);
+  step(card, 'validate', 'run');
+  await wait(600);
+  step(card, 'validate', 'done', 'Hours, tables and links are valid.');
+  step(card, 'provision', 'run');
+  await wait(700);
+  S.built = true;
+  step(card, 'provision', 'done', `${count(S.tables.length, 'tables')}, ${seatsOf(S)} seats. Hidden from guests until you publish.`);
+  step(card, 'deploy', 'wait', 'Waiting for you.');
+  view = 'both'; S.moment = 'before'; paint(); setStatus();
+  await wait(350);
+  if (S.custom) bot('Here\'s what I have. Everything below came from you or from a default, so check it.');
+  else bot(`${S.pages.length > 1 ? `I read ${S.pages.length} pages` : 'I read your page'}. Tap a line to see where each detail came from.`);
+  add(factsCard(S), 'msg bot');
+  await wait(300);
+  if (S.flags.length) add(flagsCard(S), 'msg bot');
+  await wait(300);
+  bot('Both sites are built and only you can see them. Your agent site has no pages: it answers agents in JSON, and you can watch it do that. The bookings on your management site are samples, and they go away when you publish. Ask for anything you\'d change.');
+  add(openCard(), 'msg bot');
+  phase = 'review';
+  S.baseMax = S.maxParty;
+  setBusy(false);
+  input.placeholder = 'Ask for a change';
+  setChips(reviewChips());
+  setStatus();
+}
+const fresh = list => list.filter(c => !S.asked.has(c));
+function reviewChips() {
+  const dinner = startsOf(lastService(S));
+  return fresh([
+    `Block ${dinner[dinner.length - 1]} tonight`,
+    `Set max party size to ${S.baseMax + 2}`,
+    `A table for ${S.baseMax + 2}?`,
+    ...(S.policy ? [] : ['Cancellation policy: free up to 2 hours before']),
+    S.look.base === 'dark' ? 'Make the management site light' : 'Make the management site dark',
+    'Say covers instead of guests',
+    'Show during service',
+    'What bookings do I have tonight?',
+    'Publish',
+  ]);
+}
+const liveChips = () => ['Send a test booking', ...fresh(['Show during service', 'What bookings do I have tonight?', 'How busy are we tonight?'])];
+
+/* ---------- what the merchant can ask for ---------- */
+function parseTime(text) {
+  const m = text.match(/\b(\d{1,2})(?:[:h](\d{2}))?\s*(am|pm)?\b/i);
+  if (!m) return null;
+  let h = +m[1]; const min = +(m[2] || 0);
+  if (/pm/i.test(m[3] || '') && h < 12) h += 12;
+  if (/am/i.test(m[3] || '') && h === 12) h = 0;
+  if (h > 23 || min > 59) return null;
+  return toHM(h * 60 + min);
+}
+const COLOURS = { red: '#c0262e', wine: '#8f2d2a', burgundy: '#6e1f1d', orange: '#c95a14', yellow: '#b98900', gold: '#b08a3e', green: '#2f6b45', teal: '#0d6c73', blue: '#2450c8', navy: '#1b2a57', purple: '#6a3aa8', pink: '#c0307e', black: '#141414', grey: '#555555', gray: '#555555', terracotta: '#c96f4a' };
+
+const INTENTS = [
+  [/\b(publish|go live|deploy|put (it )?live)\b/i, doPublish],
+  [/\b(test booking|simulate|guest books?|book as a guest|try a booking)\b/i, doTestBooking],
+  [/\bcancel\s+(R-?\s*\d+)/i, doCancel],
+  [/\bwhat('s| is)? blocked\b|\bblocked\?/i, () => bot(S.blocked.length ? `Blocked tonight: ${S.blocked.join(', ')}.` : 'Nothing is blocked tonight.')],
+  [/\bunblock\b/i, doUnblock],
+  [/\bblock\b/i, doBlock],
+  [/\b(?:add|new)\b.*\btable\b|\badd\b.*\b\d+[- ]seat/i, doAddTable],
+  [/\bremove\s+T\d+|\bdelete\s+T\d+/i, doRemoveTable],
+  [/\btable (?:for|of) (\d+)\b|\bgroup of (\d+)\b/i, doTry],
+  [/\b(?:max(?:imum)?(?:\s*party)?(?:\s*size)?|party\s*size|largest group|groups?\s+(?:up\s*to|of))\D{0,14}\d+/i, doMaxParty],
+  [/\b(polic(?:y|ies)|free (?:cancell?ation )?up to)\b/i, doPolicy],
+  [/\b(no lunch|stop lunch|drop lunch|remove lunch|dinner only)\b/i, doNoLunch],
+  [/\b(lunch|dinner)\b.*\d.*\b(to|until)\b.*\d|\b(lunch|dinner)\b.*\d\s*[-–]\s*\d/i, doHours],
+  [/\b(?:say|use|call)\b.*\b(guests|bookings|tables)\b/i, doWords],
+  [/\b(original|reset|back to my (site|colou?rs?))\b/i, doResetLook],
+  [/\bdark(er)?\b|\blight(er)?\b|\bnight mode\b/i, doMode],
+  [new RegExp(`#[0-9a-f]{6}\\b|\\b(colou?r|accent)\\b|\\b(use|make it|go)\\b.*\\b(${Object.keys(COLOURS).join('|')})\\b`, 'i'), doColour],
+  [/\b(serif|sans)\b/i, doFont],
+  [/\b(round(er|ed)?|square|sharp)\b/i, doCorners],
+  [/\b(morning|during service|on service|before service|after service|end of (the )?night|at closing)\b/i, doMoment],
+  [/\b(show|open|see|go to)\b.*\b(agent|manage|management|public|site|both)\b/i, doShow],
+  [/\b(protocol|batp|mcp|for agents|what (claude|agents) (reads?|sees?)|tools|agent site)\b/i, doExplainAgent],
+  [/\b(change|touch|modify)\b.*\b(web)?site\b/i, () => bot('No. Sésame only reads your public site. It stays as it is, and it\'s where guests land when the agent can\'t help.')],
+  [/\bwho can see\b/i, () => bot(S.published ? 'You\'re live, so any agent can reach you.' : 'Only you. Until you publish, agents get a 404 and your restaurant doesn\'t show up in their searches.')],
+  [/\b(how busy|stats|how many|covers tonight)\b/i, doStats],
+  [/\b(bookings?|reservations?|who('s| is) coming|tonight)\b/i, doList],
+  [/\b(fallback|down|fails?|outage|what if)\b/i, doFallback],
+];
+
+function route(text) {
+  for (const [re, fn] of INTENTS) { const m = text.match(re); if (m) return fn(text, m); }
+  bot('I can\'t act on that here, because a fixed script answers in this preview and no model is running. The suggestions below do work.');
+}
+
+function doBlock(text) {
+  const t = parseTime(text);
+  if (!t) return bot('Which time? For example, "Block 21:00 tonight".');
+  if (!allStarts(S).includes(t)) return bot(`${t} isn't a bookable time. Tonight's are ${allStarts(S).join(', ')}.`);
+  if (S.blocked.includes(t)) return bot(`${t} is already blocked.`);
+  S.blocked.push(t); S.blocked.sort();
+  const kept = confirmed(S).filter(b => b.time === t);
+  bot(`${t} is blocked tonight, so agents don't get it any more.${kept.length ? ` ${kept.map(b => esc(b.guest)).join(' and ')} keep${kept.length === 1 ? 's' : ''} their table.` : ''}`);
+  add(diffCard('Blocked', null, t, 'agent'), 'msg bot');
+  changed([['avail', `${t} no longer offered`], ['blocked', `${t} blocked`]]);
+}
+function doUnblock(text) {
+  const t = parseTime(text);
+  if (!t || !S.blocked.includes(t)) return bot(S.blocked.length ? `Blocked right now: ${S.blocked.join(', ')}. Which one should I open again?` : 'Nothing is blocked.');
+  S.blocked = S.blocked.filter(x => x !== t);
+  bot(`${t} is open again.`);
+  changed([['avail', `${t} offered again`], ['blocked', `${t} open`]]);
+}
+function doMaxParty(text) {
+  const n = +text.match(/\d+/)[0];
+  if (n < 1) return bot('A group has at least one person.');
+  const old = S.maxParty; S.maxParty = n;
+  const lg = largest(S);
+  bot(`Groups up to ${n} now, for agents and on your management site.${n > lg ? ` Your largest table seats ${lg}, so a larger group is sent to your booking page.` : ''}`);
+  add(diffCard('Largest group', String(old), String(n), 'agent'), 'msg bot');
+  changed([['max', `Groups up to ${n}`]]);
+}
+function doTry(text, m) {
+  const n = +(m[1] || m[2]);
+  if (n < 1) return bot('A group has at least one person.');
+  const { body } = sendFrame(S, 'AVAILABILITY', { party: n, time: exampleAsk(S).time, preview: true });
+  if (body.status === 413) bot(`An agent asking for ${n} gets a 413 with the link to your booking page, and the guest goes there.`);
+  else if (body.result.slots.length) bot(`An agent asking for ${n} gets ${count(body.result.slots.length, 'times')}: ${body.result.slots.map(x => x.starts_at.slice(11, 16)).join(', ')}.`);
+  else bot(`An agent asking for ${n} gets no times tonight.`);
+  changed([['last', `Table for ${n}`]], 'agent');
+}
+function doPolicy(text) {
+  if (/\b(no|remove|clear|delete)\b.*polic/i.test(text)) {
+    const old = S.policy; S.policy = null;
+    bot('The policy is gone. Agents read that none is stated.');
+    if (old) add(diffCard('Cancelling', old, 'None', 'agent'), 'msg bot');
+    return changed([['policy', 'Policy removed']]);
+  }
+  const m = text.match(/polic(?:y|ies)\s*(?:to|:|is|=|-)?\s*(.+)/i) || text.match(/(free (?:cancell?ation )?up to.+)/i);
+  let val = m && m[1] ? m[1].trim() : '';
+  if (!val || /^(\?|please)?$/.test(val)) return bot(S.policy ? `Your policy: ${esc(S.policy)}` : 'You have no cancellation policy yet. Tell me one, like "Cancellation policy: free up to 2 hours before".');
+  val = cap(val.replace(/\.$/, '')) + '.';
+  if (/^free up to/i.test(val)) val = val.replace(/^free up to/i, 'Free cancellation up to');
+  const old = S.policy; S.policy = val;
+  S.flags = S.flags.filter(f => !/cancellation policy/i.test(f[0]));
+  bot('Saved. Claude reads this before it cancels for a guest.');
+  add(diffCard('Cancelling', old, val, 'agent'), 'msg bot');
+  changed([['policy', 'New policy']]);
+}
+function doNoLunch() {
+  if (!S.services.some(v => v.name === 'Lunch')) return bot('You have no lunch service.');
+  S.services = S.services.filter(v => v.name !== 'Lunch');
+  bot('Lunch is gone, and agents only get dinner times now. Bookings already made stay.');
+  changed([['services', 'Dinner only']]);
+}
+function doHours(text) {
+  const m = text.match(/(lunch|dinner)\b.*?(\d{1,2})[:h]?(\d{2})?\s*(?:-|–|to|until)\s*(\d{1,2})[:h]?(\d{2})?/i);
+  if (!m) return bot('Tell me the two times, like "Dinner 19:30 to 22:30".');
+  const name = cap(m[1].toLowerCase()), start = +m[2] * 60 + +(m[3] || 0), end = +m[4] * 60 + +(m[5] || 0);
+  if (end >= 1440 || end - start < 60) return bot('A service has to last at least an hour and end by midnight.');
+  const others = S.services.filter(v => v.name !== name);
+  if (others.some(v => start < toMin(v.end) && toMin(v.start) < end)) return bot('That overlaps your other service. Give me hours that don\'t cross it.');
+  const old = S.services.find(v => v.name === name);
+  S.services = [...others, { name, start: toHM(start), end: toHM(end) }].sort((a, b) => toMin(a.start) - toMin(b.start));
+  bot(`${name} is ${toHM(start)}–${toHM(end)} now. The last table seats at ${toHM(end - 60)}.`);
+  add(diffCard(name, old ? `${old.start}–${old.end}` : null, `${toHM(start)}–${toHM(end)}`, 'agent'), 'msg bot');
+  changed([['services', `${name} updated`]]);
+}
+function doAddTable(text) {
+  const n = +(text.match(/\d+/) || [4])[0];
+  if (n < 1 || n > 30) return bot('Give me a table size between 1 and 30.');
+  const num = Math.max(0, ...S.tables.map(t => +t.label.slice(1) || 0)) + 1;
+  S.tables.push({ label: `T${num}`, seats: n });
+  bot(`Added T${num} for ${n}. You have ${seatsOf(S)} seats on ${S.tables.length} tables.`);
+  changed([[`tb-T${num}`, 'New table']], 'manage');
+}
+function doRemoveTable(text) {
+  const label = text.match(/T\d+/i)[0].toUpperCase();
+  if (!S.tables.some(t => t.label === label)) return bot(`There's no ${label}. Your tables go from ${S.tables[0].label} to ${S.tables[S.tables.length - 1].label}.`);
+  const used = S.bookings.find(b => b.table === label);
+  if (used) return bot(`I can't remove ${label}, because ${esc(used.guest)}'s booking refers to it.`);
+  S.tables = S.tables.filter(t => t.label !== label);
+  bot(`${label} is gone. You have ${seatsOf(S)} seats on ${S.tables.length} tables.`);
+  changed([['floor', `${label} removed`]], 'manage');
+}
+function doWords(text) {
+  let word, key;
+  let m = text.match(/\b(?:say|use)\s+["“']?(.+?)["”']?\s+(?:instead of|for|rather than)\s+(guests|bookings|tables)\b/i);
+  if (m) { word = m[1].trim(); key = m[2].toLowerCase(); }
+  else {
+    m = text.match(/\bcall\s+(?:my\s+|the\s+)?(guests|bookings|tables)\s+["“']?(.+?)["”']?\s*\.?$/i);
+    if (!m) return bot('Tell me the two words, like "Say covers instead of guests".');
+    key = m[1].toLowerCase(); word = m[2].trim();
+  }
+  word = word.toLowerCase().replace(/^(my|the)\s+/, '');
+  if (word.length > 24) return bot('Keep it to a word or two.');
+  const old = S.words[key]; S.words[key] = word;
+  bot(`The management site says "${esc(word)}" now.`);
+  add(diffCard('Word', old, word, 'manage'), 'msg bot');
+  changed([['moment', `"${word}"`]], 'manage');
+}
+const noLook = text => {
+  if (!/\bagent\b/i.test(text)) return false;
+  bot('Your agent site has no interface, so there\'s nothing to colour. It answers in JSON. I can change the management site.');
+  return true;
+};
+function restyle() { if (view !== 'manage' && view !== 'both') view = 'manage'; clearSel(); paint(); setStatus(); }
+function doMode(text) {
+  if (noLook(text)) return;
+  const mode = /\bdark|night/i.test(text) ? 'dark' : 'light';
+  S.mode.manage = mode;
+  bot(`${mode === 'dark' ? 'Darker' : 'Lighter'}, using your own colours. Your public site stays as it is.`);
+  restyle();
+}
+function doColour(text) {
+  if (noLook(text)) return;
+  const hex = text.match(/#[0-9a-f]{6}\b/i);
+  const word = Object.keys(COLOURS).find(c => new RegExp(`\\b${c}\\b`, 'i').test(text));
+  const wanted = hex ? hex[0].toLowerCase() : word ? COLOURS[word] : null;
+  if (!wanted) return bot('Which colour? A name or a code, like "Change the main colour to #2450c8".');
+  S.over.accent = wanted;
+  const used = readable(wanted, S.look[S.mode.manage].bg);
+  bot(used !== wanted ? `${wanted} is too faint on your background, so I adjusted it to ${used}.` : `${wanted} is your main colour now on the management site.`);
+  restyle();
+}
+function doFont(text) {
+  if (noLook(text)) return;
+  const sans = /\bsans\b/i.test(text);
+  S.over.disp = sans ? SYS : SERIF;
+  bot(`${sans ? 'Sans' : 'Serif'} headings on the management site.`);
+  restyle();
+}
+function doCorners(text) {
+  if (noLook(text)) return;
+  const sq = /\b(square|sharp)\b/i.test(text);
+  S.over.r = sq ? '0px' : '18px';
+  bot(`${sq ? 'Square' : 'Rounder'} corners on the management site.`);
+  restyle();
+}
+function doResetLook() {
+  S.over = {}; S.mode.manage = S.look.base;
+  bot('Back to the look from your site.');
+  restyle();
+}
+function doMoment(text) {
+  const id = /morning/i.test(text) ? 'morning' : /before/i.test(text) ? 'before' : /after|end of|closing/i.test(text) ? 'after' : 'service';
+  setMoment(id);
+  const m = MOMENTS.find(x => x.id === id);
+  bot({
+    morning: `At ${m.at(S)} the site shows the day ahead and what to check.`,
+    before: `At ${m.at(S)} it shows tonight's list and which tables are taken.`,
+    service: `At ${m.at(S)} it shows the next arrival in type you can read from across the room.`,
+    after: `At ${m.at(S)} it shows how the service went.`,
+  }[id]);
+}
+function setMoment(id) {
+  S.moment = id;
+  if (view !== 'manage' && view !== 'both') view = 'manage';
+  clearSel(); paint();
+}
+function doExplainAgent() {
+  view = 'agent'; paint();
+  bot(`Your agent site has no interface. Any agent can connect to <b>batp://${BATP_HOST}/${esc(S.slug)}</b> and ask in JSON. Claude only speaks MCP, so it goes through our bridge, which turns its tool calls into the same requests.`);
+}
+function doShow(text) {
+  if (/\bpublic\b/i.test(text)) view = 'public';
+  else if (/\bboth\b/i.test(text)) view = 'both';
+  else if (/\bagent\b/i.test(text)) view = 'agent';
+  else view = 'manage';
+  paint();
+  showPane('canvas');
+  bot(`Here's ${({ public: 'your public site', both: 'both sites', agent: 'your agent site', manage: 'your management site' })[view]}.`);
+}
+function doList() { add(listCard(S), 'msg bot'); }
+function doStats() { add(statsCard(S), 'msg bot'); }
+function doCancel(text, m) {
+  const id = m[1].toUpperCase().replace(/\s/g, '').replace(/^R-?/, 'R-').replace(/R-(\d+)/, (_, n) => `R-${n.padStart(3, '0')}`);
+  const b = S.bookings.find(x => x.id === id);
+  if (!b) return bot(`There's no booking ${esc(id)}.`);
+  if (b.status === 'cancelled') return bot(`${esc(id)} is already cancelled.`);
+  b.status = 'cancelled';
+  S.notices.push(`${S.name} cancelled your booking ${id}.`);
+  bot(`${esc(id)} is cancelled and ${esc(b.table)} is free again. ${esc(b.guest)} sees a notice the next time their assistant checks.`);
+  S.moment = 'before';
+  changed([['list', `${id} cancelled`]], 'manage');
+}
+function doFallback() { bot(`The guest gets a link to <a href="${esc(S.fallback)}" target="_blank" rel="noopener">${esc(S.fallback)}</a>. That happens if the agent takes longer than 2 seconds, if it's down, or if the group is larger than ${S.maxParty}.`); }
+
+async function doPublish() {
+  if (S.published) return bot('You\'re already live.');
+  setBusy(true); setChips();
+  const card = $('[data-step="deploy"]', feed).closest('.card');
+  step(card, 'deploy', 'run', 'Going live.');
+  await wait(900);
+  S.published = true; S.bookings = []; S.samples = false; S.log = []; S.reqN = 1; phase = 'live';
+  step(card, 'deploy', 'done', 'Agents get real answers now.');
+  S.moment = 'before';
+  view = 'both';
+  paint();
+  bot('You\'re live. Agents get real answers now. The sample bookings are gone, so your list stays empty until the first guest books.');
+  add(liveCard(S), 'msg bot');
+  setBusy(false);
+  setChips(liveChips());
+  setStatus();
+}
+function runIntent(intent, opts) {
+  const out = sendFrame(S, intent, opts), m = S.look[S.mode.manage];
+  const pairs = [['last', `${intent} ${out.body.status}`]];
+  if (out.booking) {
+    add(`<div class="ping" style="--ping-bg:${m.panel};--ping-ink:${m.panelInk}"><small>New booking via Claude</small><b>${esc(out.booking.guest)}, ${out.booking.time}, ${count(out.booking.party, S.words.guests)}, ${esc(out.booking.table)}</b></div>`, 'msg bot');
+    pairs.unshift([`b-${out.booking.id}`, 'New via Claude']);
+  }
+  if (out.moved) { bot(`${esc(out.moved.guest)} moved to ${out.moved.time}, table ${esc(out.moved.table)}, through Claude.`); pairs.push([`b-${out.moved.id}`, 'Moved']); }
+  if (out.cancelled) { bot(`${esc(out.cancelled.guest)} cancelled through Claude. ${esc(out.cancelled.table)} is free again.`); pairs.push(['list', 'Cancelled']); }
+  if (out.booking || out.moved || out.cancelled) { S.moment = 'before'; if (view === 'agent') view = 'both'; }
+  else if (view === 'manage') view = 'agent';
+  changed(pairs);
+  return out;
+}
+function doTestBooking() {
+  if (!S.published) return bot('Agents get a 404 until you publish. Do that first, and I\'ll send one through.');
+  const out = runIntent('BOOK');
+  if (out.body.status !== 200) bot('No table is free for that party tonight, so the agent got a 409.');
+}
+
+/* ---------- input ---------- */
+async function submit(text) {
+  const t = text.trim();
+  if (!t || busy) return;
+  input.value = ''; autoGrow(); syncSend();
+  leaveHello();
+  me(t);
+  if (phase === 'address') { setChips(); await handleAddress(t); return; }
+  if (phase === 'describe') { await build(t); return; }
+  S.asked.add(t);
+  await route(t);
+  setStatus();
+  if (!busy) setChips(S.published ? liveChips() : reviewChips());
+}
+function autoGrow() { input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 150)}px`; }
+
+/* ---------- wiring ---------- */
+$$('[data-logo]').forEach(el => { el.innerHTML = LOGO; el.setAttribute('role', 'img'); el.setAttribute('aria-label', 'Sésame'); });
+$('#rail').innerHTML = `<button type="button" id="rail-new"><span class="app plus">+</span>New</button><span class="rail-label">Examples</span>${Object.values(SITES).map(railItem).join('')}`;
+$('#rail').addEventListener('click', e => {
+  if (e.target.closest('#rail-new')) return newChat();
+  const b = e.target.closest('[data-rail]');
+  if (b) openSite(b.dataset.rail);
+});
+$('#st-new').addEventListener('click', newChat);
+$('#composer').addEventListener('submit', e => { e.preventDefault(); submit(input.value); });
+input.addEventListener('input', () => { autoGrow(); syncSend(); });
+input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(input.value); } });
+$('#chips').addEventListener('click', e => {
+  const c = e.target.closest('[data-say]');
+  if (c && !busy) submit(c.dataset.say);
+});
+$('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b && !b.disabled) { clearSel(); setView(b.dataset.view); } });
+$$('.pane-switch button').forEach(b => b.addEventListener('click', () => showPane(b.dataset.paneTo)));
+$('#st-publish').addEventListener('click', () => { if (phase === 'review' && !busy) submit('Publish'); });
+
+document.addEventListener('click', e => {
+  const copyBtn = e.target.closest('[data-copy]');
+  if (copyBtn) { copy(copyBtn.dataset.copy); return; }
+  const open = e.target.closest('[data-open]');
+  if (open) { clearSel(); setView(open.dataset.open, true); return; }
+  const fact = e.target.closest('[data-fact]');
+  if (fact) {
+    $$('[data-fact]', feed).forEach(f => f.setAttribute('aria-pressed', String(f === fact)));
+    view = 'public'; paint(); showPane('canvas');
+    flash('f', [[fact.dataset.fact, fact.dataset.label]]);
+    return;
+  }
+  const sendB = e.target.closest('[data-send]');
+  if (sendB && S && !busy) { runIntent(sendB.dataset.send); return; }
+  const mo = e.target.closest('[data-moment]');
+  if (mo) { setMoment(mo.dataset.moment); return; }
+  const fill = e.target.closest('[data-fill]');
+  if (fill) { input.value = fill.dataset.fill; showPane('chat'); input.focus(); syncSend(); }
+});
+
+new ResizeObserver(() => fit()).observe($('#paste'));
+addEventListener('resize', fit);
+if (document.fonts?.ready) document.fonts.ready.then(fit);
+
+greet(); setStatus(); paint();
+
+/* Plain anchor deep link: #le-petit-zinc, #la-graine-verte or #maison-albane opens that restaurant, already built. */
+const openFromHash = () => { const k = location.hash.slice(1); if (SITES[k]) openSite(k); };
+addEventListener('hashchange', openFromHash);
+openFromHash();
+})();
+</script>
+</body>
+</html>

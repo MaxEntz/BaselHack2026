@@ -58,6 +58,9 @@ export function useChat(
       try {
         for await (const event of client.send(text, sessionId, abort.signal)) {
           dispatch({ type: "chat", event });
+          if (event.type === "card" && event.kind === "profile" && event.login_url) {
+            void client.claim(sessionId);
+          }
         }
       } catch (error) {
         if (!abort.signal.aborted) {
@@ -115,7 +118,9 @@ function storedSessionId(): string {
 }
 
 function newSessionId(): string {
-  // randomUUID needs a secure context; a projector on a LAN IP may not be one.
+  // randomUUID needs a secure context; a projector on a LAN IP may not be one. The id
+  // stands for the session's merchant (#132): never Math.random, which can be guessed.
   if (window.isSecureContext) return crypto.randomUUID();
-  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return `s-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }

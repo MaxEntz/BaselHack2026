@@ -9,11 +9,11 @@
   { "type": "step", "step": "validate", "status": "done", "duration_ms": 4 },
   { "type": "step", "step": "provision", "status": "running" },
   { "type": "step", "step": "provision", "status": "done", "detail": "Created 12 tables with 44 seats.", "duration_ms": 110 },
-  { "type": "step", "step": "deploy", "status": "running" },
-  { "type": "step", "step": "deploy", "status": "done", "detail": "Your agent is live.", "duration_ms": 12 },
+  { "type": "step", "step": "deploy", "status": "waiting", "detail": "Waiting for you." },
   {
     "type": "card",
     "kind": "profile",
+    "login_url": "http://localhost:5173/api/login?token=demo-secret-link",
     "data": {
       "profile": {
         "slug": "le-petit-zinc",
@@ -46,8 +46,20 @@
         "cancellation_policy": null,
         "fallback_url": "http://localhost:8080/reservation.html"
       },
-      "status": "live",
+      "status": "building",
       "assumptions": ["Bookings last 120 minutes by default."],
+      "facts": [
+        { "key": "name", "label": "Name", "value": "Le Petit Zinc", "source": "/", "quote": "Le Petit Zinc" },
+        { "key": "hours", "label": "Hours", "value": "12:00-14:00, 19:00-22:00", "source": "/horaires.html", "quote": "12h – 14h · 19h – 22h" },
+        { "key": "tags", "label": "Tags", "value": "Vegetarian, gluten-free, terrace, kid-friendly", "source": null, "quote": null },
+        { "key": "max_party_size", "label": "Largest group", "value": "6, from \"Réservation en ligne jusqu'à 6 personnes\"", "source": "/reservation.html", "quote": "Réservation en ligne jusqu'à 6 personnes" },
+        { "key": "cancellation_policy", "label": "Cancelling", "value": "None on your site", "source": null, "quote": null },
+        { "key": "price_level", "label": "Price level", "value": "€€", "source": null, "quote": null },
+        { "key": "booking_page", "label": "Booking page", "value": "/reservation.html, used as the fallback", "source": null, "quote": null }
+      ],
+      "flags": [
+        { "title": "No cancellation policy on your site.", "detail": "Guests see none until you give me one." }
+      ],
       "tools": [
         { "name": "get_availability", "description": "Check free tables at Le Petit Zinc (Mulhouse). Services: 12:00–14:00, 19:00–22:00. Groups up to 6." },
         { "name": "create_reservation", "description": "Book a table at Le Petit Zinc. Always confirm with the guest first." },
@@ -57,6 +69,6 @@
       "mcp_url": "http://localhost:8001/mcp"
     }
   },
-  { "type": "text", "delta": "Your agent is ready. Bookings last 120 minutes by default." },
+  { "type": "text", "delta": "Your agent is built and hidden from guests. Check the card, then tell me to publish it." },
   { "type": "done" }
 ]

@@ -58,14 +58,16 @@ def test_onboarding_mock_matches_profile_contract(profile_data: dict[str, Any]) 
     events = load_mock("onboarding")
     steps = [event for event in events if event["type"] == "step"]
 
+    # A build stops after provision: deploy waits for the owner (#136).
     assert [(event["step"], event["status"]) for event in steps] == [
         (step, status)
-        for step in ["crawl", "extract", "validate", "provision", "deploy"]
+        for step in ["crawl", "extract", "validate", "provision"]
         for status in ["running", "done"]
-    ]
+    ] + [("deploy", "waiting")]
     card = next(event for event in events if event["type"] == "card")
     result = BuildAgentOutput.model_validate(card["data"])
     assert result.profile == MerchantProfile.model_validate(profile_data)
+    assert result.status == "building"
 
 
 def test_session_mock_is_the_onboarded_merchant(profile_data: dict[str, Any]) -> None:

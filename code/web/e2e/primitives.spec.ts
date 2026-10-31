@@ -4,8 +4,8 @@ import { pathToFileURL } from "node:url";
 import { type Page, expect, test } from "@playwright/test";
 
 // Each primitive in /?gallery against the same markup inside the v10 mockup, at 1440 px:
-// the computed styles that make up its look must match. The mockup comes with #128; until it
-// is in the tree (or SESAME_MOCKUP points to a copy), this file is skipped.
+// the computed styles that make up its look must match. SESAME_MOCKUP points to another copy;
+// without a mockup, this file is skipped.
 const MOCKUP = process.env.SESAME_MOCKUP ?? resolve(import.meta.dirname, "../../../documentation/design/poc-v10/sesame-management.html");
 
 const PROPS = [

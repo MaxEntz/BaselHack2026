@@ -7,12 +7,17 @@ implements it, after checking its input: a form that breaks a rule answers `422`
 owner (`auth.owner_of_path`): `401` without one, `403` for another merchant.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Request
+from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.management import ManagementService
 from agent.service import AgentService
-from core.errors import AgentUnavailable
+from builder.build import publish
+from core.config import Settings
+from core.errors import AgentUnavailable, NotFound
 from core.forms import checked_rules, checked_services, checked_settings, checked_tables
 from core.models import (
     AgentRequests,
@@ -41,8 +46,11 @@ from core.models import (
     SearchText,
     SettingsInput,
     Slug,
+    StepEvent,
 )
+from merchant_platform.accounts import Owner
 from merchant_platform.auth import owner_of_path
+from merchant_platform.overview import RegistryLookup, merchant_overview
 
 router = APIRouter(
     prefix="/merchants/{slug}", tags=["management"], dependencies=[Depends(owner_of_path)]
@@ -70,37 +78,82 @@ def _agent(request: Request) -> AgentService:
 
 
 @router.get("")
-async def overview(slug: SlugPath) -> MerchantOverview:
-    raise NotBuiltYet("#132")
+async def overview(
+    request: Request, slug: SlugPath, owner: Annotated[Owner, Depends(owner_of_path)]
+) -> MerchantOverview:
+    registry: RegistryLookup | None = request.app.state.registry
+    if registry is None:
+        raise AgentUnavailable("The merchant registry isn't available.")
+    record = await registry(slug)
+    if record is None:
+        raise NotFound(f"No merchant {slug!r}.")
+    settings: Settings = request.app.state.settings
+    return merchant_overview(record, owner.name, settings, datetime.now(UTC))
+
+
+@router.post("/publish")
+async def publish_agent(
+    request: Request, slug: SlugPath, owner: Annotated[Owner, Depends(owner_of_path)]
+) -> MerchantOverview:
+    """Publishes the agent a build left waiting (#136), then answers its addresses."""
+    engine: AsyncEngine | None = request.app.state.engine
+    if engine is None:
+        raise AgentUnavailable("Publishing isn't available on this platform.")
+
+    async def unseen(_: StepEvent) -> None:
+        """The chat shows the steps; this route answers the result."""
+
+    await publish(slug, unseen, engine=engine)
+    return await overview(request, slug, owner)
+
+
+def bookings(request: Request) -> ManagementService | None:
+    service: ManagementService | None = request.app.state.bookings
+    return service
+
+
+# Checked in the route, so that a bad request is still `invalid_input` first.
+Bookings = Annotated[ManagementService | None, Depends(bookings)]
+
+
+def need(service: ManagementService | None) -> ManagementService:
+    """The management site's operations (#134, #135), or `agent_unavailable` without them."""
+    if service is None:
+        raise AgentUnavailable("Managing bookings isn't available on this platform.")
+    return service
 
 
 @router.get("/dashboard")
-async def dashboard(
-    slug: SlugPath, date: Annotated[BookingDay | None, Query()] = None
+async def get_dashboard(
+    slug: SlugPath, service: Bookings, date: Annotated[BookingDay | None, Query()] = None
 ) -> Dashboard:
-    raise NotBuiltYet("#135")
+    return await need(service).dashboard(slug, date)
 
 
 @router.get("/reservations")
-async def reservations(slug: SlugPath, date: Day) -> ReservationDay:
-    raise NotBuiltYet("#134")
+async def reservations(slug: SlugPath, date: Day, service: Bookings) -> ReservationDay:
+    return await need(service).day(slug, date)
 
 
 @router.post("/reservations", status_code=201)
-async def add_booking(slug: SlugPath, body: MerchantBookingInput) -> ManagedReservation:
-    raise NotBuiltYet("#134")
+async def add_booking(
+    slug: SlugPath, body: MerchantBookingInput, service: Bookings
+) -> ManagedReservation:
+    return await need(service).add(slug, body)
 
 
 @router.patch("/reservations/{reservation_id}")
 async def move_booking(
-    slug: SlugPath, reservation_id: ReservationId, body: MoveBookingInput
+    slug: SlugPath, reservation_id: ReservationId, body: MoveBookingInput, service: Bookings
 ) -> ManagedReservation:
-    raise NotBuiltYet("#134")
+    return await need(service).move(slug, reservation_id, body)
 
 
 @router.post("/reservations/{reservation_id}/cancel")
-async def cancel_booking(slug: SlugPath, reservation_id: ReservationId) -> MerchantCancelOutput:
-    raise NotBuiltYet("#134")
+async def cancel_booking(
+    slug: SlugPath, reservation_id: ReservationId, service: Bookings
+) -> MerchantCancelOutput:
+    return await need(service).cancel(slug, reservation_id)
 
 
 @router.get("/slots")
@@ -108,9 +161,10 @@ async def slots(
     slug: SlugPath,
     date: Day,
     party_size: Annotated[int, Query(gt=0, le=1000)],
+    service: Bookings,
     ignore: Annotated[GuestText | None, Query()] = None,
 ) -> DaySlots:
-    raise NotBuiltYet("#134")
+    return await need(service).slots(slug, date, party_size, ignore)
 
 
 @router.get("/guests")
@@ -119,8 +173,8 @@ async def guests(slug: SlugPath, request: Request, q: Search = "") -> GuestsOutp
 
 
 @router.get("/search")
-async def search(slug: SlugPath, q: Search = "") -> SearchOutput:
-    raise NotBuiltYet("#135")
+async def search(slug: SlugPath, service: Bookings, q: Search = "") -> SearchOutput:
+    return await need(service).search(slug, q)
 
 
 @router.get("/hours")

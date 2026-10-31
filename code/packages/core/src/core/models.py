@@ -332,10 +332,42 @@ class BuildAgentInput(_Model):
     description: str
 
 
+class PublishAgentInput(_Model):
+    """`publish_agent` takes nothing: it publishes the session's merchant (#136)."""
+
+
+FactKey = Literal[
+    "name", "hours", "tags", "max_party_size", "cancellation_policy", "price_level", "booking_page"
+]
+
+
+class BuildFact(_Model):
+    """One line of the review card (#136): what the profile says and where it came from."""
+
+    key: FactKey
+    label: str
+    value: str
+    # Path of the crawled page ("/", "/horaires.html"), "you" for the owner's description, None
+    # for a default or a value no quote could be found for.
+    source: str | None
+    # The exact words found there; never a quote the crawled text doesn't hold (ADR-0003).
+    quote: str | None
+
+
+class BuildFlag(_Model):
+    """Something to check before publishing, written by code: a bold line and why (#136)."""
+
+    title: str
+    detail: str
+
+
 class BuildAgentOutput(_Model):
     profile: MerchantProfile
-    status: Literal["live"]
+    # A build stops after `provision` (#136): hidden from guests until the owner publishes.
+    status: Literal["building"]
     assumptions: tuple[str, ...]
+    facts: tuple[BuildFact, ...]
+    flags: tuple[BuildFlag, ...]
     tools: tuple[GeneratedTool, ...]
     mcp_url: str
 
@@ -419,7 +451,9 @@ ProblemCode = Literal[
     "booking_page_off_site",  # the booking page must stay on the merchant's host
 ]
 # `ErrorCode` stays the §8.4 list the tools answer; the management site adds its own.
-ManagementErrorCode = ErrorCode | Literal["not_signed_in", "other_merchant", "not_built_yet"]
+ManagementErrorCode = (
+    ErrorCode | Literal["not_signed_in", "other_merchant", "needs_invite", "not_built_yet"]
+)
 
 
 class MerchantOverview(_Model):
@@ -735,7 +769,8 @@ class ToolStartEvent(_Model):
 class StepEvent(_Model):
     type: Literal["step"] = "step"
     step: Literal["crawl", "extract", "validate", "provision", "deploy"]
-    status: Literal["running", "done", "error"]
+    # `waiting`: `deploy` after a build, until the owner publishes (#136).
+    status: Literal["running", "done", "error", "waiting"]
     detail: str | None = None
     duration_ms: int | None = None
 
@@ -756,6 +791,8 @@ class ProfileCard(_Model):
     type: Literal["card"] = "card"
     kind: Literal["profile"] = "profile"
     data: BuildAgentOutput
+    # The owner's secret link (#132), shown once: never part of the tool result the model reads.
+    login_url: str | None = None
 
 
 class ReservationsCard(_Model):

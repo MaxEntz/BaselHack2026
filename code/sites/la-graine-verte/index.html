@@ -5,94 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>La Graine Verte · Cantine végétale à Mulhouse</title>
     <meta name="description" content="La Graine Verte, cantine 100 % végétale à Mulhouse : bols de saison, plats sans gluten, petits prix. Tous les jours, 11h30–14h30 et 18h30–21h30.">
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%232f6b45'/%3E%3Cpath d='M32 48c0-14 6-22 16-26-2 12-8 20-16 26zm0 0c0-10-4-16-12-19 1 9 5 15 12 19z' fill='%23f4f1e6'/%3E%3C/svg%3E">
-    <style>
-      :root {
-        --bg: #f4f1e6;
-        --card: #fffdf7;
-        --ink: #1f2a22;
-        --muted: #56625a;
-        --line: #d8d6c4;
-        --green: #2f6b45;
-        --green-deep: #234f33;
-        --sprout: #a9c46c;
-        --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        color-scheme: light;
-      }
-      *, *::before, *::after { box-sizing: border-box; }
-      body { margin: 0; background: var(--bg); color: var(--ink); font: 1.0625rem/1.6 var(--sans); }
-      a { color: var(--green); text-underline-offset: 0.18em; }
-      .wrap { width: min(100% - 2rem, 62rem); margin-inline: auto; }
-      header { border-top: 8px solid var(--green); padding-block: 1.25rem; }
-      .brand { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; color: var(--green); }
-      .brand span { color: var(--ink); font-weight: 500; font-size: 0.85rem; letter-spacing: 0.12em; text-transform: uppercase; margin-left: 0.5rem; }
-      .hero { padding-block: clamp(2.5rem, 7vw, 5rem); }
-      h1, h2 { margin: 0 0 0.5em; line-height: 1.1; letter-spacing: -0.02em; text-wrap: balance; }
-      h1 { font-size: clamp(2.4rem, 5vw + 1rem, 4.2rem); font-weight: 800; }
-      h2 { font-size: 1.5rem; font-weight: 750; }
-      p { margin: 0 0 1em; }
-      .lead { max-width: 38rem; color: var(--muted); font-size: 1.2rem; }
-      .pills { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
-      .pills li { padding: 0.35rem 0.85rem; border-radius: 999px; background: var(--sprout); color: var(--green-deep); font-weight: 650; font-size: 0.9rem; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1.25rem; padding-bottom: 3rem; }
-      .card { padding: 1.5rem; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
-      .card p:last-child { margin-bottom: 0; }
-      .price { display: flex; justify-content: space-between; gap: 1rem; padding-block: 0.4rem; border-bottom: 1px dashed var(--line); }
-      .price:last-of-type { border-bottom: 0; }
-      .price span:last-child { white-space: nowrap; }
-      .book { margin-bottom: 3rem; padding: clamp(1.5rem, 4vw, 2.5rem); border-radius: 18px; background: var(--green); color: var(--bg); }
-      .book h2 { color: #fff; }
-      .book a { color: #fff; font-weight: 700; }
-      .phone { font-size: clamp(1.6rem, 3vw + 1rem, 2.4rem); font-weight: 800; letter-spacing: -0.01em; }
-      footer { padding-block: 1.5rem 2rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
-    </style>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="fonts/fraunces-soft-italic.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/karla.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="style.css">
   </head>
-  <body>
-    <header>
-      <div class="wrap"><span class="brand">La Graine Verte<span>Mulhouse</span></span></div>
+  <body class="pub">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <symbol id="b1" viewBox="0 0 100 100" preserveAspectRatio="none"><path vector-effect="non-scaling-stroke" d="M9 12C22 3 36 7 50 6 66 4 82 0 92 10 100 21 96 36 97 50 98 66 102 84 91 92 80 100 64 95 50 96 34 97 18 102 7 91-1 80 4 64 3 50 2 35-2 21 9 12Z"/></symbol>
+      <symbol id="b2" viewBox="0 0 100 100" preserveAspectRatio="none"><path vector-effect="non-scaling-stroke" d="M14 5C30 11 40 2 56 3 72 4 90 1 96 16 100 30 92 40 96 54 100 70 101 86 87 94 72 100 62 91 47 95 31 99 13 101 5 86-1 71 8 60 4 45 1 31 1 11 14 5Z"/></symbol>
+      <symbol id="b3" viewBox="0 0 100 100" preserveAspectRatio="none"><path vector-effect="non-scaling-stroke" d="M6 26C7 11 21 2 37 5 50 8 60 1 75 3 91 5 100 18 96 34 93 46 99 56 97 70 94 87 79 98 63 95 51 92 43 99 28 97 12 95 1 82 4 66 6 53 2 42 6 26Z"/></symbol>
+      <symbol id="b4" viewBox="0 0 100 100" preserveAspectRatio="none"><path vector-effect="non-scaling-stroke" d="M18 8C31 1 44 8 57 5 73 2 88 5 95 20 100 33 93 44 95 58 97 74 95 90 79 95 66 99 55 92 41 95 25 98 8 94 3 78-1 65 8 54 5 40 2 27 5 15 18 8Z"/></symbol>
+      <symbol id="d-fork" viewBox="0 0 120 120" overflow="visible"><g transform="rotate(28 60 60)"><path d="M26 8V32C26 44 34 48 38 48V108C38 113 44 113 44 108V48C48 48 56 44 56 32V8M36 8V30M46 8V30"/><path d="M84 8C97 20 99 46 93 64H85V108C85 113 79 113 79 108V13C79 8 81 6 84 8Z"/></g></symbol>
+      <symbol id="d-lemon" viewBox="0 0 120 130" overflow="visible"><path d="M26 84C12 56 36 26 70 36 98 44 112 76 96 102 84 120 44 120 26 84ZM96 102C102 106 106 112 104 118 98 118 92 114 90 108"/><path d="M62 36C54 14 34 4 14 6 18 26 40 42 62 36ZM18 8C34 16 48 24 60 34"/></symbol>
+    </svg>
+
+    <header class="pub-hd">
+      <a class="pub-brand pub-d" href="#top">La Graine Verte</a>
+      <nav class="pub-nav" aria-label="Sur cette page"><a href="#carte">La carte</a><a href="#horaires">Horaires</a><a href="#adresse">Adresse</a></nav>
+      <a class="pub-pill" href="#reserver">Réserver une table</a>
     </header>
 
     <main>
-      <section class="wrap hero">
-        <h1>Cantine 100 % végétale</h1>
-        <p class="lead">Des bols de saison, des légumes de maraîchers du Haut-Rhin et des desserts gourmands, sans aucun produit animal. À petits prix, midi et soir.</p>
-        <ul class="pills" aria-label="Notre cuisine">
-          <li>100 % végétal</li>
-          <li>Végétarien</li>
-          <li>Sans gluten pour la plupart des plats</li>
-        </ul>
+      <section class="pub-hero" id="top">
+        <svg class="pub-doodle" style="left:7%;top:44px;width:110px;height:110px" aria-hidden="true"><use href="#d-fork"/></svg>
+        <svg class="pub-doodle" style="right:7%;top:60px;width:96px;height:104px" aria-hidden="true"><use href="#d-lemon"/></svg>
+        <h1 class="pub-giant pub-d">Cantine<br><span>100 % végétale</span></h1>
+        <p class="pub-lead">Des bols de saison, des légumes de maraîchers du Haut-Rhin et des desserts gourmands, sans aucun produit animal. À petits prix, midi et soir.</p>
+        <ul class="pub-tags" aria-label="Notre cuisine"><li>100 % végétal</li><li>Végétarien</li><li>Sans gluten pour la plupart des plats</li></ul>
       </section>
 
-      <div class="wrap grid">
-        <section class="card" aria-labelledby="carte">
-          <h2 id="carte">À la carte</h2>
-          <p class="price"><span>Bol du jour</span><span>12 €</span></p>
-          <p class="price"><span>Dahl de lentilles corail, riz complet</span><span>11 €</span></p>
-          <p class="price"><span>Formule bol + dessert</span><span>15 €</span></p>
-          <p class="price"><span>Gâteau chocolat-noisette</span><span>5 €</span></p>
-        </section>
-        <section class="card" aria-labelledby="horaires">
-          <h2 id="horaires">Horaires</h2>
-          <p>Ouvert tous les jours.</p>
-          <p>Déjeuner : 11h30 – 14h30<br>Dîner : 18h30 – 21h30</p>
-        </section>
-        <section class="card" aria-labelledby="adresse">
-          <h2 id="adresse">Adresse</h2>
-          <p>7 passage des Semis<br>68100 Mulhouse</p>
-          <p><a href="mailto:bonjour@lagraineverte.example">bonjour@lagraineverte.example</a></p>
-        </section>
-      </div>
+      <section class="pub-carte" id="carte" aria-labelledby="carte-titre">
+        <div class="pub-carte-l">
+          <h2 class="pub-h pub-d" id="carte-titre"><span class="pub-under">À la carte</span></h2>
+          <p>Des bols de saison, à petits prix, midi et soir.</p>
+          <a class="pub-pill" href="#reserver">Réserver une table</a>
+        </div>
+        <div class="pub-carte-r">
+          <svg class="pub-leaf" viewBox="0 0 600 500" preserveAspectRatio="none" aria-hidden="true"><path d="M130 30C190-20 290 10 330 80 360 130 400 110 470 130 560 160 610 240 590 330 570 420 470 500 350 490 220 480 150 430 80 370 10 310-20 230 20 160 40 120 90 70 130 30Z"/></svg>
+          <ul class="pub-dishes">
+            <li class="pub-dish d1"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><use href="#b1"/></svg><i class="pub-d">12 €</i><b>Bol du jour</b></li>
+            <li class="pub-dish d2"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><use href="#b2"/></svg><i class="pub-d">11 €</i><b>Dahl de lentilles corail, riz complet</b></li>
+            <li class="pub-dish d3"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><use href="#b3"/></svg><i class="pub-d">15 €</i><b>Formule bol + dessert</b></li>
+            <li class="pub-dish d4"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><use href="#b4"/></svg><i class="pub-d">5 €</i><b>Gâteau chocolat-noisette</b></li>
+          </ul>
+        </div>
+      </section>
 
-      <section id="reserver" class="wrap book" aria-labelledby="reserver-titre">
-        <h2 id="reserver-titre">Réserver une table</h2>
-        <p>Réservez par téléphone, aux heures d'ouverture :</p>
-        <p class="phone"><a href="tel:+33389000011">03 89 00 00 11</a></p>
-        <p>Tables de 1 à 4 personnes. Annulation gratuite jusqu'à 1 heure avant le repas.</p>
+      <section class="pub-band pub-olive" id="horaires" aria-labelledby="horaires-titre">
+        <svg class="pub-wave top" viewBox="0 0 1440 100" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0H1440V22C1180 78 980 92 720 74 460 56 240 40 0 70Z"/></svg>
+        <div class="pub-two">
+          <div>
+            <h2 class="pub-h pub-d" id="horaires-titre"><span class="pub-under">Horaires</span></h2>
+            <p>Ouvert tous les jours.</p>
+            <p class="pub-svc"><small>Déjeuner</small><i class="pub-d">11h30 – 14h30</i></p>
+            <p class="pub-svc"><small>Dîner</small><i class="pub-d">18h30 – 21h30</i></p>
+          </div>
+          <div id="adresse">
+            <h2 class="pub-h pub-d"><span class="pub-under">Adresse</span></h2>
+            <p>7 passage des Semis<br>68100 Mulhouse</p>
+            <p><a href="mailto:bonjour@lagraineverte.example">bonjour@lagraineverte.example</a></p>
+          </div>
+        </div>
+        <svg class="pub-wave bot" viewBox="0 0 1440 130" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0C260 88 480 122 720 122S1180 88 1440 0V131H0Z"/></svg>
+      </section>
+
+      <section class="pub-band pub-brick" id="reserver" aria-labelledby="reserver-titre">
+        <div class="pub-book">
+          <h2 class="pub-h pub-d" id="reserver-titre"><span class="pub-under">Réserver une table</span></h2>
+          <p>Réservez par téléphone, aux heures d'ouverture :</p>
+          <a class="pub-phone pub-d" href="tel:+33389000011">03 89 00 00 11</a>
+          <p class="pub-rules"><span>Tables de 1 à 4 personnes.</span> <span>Annulation gratuite jusqu'à 1 heure avant le repas.</span></p>
+        </div>
       </section>
     </main>
 
-    <footer>
-      <div class="wrap">La Graine Verte est un restaurant fictif, créé pour une démonstration (BaselHack 2026). L'adresse, le téléphone et l'e-mail sont factices.</div>
+    <footer class="pub-ft">
+      <a class="pub-brand pub-d" href="#top">La Graine Verte</a>
+      <p>La Graine Verte est un restaurant fictif, créé pour une démonstration (BaselHack 2026). L'adresse, le téléphone et l'e-mail sont factices.</p>
     </footer>
   </body>
 </html>

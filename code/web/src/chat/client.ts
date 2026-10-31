@@ -17,9 +17,14 @@ export type ChatClient = {
   subscribe: (slug: string, handlers: LiveHandlers) => () => void;
   // The merchant the session works on; no merchant when the platform can't say.
   session: (sessionId: string, signal?: AbortSignal) => Promise<SessionOutput>;
+  // After a build: this browser gets the owner cookie, so its live events open (#132).
+  claim: (sessionId: string) => Promise<void>;
 };
 
 export class ChatError extends Error {}
+
+export const NEEDS_INVITE =
+  "Building a new agent needs an invitation: open the link you were given.";
 
 // A silent network drop never ends the stream: give up after this long without
 // any byte. The platform's heartbeat (a `: ping` comment every 15 s) keeps a slow
@@ -56,6 +61,10 @@ export const httpClient: ChatClient = {
       }
       if (response.status === 409) {
         throw new ChatError("I'm still answering your previous message.");
+      }
+      if (response.status === 403) {
+        // PLATFORM_INVITE_CODE is set: a new build needs the invitation link (#132).
+        throw new ChatError(NEEDS_INVITE);
       }
       if (!response.ok || !response.body) {
         throw new ChatError("The platform couldn't answer this message.");
@@ -109,6 +118,19 @@ export const httpClient: ChatClient = {
     };
   },
 
+  async claim(sessionId) {
+    try {
+      await fetch("/api/session/claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+        credentials: "same-origin",
+      });
+    } catch {
+      // The private link on the card still opens the site.
+    }
+  },
+
   async session(sessionId, signal) {
     try {
       const response = await fetch(
@@ -136,4 +158,20 @@ function parseEvent<T extends { type: string }>(data: string): T | null {
     // Ignore malformed frames rather than breaking the whole turn.
   }
   return null;
+}
+
+// `?invite=<code>`: lets this browser start a build (POST /invite sets a cookie, #132).
+// True when the platform took it, or asks for no invitation.
+export async function acceptInvite(code: string): Promise<boolean> {
+  try {
+    const response = await fetch("/api/invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code }),
+      credentials: "same-origin",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }

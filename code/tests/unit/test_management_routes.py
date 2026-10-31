@@ -25,16 +25,6 @@ SETTINGS = {"name": "La Graine Verte", "city": "Mulhouse", "price_level": "€",
 
 # (method, path under /merchants/{slug}, body, issue that implements it; None once built)
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
-    ("GET", "", None, "#132"),
-    ("GET", "/dashboard?date=2026-10-31", None, "#135"),
-    ("GET", "/dashboard", None, "#135"),  # the server's today
-    ("GET", "/reservations?date=2026-10-31", None, "#134"),
-    ("POST", "/reservations", BOOKING, "#134"),
-    ("PATCH", "/reservations/R-001", MOVE, "#134"),
-    ("POST", "/reservations/R-001/cancel", None, "#134"),
-    ("GET", "/slots?date=2026-10-31&party_size=2&ignore=R-001", None, "#134"),
-    ("GET", "/guests?q=kim", None, None),
-    ("GET", "/search?q=kim", None, "#135"),
     ("GET", "/hours", None, "#133"),
     ("PUT", "/hours", HOURS, "#133"),
     ("GET", "/tables", None, "#133"),
@@ -48,8 +38,25 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
     ("POST", "/agent/pause", None, None),
     ("POST", "/agent/resume", None, None),
     ("GET", "/agent/requests?date=2026-10-31&refused=true", None, None),
+    ("POST", "/publish", None, None),
 ]
 NOT_BUILT = [route for route in ROUTES if route[3]]
+
+
+# Built routes: the overview (#132), the guests (#144), the bookings (#134) and Home (#135);
+# here without their services.
+BUILT: list[tuple[str, str, dict[str, Any] | None, str]] = [
+    ("GET", "", None, "#132"),
+    ("GET", "/guests?q=kim", None, "#144"),
+    ("GET", "/dashboard?date=2026-10-31", None, "#135"),
+    ("GET", "/dashboard", None, "#135"),  # the server's today
+    ("GET", "/search?q=kim", None, "#135"),
+    ("GET", "/reservations?date=2026-10-31", None, "#134"),
+    ("POST", "/reservations", BOOKING, "#134"),
+    ("PATCH", "/reservations/R-001", MOVE, "#134"),
+    ("POST", "/reservations/R-001/cancel", None, "#134"),
+    ("GET", "/slots?date=2026-10-31&party_size=2&ignore=R-001", None, "#134"),
+]
 
 
 def settings(**overrides: Any) -> Settings:
@@ -87,7 +94,7 @@ async def test_each_route_answers_501_naming_its_issue(
     assert issue in error.message
 
 
-@pytest.mark.parametrize(("method", "path", "body", "issue"), ROUTES)
+@pytest.mark.parametrize(("method", "path", "body", "issue"), ROUTES + BUILT)
 async def test_each_route_is_closed_to_anyone_but_the_owner(
     method: str, path: str, body: dict[str, Any] | None, issue: str | None
 ) -> None:
@@ -96,6 +103,15 @@ async def test_each_route_is_closed_to_anyone_but_the_owner(
 
     assert (anonymous.status_code, anonymous.json()["error"]) == (401, "not_signed_in")
     assert (other.status_code, other.json()["error"]) == (403, "other_merchant")
+
+
+@pytest.mark.parametrize(("method", "path", "body", "issue"), BUILT)
+async def test_a_built_route_without_its_service_is_unavailable(
+    method: str, path: str, body: dict[str, Any] | None, issue: str
+) -> None:
+    response = await call(method, path, body)
+
+    assert (response.status_code, response.json()["error"]) == (503, "agent_unavailable")
 
 
 async def test_an_anonymous_request_is_refused_before_its_body_is_read() -> None:
@@ -160,8 +176,9 @@ async def test_a_form_that_breaks_a_rule_names_it(
     assert error.problem.model_dump(mode="json", exclude_defaults=True) == problem
 
 
-async def test_a_built_route_without_an_agent_is_unavailable() -> None:
-    response = await call("GET", "/guests")
+@pytest.mark.parametrize(("method", "path"), [("GET", "/guests"), ("POST", "/publish")])
+async def test_a_built_route_without_an_agent_is_unavailable(method: str, path: str) -> None:
+    response = await call(method, path)
 
     assert response.status_code == 503
     assert ManagementError.model_validate(response.json()).error == "agent_unavailable"
@@ -219,7 +236,8 @@ def test_the_openapi_schema_declares_each_answer() -> None:
     created = paths["/merchants/{slug}/reservations"]["post"]["responses"]
     assert "201" in created
     declared = {(path, method) for path, item in paths.items() for method in item}
-    assert declared >= {(template(path), method.lower()) for method, path, _, _ in ROUTES}
+    expected = {(template(path), method.lower()) for method, path, _, _ in ROUTES + BUILT}
+    assert declared >= expected
 
 
 def template(path: str) -> str:

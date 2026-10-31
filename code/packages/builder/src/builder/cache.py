@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from builder.crawl import CrawlResult, Page
 from builder.extract import ExtractionResult
-from core.models import MerchantProfile
+from core.models import BuildFact, BuildFlag, MerchantProfile
 
 log = logging.getLogger("builder.cache")
 
@@ -23,8 +23,13 @@ CacheMode = Literal["read_write", "read_only", "off"]
 DEFAULT_ROOT = Path(__file__).parents[4] / ".cache" / "builder"
 
 
+# Part of the crawl cache key: bump it when `Page` changes or a demo site is rewritten, so no
+# stale crawl is replayed (#136; `anchors` came with #74; La Graine Verte's new page, #148).
+CRAWL_VERSION = "c3"
+
+
 def crawl_key(website: str) -> str:
-    return _sha256(website)
+    return _sha256(json.dumps([website, CRAWL_VERSION]))
 
 
 def extraction_key(website: str, description: str, model: str, prompt_version: str) -> str:
@@ -60,7 +65,12 @@ class BuildCache:
             return None
         try:
             profile = MerchantProfile.model_validate(data["profile"])
-            return ExtractionResult(profile=profile, assumptions=list(data["assumptions"]))
+            return ExtractionResult(
+                profile=profile,
+                assumptions=list(data["assumptions"]),
+                facts=[BuildFact.model_validate(fact) for fact in data["facts"]],
+                flags=[BuildFlag.model_validate(flag) for flag in data["flags"]],
+            )
         except (KeyError, TypeError, ValueError):
             return None
 
@@ -68,7 +78,12 @@ class BuildCache:
         self._write(
             "extraction",
             key,
-            {"profile": result.profile.model_dump(mode="json"), "assumptions": result.assumptions},
+            {
+                "profile": result.profile.model_dump(mode="json"),
+                "assumptions": result.assumptions,
+                "facts": [fact.model_dump(mode="json") for fact in result.facts],
+                "flags": [flag.model_dump(mode="json") for flag in result.flags],
+            },
         )
 
     def _path(self, kind: str, key: str) -> Path:
