@@ -73,7 +73,15 @@ text content is the plain JSON object.
 - Each call logs one JSON line: `{"event": "tool_call", "tool", "merchant", "latency_ms",
   "outcome"}`, where `outcome` is `ok` or the error code. Guest names never appear at INFO.
 
-`GET /health` (outside MCP, no token): `200` or `503`, with `{"status", "database"}`.
+With `MATP_URL` set, the gateway is a bridge (`documentation/PROTOCOL.md`, §12): `MatpAgentClient`
+sends each tool to the node as a MATP request, and the 2 s budget includes that hop. A lost node
+or an invalid result is `agent_unavailable`. The gateway still reads the registry itself, for the
+`down` status and the fallback URL, so that a dead node still gives the link. For the same reason,
+when `DISCOVER` fails and the query names a merchant, `search_merchants` answers with its link.
+The log line then also has `matp_request`, the id of the request sent to the node.
+
+`GET /health` (outside MCP, no token): `200` or `503`, with `{"status", "database"}`. It doesn't
+check the node.
 
 ## SSE
 

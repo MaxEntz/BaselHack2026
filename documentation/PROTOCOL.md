@@ -191,13 +191,19 @@ The gateway's fallback layer (`fallback.py`) is unchanged. Its 2 s budget now in
 to the node, and a MATP `503` or a dropped session becomes `agent_unavailable` with the
 fallback URL.
 
+The gateway keeps reading the registry itself for the `down` status and the fallback URL, so that
+a dead node still gives the restaurant's link. For the same reason, when `DISCOVER` fails and the
+query names a merchant, `search_merchants` answers with that merchant's link. The gateway names
+each request (`MatpClient.request(request_id=…)`) and logs its id as `matp_request`, which the
+node logs as `request`. Without `MATP_URL`, the gateway calls the agent in its own process.
+
 ## 13. Implementation
 
 | Part | Where | State |
 |---|---|---|
 | Messages, framing, status codes, client, generic node | `code/packages/matp/` (`matp.messages`, `matp.codec`, `matp.status`, `matp.client`, `matp.server`) | ✅ #60 |
 | The node of this backend | `code/packages/merchant_node/` (`make node`, `uv run python -m merchant_node`), settings `MATP_HOST`, `MATP_PORT`, `MATP_TOKENS` | ✅ #60 |
-| The MCP gateway as a bridge | `gateway/agent_client.py` | 🚧 #61 |
+| The MCP gateway as a bridge | `gateway/agent_client.py` (`MatpAgentClient`), settings `MATP_URL`, `MATP_TOKEN` | ✅ #61 |
 | The node on the team server (loopback) | `code/deploy/` | 🚧 #62 |
 | RFC-style Internet-Draft of this spec | `documentation/rfc/` | 🚧 #63 |
 

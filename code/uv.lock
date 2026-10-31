@@ -342,6 +342,7 @@ source = { editable = "packages/gateway" }
 dependencies = [
     { name = "agent" },
     { name = "core" },
+    { name = "matp" },
     { name = "mcp" },
     { name = "starlette" },
     { name = "uvicorn" },
@@ -351,6 +352,7 @@ dependencies = [
 requires-dist = [
     { name = "agent", editable = "packages/agent" },
     { name = "core", editable = "packages/core" },
+    { name = "matp", editable = "packages/matp" },
     { name = "mcp", specifier = ">=2.3,<3" },
     { name = "starlette", specifier = ">=1.10" },
     { name = "uvicorn", specifier = ">=0.54" },

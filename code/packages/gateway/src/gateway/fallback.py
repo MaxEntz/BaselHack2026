@@ -9,6 +9,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from typing import Any
 
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
@@ -21,6 +22,9 @@ from gateway.discovery import RegistryEntry
 
 log = logging.getLogger("gateway.tools")
 
+# Id of the MATP request behind the current tool call, to match this log line with the node's.
+matp_request: ContextVar[str | None] = ContextVar("matp_request", default=None)
+
 # A timeout can hit after the COMMIT: these calls may have succeeded although Claude sees an error.
 WRITE_TOOLS = frozenset({"create_reservation", "update_reservation", "cancel_reservation"})
 MAYBE_SAVED = (
@@ -32,6 +36,7 @@ SERVICE_UNAVAILABLE = "The booking service is unavailable right now. Please try 
 
 def log_call(tool: str, merchant: str | None, started: float, result: object) -> None:
     """The structured line of one tool call; `outcome` is `ok` or the error code."""
+    hop = matp_request.get()
     log.info(
         "tool_call",
         extra={
@@ -39,6 +44,7 @@ def log_call(tool: str, merchant: str | None, started: float, result: object) ->
             "merchant": merchant,
             "latency_ms": round((time.perf_counter() - started) * 1000),
             "outcome": result.error if isinstance(result, ToolError) else "ok",
+            **({"matp_request": hop} if hop else {}),
         },
     )
 
@@ -86,7 +92,7 @@ def _to_error(exc: Exception, merchant: RegistryEntry, tool: str) -> ToolError:
 
 
 def _service_unavailable(exc: Exception, tool: str, merchant: str | None) -> ToolError:
-    if not isinstance(exc, TimeoutError):
+    if not isinstance(exc, TimeoutError | AgentUnavailable):
         log.error("tool_failed", extra={"tool": tool, "merchant": merchant}, exc_info=exc)
     return ToolError(error="agent_unavailable", message=SERVICE_UNAVAILABLE)
 
@@ -161,10 +167,12 @@ async def call_service[T](
     op: Callable[[], Awaitable[T]],
     *,
     settings: Settings | None = None,
+    named: Callable[[], Awaitable[RegistryEntry | None]] | None = None,
 ) -> T | ToolError:
-    """`call_agent` for what no single merchant serves: there is no fallback URL to give.
+    """`call_agent` for what no single merchant serves, so there is no fallback URL by default.
 
-    `op` may return a `ToolError` itself, which is then logged as the call's outcome.
+    `op` may return a `ToolError` itself, which is then logged as the call's outcome. When `op`
+    fails, `named` may still find the merchant the request is about, to give its link.
     """
     started = time.perf_counter()
     timeout = (settings or get_settings()).agent_timeout_ms / 1000
@@ -173,8 +181,21 @@ async def call_service[T](
         result = await asyncio.wait_for(op(), timeout)
     except Exception as exc:
         result = _service_unavailable(exc, tool, None)
+        if named and (merchant := await _quietly(named, timeout)):
+            result = unavailable(merchant)
     log_call(tool, None, started, result)
     return result
+
+
+async def _quietly(
+    find: Callable[[], Awaitable[RegistryEntry | None]], budget: float
+) -> RegistryEntry | None:
+    """A last resort: its own failure must not hide the one being reported."""
+    try:
+        return await asyncio.wait_for(find(), budget)
+    except Exception:
+        log.warning("registry unreachable", exc_info=True)
+        return None
 
 
 class RejectedArguments:

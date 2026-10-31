@@ -335,6 +335,75 @@ async def test_call_merchant_without_registry_is_unavailable_without_url(
     assert outcomes == ["agent_unavailable"]
 
 
+async def test_call_service_gives_the_named_merchant_s_link_when_it_fails() -> None:
+    async def named() -> RegistryEntry:
+        return ZINC
+
+    result = await call_service(
+        "search_merchants", raising(AgentUnavailable("node")), settings=SETTINGS, named=named
+    )
+
+    assert isinstance(result, ToolError)
+    assert result.error == "agent_unavailable"
+    assert str(result.fallback_url) == URL
+
+
+async def test_call_service_without_a_named_merchant_has_no_link() -> None:
+    async def named() -> None:
+        return None
+
+    result = await call_service(
+        "search_merchants", raising(AgentUnavailable("node")), settings=SETTINGS, named=named
+    )
+
+    assert isinstance(result, ToolError)
+    assert result.fallback_url is None
+
+
+async def test_a_registry_failure_does_not_hide_the_first_failure() -> None:
+    async def named() -> RegistryEntry:
+        raise RuntimeError("database down")
+
+    result = await call_service(
+        "search_merchants", raising(AgentUnavailable("node")), settings=SETTINGS, named=named
+    )
+
+    assert isinstance(result, ToolError)
+    assert result.error == "agent_unavailable"
+    assert result.fallback_url is None
+
+
+async def test_the_named_merchant_is_only_looked_up_on_failure() -> None:
+    calls = 0
+
+    async def named() -> RegistryEntry:
+        nonlocal calls
+        calls += 1
+        return ZINC
+
+    assert await call_service("search_merchants", ok, settings=SETTINGS, named=named) == "booked"
+    assert calls == 0
+
+
+async def test_a_lost_node_is_not_logged_as_a_crash(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.ERROR, logger="gateway.tools"):
+        await call_service(
+            "get_my_reservations", raising(AgentUnavailable("node")), settings=SETTINGS
+        )
+
+    assert not caplog.records
+
+
+async def test_the_log_line_has_no_matp_field_without_a_hop(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO, logger="gateway.tools"):
+        await call_agent(ZINC, "get_availability", ok, settings=SETTINGS)
+
+    line = json.loads(JsonFormatter().format(caplog.records[-1]))
+    assert "matp_request" not in line
+
+
 async def test_call_service_times_out() -> None:
     async def slow() -> str:
         await asyncio.sleep(0.5)
