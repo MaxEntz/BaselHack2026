@@ -58,13 +58,13 @@ Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_pr
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
 uv run pytest tests/e2e           # §9 user scenarios through a real MCP client
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
-uv run scripts/bench_extract.py    # builder extraction, 5 runs on 6 sites (needs OPENAI_API_KEY, `make sites`)
+uv run scripts/bench_extract.py    # builder extraction, 5 runs on 6 sites (needs OPENAI_API_KEY; `--local` for the 4 local ones)
 uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway packages/matp packages/merchant_node
 make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 ```
 
-Test markers: `integration` (needs Docker), `llm` (calls the OpenAI API, skipped when `OPENAI_API_KEY` is empty).
+Test markers: `integration` (needs Docker), `llm` (calls the OpenAI API, skipped when `OPENAI_API_KEY` is empty). The `llm` tests (the builder on the demo sites, the extraction bench on the 4 local sites, the onboarding conversation) run in the **LLM** workflow on pushes to `main` and by hand (Actions → LLM → Run workflow), with the repository secret `OPENAI_API_KEY`; without it the job is skipped with a notice. About 50 s and a few cents per run. `tests/fixtures/generated/` holds profiles generated from 3 real websites.
 
 Shared tool and SSE contracts, fixtures and checks: [CONTRACTS.md](../documentation/CONTRACTS.md).
 

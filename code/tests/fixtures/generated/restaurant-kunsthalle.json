@@ -1,0 +1,67 @@
+{
+  "slug": "restaurant-kunsthalle",
+  "name": "Restaurant Kunsthalle",
+  "website": "https://www.restaurant-kunsthalle.ch/",
+  "vertical": "restaurant",
+  "location": {
+    "city": "Basel",
+    "lat": null,
+    "lng": null
+  },
+  "seats": 40,
+  "services": [
+    {
+      "start": "11:30",
+      "end": "23:00"
+    }
+  ],
+  "max_party_size": 8,
+  "tables": [
+    {
+      "label": "T1",
+      "seats": 4
+    },
+    {
+      "label": "T2",
+      "seats": 4
+    },
+    {
+      "label": "T3",
+      "seats": 4
+    },
+    {
+      "label": "T4",
+      "seats": 4
+    },
+    {
+      "label": "T5",
+      "seats": 4
+    },
+    {
+      "label": "T6",
+      "seats": 4
+    },
+    {
+      "label": "T7",
+      "seats": 4
+    },
+    {
+      "label": "T8",
+      "seats": 4
+    },
+    {
+      "label": "T9",
+      "seats": 2
+    },
+    {
+      "label": "T10",
+      "seats": 6
+    }
+  ],
+  "tags": [
+    "terrace"
+  ],
+  "price_level": "€€",
+  "cancellation_policy": null,
+  "fallback_url": "https://www.restaurant-kunsthalle.ch/"
+}

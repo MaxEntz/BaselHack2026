@@ -15,7 +15,7 @@ from datetime import date as Date
 from typing import get_args
 
 from pydantic import ValidationError
-from sqlalchemy import RowMapping, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from core.db import merchants_t
@@ -57,19 +57,27 @@ TAG_SPELLINGS: dict[str, Tag] = {tag: tag for tag in get_args(Tag)} | {
 # Letters NFKD does not decompose into a base letter plus accents.
 LIGATURES = str.maketrans({"œ": "oe", "æ": "ae", "ø": "o", "ł": "l", "đ": "d"})
 
-# Query words that name no restaurant: a generic search ("restaurant tonight") stays generic.
-QUERY_NOISE = frozenset(
+# Shorter words never identify a restaurant: "le" or "la" would match half the names.
+MIN_QUERY_WORD = 3
+
+# Words of a restaurant's name that don't identify it, because any request may use them (#89).
+# A query names a merchant when it holds every *other* word of its name ("The Green Door":
+# "green" and "door"), so a generic search ("a table for the four of us") stays generic.
+NAME_NOISE = frozenset(
     {"restaurant", "restaurants", "resto", "table", "tables", "tonight", "today", "tomorrow"}
     | {"dinner", "lunch", "book", "booking", "reservation", "reserve", "soir", "diner", "midi"}
-    # Common in names, but they don't identify one: "un petit restaurant" names no merchant.
+    # Kinds of places: "un petit restaurant" or "a little cafe" names no merchant.
     | {"petit", "petite", "petits", "maison", "chez", "bistro", "bistrot", "brasserie", "cafe"}
-    | {"cuisine", "little", "house", "kitchen"}
+    | {"cuisine", "little", "house", "kitchen", "bar", "grill", "pizzeria", "trattoria"}
+    | {"gasthaus", "gasthof", "wirtschaft", "stube", "hotel"}
+    # Articles and connectors, in English, French and German.
+    | {"the", "and", "for", "with", "les", "des", "une", "aux", "pour", "avec", "sur", "dans"}
+    | {"der", "die", "das", "den", "dem", "und", "zum", "zur", "mit", "von", "bei", "auf"}
+    # The tags' spellings: "restaurant avec terrasse" doesn't name La Terrasse.
+    | {word for spelling in TAG_SPELLINGS for word in spelling.split("-")}
 )
 # `near` words that name no city: "near me" or "ici" means no city filter.
 NEAR_NOISE = frozenset({"near", "nearby", "around", "close", "here", "me", "pres", "ici", "de"})
-
-# Shorter query words are ignored: "le" or "la" would match half the names.
-MIN_QUERY_WORD = 3
 
 # Bounds on one search, so a request can't keep the gateway or the node busy (the contracts
 # don't cap them). The gateway's tool and the MATP node share them, so both modes agree (#90).
@@ -158,9 +166,26 @@ def _within_price(merchant: MerchantSummary, max_price: PriceLevel | None) -> bo
     return PRICE_ORDER.index(merchant.price_level) <= PRICE_ORDER.index(max_price)
 
 
+def names(query: str, name: str, city: str | None) -> bool:
+    """Whether `query` names the restaurant `name` in `city`.
+
+    It must hold every distinctive word of the name: not a `NAME_NOISE` word, nor the
+    restaurant's city ("Brasserie Mulhouse" isn't named by "a table in Mulhouse"). A name made
+    only of such words ("La Terrasse") is named by the whole name, as a phrase.
+    """
+    distinctive = _words(name, MIN_QUERY_WORD) - NAME_NOISE - _words(city or "")
+    if distinctive:
+        return distinctive <= _words(query)
+    phrase = " ".join(_tokens(name))
+    return bool(phrase) and f" {phrase} " in f" {' '.join(_tokens(query))} "
+
+
+def _tokens(text: str) -> list[str]:
+    return [word for word in re.split(r"[^a-z0-9]+", _fold(text)) if word]
+
+
 def _named_in(merchants: Sequence[MerchantSummary], query: str) -> list[MerchantSummary]:
-    words = _words(query, MIN_QUERY_WORD) - QUERY_NOISE
-    return [m for m in merchants if words & _words(m.name, MIN_QUERY_WORD)]
+    return [m for m in merchants if names(query, m.name, m.city)]
 
 
 def filter_merchants(
@@ -245,22 +270,27 @@ async def find_merchant(slug: str, *, engine: AsyncEngine) -> RegistryEntry | No
     return RegistryEntry(**row) if row else None
 
 
-async def _named_in_registry(query: str, engine: AsyncEngine) -> list[RowMapping]:
-    """The live and `down` registry entries the query names, by slug."""
-    words = _words(query, MIN_QUERY_WORD) - QUERY_NOISE
-    if not words:
+async def _named_in_registry(query: str, engine: AsyncEngine) -> list[RegistryEntry]:
+    """The live and `down` registry entries the query names (same rule as `search`), by slug."""
+    if not _words(query, MIN_QUERY_WORD):
         return []
-    registry = select(*_ENTRY_COLUMNS).where(merchants_t.c.status.in_(("live", "down")))
+    registry = select(*_ENTRY_COLUMNS, merchants_t.c.city).where(
+        merchants_t.c.status.in_(("live", "down"))
+    )
     async with engine.connect() as conn:
         rows = (await conn.execute(registry.order_by(merchants_t.c.slug))).mappings().all()
-    return [row for row in rows if words & _words(row["name"], MIN_QUERY_WORD)]
+    return [
+        RegistryEntry(row["slug"], row["name"], row["status"], row["fallback_url"])
+        for row in rows
+        if names(query, row["name"], row["city"])
+    ]
 
 
 async def find_named_merchant(query: str, *, engine: AsyncEngine) -> RegistryEntry | None:
     """The merchant the query names, live or `down`: when discovery itself fails, the link to
     its own booking page is still something to give."""
     named = await _named_in_registry(query, engine)
-    return RegistryEntry(**named[0]) if named else None
+    return named[0] if named else None
 
 
 async def find_named_down_merchant(query: str, *, engine: AsyncEngine) -> RegistryEntry | None:
@@ -271,9 +301,9 @@ async def find_named_down_merchant(query: str, *, engine: AsyncEngine) -> Regist
     propose other restaurants instead of Le Petit Zinc's fallback link (AGENTS.md §9).
     """
     named = await _named_in_registry(query, engine)
-    if not named or any(row["status"] == "live" for row in named):
+    if not named or any(entry.status == "live" for entry in named):
         return None
-    return RegistryEntry(**named[0])
+    return named[0]
 
 
 def check_search_bounds(query: str, filters: SearchFilters | None) -> None:

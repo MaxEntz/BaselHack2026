@@ -32,6 +32,14 @@ MAYBE_SAVED = (
     "with the same idempotency_key if the tool takes one."
 )
 SERVICE_UNAVAILABLE = "The booking service is unavailable right now. Please try again in a moment."
+# AGENT_TIMEOUT_MS bounds a whole tool call (#92). Only the fallback link of a search that ran
+# out of time may go past it, by this share of the budget at most.
+LINK_LOOKUP_SHARE = 0.1
+
+
+def deadline_in(settings: Settings) -> float:
+    """When a tool call starting now must have answered, in event loop time."""
+    return asyncio.get_running_loop().time() + settings.agent_timeout_ms / 1000
 
 
 def log_call(tool: str, merchant: str | None, started: float, result: object) -> None:
@@ -111,14 +119,17 @@ async def call_agent[T](
     *,
     settings: Settings | None = None,
     started: float | None = None,
+    deadline: float | None = None,
 ) -> T | ToolError:
     """Run `op` for a merchant: the result, or the `ToolError` Claude should read instead.
 
     An unknown merchant and a `down` one don't reach `op`. Cancellation (the client went away)
-    is not an `Exception` and propagates. `started` counts earlier work in the logged latency.
+    is not an `Exception` and propagates. `started` counts earlier work in the logged latency,
+    `deadline` (event loop time, default: a full budget from now) the time it already took.
     """
     settings = settings or get_settings()
     started = started or time.perf_counter()
+    deadline = deadline or deadline_in(settings)
 
     async def attempt() -> T:
         if merchant and (delay := _chaos_delay(merchant.slug, settings)):
@@ -135,7 +146,8 @@ async def call_agent[T](
         result = unavailable(merchant)
     else:
         try:
-            result = await asyncio.wait_for(attempt(), settings.agent_timeout_ms / 1000)
+            async with asyncio.timeout_at(deadline):
+                result = await attempt()
         except Exception as exc:
             result = _to_error(exc, merchant, tool)
     log_call(tool, merchant.slug if merchant else None, started, result)
@@ -149,17 +161,25 @@ async def call_merchant[T](
     op: Callable[[], Awaitable[T]],
     *,
     settings: Settings | None = None,
+    deadline: float | None = None,
 ) -> T | ToolError:
-    """`call_agent` after looking the merchant up; without the registry there is no URL to give."""
+    """`call_agent` after looking the merchant up; without the registry there is no URL to give.
+
+    The lookup and the agent share one deadline: `deadline`, or a full budget from now.
+    """
     settings = settings or get_settings()
     started = time.perf_counter()
+    deadline = deadline or deadline_in(settings)
     try:
-        merchant = await asyncio.wait_for(find(), settings.agent_timeout_ms / 1000)
+        async with asyncio.timeout_at(deadline):
+            merchant = await find()
     except Exception as exc:
         result = _service_unavailable(exc, tool, slug)
         log_call(tool, slug, started, result)
         return result
-    return await call_agent(merchant, tool, op, settings=settings, started=started)
+    return await call_agent(
+        merchant, tool, op, settings=settings, started=started, deadline=deadline
+    )
 
 
 async def call_service[T](
@@ -173,18 +193,23 @@ async def call_service[T](
 
     `op` may return a `ToolError` itself, which is then logged as the call's outcome. A refusal
     keeps its own code: the service answered. Only when it can't answer may `named` still find
-    the merchant the request is about, to give its link.
+    the merchant the request is about, to give its link: within what is left of the budget, or
+    `LINK_LOOKUP_SHARE` of it when `op` used it all.
     """
+    settings = settings or get_settings()
     started = time.perf_counter()
-    timeout = (settings or get_settings()).agent_timeout_ms / 1000
+    deadline = deadline_in(settings)
     result: T | ToolError
     try:
-        result = await asyncio.wait_for(op(), timeout)
+        async with asyncio.timeout_at(deadline):
+            result = await op()
     except (SlotUnavailable, NotFound, InvalidInput) as exc:
         result = ToolError(error=exc.code, message=str(exc))
     except Exception as exc:
         result = _service_unavailable(exc, tool, None)
-        if named and (merchant := await _quietly(named, timeout)):
+        loop = asyncio.get_running_loop()
+        budget = max(deadline - loop.time(), settings.agent_timeout_ms / 1000 * LINK_LOOKUP_SHARE)
+        if named and (merchant := await _quietly(named, budget)):
             result = unavailable(merchant)
     log_call(tool, None, started, result)
     return result
