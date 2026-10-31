@@ -199,10 +199,10 @@ async def test_malformed_requests_get_400_and_the_session_goes_on(node: NodeServ
     writer.write(encode({"type": "request", "id": "r-2", "intent": "PING", "params": {}}))
 
     replies = [await read_json(reader) for _ in range(3)]
-    assert [(r.get("id"), r["status"]) for r in replies] == [
-        ("r-1", 400),
-        (None, 400),
-        ("r-2", 200),
+    assert [(r["type"], r.get("id"), r["status"]) for r in replies] == [
+        ("response", "r-1", 400),
+        ("error", None, 400),
+        ("response", "r-2", 200),
     ]
     writer.close()
 
@@ -216,7 +216,8 @@ async def test_an_oversized_frame_gets_413_and_closes_the_session(node: NodeServ
     writer.write(b'{"type": "request", "id": "big", "params": "' + b"a" * MAX_FRAME + b'"}\n')
     await writer.drain()
 
-    assert (await read_json(reader))["status"] == 413
+    error = await read_json(reader)
+    assert (error["type"], error["status"]) == ("error", 413)
     assert await asyncio.wait_for(reader.read(), 2) == b""
     writer.close()
 
@@ -455,11 +456,12 @@ async def test_a_flood_of_malformed_frames_closes_the_session() -> None:
         hello = {"type": "hello", "matp": "0.1", "agent": CALLER.model_dump(), "token": "s3cret"}
         writer.write(encode(hello))
         await read_json(reader)
-        writer.write(b"bad\n" * 3 + encode({"id": "r-1", "intent": "PING"}))
+        writer.write(b"bad\n" * 2 + encode({"id": "r-1", "intent": "PING"}))
 
-        # The third malformed frame goes past max_malformed=2: the PING is never read.
-        replies = [await read_json(reader) for _ in range(3)]
-        assert [r["status"] for r in replies] == [400, 400, 400]
+        # The second malformed frame in a row reaches max_malformed=2 and closes the session
+        # (PROTOCOL.md §10: "after 10 malformed frames in a row"): the PING is never read.
+        replies = [await read_json(reader) for _ in range(2)]
+        assert [(r["type"], r["status"]) for r in replies] == [("error", 400), ("error", 400)]
         assert await asyncio.wait_for(reader.read(), 2) == b""
         writer.close()
     finally:
@@ -500,3 +502,169 @@ async def test_a_slow_answer_is_not_cut_by_the_idle_timeout() -> None:
             assert (await client.request("PING", params={"delay": 0.4}))["pong"] is True
     finally:
         await server.stop()
+
+
+# Where the node departed from PROTOCOL.md and the draft (#93).
+
+
+async def welcomed(node: NodeServer) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    reader, writer = await raw_session(node)
+    hello = {"type": "hello", "matp": "0.1", "agent": CALLER.model_dump(), "token": "s3cret"}
+    writer.write(encode(hello))
+    assert (await read_json(reader))["type"] == "welcome"
+    return reader, writer
+
+
+async def test_an_id_in_flight_is_refused_without_being_run() -> None:
+    calls: list[str] = []
+
+    async def counting(agent: AgentIdentity, request: Request) -> dict[str, Any]:
+        calls.append(request.id)
+        return await fake_backend(agent, request)
+
+    server = NodeServer(node=NODE, handle=counting, authenticate=accept_token)
+    await server.start("127.0.0.1", 0)
+    try:
+        reader, writer = await welcomed(server)
+        slow = {"type": "request", "id": "r-1", "intent": "PING", "params": {"delay": 0.3}}
+        writer.write(encode(slow) + encode(slow))
+
+        refused, answered = await read_json(reader), await read_json(reader)
+        assert (refused["type"], refused["status"]) == ("error", 400)
+        assert "r-1" in refused["message"]
+        assert (answered["type"], answered["id"], answered["status"]) == ("response", "r-1", 200)
+        # Once answered, the id may be used again.
+        writer.write(encode({"type": "request", "id": "r-1", "intent": "PING", "params": {}}))
+        assert (await read_json(reader))["status"] == 200
+        assert calls == ["r-1", "r-1"]
+        writer.close()
+    finally:
+        await server.stop()
+
+
+@pytest.mark.parametrize(
+    ("intent", "merchant", "status"),
+    [
+        ("PING", "le-petit-zinc", 400),
+        ("DISCOVER", "le-petit-zinc", 400),
+        ("RECALL", "le-petit-zinc", 400),
+        ("BOOK", None, 400),
+        ("PING", None, 200),
+    ],
+)
+async def test_merchant_is_required_or_forbidden_by_intent(
+    node: NodeServer, intent: str, merchant: str | None, status: int
+) -> None:
+    reader, writer = await welcomed(node)
+    request = {"type": "request", "id": "r-1", "intent": intent, "params": {}}
+    writer.write(encode(request | ({"merchant": merchant} if merchant else {})))
+
+    response = await read_json(reader)
+    assert (response["id"], response["status"]) == ("r-1", status)
+    if status == 400:
+        assert response["error"]["code"] == "invalid_input"
+    writer.close()
+
+
+async def test_the_tenth_malformed_frame_in_a_row_closes_the_session(node: NodeServer) -> None:
+    reader, writer = await welcomed(node)
+    # Nine are tolerated: a valid request resets the count.
+    writer.write(b"bad\n" * 9 + encode({"type": "request", "id": "r-1", "intent": "PING"}))
+    replies = [await read_json(reader) for _ in range(10)]
+    assert replies[-1]["status"] == 200
+
+    writer.write(b"bad\n" * 10 + encode({"type": "request", "id": "r-2", "intent": "PING"}))
+    assert [(await read_json(reader))["type"] for _ in range(10)] == ["error"] * 10
+    assert await asyncio.wait_for(reader.read(), 2) == b""
+    writer.close()
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        b"not json\n",
+        encode({"type": "surprise", "id": "r-1"}),
+        encode({"type": "request", "intent": "PING"}),
+        encode({"type": "request", "id": "x" * 65, "intent": "PING"}),
+    ],
+    ids=["not JSON", "unknown type", "no id", "invalid id"],
+)
+async def test_a_frame_without_a_request_id_gets_an_error_frame(
+    node: NodeServer, frame: bytes
+) -> None:
+    reader, writer = await welcomed(node)
+    writer.write(frame + encode({"type": "request", "id": "r-2", "intent": "PING"}))
+
+    error, after = await read_json(reader), await read_json(reader)
+    assert error == {"type": "error", "status": 400, "message": error["message"]}
+    assert (after["id"], after["status"]) == ("r-2", 200)
+    writer.close()
+
+
+@pytest.mark.parametrize("intent", ["BOOK", "AMEND"])
+async def test_a_503_from_the_node_carries_the_merchants_fallback_url(intent: str) -> None:
+    async def fallback_url(request: Request) -> str:
+        return f"https://{request.merchant}.example/book"
+
+    # BOOK with a delay times out, AMEND fails (fake_backend).
+    server = NodeServer(
+        node=NODE,
+        handle=fake_backend,
+        authenticate=accept_token,
+        handler_timeout=0.05,
+        fallback_url=fallback_url,
+    )
+    await server.start("127.0.0.1", 0)
+    try:
+        reader, writer = await welcomed(server)
+        request = {"type": "request", "id": "r-1", "intent": intent, "merchant": "zinc"}
+        writer.write(encode(request | {"params": {"delay": 1}}))
+
+        response = await read_json(reader)
+        assert response["status"] == 503
+        assert response["error"]["fallback_url"] == "https://zinc.example/book"
+        writer.close()
+    finally:
+        await server.stop()
+
+
+async def test_a_broken_fallback_lookup_still_answers_503() -> None:
+    async def broken(request: Request) -> str:
+        raise RuntimeError("registry down")
+
+    server = NodeServer(
+        node=NODE, handle=fake_backend, authenticate=accept_token, fallback_url=broken
+    )
+    await server.start("127.0.0.1", 0)
+    try:
+        reader, writer = await welcomed(server)
+        request = {"type": "request", "id": "r-1", "intent": "AMEND", "merchant": "zinc"}
+        writer.write(encode(request | {"params": {}}))
+
+        response = await read_json(reader)
+        assert (response["status"], response["error"].get("fallback_url")) == (503, None)
+        writer.close()
+    finally:
+        await server.stop()
+
+
+async def test_the_client_logs_an_error_frame_from_the_node(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        error = {"type": "error", "status": 400, "message": "Request r-1 is in flight"}
+        answer = {"type": "response", "id": requests[-1]["id"], "status": 200, "result": {}}
+        return [error, answer]
+
+    with caplog.at_level(logging.WARNING, logger="matp.client"):
+        async with (
+            scripted_node(script) as (port, _),
+            MatpClient("127.0.0.1", port, CALLER) as client,
+        ):
+            assert await client.request("PING") == {}
+
+    [record] = [r for r in caplog.records if r.getMessage() == "matp error frame"]
+    assert (record.__dict__["status"], record.__dict__["detail"]) == (
+        400,
+        "Request r-1 is in flight",
+    )
