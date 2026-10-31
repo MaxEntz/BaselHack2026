@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -16,7 +17,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
-from agent.service import AgentService
+from agent.service import AgentService, PgAgentService
 from core.config import Settings, get_settings
 from core.db import make_engine
 from core.errors import AgentError, AgentUnavailable
@@ -85,9 +86,8 @@ def create_app(
 ) -> FastAPI:
     """Build the platform API around its collaborators (injected by tests).
 
-    `agent` stays `None` until the agent service exists (#8): the public booking API then
-    answers `agent_unavailable`. `listener` feeds `bus` while the app runs; `engine` is
-    disposed at shutdown.
+    Without `agent`, the public booking API answers `agent_unavailable`. `listener` feeds
+    `bus` while the app runs; `engine` is disposed at shutdown.
     """
     sessions = SessionStore()
     live = bus or LiveBus()
@@ -267,9 +267,11 @@ def _default_app() -> FastAPI:
     engine = make_engine(settings.database_url)
     bus = LiveBus()
     listener = LiveListener(settings.database_url, engine, bus, settings.merchant_tz)
+    agent = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
     return create_app(
         settings,
-        assistant=default_assistant(settings, engine),
+        assistant=default_assistant(settings, engine, agent),
+        agent=agent,
         bus=bus,
         listener=listener,
         engine=engine,

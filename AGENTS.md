@@ -403,6 +403,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | One Postgres schema per merchant, tables declared once in Core and translated per merchant; no migrations for merchant schemas (drop + re-provision) | Structural isolation, per-merchant exclusion constraint and sequence, no SQL built from slugs ([ADR-0001](documentation/adr/0001-one-postgres-schema-per-merchant.md)) |
 | 2026-10-31 | Keep the name "Le Petit Zinc" (slug `le-petit-zinc`): the site uses a fictional address and says on every page that the restaurant is fictional | A bistro of that name existed in Mulhouse (15 rue des Bons Enfants) but is listed as closed; renaming would touch every team's fixtures and mocks |
 | 2026-10-31 | La Graine Verte and Maison Albane have one-page sites on :8081 and :8082 (`make sites`); their `fallback_url` is the page's `#reserver` section | Their fallback link opens a real page in the demo, next to Le Petit Zinc on :8080 |
+| 2026-10-31 | Booking writes lock the table's row (`SELECT … FOR UPDATE`) inside each SAVEPOINT before inserting or moving a reservation (#8) | Without it, concurrent writers checking the exclusion constraint wait on each other's uncommitted rows and deadlock (`40P01`, ~1 s each). The lock only queues writers per table; the constraint stays what prevents double booking (with the lock but without the constraint, 10 concurrent bookings all succeed) |
 
 ## 15. Out of scope (POC)
 
