@@ -16,11 +16,13 @@ import logging
 import ssl
 from types import TracebackType
 from typing import Any, Self
+from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
 from batp.codec import MAX_FRAME, FrameError, encode, read_frame
 from batp.messages import (
+    DEFAULT_PORT,
     IN_FLIGHT_LIMIT,
     PROTOCOL_VERSION,
     AgentIdentity,
@@ -53,6 +55,14 @@ class BatpRejected(AgentUnavailable):
     def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
         self.status = status
+
+
+def parse_batp_url(url: str) -> tuple[str, int]:
+    """`batp://host[:port]` → host and port; a wrong value stops the caller at startup."""
+    parts = urlsplit(url)
+    if parts.scheme != "batp" or not parts.hostname:
+        raise ValueError(f"BATP_URL must look like batp://host[:port], got {url!r}")
+    return parts.hostname, parts.port or DEFAULT_PORT
 
 
 class BatpClient:
@@ -109,17 +119,29 @@ class BatpClient:
         `request_id` names the frame, so that the caller's logs can be matched with the node's.
         It must be unique within the session; by default the client numbers its requests.
         """
+        _, response = await self.exchange(intent, merchant, params, request_id=request_id)
+        raise_for(response)
+        return response.result or {}
+
+    async def exchange(
+        self,
+        intent: Intent,
+        merchant: str | None = None,
+        params: dict[str, Any] | None = None,
+        *,
+        request_id: str | None = None,
+    ) -> tuple[Request, Response]:
+        """Both frames of a request: the node's business errors are answers here, not raised."""
         frame_params = params or {}
         frame_id = request_id or f"r-{next(self._ids)}"
+        frame = Request(id=frame_id, intent=intent, merchant=merchant, params=frame_params)
         async with self._in_flight:
             try:
-                response = await self._exchange(frame_id, intent, merchant, frame_params)
+                return frame, await self._exchange(frame_id, intent, merchant, frame_params)
             except SessionLost:
                 if intent not in SAFE_TO_RESEND:
                     raise
-                response = await self._exchange(frame_id, intent, merchant, frame_params)
-        raise_for(response)
-        return response.result or {}
+                return frame, await self._exchange(frame_id, intent, merchant, frame_params)
 
     async def close(self) -> None:
         if self._reader_task is not None:

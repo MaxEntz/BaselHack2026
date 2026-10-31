@@ -15,6 +15,7 @@ import {
   chipsOf,
   describesItself,
   feedOf,
+  fitOf,
   initials,
   isBuilt,
   isEmpty,
@@ -271,6 +272,33 @@ test("a merchant found again after a reload starts from its real status", () => 
   assert.equal(phaseOf(hidden), "review");
   assert.deepEqual(pillOf(hidden), { label: "Hidden from guests", live: false });
   assert.equal(phaseOf(run(state, { type: "status", status: "live" })), "live");
+});
+
+test("the pages the crawl read arrive during the build, one entry per path", () => {
+  const page = { path: "/", width: 1000, height: 900, image: "data:image/jpeg;base64,AA==" };
+  const other = { ...page, path: "/horaires.html" };
+  const state = run(
+    building(),
+    chat({ type: "site_page", page }),
+    chat({ type: "site_page", page: other }),
+    chat({ type: "site_page", page: { ...page, height: 800 } }),
+  );
+  assert.deepEqual(state.sitePages.map((item) => [item.path, item.height]), [["/horaires.html", 900], ["/", 800]]);
+  assert.equal(phaseOf(state), "building");
+  assert.deepEqual(run(state, { type: "reset", welcome: "" }).sitePages, []);
+});
+
+test("frames are 1000 wide and scaled to fit; Both stands side by side from 1240", () => {
+  const room = (width: number) => ({ width, height: 600 });
+  assert.deepEqual(fitOf("manage", room(500), false), { width: 1000, scale: 0.5, across: false, stacked: false });
+  assert.deepEqual(fitOf("manage", room(1400), false), { width: 1000, scale: 1, across: false, stacked: false });
+  assert.deepEqual(fitOf("both", room(700), false), { width: 1000, scale: 0.7, across: false, stacked: true });
+  const across = fitOf("both", room(1240), false);
+  assert.equal(across.width, 760);
+  assert.equal(across.across, true);
+  assert.equal(across.scale, (1240 - 24) / 2 / 760);
+  // On a phone, the frame takes the room there is, and Both isn't offered.
+  assert.deepEqual(fitOf("both", room(358), true), { width: 358, scale: 1, across: false, stacked: false });
 });
 
 test("a new conversation forgets everything", () => {

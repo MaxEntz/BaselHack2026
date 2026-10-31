@@ -3,15 +3,15 @@ import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { VIA_LABELS, describeDate, formatServices, notificationTitle, plural } from "../cards/format.ts";
 import type { StepName, StepState } from "../chat/state.ts";
-import type { BuildAgentOutput, LiveEvent } from "../types.ts";
-import { type FeedEntry, stepNote } from "./phase.ts";
+import type { BuildAgentOutput, BuildFact, LiveEvent } from "../types.ts";
+import { type CanvasView, type FeedEntry, stepNote } from "./phase.ts";
 
 // Links in replies open next to the chat, never in place of it.
 const MARKDOWN: Components = {
   a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
 };
 
-export type View = "agent" | "manage";
+export type View = CanvasView;
 
 export type Addresses = { agent: string; mcp: string; management: string };
 
@@ -52,11 +52,12 @@ type FeedProps = {
   busy: boolean;
   addresses: Addresses | null;
   onOpen: (view: View) => void;
+  onFact: (fact: BuildFact) => void;
   onCopy: (text: string) => void;
   onRetry: () => void;
 };
 
-export function Feed({ entries, activity, busy, addresses, onOpen, onCopy, onRetry }: FeedProps) {
+export function Feed({ entries, activity, busy, addresses, onOpen, onFact, onCopy, onRetry }: FeedProps) {
   const feed = useRef<HTMLDivElement>(null);
   const lastError = entries.findLast((entry) => entry.kind === "error")?.key;
   // Smooth when a message comes in; text that streams into the last one just follows.
@@ -80,6 +81,7 @@ export function Feed({ entries, activity, busy, addresses, onOpen, onCopy, onRet
           entry={entry}
           addresses={addresses}
           onOpen={onOpen}
+          onFact={onFact}
           onCopy={onCopy}
           onRetry={entry.key === lastError && !busy ? onRetry : undefined}
         />
@@ -95,11 +97,12 @@ type EntryProps = {
   entry: FeedEntry;
   addresses: Addresses | null;
   onOpen: (view: View) => void;
+  onFact: (fact: BuildFact) => void;
   onCopy: (text: string) => void;
   onRetry?: () => void;
 };
 
-function Entry({ entry, addresses, onOpen, onCopy, onRetry }: EntryProps) {
+function Entry({ entry, addresses, onOpen, onFact, onCopy, onRetry }: EntryProps) {
   switch (entry.kind) {
     case "user":
       return (
@@ -118,7 +121,7 @@ function Entry({ entry, addresses, onOpen, onCopy, onRetry }: EntryProps) {
         </div>
       );
     case "review":
-      return <Review data={entry.data} pages={entry.pages} loginUrl={entry.loginUrl} onOpen={onOpen} onCopy={onCopy} />;
+      return <Review data={entry.data} pages={entry.pages} loginUrl={entry.loginUrl} onOpen={onOpen} onFact={onFact} onCopy={onCopy} />;
     case "live":
       return (
         <>
@@ -187,10 +190,11 @@ type ReviewProps = {
   pages: number | null;
   loginUrl: string | null;
   onOpen: (view: View) => void;
+  onFact: (fact: BuildFact) => void;
   onCopy: (text: string) => void;
 };
 
-function Review({ data, pages, loginUrl, onOpen, onCopy }: ReviewProps) {
+function Review({ data, pages, loginUrl, onOpen, onFact, onCopy }: ReviewProps) {
   const [pressed, setPressed] = useState<string | null>(null);
   return (
     <>
@@ -209,7 +213,10 @@ function Review({ data, pages, loginUrl, onOpen, onCopy }: ReviewProps) {
               type="button"
               className="st-fact"
               aria-pressed={pressed === fact.key}
-              onClick={() => setPressed(fact.key)}
+              onClick={() => {
+                setPressed(fact.key);
+                onFact(fact);
+              }}
             >
               <small>{fact.label}</small>
               <span>{fact.value}</span>

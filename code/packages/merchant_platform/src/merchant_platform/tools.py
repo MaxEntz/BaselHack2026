@@ -56,6 +56,7 @@ from core.models import (
     ReservationsCardData,
     SendTestBookingInput,
     ShowViewInput,
+    SitePageEvent,
     SlotInput,
     StatsCard,
     StatsCardData,
@@ -79,7 +80,8 @@ log = logging.getLogger("merchant_platform.tools")
 Emit = Callable[[ChatEvent], Awaitable[None]]
 # Runs the builder for the merchant's website and description, streaming its steps.
 BuildAgent = Callable[
-    [BuildAgentInput, Callable[[StepEvent], Awaitable[None]]], Awaitable[BuildAgentOutput]
+    [BuildAgentInput, Callable[[StepEvent | SitePageEvent], Awaitable[None]]],
+    Awaitable[BuildAgentOutput],
 ]
 
 NOT_ONBOARDED = "No agent yet: onboard the merchant first with build_agent."

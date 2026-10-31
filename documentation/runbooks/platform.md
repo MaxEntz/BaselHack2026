@@ -33,6 +33,8 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
    mkdir -p /opt/merchant-agents/platform
    cat > /opt/merchant-agents/platform/.env <<'ENV'
    DATABASE_URL=…                 # same database as in code/.env
+   BATP_URL=batp://127.0.0.1:4710  # Studio's Send buttons (#151), through the node
+   BATP_TOKEN=…                    # its own token; also add it to the node's BATP_TOKENS, see below
    OPENAI_API_KEY=…
    GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io
    PLATFORM_PUBLIC_URL=https://sesame.191-96-88-152.sslip.io
@@ -44,6 +46,8 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
    PLATFORM_INVITE_CODE=…         # at least 8 characters, given to the merchants we invite
    ENV
    ```
+
+   In `code/.env`, the node's `BATP_TOKENS` then needs a key `"urn:batp:agent:sesame-studio"` with that token; `sesame` can't read that file, and the gateway's token stays there. Without it, the agent tab's Send buttons show the node's refusal, and nothing else changes.
 
    `make deploy` refuses to go on without this file, before copying anything. Then, before restarting anything, it checks the settings the platform loads from it (`scripts/platform_env.py`, run from `platform/`: an empty value, or one that is only a comment, counts as unset, as for the platform): `PLATFORM_DEV_ROUTES` off, an `https://sesame.…` `PLATFORM_WEB_URL` (the start of the owners' secret links, and `Secure` cookies), a cookie secret of 32 characters or more (without it, every deploy logs every owner out) and an invite code of 8 or more (without it, anyone can start a build: an OpenAI call and a crawl from the shared server). It also refuses `PLATFORM_MERCHANT`, which is for local development. A refused deploy restarts nothing: the running services keep the previous code. Whatever this file says, Caddy answers `404` to `/api/dev/*`. Don't add a `log` directive to the `sesame.` block of the Caddyfile without filtering `token`: the secret links go through it.
 
@@ -106,6 +110,7 @@ cd /opt/merchant-agents/code
 | The crawl says the address points to a private network, or that websites answer on ports 80 and 443 | `CRAWL_ALLOW_PRIVATE=0`: no private address, no port other than 80 and 443, so a build can't read the server's own services | Use the demo sites' public hosts, never `localhost` or a port |
 | The booking form switches to "call us" mode | CORS: Le Petit Zinc's host missing from `PUBLIC_CORS_ORIGINS`, or the platform down | Step 2 (`PUBLIC_CORS_ORIGINS` in `platform/.env`); `systemctl status merchant-platform` |
 | Live events stay on "Reconnecting" | `/api/events` buffered | Check `flush_interval -1` in the Caddyfile's `/api/*` block |
+| The agent tab's Send buttons answer that the agent or token is unknown, or that the platform has no `BATP_URL` | Studio's agent isn't in the node's `BATP_TOKENS`, or `platform/.env` lacks its `BATP_URL` and `BATP_TOKEN` | Step 2, then restart `merchant-node` and `merchant-platform` |
 | An owner link starts with `http://localhost:5173` | `owner_link.py` ran from `code/`, whose `.env` has no `PLATFORM_WEB_URL` | Step 5: a new link, from `platform/` |
 | `make web-dist`: `VITE_MOCK is set` | `VITE_MOCK` in your environment or a `web/.env*` file: it would ship the mock app | Unset it for the deployment |
 | A seeded merchant's fallback link opens `localhost:8080` | The fixtures still hold local addresses | Build the merchant from its public host instead, or re-seed with the server's addresses (#25) |

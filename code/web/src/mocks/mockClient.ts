@@ -4,10 +4,16 @@ import cards from "./cards.json";
 import notification from "./notification.json";
 import onboarding from "./onboarding.json";
 import session from "./session.json";
+import { MOCK_SITE_PAGE } from "./site.ts";
 import tonight from "./tonight.json";
 
 // `npm run check:contracts` checks these JSON files against the types.
-const ONBOARDING = onboarding as ChatEvent[];
+// With the page the crawl read, as soon as `crawl` is done (#151).
+const ONBOARDING = (onboarding as ChatEvent[]).flatMap((event): ChatEvent[] =>
+  event.type === "step" && event.step === "crawl" && event.status === "done"
+    ? [event, { type: "site_page", page: MOCK_SITE_PAGE }]
+    : [event],
+);
 const TONIGHT = tonight as ChatEvent[];
 const CARDS = cards as ChatEvent[];
 const NOTIFICATION = notification as LiveEvent;

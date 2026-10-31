@@ -3,7 +3,9 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator, Sequence
+from dataclasses import replace
 from datetime import date, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -18,14 +20,15 @@ from agent.provisioning import SlugTaken, deprovision, set_status
 from agent.service import PgAgentService
 from batp.messages import AgentIdentity, Request
 from builder.build import GENERATED_DIR, AlreadyProvisioned, BeingBuilt, Builder, publish
-from builder.cache import BuildCache
+from builder.cache import BuildCache, extraction_key
 from builder.crawl import CrawlResult, Page, StepEmitter
 from builder.extract import TOOL_NAME, ExtractionFailed
 from builder.llm import LLMReply, LLMUnavailable, Message, OnText, ToolCall, ToolSpec
+from builder.site import load_site
 from core.config import Settings
 from core.db import merchants_t, schema_for
 from core.errors import AgentUnavailable, InvalidInput, NotFound
-from core.models import BuildAgentInput, BuildAgentOutput, StepEvent
+from core.models import BuildAgentInput, BuildAgentOutput, FactBox, SitePageEvent, StepEvent
 from gateway.discovery import search
 from merchant_node.agents import MerchantAgents
 from merchant_platform.api import create_app
@@ -112,9 +115,9 @@ class FakeCrawl:
 
 class Run:
     def __init__(self) -> None:
-        self.events: list[StepEvent] = []
+        self.events: list[Any] = []
 
-    async def emit(self, event: StepEvent) -> None:
+    async def emit(self, event: StepEvent | SitePageEvent) -> None:
         self.events.append(event)
 
 
@@ -133,7 +136,7 @@ def unique_site() -> tuple[str, str]:
 
 
 def builder(
-    engine: AsyncEngine, llm: FakeLLM, tmp_path: Path, crawl: FakeCrawl | None = None, **kw: Any
+    engine: AsyncEngine, llm: FakeLLM, tmp_path: Path, crawl: Any = None, **kw: Any
 ) -> Builder:
     return Builder(
         llm,
@@ -450,3 +453,62 @@ async def test_a_build_that_loses_the_slug_race_leaves_the_winner_alone(
             {"name": schema_for(winner.profile.slug)},
         )
     assert schema == 1
+
+
+async def test_the_site_is_shown_during_the_build_and_stored_with_it(
+    engine: AsyncEngine, tmp_path: Path, slugs: list[str]
+) -> None:
+    site, name = unique_site()
+    quote = "Tables jusqu'à 6 personnes"
+
+    async def crawl(url: str, on_event: StepEmitter) -> CrawlResult:
+        await on_event(StepEvent(step="crawl", status="done", detail="Read 1 page: /"))
+        boxes = [
+            {"text": f"La carte. {quote}.", "x": 0, "y": 0, "width": 900, "height": 800},
+            {"text": quote, "x": 40, "y": 300, "width": 200, "height": 24},
+        ]
+        page = Page(
+            url=url,
+            title=name,
+            text=f"{name}. {quote}.",
+            json_ld=[],
+            shot="aGVsbG8=",
+            shot_width=1000,
+            shot_height=900,
+            boxes=boxes,
+        )
+        return CrawlResult(website=url, pages=[page])
+
+    sources = {"max_party_size": {"page": site, "quote": quote}}
+    run = Run()
+    output = await builder(
+        engine, FakeLLM(draft(name, sources=sources)), tmp_path, crawl=crawl
+    ).build_agent(site, "12 tables", run.emit)
+    slug = output.profile.slug
+    slugs.append(slug)
+
+    shown = [event.page for event in run.events if isinstance(event, SitePageEvent)]
+    assert [(page.path, page.width, page.height) for page in shown] == [("/", 1000, 900)]
+    assert shown[0].image == "data:image/jpeg;base64,aGVsbG8="
+    # The element closest to the words, not the section around them.
+    fact = next(fact for fact in output.facts if fact.key == "max_party_size")
+    assert fact.box == FactBox(page="/", x=40, y=300, width=200, height=24)
+    assert (await load_site(engine, slug)).pages == tuple(shown)
+
+    await deprovision(slug, engine=engine)
+    slugs.remove(slug)
+    assert (await load_site(engine, slug)).pages == ()
+
+
+def test_a_new_screenshot_keeps_the_extraction() -> None:
+    page = Page(url="http://a.example/", title="A", text="Hello", json_ld=[])
+    shot = replace(page, shot="aGVsbG8=", shot_width=1000, shot_height=900, boxes=[{"text": "A"}])
+    changed = replace(page, text="Goodbye")
+
+    key = partial(extraction_key, description="d", model="m", prompt_version="v")
+    assert key(CrawlResult(website=page.url, pages=[page])) == key(
+        CrawlResult(website=page.url, pages=[shot])
+    )
+    assert key(CrawlResult(website=page.url, pages=[page])) != key(
+        CrawlResult(website=page.url, pages=[changed])
+    )

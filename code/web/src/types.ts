@@ -88,16 +88,28 @@ export type FactKey =
 
 // One line of the review card (#136). `source`: a crawled page's path, "you" for the owner's
 // description, null for a default.
+// Where a fact's quote sits on its page's screenshot, in the image's pixels (#151).
+export type FactBox = { page: string; x: number; y: number; width: number; height: number };
+
 export type BuildFact = {
   key: FactKey;
   label: string;
   value: string;
   source: string | null;
   quote: string | null;
+  box?: FactBox | null;
 };
 
 // Something to check before publishing, written by code (#136).
 export type BuildFlag = { title: string; detail: string };
+
+// A crawled page's screenshot, without images or web fonts (#151). `image`: a data: URL.
+export type SitePage = { path: string; width: number; height: number; image: string };
+// GET /merchants/<slug>/site
+export type PublicSite = { pages: SitePage[] };
+// POST /merchants/<slug>/agent/try: both frames, and the node's answer (404 until published).
+export type AgentIntent = "DISCOVER" | "AVAILABILITY" | "BOOK" | "AMEND" | "CANCEL" | "RECALL" | "PING";
+export type AgentTryOutput = { request: string; response: string; status: number };
 
 export type BuildAgentOutput = {
   profile: MerchantProfile;
@@ -141,6 +153,8 @@ export type SessionOutput = { merchant: SessionMerchant | null };
 export type ChatEvent =
   | { type: "text"; delta: string }
   | { type: "tool_start"; tool: string; label: string }
+  // A page the crawl read, as soon as it is done: Studio shows it during the build (#151).
+  | { type: "site_page"; page: SitePage }
   | {
       type: "step";
       step: "crawl" | "extract" | "validate" | "provision" | "deploy";

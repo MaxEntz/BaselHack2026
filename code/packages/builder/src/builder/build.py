@@ -18,13 +18,16 @@ from builder.cache import BuildCache, crawl_key, extraction_key
 from builder.crawl import CrawlResult, StepEmitter, crawl, normalize_url, pages_read
 from builder.extract import PROMPT_VERSION, ExtractionFailed, ExtractionResult, extract_profile
 from builder.llm import LLMClient, LLMUnavailable
+from builder.site import save_site, site_pages
 from core.db import merchants_t
 from core.errors import AgentUnavailable, InvalidInput, NotFound
-from core.models import BuildAgentOutput, MerchantProfile, StepEvent
+from core.models import BuildAgentOutput, MerchantProfile, SitePageEvent, StepEvent
 
 log = logging.getLogger("builder.build")
 
 StepName = Literal["crawl", "extract", "validate", "provision", "deploy"]
+# The steps, and the screenshots of the pages the crawl read (#151).
+BuildEmitter = Callable[[StepEvent | SitePageEvent], Awaitable[None]]
 Crawl = Callable[[str, StepEmitter], Awaitable[CrawlResult]]
 
 # Generated profiles, kept as proof: copy the ones worth committing to tests/fixtures/.
@@ -96,7 +99,7 @@ class Builder:
         self._tz = tz  # the merchants' zone, for the times they read; None: UTC
 
     async def build_agent(
-        self, website: str, description: str, on_event: StepEmitter
+        self, website: str, description: str, on_event: BuildEmitter
     ) -> BuildAgentOutput:
         """Build and provision the merchant's agent, streaming the five steps; `deploy` waits
         for the owner (`publish`), so guests and agents don't see it yet (#136).
@@ -110,6 +113,8 @@ class Builder:
         started = time.monotonic()
 
         crawled = await self._crawl_step(site, on_event)
+        for page in site_pages(crawled.pages):
+            await on_event(SitePageEvent(page=page))
         extracted = await self._extract_steps(site, crawled, description, on_event)
         profile = extracted.profile.model_copy(
             update={"slug": await self._unique_slug(extracted.profile.slug)}
@@ -123,6 +128,7 @@ class Builder:
             nonlocal created
             await provision(profile, engine=self._engine)
             created = True
+            await save_site(self._engine, profile.slug, crawled.pages)
             return (
                 f"{len(profile.tables)} tables, {profile.seats} seats. "
                 "Hidden from guests until you publish."

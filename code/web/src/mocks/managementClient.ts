@@ -17,6 +17,7 @@ import type {
   Service,
   Tag,
   Via,
+  SitePage,
 } from "../types.ts";
 
 const LATENCY_MS = 120;
@@ -65,6 +66,8 @@ type Options = {
   liveBookingDelayMs?: number;
   // The assistant's opening conversation (#140): the demo's, from #131's fixture.
   conversation?: readonly ConversationItem[];
+  // What GET /site answers: the mock has no crawl (#151).
+  sitePages?: readonly SitePage[];
 };
 
 // The management site against the demo fixture, with no platform (VITE_MOCK=1).
@@ -78,12 +81,14 @@ export function createMockManagementClient(
     latencyMs = LATENCY_MS,
     liveBookingDelayMs = LIVE_BOOKING_DELAY_MS,
     conversation = [],
+    sitePages = [],
   }: Options = {},
 ): ManagementClient {
   const offset = fixture.now.match(/[+-]\d{2}:\d{2}$/)?.[0];
   if (!offset) throw new Error("fixture.now needs a ±HH:MM offset");
   const started = Date.now();
   const today = fixture.now.slice(0, 10);
+  let tries = 0;
   let data = structuredClone(fixture);
   let lastActivity = Math.max(0, ...data.activity.map((item) => item.id));
   const keys = new Map<string, { payload: string; id: string }>();
@@ -782,6 +787,19 @@ export function createMockManagementClient(
       const set = wanted.map((time) => ({ starts_at: instant(date, time), date, time }));
       data = { ...data, blocked: [...kept, ...set] };
       return respond({ blocked: blockedAhead() });
+    },
+
+    site: () => respond({ pages: [...sitePages] }),
+
+    async tryAgent(_slug, intent) {
+      const anyMerchant = intent === "PING" || intent === "DISCOVER" || intent === "RECALL";
+      const status = !anyMerchant && data.merchant.status === "building" ? 404 : 200;
+      const id = `r-${++tries}`;
+      return respond({
+        request: JSON.stringify({ type: "request", id, intent, merchant: anyMerchant ? undefined : data.merchant.slug, params: {} }),
+        response: JSON.stringify({ type: "response", id, status, ...(status === 200 ? { result: {} } : { error: { code: "not_found", message: "Unknown merchant" } }) }),
+        status,
+      });
     },
 
     async publish() {

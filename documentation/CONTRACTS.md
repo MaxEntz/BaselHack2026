@@ -175,7 +175,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 
 | Stream | Events | Notes |
 |---|---|---|
-| `POST /chat` | `ChatEvent`: `text`, `tool_start`, `step`, `card`, `error`, `done` | One stream per merchant message |
+| `POST /chat` | `ChatEvent`: `text`, `tool_start`, `step`, `site_page`, `card`, `error`, `done` | One stream per merchant message. `site_page`: one per page the crawl read, right after `crawl` is done (#151) |
 | `GET /events?merchant=` | `LiveEvent`: `new_booking`, `updated`, `cancelled` | Opens with `: connected` |
 
 Each frame uses the JSON object's `type` as its event name, then a blank line:
@@ -189,6 +189,7 @@ data: {"type":"done"}
 
 ```
 
+- `BuildFact.box` says where a fact's quote sits on its page's screenshot, in the image's pixels; null without a screenshot, or when the words can't be found on it (#151).
 - Both streams send a `: ping` comment every 15 s. The web gives up on a turn after 90 s without any byte, comments included.
 - The server ends a stuck turn: a model call silent for 60 s fails (`assistant.LLM_TIMEOUT`, one retry), and the turn ends with "The assistant is temporarily unavailable".
 - **Live events** come from `LISTEN reservations`: each committed INSERT/UPDATE on a registered merchant's `reservations` is re-read from its schema.
@@ -213,6 +214,8 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 | Route | Body | Answer | Issue |
 |---|---|---|---|
 | `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo`, `look` (the site's, #149; null: the default look) | #132 |
+| `GET /site` | | `PublicSite`: the screenshots stored with the build, `{path, width, height, image}` with `image` a `data:` URL; no pages for a merchant built before #151 | #151 |
+| `POST /agent/try` | `AgentTryInput` (`intent`) | `AgentTryOutput`: both frames as text and the node's `status`. One real frame through the BATP node as `urn:batp:agent:sesame-studio`, with the platform choosing its params; the node's refusals are answers (`404` until published). `agent_unavailable` without `BATP_URL`. BOOK makes a real booking under the test guest | #151 |
 | `POST /publish` | | `MerchantOverview`, now `live`: publishes the agent a build left `building`. A paused (`down`) agent is refused with `invalid_input` | #136 |
 | `GET /assistant` | | `AssistantConversation`: `{session_id, items}`, the owner's conversation with the assistant. One platform-made session per owner link (`o-` + 24 random bytes), shared by every device signed in with it; `/chat` on it still needs the owner's cookie. `items` are the web chat's shapes (`user`, `assistant`, `card`, `notification`, `error`; never the steps), the last 200, kept in memory until the platform restarts | #140 |
 | `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |

@@ -43,6 +43,22 @@ async function problemOf(promise: Promise<unknown>): Promise<Problem | null | un
   return error.body.problem;
 }
 
+test("the mock answers Studio's public site and its frames", async () => {
+  const page = { path: "/", width: 1000, height: 900, image: "data:image/jpeg;base64,AA==" };
+  const withPages = createMockManagementClient(data, { latencyMs: 0, liveBookingDelayMs: 0, sitePages: [page] });
+  assert.deepEqual((await withPages.site(SLUG)).pages, [page]);
+  const live = await withPages.tryAgent(SLUG, "AVAILABILITY");
+  assert.equal(live.status, 200);
+  assert.equal(JSON.parse(live.request).intent, "AVAILABILITY");
+  assert.equal(JSON.parse(live.response).status, 200);
+  const hidden = createMockManagementClient(
+    { ...data, merchant: { ...data.merchant, status: "building" } },
+    { latencyMs: 0, liveBookingDelayMs: 0 },
+  );
+  assert.equal((await hidden.tryAgent(SLUG, "BOOK")).status, 404);
+  assert.equal((await hidden.tryAgent(SLUG, "PING")).status, 200);
+});
+
 test("the dashboard shows tonight's room and the 30 days ending today", async () => {
   const mock = client();
   const dashboard = await mock.dashboard(SLUG);

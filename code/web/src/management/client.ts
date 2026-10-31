@@ -1,5 +1,8 @@
 import { httpClient, type LiveHandlers } from "../chat/client.ts";
 import type {
+  AgentIntent,
+  AgentTryOutput,
+  PublicSite,
   AgentRequests,
   AgentStatusOutput,
   AssistantConversation,
@@ -54,6 +57,10 @@ export type ManagementClient = {
   blocked: (slug: string, signal?: AbortSignal) => Promise<BlockedTimes>;
   // Sets the day's whole set of blocked times (HH:MM).
   setBlocked: (slug: string, date: string, times: string[]) => Promise<BlockedTimes>;
+  // The public site as read during the build; no pages for a merchant built before #151.
+  site: (slug: string, signal?: AbortSignal) => Promise<PublicSite>;
+  // One real frame through the BATP node, as a test agent (#151).
+  tryAgent: (slug: string, intent: AgentIntent) => Promise<AgentTryOutput>;
   // Goes live, from what a build left hidden (#136).
   publish: (slug: string) => Promise<MerchantOverview>;
   pauseAgent: (slug: string) => Promise<AgentStatusOutput>;
@@ -156,6 +163,8 @@ export const httpManagementClient: ManagementClient = {
   blocked: (slug, signal) => call("GET", slug, "/blocked", { signal }),
   setBlocked: (slug, date, times) =>
     call("PUT", slug, `/blocked${query({ date })}`, { body: { times } }),
+  site: (slug, signal) => call("GET", slug, "/site", { signal }),
+  tryAgent: (slug, intent) => call("POST", slug, "/agent/try", { body: { intent } }),
   publish: (slug) => call("POST", slug, "/publish"),
   pauseAgent: (slug) => call("POST", slug, "/agent/pause"),
   resumeAgent: (slug) => call("POST", slug, "/agent/resume"),

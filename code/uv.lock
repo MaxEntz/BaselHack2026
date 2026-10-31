@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = "==3.12.*"
 
 [manifest]
@@ -769,6 +769,7 @@ version = "0.1.0"
 source = { editable = "packages/merchant_platform" }
 dependencies = [
     { name = "agent" },
+    { name = "batp" },
     { name = "builder" },
     { name = "core" },
     { name = "fastapi" },
@@ -780,6 +781,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "agent", editable = "packages/agent" },
+    { name = "batp", editable = "packages/batp" },
     { name = "builder", editable = "packages/builder" },
     { name = "core", editable = "packages/core" },
     { name = "fastapi", specifier = ">=0.162" },

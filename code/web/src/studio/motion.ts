@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { flushSync } from "react-dom";
 
-const calm = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+export const calm = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
 const CHAT_MIN = 380;
 const CHAT_SHARE = 0.4;

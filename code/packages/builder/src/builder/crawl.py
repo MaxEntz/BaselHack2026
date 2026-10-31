@@ -9,6 +9,7 @@ DNS rebinding is not covered.
 """
 
 import asyncio
+import base64
 import ipaddress
 import json
 import logging
@@ -46,6 +47,14 @@ MAX_REDIRECTS = 5
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 # Only the text is read: skip what is heavy and never holds any.
 SKIPPED_RESOURCES = frozenset({"image", "media", "font"})
+# Each page's screenshot, for Studio's public tab (#151): the frame's width, bounded so that
+# it fits in a chat stream and in a row. Without the images and fonts above.
+SHOT_WIDTH = 1000
+SHOT_MAX_HEIGHT = 6000
+SHOT_QUALITY = 60
+SHOT_MAX_BYTES = 1_200_000
+SHOT_TIMEOUT_S = 4
+MAX_BOXES = 1500
 # The look's sample (#149): read within its own time, and bounded before it is cached.
 LOOK_TIMEOUT_S = 2.0
 LOOK_KEYS = 40
@@ -150,6 +159,25 @@ _LOOK = """() => {
 }"""
 
 
+# What Studio's public tab needs (#151): each element's text and box on the page, to find a
+# fact's quote on the screenshot. Only text and numbers leave the page.
+_BOXES = """(limit) => {
+  const boxes = [];
+  const body = document.body;
+  if (!body) return null;
+  for (const el of body.querySelectorAll("*")) {
+    if (boxes.length >= limit) break;
+    const text = (el.innerText || "").trim();
+    if (!text || text.length > 1000) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) continue;
+    boxes.push({ text, x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY),
+                 width: Math.round(r.width), height: Math.round(r.height) });
+  }
+  return { boxes, height: Math.max(document.documentElement.scrollHeight, body.scrollHeight) };
+}"""
+
+
 @dataclass(frozen=True)
 class Page:
     url: str
@@ -161,6 +189,12 @@ class Page:
     anchors: list[str] = field(default_factory=list)
     # The homepage's computed styles (`_LOOK`), for `builder.look`; None on other pages (#149).
     look: dict[str, Any] | None = None
+    # The page as seen at `SHOT_WIDTH`, base64 JPEG; None if it couldn't be taken (#151).
+    shot: str | None = None
+    shot_width: int = 0
+    shot_height: int = 0
+    # {text, x, y, width, height} in the screenshot's pixels, to locate a fact's quote.
+    boxes: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -415,6 +449,7 @@ async def _read(
             final_url = tab.url
         # Outside the page's deadline, with its own: a heavy page loses its look, not its crawl.
         styles = await _styles(tab) if look else None
+        seen = await _capture(tab)
     finally:
         with suppress(PlaywrightError):
             await tab.close()
@@ -426,8 +461,40 @@ async def _read(
         description=" ".join(str(raw["description"] or "").split()) or None,
         anchors=[str(anchor) for anchor in raw["ids"][:MAX_ANCHORS]],
         look=styles,
+        **seen,
     )
     return page, raw["links"]
+
+
+async def _capture(tab: Any) -> dict[str, Any]:
+    """The page's screenshot and text boxes at `SHOT_WIDTH`, for `Page`; empty if they can't be
+    had in `SHOT_TIMEOUT_S`, or the image is too heavy: the build goes on without them."""
+    try:
+        async with asyncio.timeout(SHOT_TIMEOUT_S):
+            await tab.set_viewport_size({"width": SHOT_WIDTH, "height": 800})
+            read = await tab.evaluate(_BOXES, MAX_BOXES)
+            if not read:
+                return {}
+            height = min(int(read["height"]), SHOT_MAX_HEIGHT)
+            image = await tab.screenshot(
+                type="jpeg",
+                quality=SHOT_QUALITY,
+                full_page=True,
+                clip={"x": 0, "y": 0, "width": SHOT_WIDTH, "height": height},
+                animations="disabled",
+            )
+    except (PlaywrightError, TimeoutError):
+        log.warning("crawl_screenshot_failed")
+        return {}
+    if len(image) > SHOT_MAX_BYTES:
+        log.warning("crawl_screenshot_too_heavy", extra={"bytes": len(image)})
+        return {}
+    return {
+        "shot": base64.b64encode(image).decode(),
+        "shot_width": SHOT_WIDTH,
+        "shot_height": height,
+        "boxes": read["boxes"],
+    }
 
 
 async def _styles(tab: Any) -> dict[str, Any] | None:
@@ -569,6 +636,11 @@ def useful_links(links: Sequence[Sequence[str]], home: str, max_pages: int) -> l
             seen.add(_page_key(href))
             found.append(urlunsplit(parts._replace(fragment="")))
     return found
+
+
+def page_path(url: str) -> str:
+    """The page's path: `/` for the homepage, as a fact's source names it."""
+    return urlsplit(url).path or "/"
 
 
 def pages_read(pages: list[Page]) -> str:

@@ -57,13 +57,13 @@ test.describe("at 1440 px", () => {
     await fact.click();
     await expect(fact).toHaveAttribute("aria-pressed", "true");
 
-    const frame = page.frameLocator(".st-sheet iframe").locator("body");
+    const frame = page.frameLocator(".st-bw iframe").locator("body");
     await expect(frame).toBeAttached();
     await page.getByRole("button", { name: "Agent site" }).first().click();
     await expect(page.getByText("Agent site, no interface")).toBeVisible();
     // The management site stays loaded behind it, so a draft in a form survives.
     await expect(frame).toBeAttached();
-    await expect(page.locator(".st-sheet iframe")).toBeHidden();
+    await expect(page.locator(".st-bw iframe")).toBeHidden();
     await expect(page.getByText("Right now every agent gets a 404.")).toBeVisible();
 
     const publish = page.getByRole("button", { name: "Publish", exact: true }).first();
@@ -76,6 +76,62 @@ test.describe("at 1440 px", () => {
     await expect(page.getByText("Agent site, for any agent")).toBeVisible();
     await expect(page.getByText("Agents get real answers now.").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "How busy are we tonight?" })).toBeVisible();
+  });
+
+  test("the page read shows during the build, and its facts light up one after the other", async ({ page }) => {
+    await giveAddress(page);
+    await page.evaluate(() => {
+      const tags: string[] = [];
+      (window as unknown as { tags: string[] }).tags = tags;
+      const note = () => {
+        const tag = document.querySelector(".st-sel")?.getAttribute("data-tag");
+        if (tag && tags.at(-1) !== tag) tags.push(tag);
+        requestAnimationFrame(note);
+      };
+      note();
+    });
+    await page.getByRole("button", { name: "Skip this, use the defaults" }).click();
+    await expect(page.getByText("Your public site, as read")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Images and web fonts aren't loaded")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Your public site" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Both" })).toBeDisabled();
+
+    await expect(page.getByText("Agent site, no interface")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Management site", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Both" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".st-sel")).toHaveCount(0);
+    const tags = await page.evaluate(() => (window as unknown as { tags: string[] }).tags);
+    expect(tags).toEqual(["Name", "Hours", "Tags", "Largest group", "Cancelling", "Price level"]);
+  });
+
+  test("a fact shows where it came from, until the next action", async ({ page }) => {
+    await buildSite(page);
+    await expect(page.getByRole("button", { name: "Both" })).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+    await page.getByRole("button", { name: /Largest group/ }).click();
+    const selection = page.locator(".st-sel");
+    await expect(selection).toHaveAttribute("data-tag", "Largest group");
+    await expect(selection).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Your public site" })).toHaveAttribute("aria-pressed", "true");
+    await expect(selection).toHaveCSS("outline-color", "rgb(63, 105, 255)");
+    await page.getByRole("button", { name: /Management$/ }).click();
+    await expect(selection).toHaveCount(0);
+  });
+
+  test("the agent tab shows its session, and a button sends a frame", async ({ page }) => {
+    await buildSite(page);
+    await page.getByRole("button", { name: "Agent site" }).last().click();
+    await expect(page.getByRole("button", { name: "Agent site" }).last()).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".st-zoom")).toHaveText(/^\d+%$/);
+    const log = page.locator(".st-w-log");
+    await expect(log).toContainText('"type":"hello"');
+    await expect(log).toContainText('"token":"…"');
+    await expect(page.getByText("What Claude reads through the MCP bridge")).toBeVisible();
+    await expect(page.getByText("get_availability")).toBeVisible();
+    await expect(page.getByText("When the agent can't answer")).toBeVisible();
+
+    await page.getByRole("button", { name: "PING" }).click();
+    await expect(log).toContainText('"intent":"PING"');
+    await expect(log.locator(".st-w-s.ok").last()).toHaveText("200");
   });
 
   test("an address with a description goes straight to building", async ({ page }) => {
@@ -172,6 +228,8 @@ test.describe("at 390 px", () => {
     await page.getByRole("button", { name: "Your sites" }).click();
     await expect(page.locator(".st-canvas")).toBeVisible();
     await expect(page.locator(".st-feed")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Both" })).toBeHidden();
+    await expect(page.locator(".st-zoom")).toBeHidden();
 
     await conversation.click();
     await page.getByRole("button", { name: "Publish", exact: true }).first().click();
