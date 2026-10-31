@@ -11,6 +11,7 @@ import seed
 import set_status
 
 from agent import provisioning, service
+from core.config import get_settings
 from core.errors import InvalidInput, NotFound
 from core.models import MerchantProfile, Reservation, Via
 
@@ -65,6 +66,7 @@ class FakeAgent:
     def __init__(self) -> None:
         self.reservations: dict[str, Reservation] = {}
         self.missing = False
+        self.engines: list[object] = []
 
     async def create_reservation(
         self,
@@ -104,7 +106,12 @@ def registry(monkeypatch: pytest.MonkeyPatch) -> FakeRegistry:
 @pytest.fixture
 def agent(monkeypatch: pytest.MonkeyPatch) -> FakeAgent:
     fake = FakeAgent()
-    monkeypatch.setattr(service, "PgAgentService", lambda engine, tz: fake, raising=False)
+
+    def pg_agent_service(engine: object, tz: object = None) -> FakeAgent:  # as in #42
+        fake.engines.append(engine)
+        return fake
+
+    monkeypatch.setattr(service, "PgAgentService", pg_agent_service)
     return fake
 
 
@@ -168,6 +175,20 @@ async def test_bookings_without_le_petit_zinc_are_reported(agent: FakeAgent) -> 
     agent.missing = True
 
     assert await seed.seed_bookings(NO_ENGINE, datetime(2026, 10, 31, 12, 0, tzinfo=ZURICH)) == 4
+
+
+def test_bookings_share_the_provisioning_engine(
+    registry: FakeRegistry, agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost:5432/db")
+    get_settings.cache_clear()
+    try:
+        assert seed.main(["--all", "--with-bookings"]) == 0
+    finally:
+        get_settings.cache_clear()
+
+    assert agent.engines == [registry.engine]
+    assert registry.engine.disposed
 
 
 @pytest.mark.parametrize(
