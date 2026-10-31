@@ -249,3 +249,29 @@ export function initials(name: string): string {
     .join("");
   return (letters || name.slice(0, 2)).padEnd(2, name[1] ?? "");
 }
+
+export type CanvasView = "agent" | "manage" | "both" | "public";
+
+// How the canvas draws its frames (#151): at their real width, scaled to fit.
+const FRAME_WIDTH = 1000;
+const FRAME_WIDTH_ACROSS = 760;
+// "Both" stands side by side from this much room.
+const ACROSS_FROM = 1240;
+const GAP = 24;
+
+export type Space = { width: number; height: number };
+
+export type Fit = { width: number; scale: number; across: boolean; stacked: boolean };
+
+export function fitOf(view: CanvasView, space: Space, narrow: boolean): Fit {
+  const both = view === "both" && !narrow;
+  const across = both && space.width >= ACROSS_FROM;
+  const width = narrow && space.width > 0 ? space.width : across ? FRAME_WIDTH_ACROSS : FRAME_WIDTH;
+  const room = across ? (space.width - GAP) / 2 : space.width;
+  return {
+    width,
+    scale: room > 0 ? Math.min(1, room / width) : 1,
+    across,
+    stacked: both && !across,
+  };
+}

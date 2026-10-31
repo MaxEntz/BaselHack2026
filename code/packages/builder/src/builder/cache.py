@@ -25,7 +25,9 @@ DEFAULT_ROOT = Path(__file__).parents[4] / ".cache" / "builder"
 
 # Part of the crawl cache key: bump it when `Page` changes or a demo site is rewritten, so no
 # stale crawl is replayed (#136; `anchors` came with #74; La Graine Verte's new page, #148).
-CRAWL_VERSION = "c4"  # c4: `Page.look` (#149)
+CRAWL_VERSION = "c5"  # c5: `Page.shot` and `boxes` (#151)
+# What the crawl saw rather than read: a new screenshot doesn't change the extraction.
+NOT_READ = ("shot", "shot_width", "shot_height", "boxes")
 
 
 def crawl_key(website: str) -> str:
@@ -35,7 +37,13 @@ def crawl_key(website: str) -> str:
 def extraction_key(crawled: CrawlResult, description: str, model: str, prompt_version: str) -> str:
     """Keyed on what the crawl read: a new crawl of a rewritten site never meets the extraction
     of its old text (#148)."""
-    return _sha256(json.dumps([asdict(crawled), description, model, prompt_version]))
+    read = asdict(crawled)
+    read["pages"] = [
+        {name: value for name, value in page.items() if name not in NOT_READ}
+        for page in read["pages"]
+    ]
+    # With the crawl's version: a stored extraction's facts have no box before c5.
+    return _sha256(json.dumps([read, description, model, prompt_version, CRAWL_VERSION]))
 
 
 def _sha256(text: str) -> str:

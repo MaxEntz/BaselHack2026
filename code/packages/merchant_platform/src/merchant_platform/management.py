@@ -16,12 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from agent.management import ManagementService
 from agent.service import AgentService
 from builder.build import publish
+from builder.site import load_site
 from core.config import Settings
 from core.errors import AgentUnavailable, NotFound
 from core.forms import checked_rules, checked_services, checked_settings, checked_tables
 from core.models import (
     AgentRequests,
     AgentStatusOutput,
+    AgentTryInput,
+    AgentTryOutput,
     BlockedDayInput,
     BlockedTimes,
     BookingDay,
@@ -39,6 +42,7 @@ from core.models import (
     MerchantOverview,
     MerchantSettings,
     MoveBookingInput,
+    PublicSite,
     ReservationDay,
     Rules,
     RulesInput,
@@ -49,6 +53,7 @@ from core.models import (
     StepEvent,
 )
 from merchant_platform.accounts import Owner
+from merchant_platform.agent_try import try_intent
 from merchant_platform.auth import owner_of_path
 from merchant_platform.overview import RegistryLookup, merchant_overview
 
@@ -251,6 +256,18 @@ async def pause_agent(slug: SlugPath, request: Request) -> AgentStatusOutput:
 async def resume_agent(slug: SlugPath, request: Request) -> AgentStatusOutput:
     await _agent(request).set_status(slug, "live")
     return AgentStatusOutput(status="live")
+
+
+@router.get("/site")
+async def public_site(request: Request, slug: SlugPath) -> PublicSite:
+    engine: AsyncEngine | None = request.app.state.engine
+    return await load_site(engine, slug) if engine else PublicSite(pages=())
+
+
+@router.post("/agent/try")
+async def try_agent(request: Request, slug: SlugPath, body: AgentTryInput) -> AgentTryOutput:
+    settings: Settings = request.app.state.settings
+    return await try_intent(settings, _agent(request), slug, body.intent)
 
 
 @router.get("/agent/requests")

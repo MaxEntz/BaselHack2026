@@ -16,9 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import generated_tools
 from agent.service import AgentService
-from builder.build import Builder, gateway_mcp_url, publish
+from builder.build import BuildEmitter, Builder, gateway_mcp_url, publish
 from builder.cache import BuildCache
-from builder.crawl import StepEmitter, crawl
+from builder.crawl import crawl
 from builder.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
 from builder.look import read_look
 from core.config import Settings
@@ -360,7 +360,7 @@ def default_assistant(
         tz=tz,
     )
 
-    async def build(arguments: BuildAgentInput, emit: StepEmitter) -> BuildAgentOutput:
+    async def build(arguments: BuildAgentInput, emit: BuildEmitter) -> BuildAgentOutput:
         return await builder.build_agent(str(arguments.website), arguments.description, emit)
 
     async def issue_link(slug: str) -> IssuedLink:

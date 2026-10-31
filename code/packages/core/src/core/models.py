@@ -413,6 +413,16 @@ FactKey = Literal[
 ]
 
 
+class FactBox(_Model):
+    """Where a fact's quote sits on its page's screenshot, in the image's pixels (#151)."""
+
+    page: str
+    x: int
+    y: int
+    width: int
+    height: int
+
+
 class BuildFact(_Model):
     """One line of the review card (#136): what the profile says and where it came from."""
 
@@ -424,6 +434,8 @@ class BuildFact(_Model):
     source: str | None
     # The exact words found there; never a quote the crawled text doesn't hold (ADR-0003).
     quote: str | None
+    # On the screenshot; None without a screenshot, or when the words can't be found on it.
+    box: FactBox | None = None
 
 
 class BuildFlag(_Model):
@@ -787,6 +799,36 @@ class AgentStatusOutput(_Model):
     status: MerchantStatus
 
 
+class SitePage(_Model):
+    """A crawled page's screenshot, as Studio shows it (#151). Without images or web fonts."""
+
+    path: str
+    width: int
+    height: int
+    # A data: URL.
+    image: str
+
+
+class PublicSite(_Model):
+    """`GET /site`: the public site as read during the build; no pages before #151."""
+
+    pages: tuple[SitePage, ...]
+
+
+class AgentTryInput(_Model):
+    """`POST /agent/try`: which frame to send; the platform fills in its params (#151)."""
+
+    intent: Literal["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"]
+
+
+class AgentTryOutput(_Model):
+    """Both frames, as sent and answered. `status` is the node's answer: 404 until published."""
+
+    request: str
+    response: str
+    status: int
+
+
 class AgentRequest(_Model):
     """One request an AI agent sent through BATP, with both frames as sent (#146)."""
 
@@ -920,6 +962,13 @@ class ViewCard(_Model):
     data: ViewCardData
 
 
+class SitePageEvent(_Model):
+    """A page the crawl read, sent as soon as it is done: Studio shows it during the build."""
+
+    type: Literal["site_page"] = "site_page"
+    page: SitePage
+
+
 class ErrorEvent(_Model):
     type: Literal["error"] = "error"
     message: str
@@ -940,7 +989,7 @@ Card = Annotated[
     Field(discriminator="kind"),
 ]
 ChatEvent = Annotated[
-    TextEvent | ToolStartEvent | StepEvent | Card | ErrorEvent | DoneEvent,
+    TextEvent | ToolStartEvent | StepEvent | SitePageEvent | Card | ErrorEvent | DoneEvent,
     Field(discriminator="type"),
 ]
 

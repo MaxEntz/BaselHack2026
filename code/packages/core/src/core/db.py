@@ -160,6 +160,17 @@ merchant_owners_t = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# The public site's screenshots, stored with the build for Studio (#151, migration 0008).
+merchant_sites_t = Table(
+    "merchant_sites",
+    public_metadata,
+    Column(
+        "merchant_slug", Text, ForeignKey(merchants_t.c.slug, ondelete="CASCADE"), primary_key=True
+    ),
+    Column("pages", JSONB, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 # What changed at each merchant, worded at read time for Home's feed (#135, migration 0006).
 # Holds guest names: only the merchant's owner reads it.
 merchant_activity_t = Table(

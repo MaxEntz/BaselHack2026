@@ -154,56 +154,100 @@
           "label": "Name",
           "value": "La Graine Verte",
           "source": "/",
-          "quote": "La Graine Verte"
+          "quote": "La Graine Verte",
+          "box": {
+            "page": "/",
+            "x": 40,
+            "y": 25,
+            "width": 279,
+            "height": 34
+          }
         },
         {
           "key": "hours",
           "label": "Hours",
           "value": "Lunch 11:30–14:30, dinner 18:30–21:30",
           "source": "/",
-          "quote": "Déjeuner 11h30 – 14h30"
+          "quote": "Déjeuner 11h30 – 14h30",
+          "box": {
+            "page": "/",
+            "x": 40,
+            "y": 1427,
+            "width": 420,
+            "height": 93
+          }
         },
         {
           "key": "tags",
           "label": "Tags",
           "value": "Vegan, vegetarian, gluten-free",
           "source": "/",
-          "quote": "100 % végétal"
+          "quote": "100 % végétal",
+          "box": {
+            "page": "/",
+            "x": 213,
+            "y": 427,
+            "width": 139,
+            "height": 34
+          }
         },
         {
           "key": "max_party_size",
           "label": "Largest group",
           "value": "4, from \"Tables de 1 à 4 personnes\"",
           "source": "/",
-          "quote": "Tables de 1 à 4 personnes"
+          "quote": "Tables de 1 à 4 personnes",
+          "box": {
+            "page": "/",
+            "x": 152,
+            "y": 2215,
+            "width": 240,
+            "height": 28
+          }
         },
         {
           "key": "cancellation_policy",
           "label": "Cancelling",
           "value": "Free up to 1 hour before",
           "source": "/",
-          "quote": "Annulation gratuite jusqu'à 1 heure avant le repas"
+          "quote": "Annulation gratuite jusqu'à 1 heure avant le repas",
+          "box": {
+            "page": "/",
+            "x": 401,
+            "y": 2215,
+            "width": 447,
+            "height": 28
+          }
         },
         {
           "key": "price_level",
           "label": "Price level",
           "value": "€, from your menu prices",
           "source": "/",
-          "quote": "12 €"
+          "quote": "12 €",
+          "box": {
+            "page": "/",
+            "x": 512,
+            "y": 624,
+            "width": 105,
+            "height": 51
+          }
         },
         {
           "key": "booking_page",
           "label": "Booking page",
           "value": "/#reserver, used as the fallback",
           "source": "/",
-          "quote": null
+          "quote": null,
+          "box": null
         },
         {
           "key": "look",
           "label": "Look",
           "value": "Olive, brick and cream. Soft italic titles. Organic shapes.",
           "source": "/",
-          "quote": null
+          "quote": null,
+          "box": null
         }
       ],
       "flags": [

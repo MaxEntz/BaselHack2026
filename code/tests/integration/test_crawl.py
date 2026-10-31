@@ -1,5 +1,6 @@
 """The crawler (#21) in a real Chromium, against the demo site (#16) and small local sites."""
 
+import base64
 import json
 import logging
 import time
@@ -14,7 +15,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from builder.crawl import CrawlResult, crawl
+from builder.crawl import SHOT_MAX_HEIGHT, SHOT_WIDTH, CrawlResult, crawl
 from builder.look import read_look
 from core.config import get_settings
 from core.errors import InvalidInput
@@ -141,6 +142,23 @@ async def test_reads_the_demo_site_pages_from_its_homepage(demo: DemoCrawl) -> N
     assert [block["@type"] for block in home.json_ld] == ["Restaurant"]
     assert "Choucroute" in demo.result.pages[1].text
     assert all(page.text and "  " not in page.text for page in demo.result.pages)
+
+
+async def test_takes_each_pages_screenshot_with_its_text_boxes(demo: DemoCrawl) -> None:
+    for page in demo.result.pages:
+        assert page.shot is not None
+        assert base64.b64decode(page.shot)[:2] == b"\xff\xd8"
+        assert page.shot_width == SHOT_WIDTH
+        assert 0 < page.shot_height <= SHOT_MAX_HEIGHT
+    home = demo.result.pages[0]
+    box = min(
+        (box for box in home.boxes if "Le Petit Zinc" in box["text"]),
+        key=lambda box: box["width"] * box["height"],
+    )
+    assert 0 <= box["x"] < SHOT_WIDTH
+    assert 0 <= box["y"] < home.shot_height
+    assert box["width"] > 0
+    assert box["height"] > 0
 
 
 async def test_keeps_the_ids_a_one_page_sites_link_can_land_on(

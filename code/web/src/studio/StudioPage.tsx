@@ -5,11 +5,11 @@ import type { Merchant } from "../chat/state.ts";
 import { useChat, type Welcome } from "../chat/useChat.ts";
 import { managementClient } from "../management/index.ts";
 import { createMockClient } from "../mocks/mockClient.ts";
-import type { MerchantOverview } from "../types.ts";
+import type { BuildAgentOutput, BuildFact, MerchantOverview, SitePage } from "../types.ts";
 import { Canvas } from "./Canvas.tsx";
 import { DEMO, EXAMPLES } from "./examples.ts";
 import { type Addresses, Feed, type View } from "./feed.tsx";
-import { crossfade, useSplitOpening } from "./motion.ts";
+import { calm, crossfade, useSplitOpening } from "./motion.ts";
 import {
   FIRST_PLACEHOLDER,
   PLACEHOLDERS,
@@ -43,6 +43,9 @@ const WELCOME: Welcome = {
 };
 
 const COPIED_MS = 2200;
+// How long each fact stays lit during the review's playback.
+const FACT_MS = 520;
+const NARROW = 900;
 const MAX_INPUT = 150;
 
 type LastSend = { text: string; wire?: string; site?: string };
@@ -71,13 +74,14 @@ export function StudioPage() {
   const phase = phaseOf(state);
   const empty = isEmpty(state);
   const slug = state.merchant?.slug ?? null;
-  const split = slug !== null;
   const entries = feedOf(state);
   const profile = profileOf(state.items);
   const chips = chipsOf(state, phase, EXAMPLES.map((example) => example.address));
 
   const [input, setInput] = useState("");
   const [view, setView] = useState<View>("manage");
+  const [fact, setFact] = useState<BuildFact | null>(null);
+  const [storedPages, setStoredPages] = useState<readonly SitePage[]>([]);
   const [pane, setPane] = useState<"chat" | "canvas">("chat");
   const [overview, setOverview] = useState<MerchantOverview | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -85,6 +89,9 @@ export function StudioPage() {
   const canvas = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const last = useRef<LastSend | null>(null);
+  const pages = state.sitePages.length > 0 ? state.sitePages : storedPages;
+  // As soon as there is a site to show: the page the crawl read, then the built sites.
+  const split = slug !== null || pages.length > 0;
   useSplitOpening(split, body, canvas);
 
   useEffect(() => {
@@ -119,9 +126,90 @@ export function StudioPage() {
 
   const addresses = addressesOf(slug, overview, profile?.mcp_url);
 
+  // A merchant found again after a reload: the pages stored with its build.
+  useEffect(() => {
+    if (!restored || !slug || !claimed) return;
+    const abort = new AbortController();
+    managementClient
+      .site(slug, abort.signal)
+      .then((site) => {
+        if (!abort.signal.aborted) setStoredPages(site.pages);
+      })
+      .catch(() => {
+        // The public tab stays disabled.
+      });
+    return () => abort.abort();
+  }, [restored, slug, claimed]);
+
+  // The first page read shows as soon as it arrives.
+  const firstPage = state.sitePages.length > 0;
+  const [hadPage, setHadPage] = useState(false);
+  if (firstPage !== hadPage) {
+    setHadPage(firstPage);
+    if (firstPage) setView("public");
+  }
+
+  // At the review, the facts light up one after the other on the page they came from, and
+  // then both built sites show. Any action of the merchant stops it.
+  const playback = useRef<number | null>(null);
+  const stopPlayback = () => {
+    if (playback.current !== null) window.clearTimeout(playback.current);
+    playback.current = null;
+  };
+  const reviewed = useRef<BuildAgentOutput | null>(null);
+  useEffect(() => {
+    if (!profile || reviewed.current === profile) return;
+    reviewed.current = profile;
+    const builtView: View = window.innerWidth <= NARROW ? "manage" : "both";
+    const boxed = profile.facts.filter((item) => item.box);
+    if (boxed.length === 0 || pages.length === 0 || window.innerWidth <= NARROW || calm()) {
+      playback.current = window.setTimeout(() => setView(builtView), 0);
+      return stopPlayback;
+    }
+    let next = 0;
+    const light = () => {
+      if (next === boxed.length) {
+        playback.current = null;
+        crossfade(() => {
+          setFact(null);
+          setView(builtView);
+        });
+        return;
+      }
+      setFact(boxed[next]);
+      next += 1;
+      playback.current = window.setTimeout(light, FACT_MS);
+    };
+    playback.current = window.setTimeout(() => {
+      setView("public");
+      light();
+    }, 0);
+    return stopPlayback;
+  }, [profile, pages.length]);
+
+  function showView(next: View) {
+    stopPlayback();
+    crossfade(() => {
+      setFact(null);
+      setView(next);
+    });
+  }
+
+  function showFact(item: BuildFact) {
+    stopPlayback();
+    if (pages.length === 0) return;
+    crossfade(() => {
+      setView("public");
+      setPane("canvas");
+      setFact(item);
+    });
+  }
+
   function publish() {
     if (!slug) return;
     const merchant = slug;
+    stopPlayback();
+    setFact(null);
     last.current = { text: PUBLISH };
     crossfade(
       () =>
@@ -134,6 +222,8 @@ export function StudioPage() {
   function say(raw: string) {
     const text = raw.trim();
     if (!text || state.busy) return;
+    stopPlayback();
+    setFact(null);
     if (phase === "address") {
       const found = parseAddress(text);
       // The text leaves the box inside the transition, so that it travels to its bubble.
@@ -193,6 +283,9 @@ export function StudioPage() {
       reset(WELCOME.onboarding);
       setInput("");
       setOverview(null);
+      setStoredPages([]);
+      setFact(null);
+      stopPlayback();
       setPane("chat");
       setView("manage");
     });
@@ -215,7 +308,9 @@ export function StudioPage() {
   }
 
   function open(next: View) {
+    stopPlayback();
     crossfade(() => {
+      setFact(null);
       setView(next);
       setPane("canvas");
     });
@@ -335,6 +430,7 @@ export function StudioPage() {
               busy={state.busy}
               addresses={addresses}
               onOpen={open}
+              onFact={showFact}
               onCopy={(text) => void copy(text)}
               onRetry={retry}
             />
@@ -385,15 +481,21 @@ export function StudioPage() {
           </form>
         </div>
 
-        {slug && (
+        {split && (
           <Canvas
             ref={canvas}
+            client={managementClient}
             slug={slug}
+            today={overview?.now.slice(0, 10) ?? null}
+            pages={pages}
+            fact={fact}
+            tools={profile?.tools ?? []}
+            fallback={profile?.profile.fallback_url ?? null}
             live={live}
             ready={claimed}
             view={view}
             addresses={addresses}
-            onView={(next) => crossfade(() => setView(next))}
+            onView={showView}
           />
         )}
       </div>

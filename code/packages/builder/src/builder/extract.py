@@ -25,6 +25,7 @@ from core.errors import InvalidInput
 from core.models import (
     BuildFact,
     BuildFlag,
+    FactBox,
     FactKey,
     Location,
     MerchantProfile,
@@ -280,7 +281,7 @@ def finalize(draft: ProfileDraft, crawl: CrawlResult, description: str = "") -> 
     return ExtractionResult(
         profile=profile,
         assumptions=assumptions,
-        facts=facts_of(profile, sources),
+        facts=located(facts_of(profile, sources), crawl),
         flags=[
             *flags_of(profile, draft, sources, drafted_tables=drafted_tables, seats=draft.seats),
             *look_flags,
@@ -352,6 +353,28 @@ def _path(url: str) -> str:
     section."""
     parts = urlsplit(url)
     return (parts.path or "/") + (f"#{parts.fragment}" if parts.fragment else "")
+
+
+def located(facts: list[BuildFact], crawl: CrawlResult) -> list[BuildFact]:
+    """Each fact with where its quote sits on its page's screenshot (#151)."""
+    return [fact.model_copy(update={"box": _box_of(fact, crawl)}) for fact in facts]
+
+
+def _box_of(fact: BuildFact, crawl: CrawlResult) -> FactBox | None:
+    if not fact.quote or not fact.source:
+        return None
+    page = next((page for page in crawl.pages if _path(page.url) == fact.source), None)
+    if page is None or page.shot is None:
+        return None
+    wanted = _comparable(fact.quote)
+    holding = [box for box in page.boxes if wanted in _comparable(box["text"])]
+    if not holding:
+        return None
+    # The element closest to the words: the page's sections hold them too.
+    box = min(holding, key=lambda box: box["width"] * box["height"])
+    return FactBox(
+        page=fact.source, x=box["x"], y=box["y"], width=box["width"], height=box["height"]
+    )
 
 
 def facts_of(profile: MerchantProfile, sources: dict[str, Verified]) -> list[BuildFact]:

@@ -57,8 +57,8 @@ the code once and removes it from the address bar.
 
 - `src/studio/`: Studio (#141). `phase.ts` holds, as pure functions, what each conversation state
   shows: the phase, the feed, the chips and the top bar's pill. `feed.tsx` draws the feed and its
-  cards with the fixed sentences, `Canvas.tsx` the pasteboard, `motion.ts` the crossfades and the
-  split's opening. Its classes start with `st-`, because `cards.css` is global.
+  cards with the fixed sentences, `Canvas.tsx` the pasteboard and the public site as read,
+  `AgentSheet.tsx` the agent site's frames, `motion.ts` the crossfades and the split's opening. Its classes start with `st-`, because `cards.css` is global.
 - `src/chat/state.ts`: `ChatItem` union and the pure reducer that turns `ChatEvent`
   and `LiveEvent` into chat items (steps of one build grouped, text deltas merged).
 - `src/chat/client.ts`: `POST /api/chat` SSE client and `EventSource` on

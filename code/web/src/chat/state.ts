@@ -1,4 +1,4 @@
-import type { ChatEvent, LiveEvent } from "../types.ts";
+import type { ChatEvent, LiveEvent, SitePage } from "../types.ts";
 
 export type CardEvent = Extract<ChatEvent, { type: "card" }>;
 export type StepEvent = Extract<ChatEvent, { type: "step" }>;
@@ -39,6 +39,8 @@ export type ChatState = {
   site: string | null;
   // The address given, while Studio asks how the merchant works.
   address: string | null;
+  // The public site's pages, as the crawl of this conversation read them.
+  sitePages: readonly SitePage[];
   nextId: number;
 };
 
@@ -67,6 +69,7 @@ export function initialChatState(
     status: merchant ? "live" : null,
     site: null,
     address: null,
+    sitePages: [],
     nextId: 1,
   };
 }
@@ -127,6 +130,14 @@ function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       return appendText({ ...state, activity: null }, event.delta);
     case "tool_start":
       return { ...state, activity: event.label };
+    case "site_page":
+      return {
+        ...state,
+        sitePages: [
+          ...state.sitePages.filter((page) => page.path !== event.page.path),
+          event.page,
+        ],
+      };
     case "step":
       return applyStep(state, event);
     case "card": {

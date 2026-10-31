@@ -7,7 +7,6 @@ bridge: Claude still speaks MCP to it, and it speaks BATP to the node serving th
 
 from datetime import date, datetime
 from typing import Protocol
-from urllib.parse import urlsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -15,8 +14,8 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import AgentService, PgAgentService
-from batp.client import BatpClient
-from batp.messages import DEFAULT_PORT, AgentIdentity, Intent
+from batp.client import BatpClient, parse_batp_url
+from batp.messages import AgentIdentity, Intent
 from core.config import Settings
 from core.errors import AgentUnavailable
 from core.models import (
@@ -226,14 +225,6 @@ class BatpAgentClient:
 
     async def close(self) -> None:
         await self.client.close()
-
-
-def parse_batp_url(url: str) -> tuple[str, int]:
-    """`batp://host[:port]` → host and port; a wrong value stops the gateway at startup."""
-    parts = urlsplit(url)
-    if parts.scheme != "batp" or not parts.hostname:
-        raise ValueError(f"BATP_URL must look like batp://host[:port], got {url!r}")
-    return parts.hostname, parts.port or DEFAULT_PORT
 
 
 def make_agent_client(settings: Settings, engine: AsyncEngine) -> AgentClient:

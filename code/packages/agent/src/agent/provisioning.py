@@ -157,7 +157,8 @@ def generated_tools(profile: MerchantProfile) -> list[GeneratedTool]:
         "city": city or "unknown city",
         "services": ", ".join(f"{service.start}-{service.end}" for service in profile.services),
         "max_party_size": profile.max_party_size,
-        "cancellation_policy": profile.cancellation_policy or "none stated",
+        # The template ends its sentence.
+        "cancellation_policy": (profile.cancellation_policy or "none stated").rstrip("."),
     }
     return [
         GeneratedTool(name=tool.name, description=tool.description.format_map(values))
