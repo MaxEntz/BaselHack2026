@@ -44,15 +44,16 @@ async def e2e_engine(e2e_database_url: str) -> AsyncIterator[AsyncEngine]:
 
 
 class MatpNode:
-    """`python -m matp` as a separate process, as on the server: it can die or freeze."""
+    """`python -m merchant_node` as a separate process, as on the server: it can die or freeze."""
 
-    def __init__(self, database_url: str, log_path: Path) -> None:
+    def __init__(self, database_url: str, log_path: Path, tokens: str | None = None) -> None:
         with socket.socket() as probe:
             probe.bind((LOOPBACK, 0))
             self.port = probe.getsockname()[1]
         self.url = f"matp://{LOOPBACK}:{self.port}"
         self.database_url = database_url
         self.log_path = log_path
+        self.tokens = tokens
         self.process: subprocess.Popen[bytes] | None = None
 
     def start(self) -> None:
@@ -61,10 +62,11 @@ class MatpNode:
             "DATABASE_URL": self.database_url,
             "MATP_HOST": LOOPBACK,
             "MATP_PORT": str(self.port),
+            "MATP_TOKENS": self.tokens or "",
         }
         with self.log_path.open("ab") as log:
             self.process = subprocess.Popen(
-                [sys.executable, "-m", "matp"], env=env, stderr=log, stdout=log
+                [sys.executable, "-m", "merchant_node"], env=env, stderr=log, stdout=log
             )
         deadline = time.monotonic() + STARTUP_SECONDS
         while True:
@@ -78,6 +80,7 @@ class MatpNode:
 
     def stop(self) -> None:
         assert self.process is not None
+        self.process.send_signal(signal.SIGCONT)
         self.process.terminate()
         self.process.wait(timeout=STARTUP_SECONDS)
 
@@ -98,12 +101,10 @@ class MatpNode:
 def matp_node(
     e2e_database_url: str, e2e_engine: AsyncEngine, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[MatpNode]:
-    pytest.importorskip("matp", reason="the MATP node comes with #60")
     node = MatpNode(e2e_database_url, tmp_path_factory.mktemp("matp") / "node.log")
     node.start()
     yield node
     if node.process and node.process.poll() is None:
-        node.resume()
         node.stop()
 
 

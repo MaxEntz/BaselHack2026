@@ -6,7 +6,7 @@ bridge: Claude still speaks MCP to it, and it speaks MATP to the node serving th
 """
 
 from datetime import date, datetime
-from typing import Any, Protocol
+from typing import Protocol
 from urllib.parse import urlsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -34,14 +34,15 @@ from core.models import (
 )
 from gateway import discovery
 from gateway.fallback import matp_request
+from matp.client import MatpClient
+from matp.messages import DEFAULT_PORT, AgentIdentity, Intent
 
-MATP_PORT = 4710
-GATEWAY_AGENT = {
-    "id": "urn:matp:agent:claude-gateway",
-    "name": "Claude via the merchant-agents gateway",
-    "kind": "user-agent",
-    "operator": "merchant-agents",
-}
+GATEWAY_AGENT = AgentIdentity(
+    id="urn:matp:agent:claude-gateway",
+    name="Claude via the merchant-agents gateway",
+    kind="user-agent",
+    operator="merchant-agents",
+)
 
 
 class AgentClient(Protocol):
@@ -139,38 +140,22 @@ class LocalAgentClient:
         pass
 
 
-class MatpRequester(Protocol):
-    """What the bridge needs from `matp.client.MatpClient`."""
-
-    async def request(
-        self,
-        intent: str,
-        merchant: str | None,
-        params: dict[str, Any],
-        *,
-        request_id: str | None = None,
-    ) -> dict[str, Any]: ...
-
-    async def close(self) -> None: ...
-
-
 class MatpAgentClient:
     """The same operations over MATP. `params` and `result` are the contracts of `core.models`."""
 
-    def __init__(self, client: MatpRequester) -> None:
+    def __init__(self, client: MatpClient) -> None:
         self.client = client
 
     async def _request[M: BaseModel](
-        self, intent: str, merchant: str | None, params: BaseModel, result: type[M]
+        self, intent: Intent, merchant: str | None, params: BaseModel, result: type[M]
     ) -> M:
+        """The node's answer. Its errors and a lost session are `AgentError`s already."""
         request_id = f"r-{uuid4().hex[:12]}"
         matp_request.set(request_id)
         wire = params.model_dump(mode="json", exclude={"merchant"}, exclude_none=True)
+        response = await self.client.request(intent, merchant, wire, request_id=request_id)
         try:
-            response = await self.client.request(intent, merchant, wire, request_id=request_id)
             return result.model_validate(response)
-        except (OSError, EOFError) as exc:
-            raise AgentUnavailable(f"The MATP node can't be reached: {exc!r}") from exc
         except ValidationError as exc:
             raise AgentUnavailable(f"The MATP node sent an invalid {intent} result") from exc
 
@@ -248,7 +233,7 @@ def parse_matp_url(url: str) -> tuple[str, int]:
     parts = urlsplit(url)
     if parts.scheme != "matp" or not parts.hostname:
         raise ValueError(f"MATP_URL must look like matp://host[:port], got {url!r}")
-    return parts.hostname, parts.port or MATP_PORT
+    return parts.hostname, parts.port or DEFAULT_PORT
 
 
 def make_agent_client(settings: Settings, engine: AsyncEngine) -> AgentClient:
@@ -256,9 +241,6 @@ def make_agent_client(settings: Settings, engine: AsyncEngine) -> AgentClient:
     if not settings.matp_url:
         service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
         return LocalAgentClient(service, engine)
-    # Only a bridge needs the MATP client. The node imports `gateway.discovery`.
-    from matp.client import MatpClient  # type: ignore[import-not-found]
-
     host, port = parse_matp_url(settings.matp_url)
     token = settings.matp_token.get_secret_value() if settings.matp_token else None
     return MatpAgentClient(MatpClient(host, port, GATEWAY_AGENT, token))

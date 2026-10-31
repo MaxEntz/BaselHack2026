@@ -20,6 +20,7 @@ from gateway.agent_client import (
     parse_matp_url,
 )
 from gateway.fallback import log_call, matp_request
+from matp.client import MatpClient, MatpRejected, SessionLost
 
 STARTS_AT = datetime(2026, 11, 1, 19, tzinfo=UTC)
 NO_ENGINE: Any = object()
@@ -222,9 +223,9 @@ async def test_the_node_s_business_errors_pass_through(
 
 
 @pytest.mark.parametrize(
-    "failure", [ConnectionRefusedError(), ConnectionResetError(), EOFError(), TimeoutError()]
+    "failure", [SessionLost("gone"), MatpRejected(401, "Unknown agent or token")]
 )
-async def test_a_lost_node_is_agent_unavailable(
+async def test_a_lost_or_refused_session_is_agent_unavailable(
     bridge: MatpAgentClient, node: AsyncMock, failure: Exception
 ) -> None:
     node.request.side_effect = failure
@@ -288,3 +289,21 @@ def test_without_matp_url_the_agent_stays_in_this_process() -> None:
     agent = make_agent_client(settings, make_engine(settings.database_url))
 
     assert isinstance(agent, LocalAgentClient)
+
+
+def test_with_matp_url_the_gateway_is_a_bridge_under_its_own_identity() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://u:p@localhost/db",
+        matp_url="matp://127.0.0.1:4711",
+        matp_token="a-token-long-enough",
+    )
+
+    agent = make_agent_client(settings, make_engine(settings.database_url))
+
+    assert isinstance(agent, MatpAgentClient)
+    assert isinstance(agent.client, MatpClient)
+    assert (agent.client.host, agent.client.port) == ("127.0.0.1", 4711)
+    assert agent.client.token == "a-token-long-enough"
+    assert agent.client.agent.id == "urn:matp:agent:claude-gateway"
+    assert agent.client.agent.kind == "user-agent"
