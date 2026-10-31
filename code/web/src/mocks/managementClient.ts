@@ -54,6 +54,8 @@ const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{
 // Unicode category Cc, which core/models.py refuses in any text.
 // oxlint-disable-next-line no-control-regex -- finding them is the point
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+// What Python's str.isprintable refuses, which agent/admin.py asks of a table label.
+const UNPRINTABLE = /(?! )[\p{C}\p{Z}]/u;
 const NOT_FOUND = "No booking with that reference.";
 const TAKEN = "That time is no longer free.";
 
@@ -87,6 +89,9 @@ export function createMockManagementClient(
     return `${date}T${time}:${seconds}${offset}`;
   };
   const isPast = (startsAt: string) => Date.parse(startsAt) <= now().getTime();
+  const hasEnded = (booking: ManagedReservation) =>
+    Date.parse(instant(booking.date, booking.time)) + data.rules.slot_length_min * 60_000 <=
+    now().getTime();
 
   function respond<T>(value: T): Promise<T> {
     const copy = structuredClone(value);
@@ -325,6 +330,49 @@ export function createMockManagementClient(
     data = { ...data, rules: { ...data.rules, tools: tools() } };
   }
 
+  // agent/admin.py `_check_plan_change`: of the bookings at a removed or shrunk
+  // table, by start, the first one still running that the plan strands; else a
+  // removed table that past or cancelled bookings refer to.
+  function checkPlanChange(plan: { label: string; seats: number }[]) {
+    const wanted = new Map(plan.map((table) => [table.label, table.seats]));
+    const affected = new Set(
+      data.tables.filter((t) => (wanted.get(t.label) ?? 0) < t.seats).map((t) => t.label),
+    );
+    const bookings = data.reservations
+      .filter((b) => affected.has(b.table_label))
+      .toSorted(
+        (a, b) =>
+          `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`) || (a.id < b.id ? -1 : 1),
+      );
+    const history = new Map<string, string>();
+    for (const booking of bookings) {
+      const { table_label: table, guest_name: guest } = booking;
+      const seats = wanted.get(table);
+      const running = booking.status === "confirmed" && !hasEnded(booking);
+      if (seats === undefined) {
+        if (running) {
+          problem("A booking refers to this table.", { code: "table_in_use", table, guest });
+        }
+        if (!history.has(table)) history.set(table, guest);
+      } else if (running && booking.party_size > seats) {
+        problem("A booking needs more seats at this table.", {
+          code: "table_too_small",
+          table,
+          guest,
+          seats: booking.party_size,
+        });
+      }
+    }
+    const first = [...history.keys()].toSorted()[0];
+    if (first !== undefined) {
+      problem("Past bookings refer to this table.", {
+        code: "table_in_use",
+        table: first,
+        guest: history.get(first),
+      });
+    }
+  }
+
   // The agent's booking of the demo, once for every listener: it keeps the
   // fixture's table, unless the merchant took it meanwhile.
   function deliverLiveBooking() {
@@ -476,10 +524,11 @@ export function createMockManagementClient(
         const outcome = booking.cancelled_by === "guest" ? "guest_cancelled" : "already_cancelled";
         return respond({ reservation: booking, outcome });
       }
-      const ends =
-        Date.parse(instant(booking.date, booking.time)) + data.rules.slot_length_min * 60_000;
-      const outcome =
-        ends <= now().getTime() ? "ended" : booking.via === "merchant" ? "own_booking" : "notified";
+      const outcome = hasEnded(booking)
+        ? "ended"
+        : booking.via === "merchant"
+          ? "own_booking"
+          : "notified";
       const cancelled: ManagedReservation = {
         ...booking,
         status: "cancelled",
@@ -535,19 +584,26 @@ export function createMockManagementClient(
 
     async saveHours(_slug, body) {
       exact(body, ["services"]);
-      const drafts = body.services;
-      if (drafts.length > MAX_SERVICES) invalid(`services: at most ${MAX_SERVICES}`);
-      if (drafts.length === 0) problem("Keep at least one service.", { code: "no_services" });
-      const saved = drafts.map((draft, index): Service => {
+      if (body.services.length > MAX_SERVICES) invalid(`services: at most ${MAX_SERVICES}`);
+      // DraftTime (core/models.py): blank is missing, else HH:MM, before any rule.
+      const drafts = body.services.map((draft, index) => {
         exact(draft, ["start", "end"]);
-        const { start, end } = draft;
-        if (!start || !end) {
+        const time = (value: unknown) => {
+          if (value === null || value === undefined) return null;
+          if (typeof value !== "string") return invalid(`services.${index}: HH:MM times`);
+          if (!value.trim()) return null;
+          return HHMM.test(value) ? value : invalid(`services.${index}: HH:MM times`);
+        };
+        return { start: time(draft.start), end: time(draft.end) };
+      });
+      if (drafts.length === 0) problem("Keep at least one service.", { code: "no_services" });
+      const saved = drafts.map(({ start, end }, index): Service => {
+        if (start === null || end === null) {
           return problem("A service needs a start and an end.", {
             code: "service_incomplete",
             services: [index],
           });
         }
-        if (!HHMM.test(start) || !HHMM.test(end)) invalid(`services.${index}: HH:MM times`);
         if (minutes(end) - minutes(start) < LAST_SEATING_MIN) {
           problem("A service lasts at least 60 minutes.", {
             code: "service_too_short",
@@ -563,9 +619,14 @@ export function createMockManagementClient(
           }
         }),
       );
+      // The server compares the services as stored, in the order last sent.
+      const before = data.hours.services;
+      const changed =
+        saved.length !== before.length ||
+        saved.some((s, i) => s.start !== before[i]?.start || s.end !== before[i]?.end);
       data = { ...data, hours: { services: saved } };
       withTools();
-      log("saved", "Opening hours", "merchant");
+      if (changed) log("saved", "Opening hours", "merchant");
       return respond({ services: services() });
     },
 
@@ -573,55 +634,45 @@ export function createMockManagementClient(
 
     async saveTables(_slug, body) {
       exact(body, ["tables"]);
-      const drafts = body.tables;
-      if (drafts.length > MAX_TABLES) invalid(`tables: at most ${MAX_TABLES}`);
-      if (drafts.length === 0) problem("Keep at least one table.", { code: "no_tables" });
-      const labels = new Set<string>();
-      const tables = drafts.map((draft) => {
+      if (body.tables.length > MAX_TABLES) invalid(`tables: at most ${MAX_TABLES}`);
+      const tables = body.tables.map((draft) => {
         exact(draft, ["label", "seats"]);
         const label = required(draft.label, "label", MAX_TABLE_LABEL);
+        if (!Number.isInteger(draft.seats)) invalid("seats: an integer is required");
+        return { label, seats: draft.seats };
+      });
+      if (tables.length === 0) problem("Keep at least one table.", { code: "no_tables" });
+      const labels = new Set<string>();
+      for (const { label, seats } of tables) {
         if (labels.has(label)) {
           problem("Table labels must be unique.", { code: "duplicate_table", table: label });
         }
         labels.add(label);
-        if (!Number.isInteger(draft.seats)) invalid("seats: an integer is required");
-        if (draft.seats < 1) {
+        if (seats < 1) {
           problem("Every table needs at least 1 seat.", {
             code: "table_without_seats",
             table: label,
           });
         }
-        if (draft.seats > MAX_SEATS) {
+        if (seats > MAX_SEATS) {
           problem(`A table has at most ${MAX_SEATS} seats.`, {
             code: "too_many_seats",
             table: label,
             seats: MAX_SEATS,
           });
         }
-        return { label, seats: draft.seats };
-      });
-      for (const booking of data.reservations) {
-        const guest = booking.guest_name;
-        const kept =
-          tables.find((table) => table.label === booking.table_label) ??
-          problem("A booking refers to this table.", {
-            code: "table_in_use",
-            table: booking.table_label,
-            guest,
-          });
-        const ahead =
-          booking.status === "confirmed" && !isPast(instant(booking.date, booking.time));
-        if (ahead && kept.seats < booking.party_size) {
-          problem("A booking needs more seats at this table.", {
-            code: "table_too_small",
-            table: kept.label,
-            guest,
-            seats: booking.party_size,
-          });
-        }
       }
+      const unprintable = tables.find((table) => UNPRINTABLE.test(table.label));
+      if (unprintable) {
+        const label = unprintable.label;
+        invalid(`Invalid table '${label}': printable label and at most ${MAX_SEATS} seats`);
+      }
+      checkPlanChange(tables);
+      const plan = (rows: { label: string; seats: number }[]) =>
+        JSON.stringify(rows.map((t) => [t.label, t.seats]).toSorted());
+      const changed = plan(tables) !== plan(data.tables);
       data = { ...data, tables };
-      log("saved", "Floor plan", "merchant");
+      if (changed) log("saved", "Floor plan", "merchant");
       return respond({ tables: data.tables });
     },
 
@@ -631,6 +682,11 @@ export function createMockManagementClient(
       exact(body, ["max_party_size", "fallback_url", "cancellation_policy"]);
       const largest = body.max_party_size;
       if (!Number.isInteger(largest)) invalid("max_party_size: an integer is required");
+      const page = parseUrl(body.fallback_url) ?? invalid("fallback_url: a URL is required");
+      if (page.protocol !== "http:" && page.protocol !== "https:") {
+        invalid("fallback_url: an http(s) URL is required");
+      }
+      const policy = text(body.cancellation_policy, "cancellation_policy", MAX_POLICY_TEXT, false);
       if (largest < 1) problem("The largest group is at least 1.", { code: "group_too_small" });
       if (largest > MAX_SEATS) {
         problem(`The largest group is at most ${MAX_SEATS}.`, {
@@ -638,25 +694,22 @@ export function createMockManagementClient(
           seats: MAX_SEATS,
         });
       }
-      const page = parseUrl(body.fallback_url) ?? invalid("fallback_url: a URL is required");
-      if (page.protocol !== "http:" && page.protocol !== "https:") {
-        invalid("fallback_url: an http(s) URL is required");
-      }
-      if (page.host !== new URL(data.merchant.website).host) {
+      if (!sameSite(page, data.merchant.website)) {
         problem("The booking page stays on your website.", { code: "booking_page_off_site" });
       }
-      const policy = text(body.cancellation_policy, "cancellation_policy", MAX_POLICY_TEXT, false);
-      data = {
-        ...data,
-        rules: {
-          ...data.rules,
-          max_party_size: largest,
-          fallback_url: page.href, // as HttpUrl normalises it
-          cancellation_policy: policy,
-        },
+      const changes = {
+        max_party_size: largest,
+        fallback_url: page.href, // as HttpUrl normalises it
+        cancellation_policy: policy,
       };
+      const before = data.rules;
+      const changed =
+        changes.max_party_size !== before.max_party_size ||
+        changes.fallback_url !== before.fallback_url ||
+        changes.cancellation_policy !== before.cancellation_policy;
+      data = { ...data, rules: { ...data.rules, ...changes } };
       withTools();
-      log("saved", "Booking rules", "merchant");
+      if (changed) log("saved", "Booking rules", "merchant");
       return respond(data.rules);
     },
 
@@ -664,38 +717,57 @@ export function createMockManagementClient(
 
     async saveSettings(_slug, body) {
       exact(body, ["name", "city", "price_level", "tags"]);
-      const name =
-        text(body.name, "name", MAX_SHORT_TEXT, false) ??
-        problem("The restaurant needs a name.", { code: "name_required" });
+      if (typeof body.name !== "string") invalid("name: a string is required");
+      const name = text(body.name, "name", MAX_SHORT_TEXT, false);
       const city = text(body.city, "city", MAX_SHORT_TEXT, false);
       if (!PRICES.includes(body.price_level)) invalid("price_level: one of €, €€, €€€, €€€€");
+      if (body.tags.length > TAGS.length) invalid(`tags: at most ${TAGS.length}`);
       if (body.tags.some((tag) => !TAGS.includes(tag))) invalid("tags: unknown tag");
+      if (name === null) problem("The restaurant needs a name.", { code: "name_required" });
       const changes = { name, city, price_level: body.price_level, tags: [...new Set(body.tags)] };
+      const before = data.settings;
+      const changed =
+        name !== before.name ||
+        city !== before.city ||
+        changes.price_level !== before.price_level ||
+        changes.tags.join() !== before.tags.join();
       data = {
         ...data,
         settings: { ...data.settings, ...changes },
         merchant: { ...data.merchant, ...changes },
       };
       withTools();
-      log("saved", "Settings", "merchant");
+      if (changed) log("saved", "Settings", "merchant");
       return respond(data.settings);
     },
 
     blocked: () => respond({ blocked: blockedAhead() }),
 
+    // agent/admin.py `set_blocked`: only starts still to come change; the day's
+    // past blocks stay and a past time sent is ignored.
     async setBlocked(_slug, date, times) {
       if (times.length > MAX_DAY_STARTS) invalid(`times: at most ${MAX_DAY_STARTS}`);
       if (times.some((time) => !HHMM.test(time))) invalid("times: HH:MM times");
-      const before = new Set(data.blocked.filter((b) => b.date === date).map((b) => b.time));
-      const after = new Set(times);
-      const added = [...after].filter((time) => !before.has(time)).toSorted();
-      const removed = [...before].filter((time) => !after.has(time)).toSorted();
+      const starts = startsOf();
+      const sent = [...new Set(times)].toSorted();
+      const unknown = sent.filter((time) => !starts.includes(time));
+      if (unknown.length) {
+        const valid = starts.join(", ") || "none";
+        invalid(`${unknown.join(", ")} is not a start time on ${date}; valid times: ${valid}`);
+      }
+      const wanted = sent.filter((time) => !isPast(instant(date, time)));
+      const day = data.blocked.filter((b) => b.date === date);
+      const added = wanted.filter((time) => !day.some((b) => b.time === time));
+      const removed = day
+        .filter((b) => !isPast(b.starts_at) && !wanted.includes(b.time))
+        .map((b) => b.time)
+        .toSorted();
       // One activity line per save (#133).
-      const day = dayWord(date, today);
-      if (added.length) log("blocked", `${day} ${added.join(", ")}`, "merchant");
-      else if (removed.length) log("reopened", `${day} ${removed.join(", ")}`, "merchant");
-      const kept = data.blocked.filter((b) => b.date !== date);
-      const set = [...after].map((time) => ({ starts_at: instant(date, time), date, time }));
+      const word = dayWord(date, today);
+      if (added.length) log("blocked", `${word} ${added.join(", ")}`, "merchant");
+      else if (removed.length) log("reopened", `${word} ${removed.join(", ")}`, "merchant");
+      const kept = data.blocked.filter((b) => b.date !== date || isPast(b.starts_at));
+      const set = wanted.map((time) => ({ starts_at: instant(date, time), date, time }));
       data = { ...data, blocked: [...kept, ...set] };
       return respond({ blocked: blockedAhead() });
     },
@@ -758,6 +830,18 @@ function parseUrl(value: unknown): URL | null {
   } catch {
     return null;
   }
+}
+
+// agent/admin.py `_same_site`: the host, `www.` aside, and the port, the
+// scheme's by default, so the demo sites differ only by their port.
+function site(url: URL): string | null {
+  const host = url.hostname.replace(/^www\./, "");
+  return host ? `${host}:${url.port || (url.protocol === "https:" ? "443" : "80")}` : null;
+}
+
+function sameSite(page: URL, website: string): boolean {
+  const home = parseUrl(website);
+  return home !== null && site(page) !== null && site(page) === site(home);
 }
 
 function minutes(time: string): number {
