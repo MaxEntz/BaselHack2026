@@ -90,10 +90,13 @@ export type ChatEvent =
   | { type: "error"; message: string }
   | { type: "done" };
 
-// GET /events?merchant=<slug>: EventSource notifications.
+// GET /events?merchant=<slug>: EventSource notifications. Only guests' changes:
+// the merchant's own are not sent. `via` is the channel the booking was made
+// through; `date` (YYYY-MM-DD) is its day in the merchant's timezone.
 export type LiveEvent = {
   type: "notification";
   kind: "new_booking" | "updated" | "cancelled";
   via: Via;
+  date: string;
   reservation: AdminReservationRow;
 };

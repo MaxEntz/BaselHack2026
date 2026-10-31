@@ -79,10 +79,18 @@ export function Gallery() {
             <CardView card={{ ...reservations, data: { ...reservations.data, reservations: [] } }} />
           </Section>
         )}
-        <Section title="Notifications">
-          <NotificationItem event={NOTIFICATION} />
-          <NotificationItem event={{ ...NOTIFICATION, kind: "updated" }} />
-          <NotificationItem event={{ ...NOTIFICATION, kind: "cancelled", via: "website" }} />
+        <Section title="Notifications: today, tomorrow, next week">
+          <NotificationItem event={{ ...NOTIFICATION, date: dayFromToday(0) }} />
+          <NotificationItem event={{ ...NOTIFICATION, kind: "updated", date: dayFromToday(1) }} />
+          <NotificationItem
+            event={{
+              ...NOTIFICATION,
+              kind: "cancelled",
+              via: "website",
+              date: dayFromToday(7),
+              reservation: { ...NOTIFICATION.reservation, via: "website", status: "cancelled" },
+            }}
+          />
         </Section>
         <Section title="Errors">
           <ErrorItem message="I can't reach the platform right now." onRetry={() => {}} />
@@ -91,6 +99,14 @@ export function Gallery() {
       </div>
     </div>
   );
+}
+
+// YYYY-MM-DD, `offset` days from today.
+function dayFromToday(offset: number): string {
+  const day = new Date();
+  day.setDate(day.getDate() + offset);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
