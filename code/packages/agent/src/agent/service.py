@@ -396,7 +396,7 @@ class PgAgentService:
             new_start = starts_at or current.during.lower
             new_party = party_size or current.party_size
             merchant.check_party(new_party)
-            if new_start != current.during.lower:
+            if _utc(new_start) != _utc(current.during.lower):
                 await self._check_new_start(conn, merchant, new_start)
 
             during = _during(new_start, merchant.slot_length)
@@ -517,7 +517,8 @@ class PgAgentService:
                 )
             )
         ).one()
-        if tuple(applied) != (reservation_id, starts_at, party_size):
+        stored = (applied.reservation_id, _utc(applied.starts_at), applied.party_size)
+        if stored != (reservation_id, _utc(starts_at), party_size):
             raise InvalidInput("idempotency_key reused with different parameters")
         return False
 
@@ -709,9 +710,8 @@ class PgAgentService:
     def _replayed(
         self, slug: str, row: _Row, starts_at: datetime, party_size: int, guest_name: str
     ) -> Reservation:
-        if (row.during.lower, row.party_size) != (starts_at, party_size) or not same_guest(
-            guest_name, row.guest_name
-        ):
+        same = (_utc(row.during.lower), row.party_size) == (_utc(starts_at), party_size)
+        if not same or not same_guest(guest_name, row.guest_name):
             raise InvalidInput("idempotency_key reused with different parameters")
         return self._from_row(slug, row)
 
@@ -749,6 +749,15 @@ class PgAgentService:
             guest_name=guest_name,
             via=via,
         )
+
+
+@overload
+def _utc(moment: datetime) -> datetime: ...
+@overload
+def _utc(moment: None) -> None: ...
+def _utc(moment: datetime | None) -> datetime | None:
+    """The same instant in UTC, so that comparisons hold in the hour that repeats (PEP 495)."""
+    return moment.astimezone(UTC) if moment is not None else None
 
 
 def _during(start: datetime, slot_length: timedelta) -> Range[datetime]:

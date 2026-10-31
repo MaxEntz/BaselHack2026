@@ -679,7 +679,8 @@ async def test_every_slot_offered_on_a_clock_change_night_can_be_booked(
     slug = await make_merchant(tables=ONE_TABLE, services=[{"start": "00:00", "end": "04:00"}])
     await book(service, slug, datetime.combine(day, time(3), tzinfo=TZ))
 
-    slots = await service.get_availability(slug, day, 2)
+    # Around 02:30: on 2026-10-25 that is the hour that repeats (02:00 and 02:30 CEST).
+    slots = await service.get_availability(slug, day, 2, "02:30")
 
     assert slots
     for slot in slots:
