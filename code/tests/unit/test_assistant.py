@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -461,6 +462,86 @@ async def test_operations_cards() -> None:
     assert cards[4]["data"]["text"] == "R-001 cancelled. The guest will be notified."
     assert agent.blocked == [datetime.fromisoformat(nine_pm)]
     assert agent.cancelled == ["R-001"]
+
+
+def admin_tool_lines(caplog: pytest.LogCaptureFixture) -> list[dict[str, Any]]:
+    return [
+        {key: record.__dict__[key] for key in ("tool", "merchant", "outcome", "latency_ms")}
+        for record in caplog.records
+        if record.getMessage() == "admin_tool"
+    ]
+
+
+async def test_each_admin_tool_call_logs_one_line_without_guest_names(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    llm = ScriptedLLM(
+        ([], [call("list_reservations", "a", date="2026-10-31")]),
+        ([], [call("cancel_reservation", "b", reservation_id="R-001")]),
+        ([], [call("cancel_reservation", "c", reservation_id="R-404")]),
+        ([], [call("block_slot", "d", starts_at="tonight")]),
+        ([], [call("drop_tables", "e")]),
+        (["Done."], []),
+    )
+    harness = Harness(llm, agent=FakeAgent())
+    harness.provisioned.add(SLUG)
+
+    with caplog.at_level(logging.INFO, logger="merchant_platform.tools"):
+        await harness.turn(onboarded(), "Tonight's bookings, then cancel")
+
+    logged = admin_tool_lines(caplog)
+    assert [(line["tool"], line["merchant"], line["outcome"]) for line in logged] == [
+        ("list_reservations", SLUG, "ok"),
+        ("cancel_reservation", SLUG, "ok"),
+        ("cancel_reservation", SLUG, "not_found"),
+        ("block_slot", SLUG, "invalid_input"),
+        ("unknown", SLUG, "invalid_input"),
+    ]
+    assert all(isinstance(line["latency_ms"], int) for line in logged)
+    assert "Alex Martin" not in caplog.text
+    assert not any("Alex Martin" in str(record.__dict__) for record in caplog.records)
+
+
+async def test_build_agent_logs_the_new_merchant(caplog: pytest.LogCaptureFixture) -> None:
+    llm = ScriptedLLM(
+        ([], [call("build_agent", website="https://lepetitzinc.example", description="Bistro")]),
+        (["Your agent is live."], []),
+    )
+
+    with caplog.at_level(logging.INFO, logger="merchant_platform.tools"):
+        await Harness(llm).turn(Session(id="s"), "Here is my site")
+
+    assert [
+        (line["tool"], line["merchant"], line["outcome"]) for line in admin_tool_lines(caplog)
+    ] == [("build_agent", SLUG, "ok")]
+
+
+async def test_a_tool_cancelled_mid_call_still_logs_its_line(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    started = asyncio.Event()
+
+    async def slow_build(arguments: BuildAgentInput, emit: Any) -> BuildAgentOutput:
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    tools = AdminTools(None, slow_build, TZ, today=lambda: TODAY)
+
+    async def ignore(event: ChatEvent) -> None:
+        pass
+
+    build = call("build_agent", website="https://lepetitzinc.example", description="Bistro")
+    with caplog.at_level(logging.INFO, logger="merchant_platform.tools"):
+        task = asyncio.create_task(tools.run(Session(id="s"), build, ignore))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert [(line["tool"], line["outcome"]) for line in admin_tool_lines(caplog)] == [
+        ("build_agent", "cancelled")
+    ]
 
 
 async def test_merchant_tools_without_an_agent_service_explain_it() -> None:
