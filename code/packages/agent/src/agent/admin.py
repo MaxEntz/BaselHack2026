@@ -422,5 +422,32 @@ async def _notify_guest(conn: AsyncConnection, slug: str, row: _Row, tz: ZoneInf
     )
 
 
+async def notify_move(
+    conn: AsyncConnection,
+    slug: str,
+    reservation_id: str,
+    guest_name: str,
+    start: datetime,
+    tz: ZoneInfo,
+) -> None:
+    """A guest's booking the merchant moved (#134): told like a cancellation, on the guest's
+    next `get_my_reservations`, so that nobody comes at the old time."""
+    merchant = (
+        await conn.execute(select(merchants_t.c.name).where(merchants_t.c.slug == slug))
+    ).one()
+    local = start.astimezone(tz)
+    await conn.execute(
+        insert(guest_notices_t).values(
+            guest_name=guest_name,
+            merchant_slug=slug,
+            reservation_id=reservation_id,
+            message=(
+                f"{merchant.name} moved your booking {reservation_id} on {local:%Y-%m-%d} to "
+                f"{local:%H:%M}."
+            ),
+        )
+    )
+
+
 def _reasons(error: ValidationError) -> str:
     return "; ".join(str(detail["msg"]) for detail in error.errors())

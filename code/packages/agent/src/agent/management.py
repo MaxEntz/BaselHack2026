@@ -17,6 +17,7 @@ from sqlalchemy import ColumnElement, Row, func, select, update
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from agent import admin
 from agent.service import (
     PgAgentService,
     _attempt,
@@ -119,21 +120,31 @@ class ManagementService:
     async def slots(
         self, slug: str, day: date, party_size: int, ignore: str | None = None
     ) -> DaySlots:
-        """Every start of `day` that hasn't passed, with the table a booking would get."""
+        """Every start of `day` that hasn't passed, with the table a booking would get.
+
+        With `ignore` (a move), the table the move would give: its own first among equals, and
+        no party limit for the booking's own party, which the move doesn't apply either.
+        """
         start, end = self._bounds(day)
+        left_out = ignore.strip().upper() if ignore else None
         async with merchant_conn(self.engine, slug) as conn:
             plan = await self._plan(conn, slug)
             busy_query = select(
-                reservations_t.c.id, reservations_t.c.table_id, reservations_t.c.during
+                reservations_t.c.id,
+                reservations_t.c.table_id,
+                reservations_t.c.during,
+                reservations_t.c.party_size,
             ).where(
                 reservations_t.c.status == "confirmed",
                 reservations_t.c.during.overlaps(Range(start, _utc(end) + plan.slot_length)),
             )
+            rows = (await conn.execute(busy_query)).all()
             busy = [
                 BusyInterval(row.table_id, row.during.lower, row.during.upper)
-                for row in await conn.execute(busy_query)
-                if ignore is None or row.id != ignore.strip().upper()
+                for row in rows
+                if row.id != left_out
             ]
+            moving = next((row for row in rows if row.id == left_out), None)
             blocked = set(
                 await conn.scalars(
                     select(blocked_slots_t.c.starts_at).where(
@@ -142,17 +153,23 @@ class ManagementService:
                 )
             )
         now = _utc(self.clock())
-        fits = party_size <= plan.max_party_size
+        own_party = moving is not None and moving.party_size == party_size
+        fits = party_size <= plan.max_party_size or own_party
+        own_table = next((t for t in plan.tables if moving and t.id == moving.table_id), None)
         slots = []
         for moment in bookable_starts(plan.services, day, self.tz):
             if _utc(moment) <= now:
                 continue
             table = pick_table(plan.tables, party_size, moment, plan.slot_length, busy)
+            if table and own_table and own_party and own_table.seats == table.seats:
+                free = pick_table([own_table], party_size, moment, plan.slot_length, busy)
+                table = free or table  # the move keeps its own table among equals
             slots.append(
                 DaySlot(
                     starts_at=moment,
                     time=self._hhmm(moment),
-                    until=self._hhmm(moment + plan.slot_length),
+                    # In UTC: a slot lasts its minutes on a clock-change night too (#80).
+                    until=self._hhmm(_utc(moment) + plan.slot_length),
                     table=TableSpec(label=table.label, seats=table.seats)
                     if table and fits
                     else None,
@@ -220,6 +237,10 @@ class ManagementService:
                     .values(table_id=table.id, during=during),
                 )
                 if outcome == "done":
+                    if current.via != "merchant":  # a guest made it: tell them
+                        await admin.notify_move(
+                            conn, slug, current.id, current.guest_name, body.starts_at, self.tz
+                        )
                     log.info(
                         "reservation moved by merchant",
                         extra={"merchant": slug, "reservation": current.id},

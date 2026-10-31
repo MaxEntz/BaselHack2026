@@ -262,16 +262,16 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
   booking API.
 
 **Bookings**
-- A merchant moves a booking only before it starts, within its day, and the table is picked
-  again (`slot_unavailable` otherwise). `MerchantCancelOutcome` adds `own_booking` to #82's
+- A merchant moves a booking only before it starts (`slot_unavailable` otherwise), within its
+  day (`invalid_input` otherwise), and the table is picked again. `MerchantCancelOutcome` adds `own_booking` to #82's
   outcomes: cancelled without a notice, since the merchant made the booking itself (#134). The
   admin tool's card words it too.
 
 **Bookings from the management site (#134, `agent/management.py`)**
 - `POST /reservations` books through `create_reservation(via="merchant")`, with the web's idempotency key (one namespace with the guests' creations).
-- `PATCH /reservations/{id}` moves a booking that hasn't started to a start of the same day that isn't blocked or past, with the smallest free table that seats the party (its own first among equals), under the table's lock. Its key is stored in `public.reservation_changes`, one namespace with the guests' updates (ADR-0013): a replay returns the booking as it is now, the same key for another move is `invalid_input`. It sends no live event.
+- `PATCH /reservations/{id}` moves a booking that hasn't started to a start of the same day that isn't blocked or past, with the smallest free table that seats the party (its own first among equals), under the table's lock. Its key is stored in `public.reservation_changes`, one namespace with the guests' updates (ADR-0013): a replay returns the booking as it is now, the same key for another move is `invalid_input`. It sends no live event. Moving a booking a guest made stores a guest notice ("… moved your booking R-012 on 2026-11-01 to 20:30."), returned like a cancellation's.
 - `POST /reservations/{id}/cancel` answers `outcome`. A guest notice is stored only for a booking a guest made (through an agent or the website): one the merchant entered itself is `own_booking`, no notice.
-- `GET /slots`: the day's starts that haven't passed, each with the table `pick_table` would give (none when the party exceeds `max_party_size` or no table is free) and `blocked`.
+- `GET /slots`: the day's starts that haven't passed, each with the table `pick_table` would give (none when the party exceeds `max_party_size` or no table is free) and `blocked`. With `ignore` (a move), the table the move would give: its own first among equals, and no party limit for the booking's own party. `until` is computed in UTC, so it is right on clock-change nights.
 
 **Dashboard**
 - The dashboard is for the merchant's today by the server's clock, which it answers as `date`;

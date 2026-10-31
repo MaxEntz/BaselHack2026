@@ -311,3 +311,88 @@ async def test_the_routes_add_move_cancel_and_list_for_the_owner(
     listed = ReservationDay.model_validate(day.json())
     assert [(r.id, r.status) for r in listed.reservations] == [(rid, "cancelled")]
     assert (unknown.status_code, unknown.json()["error"]) == (404, "not_found")
+
+
+async def test_slots_for_a_move_match_what_the_move_does(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    manage = services(engine)
+    six = await add(manage, slug, "19:00", party_size=6)
+    await manage.agent.update_policy(slug, max_party_size=4)  # below the booking's party
+    first = await add(manage, slug, "19:00", party_size=2, guest="Ada")  # T1
+    pair = await add(manage, slug, "19:00", party_size=2, guest="Bea")  # T2
+    await manage.cancel(slug, first.id)  # T1 free again: smaller label, same seats
+
+    for_six = await manage.slots(slug, DAY, 6, ignore=six.id)
+    for_pair = await manage.slots(slug, DAY, 2, ignore=pair.id)
+    moved = await manage.move(slug, pair.id, move("21:00"))
+
+    assert any(s.table for s in for_six.slots)  # the move would take it, so the dialog offers it
+    nine = next(s for s in for_pair.slots if s.time == "21:00")
+    assert moved.table_label == "T2"  # it keeps its own table among equals
+    assert nine.table is not None and nine.table.label == "T2"  # and the dialog says so
+
+
+async def test_a_slot_ends_after_its_real_minutes_on_a_clock_change_night(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    night = [{"start": "00:00", "end": "04:00"}]
+    slug = await make_merchant(services=night)
+    change = date(2027, 3, 28)  # 02:00 jumps to 03:00
+
+    slots = await services(engine, now=at("09:00", date(2027, 3, 27))).slots(slug, change, 2)
+
+    assert {s.time: s.until for s in slots.slots}["01:00"] == "04:00"
+
+
+async def test_moving_a_guests_booking_tells_the_guest(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    manage = services(engine)
+    guests = await guest_booking(engine, slug, "19:00")
+    own = await add(manage, slug, "19:00")
+
+    await manage.move(slug, guests, move("20:30"))
+    await manage.move(slug, own.id, move("20:30"))
+
+    assert (await notices(engine, guests, slug), await notices(engine, own.id, slug)) == (1, 0)
+    _, told = await manage.agent.find_guest_reservations("Sam Dupont")
+    assert any("moved your booking" in notice and "20:30" in notice for notice in told)
+
+
+async def test_two_moves_with_one_key_apply_once(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    manage = services(engine)
+    booking = await add(manage, slug, "19:00")
+
+    first, second = await asyncio.gather(
+        manage.move(slug, booking.id, move("20:30", "same")),
+        manage.move(slug, booking.id, move("20:30", "same")),
+    )
+
+    assert first == second
+    assert first.time == "20:30"
+
+
+async def test_a_guest_update_and_a_merchant_move_of_one_booking_dont_deadlock(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    manage = services(engine)
+    booking = await guest_booking(engine, slug, "19:00")
+
+    outcomes = await asyncio.gather(
+        manage.move(slug, booking, move("20:30")),
+        manage.agent.update_reservation(
+            slug, booking, "Sam Dupont", str(uuid4()), starts_at=at("21:00")
+        ),
+        return_exceptions=True,
+    )
+
+    assert not [o for o in outcomes if isinstance(o, BaseException)]
+    final = await manage.reservation(slug, booking)
+    assert final.time in ("20:30", "21:00")  # the one that took the lock second wins

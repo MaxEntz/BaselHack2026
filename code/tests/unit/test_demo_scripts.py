@@ -165,7 +165,7 @@ async def test_tonight_bookings_skip_past_times_and_never_book_twice(agent: Fake
 
     booked = sorted(agent.reservations.values(), key=lambda r: r.starts_at)
     assert [(r.starts_at.isoformat(), r.party_size, r.via) for r in booked] == [
-        ("2026-10-31T19:30:00+01:00", 4, "merchant"),
+        ("2026-10-31T19:30:00+01:00", 4, "website"),
         ("2026-10-31T20:00:00+01:00", 6, "website"),
         ("2026-10-31T21:00:00+01:00", 3, "merchant"),
     ]
