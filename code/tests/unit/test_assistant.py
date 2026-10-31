@@ -941,7 +941,9 @@ async def test_live_sends_a_paused_merchant_to_the_agent_page() -> None:
     await harness.turn(session, "Resume my agent, please.")
 
     assert tools_called(session) == []
-    assert "agent page" in session.messages[-1]["content"].lower()
+    # Markdown left out: the model may write "the **Agent** page".
+    reply = session.messages[-1]["content"].lower().replace("*", "").replace("`", "")
+    assert "agent page" in reply or "pause switch" in reply
 
 
 @pytest.mark.llm
