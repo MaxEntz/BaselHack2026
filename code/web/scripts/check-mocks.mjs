@@ -9,6 +9,7 @@ const types = fileURLToPath(new URL("../src/types.ts", import.meta.url));
 const mocks = {
   onboarding: "ChatEvent[]",
   tonight: "ChatEvent[]",
+  cards: "ChatEvent[]",
   notification: "LiveEvent",
 };
 

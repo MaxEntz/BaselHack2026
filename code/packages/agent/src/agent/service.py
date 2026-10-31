@@ -1,7 +1,8 @@
 """Async business-service contract shared by the gateway and platform."""
 
+from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, overload
 
 from core.models import (
     AdminReservationRow,
@@ -42,13 +43,14 @@ class AgentService(Protocol):
         party_size: int | None = None,
     ) -> Reservation: ...
 
+    @overload
     async def cancel_reservation(
-        self,
-        slug: str,
-        reservation_id: str,
-        *,
-        by: Literal["guest", "merchant"],
-        guest_name: str | None = None,
+        self, slug: str, reservation_id: str, *, by: Literal["guest"], guest_name: str
+    ) -> Reservation: ...
+
+    @overload
+    async def cancel_reservation(
+        self, slug: str, reservation_id: str, *, by: Literal["merchant"], guest_name: None = None
     ) -> Reservation: ...
 
     async def find_guest_reservations(
@@ -67,7 +69,7 @@ class AgentService(Protocol):
         self,
         slug: str,
         max_party_size: int | None = None,
-        services: list[Service] | None = None,
+        services: Sequence[Service] | None = None,
     ) -> Policy: ...
 
-    async def update_tables(self, slug: str, tables: list[TableSpec]) -> list[TableSpec]: ...
+    async def update_tables(self, slug: str, tables: Sequence[TableSpec]) -> list[TableSpec]: ...

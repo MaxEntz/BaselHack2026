@@ -27,6 +27,13 @@ def test_merchant_profile_round_trip(profile_data: dict[str, Any]) -> None:
         ("services", []),
         ("services", [{"start": "19:00", "end": "19:00"}]),
         ("services", [{"start": "22:00", "end": "02:00"}]),
+        ("services", [{"start": "19:00", "end": "19:30"}]),
+        ("services", [{"start": "19:00", "end": "22:00"}, {"start": "21:00", "end": "23:00"}]),
+        ("services", [{"start": "19:00", "end": "22:00"}, {"start": "19:00", "end": "22:00"}]),
+        ("name", "   "),
+        ("tables", []),
+        ("tables", [{"label": " ", "seats": 2}]),
+        ("tables", [{"label": "T1", "seats": 2}, {"label": "T1", "seats": 4}]),
         ("tags", ["unknown"]),
         ("seats", 0),
         ("max_party_size", 0),
@@ -80,6 +87,120 @@ def test_profile_and_nested_models_are_frozen(profile_data: dict[str, Any]) -> N
         profile.name = "Changed"
     with pytest.raises(ValidationError, match="frozen_instance"):
         profile.services[0].start = "11:00"
+
+
+def test_profile_is_deeply_immutable_and_hashable(profile_data: dict[str, Any]) -> None:
+    profile = models.MerchantProfile.model_validate(profile_data)
+
+    assert isinstance(profile.services, tuple)
+    assert hash(profile) == hash(models.MerchantProfile.model_validate(profile_data))
+
+
+@pytest.mark.parametrize(
+    "services",
+    [
+        [{"start": "19:00", "end": "20:00"}],
+        [{"start": "12:00", "end": "14:00"}, {"start": "14:00", "end": "16:00"}],
+    ],
+)
+def test_services_accept_one_hour_and_touching_intervals(
+    profile_data: dict[str, Any], services: list[dict[str, str]]
+) -> None:
+    models.MerchantProfile.model_validate(profile_data | {"services": services})
+
+
+def test_profile_tolerates_party_size_and_seat_mismatches(profile_data: dict[str, Any]) -> None:
+    # Maison Albane (#10) and the template default exceed their largest table; #7 trusts `tables`.
+    profile = models.MerchantProfile.model_validate(
+        profile_data | {"max_party_size": 8, "seats": 1}
+    )
+
+    assert profile.max_party_size == 8
+    assert profile.seats == 1
+
+
+@pytest.mark.parametrize(
+    ("model", "fields"),
+    [
+        (
+            models.CreateReservationInput,
+            {
+                "merchant": "le-petit-zinc",
+                "starts_at": "2026-10-31T20:00:00+01:00",
+                "party_size": 4,
+                "guest_name": "Sam Dupont",
+                "idempotency_key": "create-1",
+            },
+        ),
+        (
+            models.UpdateReservationInput,
+            {
+                "merchant": "le-petit-zinc",
+                "reservation_id": "R-002",
+                "guest_name": "Sam Dupont",
+                "party_size": 2,
+                "idempotency_key": "update-1",
+            },
+        ),
+        (
+            models.CancelReservationInput,
+            {"merchant": "le-petit-zinc", "reservation_id": "R-002", "guest_name": "Sam Dupont"},
+        ),
+        (models.GetMyReservationsInput, {"guest_name": "Sam Dupont"}),
+        (models.AdminCancelInput, {"reservation_id": "R-002"}),
+    ],
+)
+def test_identity_fields_reject_blank_values(
+    model: type[BaseModel], fields: dict[str, object]
+) -> None:
+    model.model_validate(fields)
+
+    identity = {"guest_name", "idempotency_key", "reservation_id"} & fields.keys()
+    assert identity
+    for field in identity:
+        for blank in ["", "   "]:
+            with pytest.raises(ValidationError, match="string_too_short"):
+                model.model_validate(fields | {field: blank})
+
+
+def test_guest_name_is_stripped() -> None:
+    assert models.GetMyReservationsInput(guest_name="  Sam Dupont ").guest_name == "Sam Dupont"
+
+
+def test_update_reservation_requires_a_change() -> None:
+    fields = {
+        "merchant": "le-petit-zinc",
+        "reservation_id": "R-002",
+        "guest_name": "Sam Dupont",
+        "idempotency_key": "update-1",
+    }
+
+    with pytest.raises(ValidationError, match="Provide starts_at or party_size"):
+        models.UpdateReservationInput.model_validate(fields)
+    assert models.UpdateReservationInput.model_validate(fields | {"party_size": 2}).party_size == 2
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {},
+        {"services": []},
+        {"services": [{"start": "19:00", "end": "22:00"}, {"start": "21:00", "end": "23:00"}]},
+    ],
+)
+def test_update_policy_rejects_empty_or_overlapping_changes(fields: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        models.UpdatePolicyInput.model_validate(fields)
+
+
+def test_update_policy_accepts_a_single_change() -> None:
+    assert models.UpdatePolicyInput(max_party_size=6).services is None
+
+
+@pytest.mark.parametrize("tables", [[], [{"label": "T1", "seats": 2}, {"label": "T1", "seats": 4}]])
+def test_update_tables_rejects_invalid_floor_plans(tables: list[dict[str, object]]) -> None:
+    with pytest.raises(ValidationError):
+        models.UpdateTablesInput.model_validate({"tables": tables})
 
 
 @pytest.mark.parametrize(
@@ -177,7 +298,7 @@ def test_availability_returns_at_most_three_slots() -> None:
 def test_search_preserves_unknown_tags_for_ignored_filters() -> None:
     filters = models.SearchFilters(tags=["vegan", "wheelchair-accessible"])
 
-    assert filters.tags == ["vegan", "wheelchair-accessible"]
+    assert filters.tags == ("vegan", "wheelchair-accessible")
 
 
 def test_profile_schema_is_a_self_contained_tool_input(

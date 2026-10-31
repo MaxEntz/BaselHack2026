@@ -1,0 +1,28 @@
+[
+  { "type": "tool_start", "tool": "get_stats", "label": "Checking tonight's numbers…" },
+  {
+    "type": "card",
+    "kind": "stats",
+    "data": {
+      "date": "2026-10-31",
+      "bookings": 2,
+      "guests": 6,
+      "seats": 44,
+      "blocked": ["21:00"]
+    }
+  },
+  {
+    "type": "card",
+    "kind": "policy",
+    "data": {
+      "max_party_size": 6,
+      "slot_length_min": 120,
+      "services": [
+        { "start": "12:00", "end": "14:00" },
+        { "start": "19:00", "end": "22:00" }
+      ]
+    }
+  },
+  { "type": "card", "kind": "confirmation", "data": { "text": "21:00 is blocked for tonight." } },
+  { "type": "done" }
+]

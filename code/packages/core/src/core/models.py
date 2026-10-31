@@ -1,9 +1,11 @@
 """Shared input and output contracts for gateway and admin tools."""
 
 from datetime import date as Date
+from itertools import pairwise
 from typing import Annotated, Literal, Self
 
 from pydantic import (
+    AfterValidator,
     AwareDatetime,
     BaseModel,
     ConfigDict,
@@ -19,6 +21,7 @@ PriceLevel = Literal["€", "€€", "€€€", "€€€€"]
 Via = Literal["claude", "merchant", "website"]
 HHMM = Annotated[str, StringConstraints(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
 Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{3,61}$")]
+NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 ErrorCode = Literal[
     "agent_unavailable",
     "party_too_large",
@@ -27,9 +30,17 @@ ErrorCode = Literal[
     "invalid_input",
 ]
 
+# AGENTS.md §6: last seating is the service end minus 60 minutes.
+MIN_SERVICE_MINUTES = 60
+
 
 class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+def _minutes(value: str) -> int:
+    hours, minutes = value.split(":")
+    return int(hours) * 60 + int(minutes)
 
 
 class Service(_Model):
@@ -38,14 +49,37 @@ class Service(_Model):
 
     @model_validator(mode="after")
     def validate_interval(self) -> Self:
-        if self.end <= self.start:
-            raise ValueError("Service end must be after start on the same day")
+        if _minutes(self.end) - _minutes(self.start) < MIN_SERVICE_MINUTES:
+            raise ValueError(
+                f"Service must last at least {MIN_SERVICE_MINUTES} minutes on the same day"
+            )
         return self
 
 
 class TableSpec(_Model):
-    label: str
+    label: NonEmptyStr
     seats: PositiveInt
+
+
+def _no_overlap(services: tuple[Service, ...]) -> tuple[Service, ...]:
+    ordered = sorted(services, key=lambda service: service.start)
+    if any(later.start < earlier.end for earlier, later in pairwise(ordered)):
+        raise ValueError("Services must not overlap")
+    return services
+
+
+def _valid_floor_plan(tables: tuple[TableSpec, ...]) -> tuple[TableSpec, ...]:
+    if not tables:
+        raise ValueError("At least one table is required")
+    labels = [table.label for table in tables]
+    if len(set(labels)) != len(labels):
+        raise ValueError("Table labels must be unique")
+    return tables
+
+
+Services = Annotated[tuple[Service, ...], Field(min_length=1), AfterValidator(_no_overlap)]
+# A validator rather than min_length: the schema must not push the LLM to invent a floor plan.
+FloorPlan = Annotated[tuple[TableSpec, ...], AfterValidator(_valid_floor_plan)]
 
 
 class Location(_Model):
@@ -56,15 +90,15 @@ class Location(_Model):
 
 class MerchantProfile(_Model):
     slug: Slug
-    name: str
+    name: NonEmptyStr
     website: HttpUrl
     vertical: Literal["restaurant"]
     location: Location | None = None
     seats: PositiveInt
-    services: list[Service] = Field(min_length=1)
+    services: Services
     max_party_size: PositiveInt
-    tables: list[TableSpec]
-    tags: list[Tag]
+    tables: FloorPlan
+    tags: tuple[Tag, ...]
     price_level: PriceLevel
     cancellation_policy: str | None = None
     fallback_url: HttpUrl
@@ -90,7 +124,7 @@ class Reservation(_Model):
 
 
 class SearchFilters(_Model):
-    tags: list[str] = Field(default_factory=list)
+    tags: tuple[str, ...] = ()
     max_price: PriceLevel | None = None
 
 
@@ -105,7 +139,7 @@ class MerchantSummary(_Model):
     slug: Slug
     name: str
     city: str | None
-    tags: list[Tag]
+    tags: tuple[Tag, ...]
     price_level: PriceLevel
     website: HttpUrl
 
@@ -116,9 +150,9 @@ class FilterSuggestion(_Model):
 
 
 class SearchMerchantsOutput(_Model):
-    merchants: list[MerchantSummary]
-    suggestions: list[FilterSuggestion] = Field(default_factory=list)
-    ignored_filters: list[str] = Field(default_factory=list)
+    merchants: tuple[MerchantSummary, ...]
+    suggestions: tuple[FilterSuggestion, ...] = ()
+    ignored_filters: tuple[str, ...] = ()
 
 
 class GetAvailabilityInput(_Model):
@@ -129,30 +163,36 @@ class GetAvailabilityInput(_Model):
 
 
 class GetAvailabilityOutput(_Model):
-    slots: list[Slot] = Field(max_length=3)
+    slots: tuple[Slot, ...] = Field(max_length=3)
 
 
 class CreateReservationInput(_Model):
     merchant: Slug
     starts_at: AwareDatetime
     party_size: PositiveInt
-    guest_name: str
-    idempotency_key: str
+    guest_name: NonEmptyStr
+    idempotency_key: NonEmptyStr
 
 
 class UpdateReservationInput(_Model):
     merchant: Slug
-    reservation_id: str
-    guest_name: str
+    reservation_id: NonEmptyStr
+    guest_name: NonEmptyStr
     starts_at: AwareDatetime | None = None
     party_size: PositiveInt | None = None
-    idempotency_key: str
+    idempotency_key: NonEmptyStr
+
+    @model_validator(mode="after")
+    def validate_has_change(self) -> Self:
+        if self.starts_at is None and self.party_size is None:
+            raise ValueError("Provide starts_at or party_size")
+        return self
 
 
 class CancelReservationInput(_Model):
     merchant: Slug
-    reservation_id: str
-    guest_name: str
+    reservation_id: NonEmptyStr
+    guest_name: NonEmptyStr
 
 
 class ReservationOutput(_Model):
@@ -164,12 +204,12 @@ class CancelOutput(_Model):
 
 
 class GetMyReservationsInput(_Model):
-    guest_name: str
+    guest_name: NonEmptyStr
 
 
 class GetMyReservationsOutput(_Model):
-    reservations: list[Reservation]
-    notices: list[str]
+    reservations: tuple[Reservation, ...]
+    notices: tuple[str, ...]
 
 
 # Admin tools
@@ -190,7 +230,7 @@ class ListReservationsInput(_Model):
 
 
 class ListReservationsOutput(_Model):
-    reservations: list[AdminReservationRow]
+    reservations: tuple[AdminReservationRow, ...]
 
 
 class GetStatsInput(_Model):
@@ -201,7 +241,7 @@ class Stats(_Model):
     bookings: int
     guests: int
     seats: int
-    blocked: list[HHMM]
+    blocked: tuple[HHMM, ...]
 
 
 class SlotInput(_Model):
@@ -215,20 +255,26 @@ class OkOutput(_Model):
 class Policy(_Model):
     max_party_size: int
     slot_length_min: int
-    services: list[Service]
+    services: tuple[Service, ...]
 
 
 class UpdatePolicyInput(_Model):
     max_party_size: PositiveInt | None = None
-    services: list[Service] | None = None
+    services: Services | None = None
+
+    @model_validator(mode="after")
+    def validate_has_change(self) -> Self:
+        if self.max_party_size is None and self.services is None:
+            raise ValueError("Provide max_party_size or services")
+        return self
 
 
 class UpdateTablesInput(_Model):
-    tables: list[TableSpec]
+    tables: FloorPlan
 
 
 class AdminCancelInput(_Model):
-    reservation_id: str
+    reservation_id: NonEmptyStr
 
 
 class GeneratedTool(_Model):
@@ -244,8 +290,8 @@ class BuildAgentInput(_Model):
 class BuildAgentOutput(_Model):
     profile: MerchantProfile
     status: Literal["live"]
-    assumptions: list[str]
-    tools: list[GeneratedTool]
+    assumptions: tuple[str, ...]
+    tools: tuple[GeneratedTool, ...]
     mcp_url: str
 
 
@@ -253,3 +299,93 @@ class ToolError(_Model):
     error: ErrorCode
     message: str
     fallback_url: HttpUrl | None = None
+
+
+# SSE events: keep in sync with web/src/types.ts
+
+
+class TextEvent(_Model):
+    type: Literal["text"] = "text"
+    delta: str
+
+
+class ToolStartEvent(_Model):
+    type: Literal["tool_start"] = "tool_start"
+    tool: str
+    label: str
+
+
+class StepEvent(_Model):
+    type: Literal["step"] = "step"
+    step: Literal["crawl", "extract", "validate", "provision", "deploy"]
+    status: Literal["running", "done", "error"]
+    detail: str | None = None
+    duration_ms: int | None = None
+
+
+class ReservationsCardData(ListReservationsOutput):
+    date: Date
+
+
+class StatsCardData(Stats):
+    date: Date
+
+
+class ConfirmationCardData(_Model):
+    text: str
+
+
+class ProfileCard(_Model):
+    type: Literal["card"] = "card"
+    kind: Literal["profile"] = "profile"
+    data: BuildAgentOutput
+
+
+class ReservationsCard(_Model):
+    type: Literal["card"] = "card"
+    kind: Literal["reservations"] = "reservations"
+    data: ReservationsCardData
+
+
+class StatsCard(_Model):
+    type: Literal["card"] = "card"
+    kind: Literal["stats"] = "stats"
+    data: StatsCardData
+
+
+class PolicyCard(_Model):
+    type: Literal["card"] = "card"
+    kind: Literal["policy"] = "policy"
+    data: Policy
+
+
+class ConfirmationCard(_Model):
+    type: Literal["card"] = "card"
+    kind: Literal["confirmation"] = "confirmation"
+    data: ConfirmationCardData
+
+
+class ErrorEvent(_Model):
+    type: Literal["error"] = "error"
+    message: str
+
+
+class DoneEvent(_Model):
+    type: Literal["done"] = "done"
+
+
+Card = Annotated[
+    ProfileCard | ReservationsCard | StatsCard | PolicyCard | ConfirmationCard,
+    Field(discriminator="kind"),
+]
+ChatEvent = Annotated[
+    TextEvent | ToolStartEvent | StepEvent | Card | ErrorEvent | DoneEvent,
+    Field(discriminator="type"),
+]
+
+
+class LiveEvent(_Model):
+    type: Literal["notification"] = "notification"
+    kind: Literal["new_booking", "updated", "cancelled"]
+    via: Via
+    reservation: AdminReservationRow

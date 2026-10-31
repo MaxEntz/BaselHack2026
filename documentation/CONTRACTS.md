@@ -11,20 +11,39 @@ Contract changes require a dedicated PR and a message to the team.
 
 ## Python
 
-Models reject unknown fields and field reassignment. Slugs contain 3–61 lowercase
-ASCII letters, digits or hyphens. `HH:MM` values use a 24-hour clock; services must
-end after they start on the same day. Booking timestamps require an explicit
-offset, such as `2026-10-31T20:00:00+01:00` (Europe/Zurich).
+Models reject unknown fields and field reassignment. Collections are tuples in
+Python and arrays in JSON, so instances are deeply immutable and hashable. Slugs
+contain 3–61 lowercase ASCII letters, digits or hyphens. `HH:MM` values use a
+24-hour clock. A service lasts at least 60 minutes on the same day, and services
+must not overlap. Booking timestamps require an explicit offset, such as
+`2026-10-31T20:00:00+01:00` (Europe/Zurich).
+
+`guest_name`, `idempotency_key` and `reservation_id` are stripped and must not be
+blank on tool inputs. `update_reservation` needs `starts_at` or `party_size`, and
+`update_policy` needs `max_party_size` or `services`.
+
+A floor plan has at least one table and unique labels. The builder must fill a
+missing plan before validating (#22). Two mismatches stay valid on purpose:
+
+- `seats` may differ from the tables' total: `tables` is the source of truth (#7).
+- `max_party_size` may exceed the largest table (template default, Maison Albane in
+  #10). The service must therefore raise `PartyTooLarge`, not `SlotUnavailable`,
+  when no table can seat the party, so that the guest still gets the fallback URL.
 
 Optional profile and location fields default to `None`. Serialize card payloads
 with `model_dump(mode="json")`, preserving nullable fields for the TypeScript
 output types. Search filters deliberately accept unknown tag strings so discovery
-can report them in `ignored_filters`.
+can report them in `ignored_filters`; unknown filter names are rejected, because
+Claude reads the tool's schema.
+
+`BuildAgentInput.website` accepts any HTTP(S) URL, including `localhost` for the
+demo site. The crawler refuses private addresses unless `CRAWL_ALLOW_PRIVATE=1` (#21).
 
 The service raises `AgentError` subclasses. The gateway converts them to
 `ToolError`, adding a fallback URL for `agent_unavailable` and `party_too_large`.
 Guest updates and cancellations require `guest_name`; merchant cancellation uses
-`by="merchant"` on the service.
+`by="merchant"` on the service, which is why the admin tool input has no `by`.
+The protocol's overloads make `by="guest"` without a `guest_name` a type error.
 
 `MerchantProfile.model_json_schema()` is the builder tool's `input_schema`.
 Tests validate the schema and resolve its local `$defs`/`$ref` entries against
@@ -46,10 +65,11 @@ data: {"type":"done"}
 
 ```
 
-`code/web/src/mocks/onboarding.json` and `tonight.json` are ordered arrays of chat
-events. `notification.json` is one live event. The onboarding profile matches the
-Python fixture and the 44-seat plan from #10; the live booking also appears in
-tonight's reservations.
+`ChatEvent` and `LiveEvent` exist in `core/models.py` and `web/src/types.ts`; change
+both together. `code/web/src/mocks/onboarding.json`, `tonight.json` and `cards.json`
+are ordered arrays of chat events. `notification.json` is one live event. The
+onboarding profile matches the Python fixture and the 44-seat plan from #10; the
+live booking also appears in tonight's reservations.
 
 ## Checks
 
@@ -66,5 +86,5 @@ npm --prefix web run check:contracts
 ```
 
 The TypeScript check compiles the actual JSON mocks as literals with `satisfies`
-against `ChatEvent[]` or `LiveEvent`. Python tests also validate their card payloads
-against the shared Pydantic models. Both checks run on pull requests.
+against `ChatEvent[]` or `LiveEvent`. Python tests validate the same mocks against
+the Pydantic `ChatEvent` and `LiveEvent`. Both checks run on pull requests.

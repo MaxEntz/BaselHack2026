@@ -75,8 +75,8 @@ export type ChatEvent =
       type: "step";
       step: "crawl" | "extract" | "validate" | "provision" | "deploy";
       status: "running" | "done" | "error";
-      detail?: string;
-      duration_ms?: number;
+      detail?: string | null;
+      duration_ms?: number | null;
     }
   | { type: "card"; kind: "profile"; data: BuildAgentOutput }
   | {
