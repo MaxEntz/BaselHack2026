@@ -114,8 +114,7 @@ owner-link: ## A new secret link for SLUG's owner (NAME="Léa" optional); the ol
 test:
 	uv run pytest
 
-test-stack: ## The browser test of the whole stack on a fresh build of the web app (#153)
-	cd web && npm run build
+test-stack: web-dist ## The browser test of the whole stack on a fresh build of the web app (#153)
 	uv run pytest tests/e2e/test_web_stack.py
 
 lint:

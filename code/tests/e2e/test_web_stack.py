@@ -7,9 +7,11 @@ Real Postgres, platform (`default_app`), gateway and web app; only the model and
 fakes. Needs `npm run build` in `web/` first: CI builds it, a local run without it is skipped.
 """
 
+import asyncio
 import json
 import os
 import re
+import time
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -34,6 +36,7 @@ from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
 from core.config import Settings
 from core.models import StepEvent
 from merchant_platform.api import default_app
+from merchant_platform.events import LiveBus
 from tests.e2e.conftest import free_port, running_gateway, serving
 
 pytestmark = [pytest.mark.integration, pytest.mark.browser]
@@ -123,8 +126,9 @@ def built_web() -> None:
 
 
 @pytest.fixture(scope="module")
-def stack(built_web: None, e2e_database_url: str) -> Iterator[tuple[str, str]]:
-    """The web app with its platform, and the gateway, on one database: their base URLs."""
+def stack(built_web: None, e2e_database_url: str) -> Iterator[tuple[str, str, FastAPI]]:
+    """The web app with its platform, and the gateway, on one database: their base URLs, and
+    the platform itself."""
     with running_gateway(Settings(_env_file=None, database_url=e2e_database_url)) as gateway:
         port = free_port()
         settings = Settings(
@@ -136,7 +140,7 @@ def stack(built_web: None, e2e_database_url: str) -> Iterator[tuple[str, str]]:
         )
         platform = default_app(settings, llm=FakeModel(), crawler=fake_crawl)
         with serving(web_app(platform), port) as web:
-            yield web, gateway
+            yield web, gateway, platform
 
 
 @pytest.fixture
@@ -145,6 +149,15 @@ async def browser() -> AsyncIterator[Browser]:
         browser = await playwright.chromium.launch()
         yield browser
         await browser.close()
+
+
+async def subscribed(bus: LiveBus, slug: str) -> None:
+    """Until a page listens to `slug`'s live events. The browser's `open` is no sign: the
+    stream sends its headers before it subscribes to the bus (#216)."""
+    deadline = time.monotonic() + 5
+    while bus.subscriber_count(slug) == 0:
+        assert time.monotonic() < deadline, f"no page listens to {slug}'s live events"
+        await asyncio.sleep(0.05)
 
 
 def tomorrow() -> date:
@@ -195,10 +208,12 @@ async def build_and_publish(studio: Page, web: str) -> str:
     return link.group(0)
 
 
-async def test_a_merchants_first_evening(browser: Browser, stack: tuple[str, str]) -> None:
-    web, gateway = stack
-    studio = await (await browser.new_context()).new_page()
-    link = await build_and_publish(studio, web)
+async def test_a_merchants_first_evening(browser: Browser, stack: tuple[str, str, FastAPI]) -> None:
+    web, gateway, platform = stack
+    studio_browser = await browser.new_context()
+    link = await build_and_publish(await studio_browser.new_page(), web)
+    # Studio's management preview listens to the same merchant: closed, only the page below does.
+    await studio_browser.close()
 
     # The private link opens the management site in a browser that never saw Studio.
     manage = await (await browser.new_context()).new_page()
@@ -209,6 +224,7 @@ async def test_a_merchants_first_evening(browser: Browser, stack: tuple[str, str
     activity = manage.get_by_role("region", name="Recent activity")
     await expect(activity).to_be_visible()
     await expect(activity).not_to_contain_text("Lena Koch")
+    await subscribed(platform.state.bus, slug)
 
     # A guest books through the gateway: the booking shows up live, with no reload.
     day = tomorrow()
@@ -245,5 +261,4 @@ async def test_a_merchants_first_evening(browser: Browser, stack: tuple[str, str
     refused = await call(
         gateway, "get_availability", merchant=slug, date=day.isoformat(), party_size=2
     )
-    assert refused["error"] == "agent_unavailable"
-    assert refused["fallback_url"]
+    assert (refused.get("error"), refused.get("fallback_url")) == ("agent_unavailable", WEBSITE)
