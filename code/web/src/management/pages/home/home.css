@@ -8,6 +8,29 @@
 .mg .link { font-weight: 600; color: var(--brick); text-decoration: underline; text-underline-offset: .2em; }
 .mg .none { padding: 26px 0; color: var(--mut); font-size: 19px; }
 
+/* The moment of the day (#154), from sesame-studio.html's board, in the merchant's look. */
+.mg .moment { display: grid; gap: 4px; }
+.mg .moment h2 { font-family: var(--display); font-style: italic; font-weight: 900; font-variation-settings: "SOFT" 55, "opsz" 144; font-size: clamp(38px, 4.6cqw, 54px); line-height: 1.05; }
+.mg .moment-at { justify-self: start; opacity: .85; font-size: 15px; }
+.mg .moment-sum { font-size: 18px; opacity: .85; margin-bottom: 8px; }
+.mg .moment-svc { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 16px; padding: 12px 0; border-top: 1px solid rgb(244 242 234 / .25); align-items: baseline; }
+.mg .moment-svc b { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 26px; line-height: 1.1; }
+.mg .moment-svc span { font-size: 18px; }
+.mg .moment-svc small { grid-column: 1 / -1; font-size: 15px; opacity: .85; }
+.mg .moment-checks { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 16px; }
+.mg .moment-checks li { padding: 10px 14px; border: 1px solid rgb(244 242 234 / .35); border-radius: min(22px, var(--radius)); }
+.mg .moment-rows { width: 100%; border-collapse: collapse; font-size: 19px; font-variant-numeric: tabular-nums; }
+.mg .moment-rows td { padding: 9px 10px 9px 0; border-top: 1px solid rgb(244 242 234 / .25); }
+.mg .moment-rows td:first-child { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 24px; white-space: nowrap; }
+.mg .moment-rows td:last-child { padding-right: 0; text-align: right; font-size: 14px; white-space: nowrap; }
+.mg .moment-time { font-family: var(--display); font-style: italic; font-weight: 900; font-variation-settings: "SOFT" 55, "opsz" 144; font-size: clamp(84px, 13cqw, 132px); line-height: .95; letter-spacing: -.02em; }
+.mg .moment-who { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 38px; line-height: 1.1; margin-top: 8px; }
+.mg .moment-sub { font-size: 22px; opacity: .9; margin-top: 2px; }
+.mg .moment-then { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgb(244 242 234 / .25); font-size: 18px; }
+.mg .moment-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.mg .moment-stats b { display: block; font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(38px, 7cqw, 64px); line-height: 1; }
+.mg .moment-stats small { font-size: 15px; opacity: .85; }
+
 /* Dashboard: not one card repeated. Olive leather, a plain list, brick, cream, a plain floor. */
 .mg .dash { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 26px; align-items: start; }
 .mg .s7 { grid-column: span 7; }

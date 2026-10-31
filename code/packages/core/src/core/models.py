@@ -395,10 +395,16 @@ class UpdateLookInput(_Model):
     reset: bool = False
 
 
+# A moment of the restaurant's day: Home shows what the merchant needs then (#154).
+Moment = Literal["morning", "before", "during", "after"]
+
+
 class ShowViewInput(_Model):
-    """`show_view`: which pane of Studio's canvas to show."""
+    """`show_view`: which pane of Studio's canvas to show; on `manage`, optionally at a moment
+    of the day."""
 
     view: Literal["agent", "manage"]
+    moment: Moment | None = None
 
 
 # The management site's pages (web/src/management/pages.ts), Home and the Assistant aside.
@@ -962,6 +968,7 @@ class DiffCard(_Model):
 
 class ViewCardData(_Model):
     view: Literal["agent", "manage"]
+    moment: Moment | None = None
 
 
 class ViewCard(_Model):

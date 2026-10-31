@@ -111,7 +111,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 | `try_request` | `party_size`, `date?`, `time?` | What an agent gets: the times, or the 413 with the booking page; "Agents get a 404 until you publish" while `building` |
 | `send_test_booking` | (none) | A booking for 2 at the first free time, made through `AgentService.create_reservation` with `via="claude"` as the node's `BOOK` would; refused while `building` |
 | `update_look` | `accent?`, `accent_2?` (`#rrggbb`), `display_font?`, `corners?`, `reset` | `diff` card(s), "See it" opens the management pane. A colour under 3:1 on `bg` is adjusted (`readable()`) and said so; `reset` reads the website's look again. Stored in the registry's profile copy, read by `GET /merchants/{slug}` |
-| `show_view` | `view`: `agent` or `manage` | A `view` card: Studio switches its canvas, the plain chat shows nothing |
+| `show_view` | `view`: `agent` or `manage`; `moment?`: `morning`, `before`, `during` or `after`, on `manage` (#154) | A `view` card: Studio switches its canvas, the plain chat shows nothing |
 | `link_page` | `page`: `reservations`, `guests`, `hours`, `floor`, `rules`, `agent` or `settings` | A `page` card: the management site's panel shows "You can change this in <Opening hours>." with the link (code's words, `tools.PAGE_LINKS` and the web's `PAGE_LINKS`); Studio and the plain chat show nothing. Only in a reply that calls no other tool (#140) |
 | `list_reservations` | `date` | Rows `{id, time, guest_name, party_size, table_label, via, status}` |
 | `get_stats` | `date` | `{bookings, guests, seats, blocked: [HH:MM]}` |

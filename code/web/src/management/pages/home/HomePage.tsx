@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
-import { useNow } from "../../../clock.ts";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { now, useNow } from "../../../clock.ts";
+import { isMoment, shownMoment } from "../../../moments.ts";
 import type {
   ActivityItem,
   Dashboard,
   ManagedReservation,
   MerchantOverview,
   ReservationDay,
+  Rules,
 } from "../../../types.ts";
 import type { ManagementClient } from "../../client.ts";
 import { useClient } from "../../data.ts";
@@ -15,6 +17,7 @@ import { crossfade } from "../../motion.ts";
 import { sampleBookings } from "../../samples.ts";
 import { Blob, Box, Pill, Source, Tag, Under } from "../../ui/index.ts";
 import { GuestsCard } from "./GuestsCard.tsx";
+import { MomentPanel } from "./MomentPanel.tsx";
 import {
   KIND,
   agentShare,
@@ -28,6 +31,7 @@ import {
   hourIn,
   minutes,
   subtitle,
+  timeIn,
   weekday,
 } from "./format.ts";
 import "../../pages.css";
@@ -55,7 +59,10 @@ type HomeData = {
   merchant: MerchantOverview;
   dashboard: Dashboard;
   day: ReservationDay;
+  rules: Rules;
   samples: boolean;
+  // The platform's clock against this browser's: the moment of the day is the platform's (#137).
+  skew: number;
 };
 
 function useHomeData(slug: string, client: ManagementClient, version: number) {
@@ -67,9 +74,10 @@ function useHomeData(slug: string, client: ManagementClient, version: number) {
     const abort = new AbortController();
     const { signal } = abort;
     (async () => {
-      const [merchant, dashboard] = await Promise.all([
+      const [merchant, dashboard, rules] = await Promise.all([
         client.merchant(slug, signal),
         client.dashboard(slug, signal),
+        client.rules(slug, signal),
       ]);
       const day = await client.reservations(slug, dashboard.date, signal);
       if (signal.aborted) return;
@@ -80,7 +88,8 @@ function useHomeData(slug: string, client: ManagementClient, version: number) {
       const live = shown.current !== null && shown.current !== version;
       shown.current = version;
       const apply = () => {
-        setData({ merchant, dashboard, day: { ...day, reservations }, samples });
+        const skew = Date.parse(merchant.now) - now().getTime();
+        setData({ merchant, dashboard, day: { ...day, reservations }, rules, samples, skew });
         setError(null);
       };
       if (live) crossfade(apply);
@@ -114,12 +123,23 @@ export function HomePage({
     onOpenBooking ?? ((id: string, date: string) => navigate(`${base}/reservations?date=${date}&booking=${encodeURIComponent(id)}`));
   const openDay = onOpenDay ?? ((date: string) => navigate(`${base}/reservations?date=${date}`));
 
+  // Asked for from Studio's dock, or the clock's (#154).
+  const [params] = useSearchParams();
+  const asked = params.get("moment");
+  const previewed = isMoment(asked) ? asked : null;
+  const moment = data
+    ? shownMoment(previewed, timeIn(new Date(clock.getTime() + data.skew), data.merchant.timezone), data.day.services)
+    : null;
+
   const tonight = data ? tonightOf(data) : [];
   const freshBookings = useFresh(data ? tonight.map((b) => b.id) : null);
   const freshActivity = useFresh(data ? data.dashboard.activity.map((a) => String(a.id)) : null);
 
   const name = firstName(data?.merchant.owner_name ?? null);
-  const hello = greeting(hourIn(clock, data?.merchant.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone));
+  const hour = previewed && moment
+    ? Number(moment.time.slice(0, 2))
+    : hourIn(clock, data?.merchant.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const hello = greeting(hour);
 
   return (
     <div className="home">
@@ -155,6 +175,20 @@ export function HomePage({
         <p className="none" role="alert">
           {error}
         </p>
+      )}
+      {data && moment && (
+        <MomentPanel
+          at={moment}
+          previewed={previewed !== null}
+          samples={data.samples}
+          allServices={data.day.services}
+          reservations={data.day.reservations.filter((booking) => booking.date === data.dashboard.date)}
+          blocked={data.day.blocked}
+          slotLength={data.day.slot_length_min}
+          seatCount={data.dashboard.room.seats}
+          largestTable={Math.max(0, ...data.dashboard.room.tables.map((table) => table.seats))}
+          rules={data.rules}
+        />
       )}
       {data && (
         <div className="dash">

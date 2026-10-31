@@ -1,5 +1,6 @@
 import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
+import { isMoment } from "../moments.ts";
 import type { LiveEvent, MerchantOverview } from "../types.ts";
 import { announcingChanges, onChange } from "./changes.ts";
 import { ClientContext, useClient, useLoad } from "./data.ts";
@@ -46,7 +47,26 @@ export function ManagePage() {
   return <ManageShell key={slug} slug={slug} page={page ?? "home"} />;
 }
 
+// Studio shows this site in a frame, and its dock asks for a moment of the day (#154). Only
+// the page that holds the frame may, on this origin.
+function useMomentFromStudio(slug: string) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (window.parent === window) return;
+    const listen = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== window.parent) return;
+      if (event.data?.type !== "sesame:moment") return;
+      const { moment } = event.data as { moment: unknown };
+      if (moment !== null && !isMoment(moment)) return;
+      navigate({ pathname: pagePath(slug, "home"), search: moment ? `?moment=${moment}` : "" });
+    };
+    window.addEventListener("message", listen);
+    return () => window.removeEventListener("message", listen);
+  }, [navigate, slug]);
+}
+
 function ManageShell({ slug, page }: { slug: string; page: PageId }) {
+  useMomentFromStudio(slug);
   const base = useClient();
   // Every mutation of the site announces itself, so the pages read again (#81: /events doesn't).
   const client = useMemo(() => announcingChanges(base), [base]);

@@ -2,6 +2,7 @@
 // from here and from feed.tsx, because the model's text can vary (`llm` tests assert facts).
 import type { CardEvent, ChatItem, ChatState, StepGroup, StepName, StepState } from "../chat/state.ts";
 import type { BuildAgentOutput, LiveEvent, Service } from "../types.ts";
+import { momentSentence } from "../moments.ts";
 import { PUBLISH } from "./publish.ts";
 
 export type Phase = "address" | "describe" | "building" | "review" | "live";
@@ -96,6 +97,7 @@ export type FeedEntry =
   | { key: string; kind: "steps"; title: string; steps: StepGroup["steps"]; found: number | null }
   | { key: string; kind: "review"; data: BuildAgentOutput; loginUrl: string | null; pages: number | null }
   | { key: string; kind: "live" }
+  | { key: string; kind: "moment"; text: string }
   | { key: string; kind: "card"; card: Exclude<CardEvent, { kind: "profile" }> }
   | { key: string; kind: "ping"; event: LiveEvent }
   | { key: string; kind: "error"; message: string };
@@ -120,7 +122,9 @@ export function feedOf(state: ChatState): FeedEntry[] {
         break;
       case "assistant":
         // Studio greets with its own screen: the onboarding welcome is empty.
-        if (item.text && !followsSteps(items, item)) entries.push({ key, kind: "bot", text: item.text });
+        if (item.text && !followsSteps(items, item) && !followsMoment(items, item)) {
+          entries.push({ key, kind: "bot", text: item.text });
+        }
         break;
       case "steps":
         if (isDeployOnly(item)) {
@@ -148,7 +152,11 @@ export function feedOf(state: ChatState): FeedEntry[] {
             pages: pagesRead(build),
           });
         } else if (item.card.kind === "view") {
-          // Not a message: Studio switches its canvas (#152).
+          // Not a message: Studio switches its canvas (#152). A moment says what it shows.
+          if (item.card.data.moment) {
+            const text = momentSentence(item.card.data.moment, data?.profile.services ?? []);
+            entries.push({ key, kind: "moment", text });
+          }
         } else if (!(item.card.kind === "confirmation" && followsSteps(items, item))) {
           entries.push({ key, kind: "card", card: item.card });
         }
@@ -162,6 +170,19 @@ export function feedOf(state: ChatState): FeedEntry[] {
     }
   }
   return entries;
+}
+
+// After a preview of a moment of the same turn: the fixed sentence has said it.
+function followsMoment(items: readonly ChatItem[], item: ChatItem): boolean {
+  return items
+    .slice(0, items.indexOf(item))
+    .some(
+      (other) =>
+        other.turn === item.turn &&
+        other.type === "card" &&
+        other.card.kind === "view" &&
+        Boolean(other.card.data.moment),
+    );
 }
 
 // After a steps card of the same turn, unless a step failed: then the model explains it.
@@ -230,12 +251,13 @@ export function chipsOf(state: ChatState, phase: Phase, examples: readonly strin
       return fresh([
         ...(last ? [`Block ${last} tonight`] : []),
         ...(profile ? [`Set max party size to ${profile.max_party_size + 2}`] : []),
+        "Show during service",
         "What bookings do I have tonight?",
         PUBLISH,
       ]);
     }
     case "live":
-      return fresh(["What bookings do I have tonight?", "How busy are we tonight?"]);
+      return fresh(["Show during service", "What bookings do I have tonight?", "How busy are we tonight?"]);
   }
 }
 
