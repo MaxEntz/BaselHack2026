@@ -43,8 +43,9 @@ async function problemOf(promise: Promise<unknown>): Promise<Problem | null | un
 
 test("the dashboard shows tonight's room and the 30 days ending today", async () => {
   const mock = client();
-  const dashboard = await mock.dashboard(SLUG, TODAY);
+  const dashboard = await mock.dashboard(SLUG);
 
+  assert.equal(dashboard.date, TODAY);
   assert.equal(dashboard.history.length, 30);
   assert.equal(dashboard.history.at(-1)?.date, TODAY);
   assert.deepEqual(dashboard.next_days.map((day) => day.date).slice(0, 2), [TODAY, TOMORROW]);
@@ -56,7 +57,9 @@ test("the dashboard shows tonight's room and the 30 days ending today", async ()
   assert.equal(dashboard.room.party_size, 4);
   assert.equal(dashboard.room.next_free, null); // T7, T8 and T9 are taken until the last seating
   assert.ok(dashboard.activity.length <= 6);
-  assert.equal((await refusal(mock.dashboard(SLUG, TOMORROW))).body.error, "invalid_input");
+  const merchant = await mock.merchant(SLUG);
+  assert.equal(merchant.now.slice(0, 10), dashboard.date); // the page's today
+  assert.match(merchant.now, /^2026-10-31T19:40:\d{2}\+01:00$/);
 });
 
 test("a day lists every start of the grid, past ones included", async () => {
@@ -107,8 +110,13 @@ test("adding a booking follows the server's rules, and a replay changes nothing"
   const extra = { ...booking, via: "website" } as typeof booking;
   assert.equal((await refusal(mock.addBooking(SLUG, extra))).body.error, "invalid_input");
 
+  const farAway = { ...booking, starts_at: "2100-01-01T20:00:00+01:00" };
+  assert.equal((await refusal(mock.addBooking(SLUG, farAway))).body.error, "invalid_input");
+
   const added = await mock.addBooking(SLUG, booking);
   const replayed = await mock.addBooking(SLUG, booking);
+  const sameInstant = await mock.addBooking(SLUG, { ...booking, starts_at: `${TODAY}T19:30:00Z` });
+  assert.deepEqual(sameInstant, added);
   const reused = await refusal(mock.addBooking(SLUG, { ...booking, party_size: 3 }));
 
   assert.deepEqual(replayed, added);
@@ -118,7 +126,7 @@ test("adding a booking follows the server's rules, and a replay changes nothing"
   assert.equal(added.id, "R-018"); // R-017 is the live booking's
   const day = await mock.reservations(SLUG, TODAY);
   assert.equal(day.reservations.filter((b) => b.guest_name === "Ines Roux").length, 1);
-  const dashboard = await mock.dashboard(SLUG, TODAY);
+  const dashboard = await mock.dashboard(SLUG);
   assert.equal(dashboard.activity[0]?.kind, "new_booking");
   assert.equal(dashboard.activity[0]?.source, "merchant");
 });
@@ -151,6 +159,10 @@ test("each form rule answers the problem the web words", async () => {
     code: "service_incomplete",
     services: [0],
   });
+  assert.deepEqual(await problemOf(hours([{ start: "18:30", end: "" }])), {
+    code: "service_incomplete",
+    services: [0],
+  }); // a cleared time input
   assert.deepEqual(await problemOf(hours([{ start: "18:30", end: "19:00" }])), {
     code: "service_too_short",
     services: [0],
@@ -200,6 +212,10 @@ test("forms refuse what the platform's models refuse", async () => {
   assert.equal((await refusal(mock.saveRules(SLUG, answered))).body.error, "invalid_input");
   const badUrl = await refusal(mock.saveRules(SLUG, { ...RULES, fallback_url: "not a url" }));
   assert.equal(badUrl.body.error, "invalid_input");
+  const ftp = await refusal(mock.saveRules(SLUG, { ...RULES, fallback_url: "ftp://localhost:8081/" }));
+  assert.equal(ftp.body.error, "invalid_input");
+  const bare = await mock.saveRules(SLUG, { ...RULES, fallback_url: "http://localhost:8081" });
+  assert.equal(bare.fallback_url, "http://localhost:8081/");
   const policy = { ...RULES, cancellation_policy: "Two\nlines" };
   assert.equal((await refusal(mock.saveRules(SLUG, policy))).body.error, "invalid_input");
   const longName = { ...SETTINGS, name: "N".repeat(81) };
@@ -220,7 +236,7 @@ test("saving rules, hours or settings rewrites what an AI agent reads", async ()
     "Check free tables at La Graine (Mulhouse). Services: 11:30-14:30, 18:30-21:30. Groups up to 2.",
   );
   assert.match(rules.tools[3]?.description ?? "", /Policy: see the restaurant's own website\.$/);
-  assert.equal((await mock.dashboard(SLUG, TODAY)).room.largest_group, 2);
+  assert.equal((await mock.dashboard(SLUG)).room.largest_group, 2);
 });
 
 test("blocking sets the day's whole set, with one activity line per save", async () => {
@@ -233,11 +249,11 @@ test("blocking sets the day's whole set, with one activity line per save", async
     [TOMORROW, "19:00"],
     [TOMORROW, "19:30"],
   ]);
-  const activity = (await mock.dashboard(SLUG, TODAY)).activity;
+  const activity = (await mock.dashboard(SLUG)).activity;
   assert.deepEqual([activity[0]?.kind, activity[0]?.text], ["blocked", "tomorrow 19:00, 19:30"]);
   assert.equal(activity.filter((a) => a.kind === "blocked").length, 2); // with the fixture's
   await mock.setBlocked(SLUG, TOMORROW, []);
-  assert.equal((await mock.dashboard(SLUG, TODAY)).activity[0]?.kind, "reopened");
+  assert.equal((await mock.dashboard(SLUG)).activity[0]?.kind, "reopened");
 });
 
 test("guests are grouped by name, and search finds a booking by reference", async () => {
@@ -257,7 +273,7 @@ test("guests are grouped by name, and search finds a booking by reference", asyn
 test("the live booking arrives once, whoever listens, and shows on the dashboard", async () => {
   const mock = client(10);
   const events: LiveEvent[][] = [[], []];
-  const before = await mock.dashboard(SLUG, TODAY);
+  const before = await mock.dashboard(SLUG);
 
   await new Promise<void>((resolve) => {
     const handlers = (index: number) => ({
@@ -270,7 +286,7 @@ test("the live booking arrives once, whoever listens, and shows on the dashboard
     mock.subscribe(SLUG, handlers(0));
     mock.subscribe(SLUG, handlers(1));
   });
-  const after = await mock.dashboard(SLUG, TODAY);
+  const after = await mock.dashboard(SLUG);
 
   assert.deepEqual(events, [[data.live_booking], [data.live_booking]]);
   assert.equal(after.room.guests, before.room.guests + 2);
@@ -279,6 +295,17 @@ test("the live booking arrives once, whoever listens, and shows on the dashboard
   assert.equal(agent(after), (agent(before) ?? 0) + 1);
   const day = await mock.reservations(SLUG, TODAY);
   assert.equal(day.reservations.filter((b) => b.id === data.live_booking.reservation.id).length, 1);
+});
+
+test("the live booking keeps its own table when it is free", async () => {
+  const mock = client(10);
+  await mock.cancelBooking(SLUG, "R-003"); // frees T1 at 20:00, before T4
+
+  const event = await new Promise<LiveEvent>((resolve) => {
+    mock.subscribe(SLUG, { onEvent: resolve, onConnection: () => {} });
+  });
+
+  assert.equal(event.reservation.table_label, data.live_booking.reservation.table_label);
 });
 
 test("the live booking takes another table if the merchant took its own", async () => {

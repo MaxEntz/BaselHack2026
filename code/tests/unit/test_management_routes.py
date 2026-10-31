@@ -27,6 +27,7 @@ SETTINGS = {"name": "La Graine Verte", "city": "Mulhouse", "price_level": "€",
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str]] = [
     ("GET", "", None, "#132"),
     ("GET", "/dashboard?date=2026-10-31", None, "#135"),
+    ("GET", "/dashboard", None, "#135"),  # the server's today
     ("GET", "/reservations?date=2026-10-31", None, "#134"),
     ("POST", "/reservations", BOOKING, "#134"),
     ("PATCH", "/reservations/R-001", MOVE, "#134"),
@@ -113,6 +114,11 @@ async def test_an_anonymous_request_is_refused_before_its_body_is_read() -> None
         ),
         (
             "/hours",
+            {"services": [{"start": "11:30", "end": "14:30"}, {"start": "18:30", "end": ""}]},
+            {"code": "service_incomplete", "services": [1]},
+        ),
+        (
+            "/hours",
             {"services": [{"start": "11:30", "end": "14:30"}, {"start": "18:30", "end": "19:00"}]},
             {"code": "service_too_short", "services": [1]},
         ),
@@ -156,7 +162,7 @@ async def test_a_form_that_breaks_a_rule_names_it(
 @pytest.mark.parametrize(
     ("method", "path", "body"),
     [
-        ("GET", "/dashboard", None),  # date is required
+        ("GET", "/dashboard?date=10-31", None),
         ("GET", "/reservations?date=1999-12-31", None),  # outside BookingDay
         ("GET", "/slots?date=2026-10-31&party_size=0", None),
         ("GET", "/slots?date=2026-10-31&party_size=2&ignore=R-1%00", None),

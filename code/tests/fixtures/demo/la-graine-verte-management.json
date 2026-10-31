@@ -13,6 +13,7 @@
     "website": "http://localhost:8081/",
     "status": "live",
     "timezone": "Europe/Zurich",
+    "now": "2026-10-31T19:40:00+01:00",
     "agent_address": "batp://191-96-88-152.sslip.io/la-graine-verte",
     "mcp_url": "https://191-96-88-152.sslip.io/m/la-graine-verte/mcp",
     "management_url": "http://localhost:5173/manage/la-graine-verte",

@@ -229,8 +229,8 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 
 | Route | Body | Answer | Issue |
 |---|---|---|---|
-| `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo` | #132 |
-| `GET /dashboard?date=` | | `Dashboard`: `history` (30 days ending `date`), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
+| `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo` | #132 |
+| `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
 | `GET /reservations?date=` | | `ReservationDay`: the day's services, every start of its grid, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |
 | `POST /reservations` | `MerchantBookingInput` | `201` + `ManagedReservation`, `via="merchant"` | #134 |
 | `PATCH /reservations/{id}` | `MoveBookingInput` | `ManagedReservation` | #134 |
@@ -259,6 +259,10 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
   most 20 characters.
 - A form holds at most 8 services and 100 tables. A table, like the largest group, has at most
   1000 seats.
+- The web checks lengths and URL syntax before sending, as the mockup does. Past them, and for
+  a blank table label, the server answers a generic `422` without `problem`.
+- `GET` answers stay within these bounds, so a form saves back what it loaded: #133 cuts a
+  stored policy to one paragraph of 500 characters, since the builder keeps the site's text.
 
 **Forms answer the rule they break**
 - Form bodies (`HoursInput` of `ServiceDraft`, `FloorPlanInput` of `TableDraft`, `RulesInput`,
@@ -267,10 +271,13 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
   give a generic 422, with no rule and no row.
 - Problem codes:
   - `no_services`;
-  - `service_incomplete`, `service_too_short` (`services: [i]`);
+  - `service_incomplete` (`services: [i]`: a start or an end is missing or blank, as a cleared
+    time input sends `""`);
+  - `service_too_short` (`services: [i]`);
   - `services_overlap` (`[i, j]`, `i < j`);
   - `no_tables`, `duplicate_table`, `table_without_seats` (`table`);
-  - `too_many_seats` (`table`, `seats`: the most allowed);
+  - `too_many_seats` (`seats`: the most allowed; with `table` for a table, without it for the
+    largest group);
   - `group_too_small`, `name_required`.
 - Indices refer to the list as sent. Answers list services by start.
 - Three rules need the merchant's data, so the service (#133) checks them with the same codes:
@@ -293,7 +300,10 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
   admin tool's card words it too.
 
 **Dashboard**
-- `date` must be the merchant's today by the server's clock; another day is `invalid_input`.
+- The dashboard is for the merchant's today by the server's clock, which it answers as `date`;
+  a `?date=` other than that day is `invalid_input`. `MerchantOverview.now` gives the same clock,
+  so the pages take their today, top-bar clock and day bars from it rather than from the
+  browser (the mock's clock starts at the fixture's `now`).
 - `DayHistory`:
   - `bookings` counts a day's live bookings;
   - `guests` and `agent_guests` count the guests in them, through an agent meaning any `via`
@@ -312,7 +322,8 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 
 **Other fields**
 - `MerchantOverview`:
-  - addresses are absolute (`management_url` is `<PLATFORM_WEB_URL>/manage/<slug>`);
+  - addresses are absolute (`management_url` is the web app's URL, `PLATFORM_WEB_URL` from #132,
+    followed by `/manage/<slug>`);
   - `owner_name` is what the owner asked to be called, or `null` until known;
   - `demo` says the merchant was built from one of the demo sites in `code/sites/`.
 - `Rules.tools` is `generated_tools(described_profile(profile))`: what an AI agent reads, so the
@@ -332,7 +343,8 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
   - a reused key with other parameters refused;
   - the problems, the tool descriptions rewritten.
 - It sends the fixture's `live_booking` once, 6 s after the first subscription, to every
-  subscriber. Its reference stays free until then, and its table is picked again if taken.
+  subscriber. Its reference stays free until then. It keeps its table, unless the merchant took
+  that table meanwhile.
 - Its clock starts at the fixture's `now`, which needs a `±HH:MM` offset.
 - The management shell subscribes through `ManagementClient`. The chat mock's own notification
   belongs to the chat page.

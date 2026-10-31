@@ -3,7 +3,7 @@ import re
 from datetime import datetime, time, timedelta
 from itertools import combinations
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -272,3 +272,35 @@ def test_management_models_and_web_types_have_the_same_fields(name: str) -> None
     python = {field: not info.is_required() for field, info in model.model_fields.items()}
 
     assert ts_fields(name) == python
+
+
+LITERALS = [
+    "MerchantStatus",
+    "CancelledBy",
+    "MerchantCancelOutcome",
+    "ActivityKind",
+    "ProblemCode",
+    "ManagementErrorCode",
+]
+
+
+def ts_literals(name: str) -> set[str]:
+    """The strings of a union of string literals in types.ts, following named members."""
+    match = re.search(rf"^export type {name} =(.*?);", TYPES.read_text(), re.M | re.S)
+    assert match, f"{name} is not a union in types.ts"
+    body = re.sub(r"//[^\n]*", "", match.group(1))
+    values = set(re.findall(r'"([^"]+)"', body))
+    for member in re.findall(r"\|\s*([A-Z]\w*)", body):
+        values |= ts_literals(member)
+    return values
+
+
+def py_literals(annotation: Any) -> set[str]:
+    return {value for arg in get_args(annotation) for value in py_literals(arg)} | {
+        arg for arg in get_args(annotation) if isinstance(arg, str)
+    }
+
+
+@pytest.mark.parametrize("name", LITERALS)
+def test_management_unions_have_the_same_values(name: str) -> None:
+    assert ts_literals(name) == py_literals(getattr(core_models, name))

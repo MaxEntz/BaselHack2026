@@ -10,6 +10,7 @@ from pydantic import (
     AfterValidator,
     AwareDatetime,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     HttpUrl,
@@ -432,6 +433,7 @@ class MerchantOverview(_Model):
     website: HttpUrl
     status: MerchantStatus
     timezone: str
+    now: AwareDatetime  # the server's clock, in `timezone`: its date is the merchant's today
     agent_address: str  # batp://<host>/<slug>
     mcp_url: str  # https://<host>/m/<slug>/mcp
     management_url: str  # https://<web host>/manage/<slug>
@@ -502,7 +504,8 @@ class ActivityItem(_Model):
 
 
 class Dashboard(_Model):
-    """`GET /dashboard?date=`: Home. `date` must be the merchant's today by the server's clock."""
+    """`GET /dashboard`: Home, for the merchant's today by the server's clock (`date`). A
+    `?date=` other than that day is `invalid_input`."""
 
     date: Date
     history: tuple[DayHistory, ...]  # the 30 days ending `date`, oldest first
@@ -595,9 +598,17 @@ class Hours(_Model):
 # `Problem` the web words, where a validating type would only give a generic 422.
 
 
+def _blank_is_missing(value: object) -> object:
+    # A cleared time input sends "": the form answers `service_incomplete`, not a pattern error.
+    return None if isinstance(value, str) and not value.strip() else value
+
+
+DraftTime = Annotated[HHMM | None, BeforeValidator(_blank_is_missing)]
+
+
 class ServiceDraft(_Model):
-    start: HHMM | None = None
-    end: HHMM | None = None
+    start: DraftTime = None
+    end: DraftTime = None
 
 
 class HoursInput(_Model):

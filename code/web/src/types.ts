@@ -150,6 +150,8 @@ export type MerchantOverview = {
   website: string;
   status: MerchantStatus;
   timezone: string;
+  // The server's clock, in `timezone`: its date is the merchant's today.
+  now: string;
   agent_address: string;
   mcp_url: string;
   // Absolute: https://<web host>/manage/<slug>.
@@ -203,7 +205,7 @@ export type ActivityItem = {
   reservation_id: string | null;
 };
 
-// GET /merchants/<slug>/dashboard?date=, `date` being the merchant's today.
+// GET /merchants/<slug>/dashboard: the merchant's today by the server's clock.
 export type Dashboard = {
   date: string;
   history: DayHistory[];

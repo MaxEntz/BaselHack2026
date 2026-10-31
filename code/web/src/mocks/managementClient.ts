@@ -83,8 +83,8 @@ export function createMockManagementClient(
   const now = () => new Date(Date.parse(fixture.now) + Date.now() - started);
   const instant = (date: string, time: string) => `${date}T${time}:00${offset}`;
   const nowIso = () => {
-    const { date, time } = local(now(), data.merchant.timezone);
-    return instant(date, time);
+    const { date, time, seconds } = local(now(), data.merchant.timezone);
+    return `${date}T${time}:${seconds}${offset}`;
   };
   const isPast = (startsAt: string) => Date.parse(startsAt) <= now().getTime();
 
@@ -135,6 +135,9 @@ export function createMockManagementClient(
     if (typeof value !== "string" || !INSTANT.test(value) || Number.isNaN(Date.parse(value))) {
       return invalid("starts_at: a time with its UTC offset is required");
     }
+    // BookingTime (core/models.py): between 2000-01-01 and 2099-12-31.
+    const year = Number(value.slice(0, 4));
+    if (year < 2000 || year > 2099) invalid("starts_at: must be between 2000-01-01 and 2099-12-31");
     return value;
   }
 
@@ -215,6 +218,19 @@ export function createMockManagementClient(
           blocked: blocked.has(time),
         };
       });
+  }
+
+  function isFree(date: string, time: string, label: string): boolean {
+    const length = data.rules.slot_length_min;
+    const start = minutes(time);
+    return !data.reservations.some(
+      (b) =>
+        b.date === date &&
+        b.status === "confirmed" &&
+        b.table_label === label &&
+        minutes(b.time) < start + length &&
+        start < minutes(b.time) + length,
+    );
   }
 
   function room(): Room {
@@ -309,8 +325,8 @@ export function createMockManagementClient(
     data = { ...data, rules: { ...data.rules, tools: tools() } };
   }
 
-  // The agent's booking of the demo, once for every listener: the table is
-  // picked again if the merchant took it meanwhile.
+  // The agent's booking of the demo, once for every listener: it keeps the
+  // fixture's table, unless the merchant took it meanwhile.
   function deliverLiveBooking() {
     delivered = true;
     const event = data.live_booking;
@@ -319,7 +335,9 @@ export function createMockManagementClient(
       (s) => s.time === reservation.time,
     );
     if (!slot?.table || slot.blocked) return;
-    const booked = { ...event, reservation: { ...reservation, table_label: slot.table.label } };
+    const own = data.tables.find((table) => table.label === reservation.table_label);
+    const table = own && isFree(event.date, reservation.time, own.label) ? own : slot.table;
+    const booked = { ...event, reservation: { ...reservation, table_label: table.label } };
     const booking: ManagedReservation = {
       ...booked.reservation,
       date: booked.date,
@@ -332,10 +350,9 @@ export function createMockManagementClient(
   }
 
   return {
-    merchant: () => respond(data.merchant),
+    merchant: () => respond({ ...data.merchant, now: nowIso() }),
 
-    async dashboard(_slug, date) {
-      if (date !== today) invalid("date: must be the merchant's today");
+    async dashboard() {
       const current = liveByVia(today);
       const vias = new Set<Via>([...data.channels.map((c) => c.via), ...current.keys()]);
       const channels = [...vias].map((via) => ({
@@ -399,7 +416,7 @@ export function createMockManagementClient(
       if (!Number.isInteger(partySize) || partySize < 1) {
         invalid("party_size: Input should be greater than 0");
       }
-      const payload = JSON.stringify([startsAt, partySize, name]);
+      const payload = JSON.stringify([Date.parse(startsAt), partySize, name]);
       const replayed = keys.get(key);
       if (replayed) {
         if (replayed.payload !== payload) {
@@ -622,6 +639,9 @@ export function createMockManagementClient(
         });
       }
       const page = parseUrl(body.fallback_url) ?? invalid("fallback_url: a URL is required");
+      if (page.protocol !== "http:" && page.protocol !== "https:") {
+        invalid("fallback_url: an http(s) URL is required");
+      }
       if (page.host !== new URL(data.merchant.website).host) {
         problem("The booking page stays on your website.", { code: "booking_page_off_site" });
       }
@@ -631,7 +651,7 @@ export function createMockManagementClient(
         rules: {
           ...data.rules,
           max_party_size: largest,
-          fallback_url: body.fallback_url,
+          fallback_url: page.href, // as HttpUrl normalises it
           cancellation_policy: policy,
         },
       };
@@ -749,7 +769,10 @@ function addDays(date: string, days: number): string {
 }
 
 // The local day and time of an instant in the merchant's timezone.
-function local(moment: Date, timeZone: string): { date: string; time: string } {
+function local(
+  moment: Date,
+  timeZone: string,
+): { date: string; time: string; seconds: string } {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-CA", {
       timeZone,
@@ -758,6 +781,7 @@ function local(moment: Date, timeZone: string): { date: string; time: string } {
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
+      second: "2-digit",
       hourCycle: "h23",
     })
       .formatToParts(moment)
@@ -766,6 +790,7 @@ function local(moment: Date, timeZone: string): { date: string; time: string } {
   return {
     date: `${parts.year}-${parts.month}-${parts.day}`,
     time: `${parts.hour}:${parts.minute}`,
+    seconds: parts.second,
   };
 }
 

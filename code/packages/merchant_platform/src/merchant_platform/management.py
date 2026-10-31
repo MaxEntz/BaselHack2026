@@ -65,7 +65,9 @@ async def overview(slug: SlugPath) -> MerchantOverview:
 
 
 @router.get("/dashboard")
-async def dashboard(slug: SlugPath, date: Day) -> Dashboard:
+async def dashboard(
+    slug: SlugPath, date: Annotated[BookingDay | None, Query()] = None
+) -> Dashboard:
     raise NotBuiltYet("#135")
 
 

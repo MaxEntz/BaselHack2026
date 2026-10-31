@@ -33,7 +33,8 @@ export type RequestsQuery = { date: string; refused: boolean };
 // (send a `RulesInput`, not the `Rules` it answered).
 export type ManagementClient = {
   merchant: (slug: string, signal?: AbortSignal) => Promise<MerchantOverview>;
-  dashboard: (slug: string, date: string, signal?: AbortSignal) => Promise<Dashboard>;
+  // Today by the platform's clock, which `merchant().now` also gives.
+  dashboard: (slug: string, signal?: AbortSignal) => Promise<Dashboard>;
   reservations: (slug: string, date: string, signal?: AbortSignal) => Promise<ReservationDay>;
   addBooking: (slug: string, body: MerchantBookingInput) => Promise<ManagedReservation>;
   moveBooking: (slug: string, id: string, body: MoveBookingInput) => Promise<ManagedReservation>;
@@ -126,7 +127,7 @@ const id = (value: string) => encodeURIComponent(value);
 
 export const httpManagementClient: ManagementClient = {
   merchant: (slug, signal) => call("GET", slug, "", { signal }),
-  dashboard: (slug, date, signal) => call("GET", slug, `/dashboard${query({ date })}`, { signal }),
+  dashboard: (slug, signal) => call("GET", slug, "/dashboard", { signal }),
   reservations: (slug, date, signal) =>
     call("GET", slug, `/reservations${query({ date })}`, { signal }),
   addBooking: (slug, body) => call("POST", slug, "/reservations", { body }),
