@@ -134,6 +134,43 @@ test.describe("at 1440 px", () => {
     await expect(log.locator(".st-w-s.ok").last()).toHaveText("200");
   });
 
+  test("the dock previews a moment of the day on the management site", async ({ page }) => {
+    await buildSite(page);
+    await expect(page.getByRole("button", { name: "Both" })).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+    const moment = page.frameLocator(".st-bw iframe").locator(".moment");
+    await expect(moment).toBeVisible();
+
+    await page.getByRole("button", { name: "After service" }).click();
+    await expect(page.getByRole("button", { name: "After service" })).toHaveAttribute("aria-pressed", "true");
+    await expect(moment).toHaveAttribute("data-moment", "after");
+    await expect(moment.getByText("Tonight, done")).toBeVisible();
+    await expect(moment.getByText("As at 22:30")).toBeVisible();
+
+    await page.getByRole("button", { name: "Morning" }).click();
+    await expect(moment).toHaveAttribute("data-moment", "morning");
+
+    // Once more: back to the clock.
+    await page.getByRole("button", { name: "Morning" }).click();
+    await expect(moment.getByText(/^As at/)).toHaveCount(0);
+
+    // A dot asks for a colour in words, without sending.
+    await page.locator(".st-dots button").first().click();
+    await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue("Change the main colour to ");
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
+
+    await page.getByRole("button", { name: "Agent site" }).last().click();
+    await expect(page.locator(".st-dock")).toHaveCount(0);
+  });
+
+  test("the chat shows a moment too", async ({ page }) => {
+    await buildSite(page);
+    await page.getByRole("button", { name: "Show during service" }).click();
+    await expect(page.getByText("At 19:30 it shows the next arrival in type you can read from across the room.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "During service" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.frameLocator(".st-bw iframe").locator(".moment")).toHaveAttribute("data-moment", "during");
+    await expect(page.getByText("Here it is.")).toHaveCount(0);
+  });
+
   test("an address with a description goes straight to building", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("textbox", { name: "Message" }).fill(`${HOST}, 24 seats and groups up to 4`);

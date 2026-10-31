@@ -191,6 +191,26 @@ async def test_the_assistant_onboards_a_restaurant_in_three_messages(
             await deprovision(slug, engine=engine)
 
 
+async def test_show_during_service_previews_that_moment(
+    engine: AsyncEngine, tmp_path: Path
+) -> None:
+    """Studio's chip goes to the model: it must ask for the moment, not only the pane (#154)."""
+    host = f"brasserie-{uuid4().hex[:8]}.example"
+    say, *_ = _platform(engine, tmp_path)
+    slug: str | None = None
+    try:
+        events = await say(f"{host}. 24 seats, groups up to 4.")
+        [card] = [e for e in events if e["type"] == "card" and e["kind"] == "profile"]
+        slug = BuildAgentOutput.model_validate(card["data"]).profile.slug
+
+        shown = await say("Show during service")
+        [view] = [e for e in shown if e["type"] == "card" and e["kind"] == "view"]
+        assert view["data"] == {"view": "manage", "moment": "during"}
+    finally:
+        if slug is not None:
+            await deprovision(slug, engine=engine)
+
+
 @pytest.mark.parametrize(
     "answer",
     [DESCRIPTION, "24 seats, groups up to 4.", "No description: use the defaults."],

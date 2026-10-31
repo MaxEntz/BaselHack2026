@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import type { ManagementClient } from "../management/client.ts";
-import type { BuildFact, GeneratedTool, SitePage } from "../types.ts";
+import { MOMENTS, previewTime } from "../moments.ts";
+import type { BuildFact, GeneratedTool, Look, Moment, Service, SitePage } from "../types.ts";
 import { AgentSheet } from "./AgentSheet.tsx";
 import type { Addresses, View } from "./feed.tsx";
 import { type Fit, type Space, fitOf } from "./phase.ts";
@@ -140,6 +141,45 @@ export function PublicSheet({ pages, fact, width, onReveal }: PublicSheetProps) 
   );
 }
 
+const FONT_NAMES: Record<Look["display_font"], string> = {
+  "Fraunces Soft": "Fraunces",
+  serif: "Serif",
+  sans: "Sans",
+};
+
+type DockProps = Pick<CanvasProps, "moment" | "services" | "look" | "onMoment" | "onColour">;
+
+// The management site's look and its moments of the day (#154).
+function Dock({ moment, services, look, onMoment, onColour }: DockProps) {
+  const dots = look ? [look.accent, look.bg, look.accent_2, look.surface] : [];
+  return (
+    <div className="st-dock">
+      {dots.length > 0 && (
+        <span className="st-dots">
+          {dots.map((colour, index) => (
+            <button
+              key={`${colour}-${index}`}
+              type="button"
+              aria-label="Change the colours"
+              style={{ background: colour }}
+              onClick={onColour}
+            />
+          ))}
+        </span>
+      )}
+      {look && <span className="st-dock-font">{FONT_NAMES[look.display_font]}</span>}
+      {look && <span className="st-dock-sep" />}
+      <div className="st-moments" role="group" aria-label="Time of day">
+        {MOMENTS.map(({ id, label }) => (
+          <button key={id} type="button" title={label} aria-label={label} aria-pressed={moment === id} onClick={() => onMoment(id)}>
+            {previewTime(id, services) ?? label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type CanvasProps = {
   client: Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent">;
   // Null until the site is built: only the public tab has something to show.
@@ -155,11 +195,17 @@ type CanvasProps = {
   tools: readonly GeneratedTool[];
   fallback: string | null;
   onView: (view: View) => void;
+  // The management site's moment of the day, from the dock or the chat (#154).
+  moment: Moment | null;
+  services: readonly Service[];
+  look: Look | null;
+  onMoment: (moment: Moment) => void;
+  onColour: () => void;
 };
 
 // The gray pasteboard next to the chat.
 export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
-  { client, slug, live, today, ready, view, addresses, pages, fact, tools, fallback, onView },
+  { client, slug, live, today, ready, view, addresses, pages, fact, tools, fallback, onView, moment, services, look, onMoment, onColour },
   ref,
 ) {
   const paste = useRef<HTMLDivElement>(null);
@@ -171,6 +217,18 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
   const manageHeight = fit.stacked || fit.across
     ? STACKED_MANAGE_HEIGHT
     : Math.max(MIN_MANAGE_HEIGHT, (space.height - NAME_ROW) / fit.scale);
+  // The frame's page follows the moment; an earlier one reached no page while it loaded.
+  const frame = useRef<HTMLIFrameElement>(null);
+  const tellMoment = () => {
+    frame.current?.contentWindow?.postMessage({ type: "sesame:moment", moment }, window.location.origin);
+  };
+  const moments = useRef(moment);
+  useEffect(() => {
+    if (moments.current === moment) return;
+    moments.current = moment;
+    frame.current?.contentWindow?.postMessage({ type: "sesame:moment", moment }, window.location.origin);
+  }, [moment]);
+
   // Each tab starts at its top; a fact then scrolls to its words.
   useEffect(() => {
     paste.current?.scrollTo?.({ top: 0 });
@@ -229,7 +287,14 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
         {/* Stays mounted: a form being edited in the frame keeps its draft. */}
         {slug && (
           <Frame name={NAMES.manage} fit={fit} hidden={!shows("manage")} height={manageHeight}>
-            {ready && <iframe title="Management site" src={`/manage/${encodeURIComponent(slug)}`} />}
+            {ready && (
+              <iframe
+                ref={frame}
+                title="Management site"
+                src={`/manage/${encodeURIComponent(slug)}`}
+                onLoad={tellMoment}
+              />
+            )}
           </Frame>
         )}
         {view === "public" && (
@@ -238,6 +303,9 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
           </Frame>
         )}
       </div>
+      {built && (view === "manage" || view === "both") && (
+        <Dock moment={moment} services={services} look={look} onMoment={onMoment} onColour={onColour} />
+      )}
     </div>
   );
 });

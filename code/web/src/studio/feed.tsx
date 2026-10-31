@@ -122,6 +122,12 @@ function Entry({ entry, addresses, onOpen, onFact, onCopy, onRetry }: EntryProps
       );
     case "review":
       return <Review data={entry.data} pages={entry.pages} loginUrl={entry.loginUrl} onOpen={onOpen} onFact={onFact} onCopy={onCopy} />;
+    case "moment":
+      return (
+        <div className="st-msg bot">
+          <p>{entry.text}</p>
+        </div>
+      );
     case "live":
       return (
         <>

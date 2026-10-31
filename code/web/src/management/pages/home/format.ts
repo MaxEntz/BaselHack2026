@@ -37,6 +37,11 @@ export function hourIn(at: Date, timeZone: string): number {
   return Number(hour ?? at.getHours());
 }
 
+/** The time of `at` in `timeZone`, HH:MM. */
+export function timeIn(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(at);
+}
+
 /** "Léa Dubois" → "Léa"; null or blank → null. */
 export function firstName(ownerName: string | null): string | null {
   const first = ownerName?.trim().split(/\s+/)[0];
