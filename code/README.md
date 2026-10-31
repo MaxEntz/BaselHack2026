@@ -51,7 +51,7 @@ packages/
 ├── core/               models, DB access, availability rules, errors, settings
 ├── agent/              AgentService + provisioning (templates/restaurant.json)
 ├── gateway/            public MCP server: discovery, preference filters, fallback
-├── builder/            crawl (Playwright) + extraction (Claude API) -> MerchantProfile
+├── builder/            crawl (Playwright) + extraction (OpenAI API) -> MerchantProfile
 └── merchant_platform/  FastAPI /chat + /events, platform assistant
 web/                    merchant chat UI (Vite + React + TS)
 sites/le-petit-zinc/    demo restaurant website

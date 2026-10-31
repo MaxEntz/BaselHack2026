@@ -14,7 +14,7 @@ This file is the single source of truth for this repository. Read it fully befor
 - **`templates/restaurant.json` lives in `agent`** (provisioning consumes it), not in `builder`.
 - **Merchant schema name** = `m_` + slug with `-` replaced by `_`; slugs are ≤ 61 characters (Postgres identifiers are limited to 63 bytes).
 - **Tool contract changes vs §8**: `update_reservation` and `cancel_reservation` also take `guest_name` (checked against the booking); `search_merchants` also returns `suggestions` and `ignored_filters`; admin tool `update_tables` added; table `public.guest_notices` added to the §7.2 SQL; `search_merchants` merchants also carry `website`; `Reservation` also carries `merchant`, `guest_name` and `via`; the admin `cancel_reservation` input has no `by` (the tool is merchant-only, the service receives `by="merchant"`).
-- **Backend LLM calls use OpenAI**, not Anthropic: the builder's `extract` step and the platform assistant use the OpenAI Python SDK (Responses API), with `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-6.1-terra`). Read "OpenAI API" wherever §3, §4, §5, §8.3, §10 and §11 say "Claude API", "Anthropic SDK" or `ANTHROPIC_*`. Claude stays the **user-side** client (Claude.ai connects to the gateway).
+- **Backend LLM calls use OpenAI**, not Anthropic (§14): the builder's `extract` step and the platform assistant use the OpenAI Python SDK (Responses API), with `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-6.1-terra`). The sections below are updated. Claude stays the **user-side** client (Claude.ai connects to the gateway).
 - Work is tracked in GitHub issues (milestones M0–M4, Demo); the tracking issue #26 lists every issue and these corrections.
 
 ### Team server (LXC)
@@ -67,9 +67,9 @@ flowchart LR
   subgraph CORE[Our backend]
     Gateway -->|4 route + filters| Agent[Agent runtime<br/>multi-tenant]
     Agent <--> DB[(PostgreSQL<br/>schema per merchant)]
-    Platform[Platform API<br/>FastAPI] --> Assistant[Platform assistant<br/>Claude API + admin tools]
+    Platform[Platform API<br/>FastAPI] --> Assistant[Platform assistant<br/>OpenAI API + admin tools]
     Assistant --> Agent
-    Assistant --> Builder[Builder<br/>Playwright + Claude API]
+    Assistant --> Builder[Builder<br/>Playwright + OpenAI API]
     Builder -->|provision| Agent
     DB -. LISTEN/NOTIFY .-> Platform
   end
@@ -111,12 +111,12 @@ merchant-agents/
 │   ├── builder/               ← website + description → MerchantProfile
 │   │   └── src/builder/
 │   │       ├── crawl.py           (Playwright)
-│   │       ├── extract.py         (Claude API, structured output)
+│   │       ├── extract.py         (OpenAI API, strict function call)
 │   │       └── templates/restaurant.json
 │   └── platform/              ← merchant platform API + assistant
 │       └── src/platform/
 │           ├── api.py             (FastAPI: /chat, /events SSE)
-│           ├── assistant.py       (Claude API tool-use loop, admin tools §8.2)
+│           ├── assistant.py       (OpenAI API tool-use loop, admin tools §8.2)
 │           └── events.py          (Postgres LISTEN/NOTIFY → SSE)
 ├── web/                       ← merchant chat UI (Vite + React + TS)
 ├── migrations/                ← Alembic
@@ -130,12 +130,12 @@ merchant-agents/
 
 | Area | Choice | Why | Rejected |
 |---|---|---|---|
-| Language | **Python 3.12**, managed with **uv** | Most mature MCP SDK; Playwright and Anthropic SDK in the same language; fast iteration. | Go/Rust gateway — revisit only if latency/load require it. |
+| Language | **Python 3.12**, managed with **uv** | Most mature MCP SDK; Playwright and OpenAI SDK in the same language; fast iteration. | Go/Rust gateway — revisit only if latency/load require it. |
 | MCP | Official **`mcp` SDK (FastMCP)**, **Streamable HTTP** transport | Claude supports remote MCP servers as connectors; no custom client. | Custom REST API re-exposed as tools. |
 | API | **FastAPI** + **Pydantic v2** | Typed schemas shared with MCP tools; native SSE support via streaming responses. | Flask, Django. |
 | DB | **PostgreSQL 16**, **SQLAlchemy 2.0**, **Alembic** | `EXCLUDE` constraint on time ranges makes double booking impossible; `LISTEN/NOTIFY` gives live events for free. | SQLite (no exclusion constraint, weak concurrency). |
 | Crawl | **Playwright** (Chromium) | Handles JS-rendered restaurant sites. | requests + BeautifulSoup (misses JS content). |
-| LLM | **Anthropic Python SDK**, model from env `ANTHROPIC_MODEL` | Structured extraction via tool use; platform assistant via tool-use loop. | — |
+| LLM | **OpenAI Python SDK** (Responses API), model from env `OPENAI_MODEL` | Structured extraction via a forced strict function call; platform assistant via tool-use loop. | Anthropic SDK (§14: the team's key is an OpenAI one). |
 | Live events | Postgres **LISTEN/NOTIFY → SSE** | No extra broker; one-way server→client is all we need. | Redis pub/sub, WebSockets (unneeded complexity). |
 | Front | **Vite + React + TypeScript** | Minimal chat UI with rich message components. | Next.js (SSR not needed). |
 | Tests | **pytest**, **pytest-asyncio**, **testcontainers** (Postgres) | Real Postgres in tests: the exclusion constraint must be tested for real. | Mocked DB. |
@@ -277,7 +277,7 @@ Tool descriptions must tell Claude: *confirm with the user before any create/upd
 ### 8.3 Builder steps (emitted as events, shown in the merchant chat)
 
 1. `crawl` — Playwright loads the site (homepage + up to 5 same-domain pages matching `menu|carte|hours|horaires|contact|book|reserv`).
-2. `extract` — Claude API fills `MerchantProfile` (tool-use with the JSON schema as `input_schema`), using crawled text + merchant description. Description wins on conflicts.
+2. `extract` — OpenAI API fills `MerchantProfile` (forced strict function call with the JSON schema as `parameters`), using crawled text + merchant description. Description wins on conflicts.
 3. `validate` — Pydantic validation; on failure, one retry with the validation errors fed back; then fail with a message to the merchant.
 4. `provision` — create schema `m_<slug>`, tables, policy, registry row.
 5. `deploy` — mark `status = 'live'`; the merchant is now discoverable by the gateway.
@@ -326,7 +326,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core
 npx @modelcontextprotocol/inspector       # manual MCP testing against :8001/mcp
 ```
 
-Env (`.env.example`): `DATABASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `GATEWAY_PUBLIC_URL`.
+Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `GATEWAY_PUBLIC_URL`.
 
 ## 11. Milestones (each ends green on its tests)
 
@@ -341,7 +341,7 @@ Env (`.env.example`): `DATABASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `M
 - Connected to Claude as a custom connector (needs `GATEWAY_PUBLIC_URL`, e.g. via a tunnel); manual run of the §9 user scenarios.
 
 **M3 — Platform assistant + live events (merchant side)**
-- FastAPI `/chat` running a Claude tool-use loop with §8.2 admin tools; `/events` SSE fed by `LISTEN/NOTIFY`.
+- FastAPI `/chat` running an OpenAI tool-use loop with §8.2 admin tools; `/events` SSE fed by `LISTEN/NOTIFY`.
 - Web chat UI rendering rich messages: steps, profile card, reservations table, notifications.
 
 **M4 — Builder**
