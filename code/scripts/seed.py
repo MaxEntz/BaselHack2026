@@ -49,7 +49,9 @@ class Booking:
 # for 4 tonight at 8pm", and the 21:00 booking survives "Block 21:00 tonight".
 TONIGHT = (
     Booking("19:00", 2, "Camille Muller", "website"),
-    Booking("19:30", 4, "Thomas Schmitt", "merchant"),
+    # Guests' bookings first: "Cancel R-001" (§9) leaves the guest a notice, which a booking
+    # the merchant entered itself doesn't (#134), even when the seed runs after 19:00.
+    Booking("19:30", 4, "Thomas Schmitt", "website"),
     Booking("20:00", 6, "Famille Keller", "website"),
     Booking("21:00", 3, "Léa Meyer", "merchant"),
 )

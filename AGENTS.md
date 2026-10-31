@@ -113,7 +113,7 @@ Reasons for each choice: [ADR-0002](documentation/adr/0002-python-mcp-v2-fastapi
 - Availability search returns up to **3 slots**, closest to the requested time, sorted by time.
 - **Every write initiated from Claude requires explicit user confirmation** in the conversation, after Claude has shown what it will book. A confirmation given before that summary doesn't count, and a write never goes in the same reply as the `search_merchants` or `get_availability` call the summary is based on. A re-check of availability after the yes may go with the booking, unless it no longer offers the confirmed time: then Claude shows the new times and asks again. Enforced by the tool descriptions and by `idempotency_key` on writes (#14, #109).
 - A guest can move or cancel a booking only before it starts; updates and cancellations also need `guest_name`.
-- A merchant cancelling a booking **notifies the guest**: a stored notice, returned by `get_my_reservations` for 24 hours after it is first returned.
+- A merchant cancelling a booking a guest made **notifies the guest**: a stored notice, returned by `get_my_reservations` for 24 hours after it is first returned. A booking the merchant entered itself sends no notice; moving a guest's booking from the management site sends one too (#134).
 - Blocking a slot never removes existing bookings; it only prevents new ones at that start time.
 
 ## 7. Data model
@@ -194,7 +194,7 @@ Every tool error is `{ "error": <code>, "message": str, "fallback_url"?: str }`.
 - "Block 21:00 tonight" → `block_slot`; Claude users no longer get 21:00.
 - "Set max party size to 6" → `update_policy`.
 - "How busy are we tonight?" → `get_stats`.
-- "Cancel R-001" → `cancel_reservation(by="merchant")` → guest notice created.
+- "Cancel R-001" → `cancel_reservation(by="merchant")` → guest notice created (for a booking a guest made).
 - A booking made through Claude appears in the merchant chat as a **"New booking via Claude"** notification within 2 s (SSE).
 
 How to run them against the deployed gateway: [connector runbook](documentation/runbooks/connector.md), step 4.
@@ -247,6 +247,7 @@ All done; open work is tracked in [#26](https://github.com/MaxEntz/BaselHack2026
 - **Merchant operations** (`agent/admin.py`): one `merchant_conn` transaction each, so the merchant schema and the registry's `profile` change together. The merchant's `tables` and `policy` rows are authoritative; `profile` is a display copy kept in sync. They load the merchant with `merchant_side=True` (a `building` merchant is editable by its owner, hidden from guests). Input outside the database's range is `InvalidInput`, never a raw DB error.
 - **Gateway** (`gateway/`): only `fallback.py` turns failures into `ToolError`; arguments the SDK rejects also answer `invalid_input`. `search_merchants` answers `agent_unavailable` + `fallback_url` when its query names a `down` merchant and no live one. Fault injection: `CHAOS_DELAY_MS`, `CHAOS_MERCHANTS`. As a bridge, it still reads the registry for the `down` status and the fallback URL.
 - **Accounts** (`merchant_platform/accounts.py`, `auth.py`, #132, [ADR-0018](documentation/adr/0018-open-a-merchants-site-with-a-secret-link.md)): a build gives its merchant a secret link, shown once on the profile card; only its hash is stored in `public.merchant_owners` (migration `0004`). The link sets a signed owner cookie (`PLATFORM_COOKIE_SECRET`), which every `/merchants/{slug}` route and `/events` need. `PLATFORM_INVITE_CODE` gates new builds. `make owner-link SLUG=…` issues a new link. `PLATFORM_MERCHANT` is development only.
+- **Management bookings** (`agent/management.py`, #134): `ManagementService` serves the Reservations page: a day, its slots, add (`via="merchant"`), move, cancel, in the `core.models` shapes. A move takes the table lock like a guest's update and marks its transaction as the merchant's (`core.db.as_merchant`), so it sends no live event. It is separate from the frozen `AgentService` protocol.
 - **Management site** (`merchant_platform/management.py`, #129): the `/merchants/{slug}/…` routes, shapes in `core/models.py` and `web/src/types.ts` ([CONTRACTS.md](documentation/CONTRACTS.md)), client `web/src/management/client.ts` and its mock on `code/tests/fixtures/demo/la-graine-verte-management.json`. Every route depends on `auth.owner_of_path` (fail-closed) and answers `501` until its issue (#132–#146) implements it. Form bodies are structural, checked by `core.forms` (`FormProblem`, answered with its `problem`).
 - **BATP**: the library (`packages/batp/`) depends only on `core`, so the gateway can import its client. Change the protocol in `PROTOCOL.md`, the draft in `documentation/rfc/`, the library and its tests together.
 
@@ -271,7 +272,7 @@ We have a server: use it to test anything Claude.ai must reach, instead of openi
 - **Gateway and agents**: separate processes through BATP when deployed; the same process without `BATP_URL`.
 - **Auth:** the public gateway only lets Anthropic's range through ([ADR-0010](documentation/adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)); `GATEWAY_TOKEN` is optional. Merchant platform: a secret link per merchant sets its owner's cookie (#132); `PLATFORM_MERCHANT` stands in for it in local development only.
 - **Guest identity:** the `guest_name` Claude passes; no accounts.
-- **Guest notices** (merchant cancellations): stored per guest name and returned by `get_my_reservations`; no push to Claude.
+- **Guest notices** (a merchant's cancellation or move of a booking a guest made): stored per guest name and returned by `get_my_reservations`; no push to Claude.
 - **Fallback depth:** return the URL only; Claude does not drive the website.
 - **Timezone:** `Europe/Zurich` everywhere; store `timestamptz`.
 - **Discovery:** single city, filter by tags and price only; no ranking beyond name order.
@@ -342,6 +343,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | `same_guest` also ignores accents and moves to `agent/guests.py` with `guest_key`, which the Guests page groups by; Claude-side updates, cancellations and `get_my_reservations` follow | #144 |
 | 2026-10-31 | Merchant accounts (#132): a secret link per merchant, shown once on the profile card and stored as its SHA-256; it sets a signed `HttpOnly` cookie naming the merchant and the link, needed by `/merchants/{slug}` and `/events`; `PLATFORM_INVITE_CODE` gates new builds before any model call; `owner_name` stays empty until something asks for it; the `ProfileCard` gains `login_url` | No ownership proof is in scope (§15), but guest names and the OpenAI key must not be open to anyone with a slug; a stdlib HMAC cookie needs no new dependency or session table, and the link fingerprint makes a new link end old sessions ([ADR-0018](documentation/adr/0018-open-a-merchants-site-with-a-secret-link.md)) |
 | 2026-10-31 | La Graine Verte's management data is exported from the mockup (`scripts/export_management_fixture.py`) and loaded by `seed.py --with-management`, on in `make seed` and demo mode, dated from the seed's day: the 7 days keep R-001 to R-055 from the merchant's sequence (the live booking is R-056), the 29 days before are bookings made up to the mockup's daily totals, the agent requests go to `public.agent_requests`; it goes in once, into a La Graine Verte without bookings. The assistant's opening conversation is a file of its own, in the web chat's item shapes, since `ManagementFixture` is frozen | #131 |
+| 2026-10-31 | Bookings from the management site (#134): `agent.management.ManagementService` beside the `AgentService` protocol; merchant moves keep the guests' machinery (table lock, SAVEPOINT per table, exclusion constraint) and their keys in `reservation_changes`; `notify_reservation()` carries `actor` from the transaction-local `sesame.actor` (migration `0005`); no guest notice for a booking the merchant entered, a notice when the merchant moves a guest's booking | The live listener couldn't tell a merchant's move from a guest's (both are UPDATEs), and a merchant schema can't take a column (ADR-0001): the function lives in `public`; the protocol is frozen and `service.py` is at its size limit; the guest who never booked has nothing to be told |
 
 ## 15. Out of scope (POC)
 
