@@ -96,7 +96,7 @@ def classify(op: str, status: str) -> Kind | None:
 def made_by_merchant(kind: Kind, booking: Booking) -> bool:
     """The merchant's own change, which its chat already confirms.
 
-    An update is always the guest's: no admin tool moves a booking (AGENTS.md §8.2).
+    An update is always the guest's: no admin tool moves a booking (`agent/admin.py`).
     """
     if kind == "cancelled":
         return booking.cancelled_by == "merchant"

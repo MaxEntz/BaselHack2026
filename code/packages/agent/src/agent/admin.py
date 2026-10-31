@@ -4,6 +4,11 @@ Reservations list, stats, slot blocking, policy and floor-plan changes, and merc
 cancellation with a guest notice. Only the platform assistant calls them, never Claude users
 (AGENTS.md §8.2). Each function runs on a connection from `merchant_conn`, so whatever one
 call changes, in the merchant's schema and in the registry, commits or rolls back together.
+
+None of them moves a booking (`during`, `party_size`, `table_id`): the live events treat
+every reservation update as the guest's (`merchant_platform/events.py`, #81). A merchant-side
+move must also tell the listener who made it, or the merchant's chat will report it as the
+guest's.
 """
 
 from collections.abc import Sequence
