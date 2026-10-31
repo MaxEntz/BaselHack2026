@@ -1,0 +1,22 @@
+{
+  "$comment": "Generated from matp_schemas.PingResult",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "pong": {
+      "const": true,
+      "title": "Pong",
+      "type": "boolean"
+    },
+    "server_time": {
+      "format": "date-time",
+      "title": "Server Time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "pong",
+    "server_time"
+  ],
+  "title": "MATP PING result",
+  "type": "object"
+}

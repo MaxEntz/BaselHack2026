@@ -1,0 +1,87 @@
+{
+  "$comment": "Generated from core.models.SearchMerchantsInput",
+  "$defs": {
+    "SearchFilters": {
+      "additionalProperties": false,
+      "properties": {
+        "max_price": {
+          "anyOf": [
+            {
+              "enum": [
+                "€",
+                "€€",
+                "€€€",
+                "€€€€"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Price"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "title": "SearchFilters",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Date"
+    },
+    "filters": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SearchFilters"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "near": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Near"
+    },
+    "query": {
+      "title": "Query",
+      "type": "string"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "MATP DISCOVER params",
+  "type": "object"
+}

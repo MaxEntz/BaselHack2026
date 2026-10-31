@@ -1,0 +1,55 @@
+{
+  "$comment": "Generated from core.models.UpdateReservationInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "guest_name": {
+      "minLength": 1,
+      "title": "Guest Name",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "party_size": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Party Size"
+    },
+    "reservation_id": {
+      "minLength": 1,
+      "title": "Reservation Id",
+      "type": "string"
+    },
+    "starts_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Starts At"
+    }
+  },
+  "required": [
+    "reservation_id",
+    "guest_name",
+    "idempotency_key"
+  ],
+  "title": "MATP AMEND params",
+  "type": "object"
+}
