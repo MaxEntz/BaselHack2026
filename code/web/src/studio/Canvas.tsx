@@ -172,9 +172,12 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
     ? STACKED_MANAGE_HEIGHT
     : Math.max(MIN_MANAGE_HEIGHT, (space.height - NAME_ROW) / fit.scale);
   // Each tab starts at its top; a fact then scrolls to its words.
+  const lastView = useRef(view);
   useEffect(() => {
-    paste.current?.scrollTo?.({ top: 0 });
-  }, [view]);
+    if (lastView.current === view) return;
+    lastView.current = view;
+    if (view !== "public" || !fact?.box) paste.current?.scrollTo?.({ top: 0 });
+  }, [view, fact]);
   const reveal = (top: number) => {
     const element = paste.current;
     if (!element) return;

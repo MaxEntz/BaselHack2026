@@ -793,11 +793,13 @@ export function createMockManagementClient(
 
     async tryAgent(_slug, intent) {
       const anyMerchant = intent === "PING" || intent === "DISCOVER" || intent === "RECALL";
-      const status = !anyMerchant && data.merchant.status === "building" ? 404 : 200;
+      // Like the node: hidden until published, and a paused agent sends guests to the booking page.
+      const refused = anyMerchant ? null : { building: 404, down: 503, live: null }[data.merchant.status];
+      const status = refused ?? 200;
       const id = `r-${++tries}`;
       return respond({
         request: JSON.stringify({ type: "request", id, intent, merchant: anyMerchant ? undefined : data.merchant.slug, params: {} }),
-        response: JSON.stringify({ type: "response", id, status, ...(status === 200 ? { result: {} } : { error: { code: "not_found", message: "Unknown merchant" } }) }),
+        response: JSON.stringify({ type: "response", id, status, ...(status === 200 ? { result: {} } : { error: status === 404 ? { code: "not_found", message: "Unknown merchant" } : { code: "agent_unavailable", message: "Not taking bookings through agents right now" } }) }),
         status,
       });
     },

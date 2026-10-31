@@ -13,6 +13,7 @@ import base64
 import ipaddress
 import json
 import logging
+import math
 import re
 import socket
 import time
@@ -55,6 +56,8 @@ SHOT_QUALITY = 60
 SHOT_MAX_BYTES = 1_200_000
 SHOT_TIMEOUT_S = 4
 MAX_BOXES = 1500
+MAX_BOX_TEXT = 1000
+BOX_SIDES = ("x", "y", "width", "height")
 # The look's sample (#149): read within its own time, and bounded before it is cached.
 LOOK_TIMEOUT_S = 2.0
 LOOK_KEYS = 40
@@ -466,16 +469,41 @@ async def _read(
     return page, raw["links"]
 
 
+def _number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def checked_boxes(read: Any) -> tuple[int, list[dict[str, Any]]] | None:
+    """The page's height and text boxes, or None. `_BOXES` runs in the page's own world, whose
+    scripts can replace what it calls, so nothing it returns is trusted."""
+    if not isinstance(read, dict) or not _number(read.get("height")) or read["height"] <= 0:
+        return None
+    raw = read.get("boxes")
+    if not isinstance(raw, list):
+        return None
+    boxes = []
+    for box in raw[:MAX_BOXES]:
+        if not isinstance(box, dict) or not isinstance(box.get("text"), str):
+            continue
+        sides = [box.get(side) for side in BOX_SIDES]
+        if all(_number(side) for side in sides):
+            numbers = {side: round(box[side]) for side in BOX_SIDES}
+            boxes.append({"text": box["text"][:MAX_BOX_TEXT], **numbers})
+    return round(read["height"]), boxes
+
+
 async def _capture(tab: Any) -> dict[str, Any]:
     """The page's screenshot and text boxes at `SHOT_WIDTH`, for `Page`; empty if they can't be
     had in `SHOT_TIMEOUT_S`, or the image is too heavy: the build goes on without them."""
     try:
         async with asyncio.timeout(SHOT_TIMEOUT_S):
             await tab.set_viewport_size({"width": SHOT_WIDTH, "height": 800})
-            read = await tab.evaluate(_BOXES, MAX_BOXES)
-            if not read:
+            read = checked_boxes(await tab.evaluate(_BOXES, MAX_BOXES))
+            if read is None:
+                log.warning("crawl_boxes_unreadable")
                 return {}
-            height = min(int(read["height"]), SHOT_MAX_HEIGHT)
+            page_height, boxes = read
+            height = min(page_height, SHOT_MAX_HEIGHT)
             image = await tab.screenshot(
                 type="jpeg",
                 quality=SHOT_QUALITY,
@@ -493,7 +521,7 @@ async def _capture(tab: Any) -> dict[str, Any]:
         "shot": base64.b64encode(image).decode(),
         "shot_width": SHOT_WIDTH,
         "shot_height": height,
-        "boxes": read["boxes"],
+        "boxes": boxes,
     }
 
 

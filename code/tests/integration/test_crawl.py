@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from builder.crawl import SHOT_MAX_HEIGHT, SHOT_WIDTH, CrawlResult, crawl
+from builder.crawl import SHOT_MAX_HEIGHT, SHOT_WIDTH, CrawlResult, checked_boxes, crawl
 from builder.look import read_look
 from core.config import get_settings
 from core.errors import InvalidInput
@@ -159,6 +159,50 @@ async def test_takes_each_pages_screenshot_with_its_text_boxes(demo: DemoCrawl) 
     assert 0 <= box["y"] < home.shot_height
     assert box["width"] > 0
     assert box["height"] > 0
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        'Math.max = () => "tall";',
+        'Math.round = () => "x";',
+        "Element.prototype.getBoundingClientRect = () => ({ width: Infinity, height: 1 });",
+    ],
+    ids=["height", "coordinates", "boxes"],
+)
+async def test_a_pages_own_script_cant_crash_the_crawl(
+    serve: Callable[[Path], Site], tmp_path: Path, script: str
+) -> None:
+    write(
+        tmp_path, {"index.html": f"<title>Chez Nous</title><script>{script}</script><p>Bonjour</p>"}
+    )
+
+    result = await crawl(serve(tmp_path).url, Steps(), allow_private=True)
+
+    assert "Bonjour" in result.pages[0].text
+
+
+def test_boxes_are_checked_before_they_are_used() -> None:
+    good = {"text": "Bonjour", "x": 1.4, "y": 2, "width": 3, "height": 4}
+    assert checked_boxes({"height": 900.2, "boxes": [good]}) == (
+        900,
+        [{"text": "Bonjour", "x": 1, "y": 2, "width": 3, "height": 4}],
+    )
+    bad = [
+        {"text": 1, "x": 1, "y": 2, "width": 3, "height": 4},
+        {**good, "x": "far"},
+        "box",
+        {**good, "y": None},
+    ]
+    assert checked_boxes({"height": 900, "boxes": bad}) == (900, [])
+    for read in (
+        None,
+        "x",
+        {"height": "tall", "boxes": []},
+        {"height": 0, "boxes": []},
+        {"height": 9},
+    ):
+        assert checked_boxes(read) is None
 
 
 async def test_keeps_the_ids_a_one_page_sites_link_can_land_on(
