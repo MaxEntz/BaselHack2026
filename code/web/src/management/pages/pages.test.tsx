@@ -185,19 +185,47 @@ describe("Floor plan", () => {
     expect((await at()).textContent).toBe("The room at 12:30");
   });
 
-  it("opens a booked table's booking, or a new booking at a free one", async () => {
+  it("opens a booked table's booking in place, without a move once it has started", async () => {
     const { router } = open("floor");
     await at();
 
     fireEvent.click(table("T1"));
-    expect(router.state.location.pathname).toBe(`/manage/${SLUG}/reservations`);
-    expect(router.state.location.search).toBe("?date=2026-10-31&booking=R-009");
+    const box = within(await screen.findByRole("dialog"));
+    expect(box.getByRole("heading", { name: "Sara Muller" })).toBeTruthy();
+    expect(box.getByText("Saturday 31 October, 18:30 to 20:30")).toBeTruthy();
+    expect(box.queryByLabelText("Move to another time")).toBeNull();
+    expect(router.state.location.pathname).toBe(`/manage/${SLUG}/floor`);
+    expect(router.state.location.search).toBe("");
 
-    await act(() => router.navigate(`/manage/${SLUG}/floor`));
-    await at();
+    click("Close");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "20:30" }));
-    fireEvent.click(table("T4"));
-    expect(router.state.location.search).toBe("?date=2026-10-31&new=20:30&guests=2");
+    fireEvent.click(table("T2"));
+    const later = within(await screen.findByRole("dialog"));
+    expect(later.getByRole("heading", { name: "Ines Schmitt" })).toBeTruthy();
+    expect(later.getByLabelText("Move to another time")).toBeTruthy();
+  });
+
+  it("opens a new booking at a free table, and shows it in the room once added", async () => {
+    const { router } = open("floor");
+    await at();
+    click("Next day");
+    expect(await screen.findByText("Sunday 1 November")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "20:30" }));
+    expect(table("T8").getAttribute("aria-label")).toBe("Table T8, 4 seats, free");
+    fireEvent.click(table("T8"));
+
+    const box = within(await screen.findByRole("dialog", { name: "A new booking" }));
+    expect(box.getByText("Sunday 1 November")).toBeTruthy();
+    await waitFor(() => expect(box.getByLabelText<HTMLSelectElement>("Time").value).toBe("20:30"));
+    // At most 2 guests by default, whatever the table's seats.
+    expect(box.getByLabelText<HTMLInputElement>("Guests").value).toBe("2");
+    expect(router.state.location.pathname).toBe(`/manage/${SLUG}/floor`);
+
+    type(box.getByLabelText("Guest's name"), "Ana Roth");
+    fireEvent.click(box.getByRole("button", { name: "Add the booking" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await screen.findByRole("button", { name: /^Table T\d+, Ana Roth, 2 guests$/ })).toBeTruthy();
   });
 
   it("says when the time has passed", async () => {

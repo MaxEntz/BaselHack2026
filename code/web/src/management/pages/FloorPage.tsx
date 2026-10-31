@@ -1,5 +1,4 @@
 import { type CSSProperties, useCallback, useState } from "react";
-import { useNavigate } from "react-router";
 import type { ManagedReservation, ReservationDay, Service, TableSpec } from "../../types.ts";
 import { DayBar } from "../DayBar.tsx";
 import { useClient, useLoad } from "../data.ts";
@@ -10,6 +9,9 @@ import { defaultService, toMinutes } from "../services.ts";
 import { Blob, Icon, Pill, SaveBar, useToast } from "../ui/index.ts";
 import { useSavedForm } from "../useSavedForm.tsx";
 import { PageTitle } from "./PageTitle.tsx";
+import { BookingDialog } from "./reservations/BookingDialog.tsx";
+import { NewBookingDialog } from "./reservations/NewBookingDialog.tsx";
+import { hasEnded, hasStarted } from "./reservations/words.ts";
 
 const DAYS_AHEAD = 7;
 // Vertical offsets of the tables, by index, so that the room doesn't look like a grid.
@@ -69,6 +71,9 @@ function Room({ slug, version, today, clock, tables }: FloorBase & { slug: strin
   const client = useClient();
   const [day, setDay] = useState(today);
   const [chosen, setChosen] = useState<{ service?: number; at?: string }>({});
+  // The open dialog: a booking's, or a new booking for that many guests at the time shown.
+  const [opened, setOpened] = useState<string | null>(null);
+  const [party, setParty] = useState<number | null>(null);
   const load = useCallback(
     (signal: AbortSignal) => client.reservations(slug, day, signal),
     [client, slug, day],
@@ -95,6 +100,7 @@ function Room({ slug, version, today, clock, tables }: FloorBase & { slug: strin
     chosen.at && starts.includes(chosen.at)
       ? chosen.at
       : defaultTime(starts, data.services[service], isToday, clock);
+  const booking = data.reservations.find((b) => b.id === opened) ?? null;
 
   return (
     <>
@@ -111,29 +117,50 @@ function Room({ slug, version, today, clock, tables }: FloorBase & { slug: strin
       />
       <section className="room on-dark">
         <RoomAt
-          slug={slug}
           day={data}
           tables={tables}
           at={at}
           starts={starts}
           passed={isToday && at <= clock}
           onAt={(next) => setChosen({ service, at: next })}
+          onOpen={setOpened}
+          onNew={setParty}
         />
       </section>
+      <BookingDialog
+        slug={slug}
+        booking={booking}
+        slotLengthMin={data.slot_length_min}
+        started={booking !== null && hasStarted(booking, today, clock)}
+        ended={booking !== null && hasEnded(booking, today, clock, data.slot_length_min)}
+        onClose={() => setOpened(null)}
+        onMoved={() => setOpened(null)}
+        onCancelled={() => setOpened(null)}
+      />
+      <NewBookingDialog
+        slug={slug}
+        day={data.date}
+        limit={data.largest_group}
+        service={data.services[service]}
+        preset={{ time: at, party: party ?? undefined }}
+        open={party !== null}
+        onClose={() => setParty(null)}
+        onAdded={() => setParty(null)}
+      />
     </>
   );
 }
 
 function RoomAt({
-  slug,
   day,
   tables,
   at,
   starts,
   passed,
   onAt,
+  onOpen,
+  onNew,
 }: {
-  slug: string;
   day: ReservationDay;
   tables: TableSpec[];
   at: string;
@@ -141,8 +168,10 @@ function RoomAt({
   // `at` has passed: no new booking there.
   passed: boolean;
   onAt: (at: string) => void;
+  onOpen: (id: string) => void;
+  // A new booking at `at`, for that many guests.
+  onNew: (party: number) => void;
 }) {
-  const navigate = useNavigate();
   const toast = useToast();
   const now = toMinutes(at);
   const seated = new Map<string, ManagedReservation>();
@@ -155,15 +184,14 @@ function RoomAt({
   }
   const guests = [...seated.values()].reduce((sum, booking) => sum + booking.party_size, 0);
   const blocked = day.blocked.includes(at);
-  const base = `/manage/${encodeURIComponent(slug)}/reservations?date=${day.date}`;
 
-  // The booking dialogs are the Reservations page's (#139): open them there.
+  // A new booking doesn't take the table clicked: the table choice stays automatic (AGENTS.md §6).
   function choose(table: TableSpec) {
     const booking = seated.get(table.label);
-    if (booking) navigate(`${base}&booking=${encodeURIComponent(booking.id)}`);
+    if (booking) onOpen(booking.id);
     else if (passed) toast(`${at} has passed.`);
     else if (blocked) toast(`${at} is blocked.`);
-    else navigate(`${base}&new=${at}&guests=${Math.min(2, table.seats)}`);
+    else onNew(Math.min(2, table.seats));
   }
 
   return (
