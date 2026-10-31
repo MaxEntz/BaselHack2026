@@ -40,3 +40,14 @@ export function serviceNames(services: readonly Service[]): string[] {
     return count === 1 ? name : `${name} ${count}`;
   });
 }
+
+/** The service a page opens on: today, the current or next one, else the last; another day, the last. */
+export function defaultService(services: readonly Service[], today: boolean, clock: string): number {
+  const current = today ? services.findIndex((service) => clock < service.end) : -1;
+  return current >= 0 ? current : services.length - 1;
+}
+
+/** The index of the service `time` falls in (start included, end excluded), or -1. */
+export function serviceOf(services: readonly Service[], time: string): number {
+  return services.findIndex(({ start, end }) => start <= time && time < end);
+}

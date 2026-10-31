@@ -39,6 +39,10 @@
 .mg .note { padding: 9px 15px; border-radius: 18px; background: var(--cream); font-size: 16px; }
 .mg .note.bad { color: var(--red); font-weight: 600; }
 
+/* A row that just appeared, on Home and Reservations (#137) */
+.mg .fresh { animation: mg-fresh 3.6s ease-out; }
+@keyframes mg-fresh { 0%, 50% { background: rgb(147 80 70 / .22); } 100% { background: transparent; } }
+
 
 /* Day bar and Floor plan (#143) */
 .mg .m-hd { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; }

@@ -6,7 +6,7 @@ import { useClient, useLoad } from "../data.ts";
 import { addDays } from "../dates.ts";
 import { LeaveGuard } from "../LeaveGuard.tsx";
 import { PAGES } from "../pages.ts";
-import { toMinutes } from "../services.ts";
+import { defaultService, toMinutes } from "../services.ts";
 import { Blob, Icon, Pill, SaveBar, useToast } from "../ui/index.ts";
 import { useSavedForm } from "../useSavedForm.tsx";
 import { PageTitle } from "./PageTitle.tsx";
@@ -56,12 +56,6 @@ export function FloorPage({ slug, version }: { slug: string; version: number }) 
       )}
     </>
   );
-}
-
-/** Today: the current or next service, else the last one; another day: the last one. */
-function defaultService(services: readonly Service[], today: boolean, clock: string): number {
-  const current = today ? services.findIndex((service) => clock < service.end) : -1;
-  return current >= 0 ? current : services.length - 1;
 }
 
 /** Today during the service: its latest start so far; otherwise its middle start. */
