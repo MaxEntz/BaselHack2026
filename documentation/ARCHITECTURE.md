@@ -187,7 +187,7 @@ Breaking one of these is a bug.
 
 **Assumptions (POC):**
 - One city, with no ranking beyond name order.
-- Guest identity is the `guest_name` Claude passes, compared everywhere by `same_guest` (case-folded, whitespace collapsed).
+- Guest identity is the `guest_name` Claude passes, compared everywhere by `same_guest` (case-folded, accents dropped, whitespace collapsed).
 - A single hard-coded merchant session on the platform.
 - Deployed, the gateway reaches the agents through the BATP node on the same host (`BATP_URL`); without it (development, tests), they run in the same process.
 

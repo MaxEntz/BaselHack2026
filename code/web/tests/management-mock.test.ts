@@ -266,6 +266,7 @@ test("guests are grouped by name, and search finds a booking by reference", asyn
     guests.map((g) => [g.guest_name, g.bookings, g.reservation_id]),
     [["Lena Becker", 1, "R-010"]], // her 19:00 booking tonight has started
   );
+  assert.deepEqual((await mock.guests(SLUG, "  LÉNA  bëcker")).guests, guests);
   assert.deepEqual(reservations.map((b) => b.guest_name), ["Emma Roth"]);
   assert.deepEqual((await mock.search(SLUG, "")).reservations, []);
 });

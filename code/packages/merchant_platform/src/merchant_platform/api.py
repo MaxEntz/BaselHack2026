@@ -130,6 +130,7 @@ def create_app(
     app.state.sessions = sessions
     app.state.bus = live
     app.state.development_merchant = settings.platform_merchant
+    app.state.agent = agent
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.public_cors_origins),

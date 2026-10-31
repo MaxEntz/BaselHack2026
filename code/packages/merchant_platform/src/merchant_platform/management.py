@@ -9,8 +9,10 @@ owner (`auth.owner_of_path`): `401` without one, `403` for another merchant.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Request
 
+from agent.service import AgentService
+from core.errors import AgentUnavailable
 from core.forms import checked_rules, checked_services, checked_settings, checked_tables
 from core.models import (
     AgentRequests,
@@ -59,6 +61,14 @@ class NotBuiltYet(Exception):
         super().__init__(f"Not built yet: see {issue}.")
 
 
+def _agent(request: Request) -> AgentService:
+    """Called in the handler, not as a dependency: a bad input must answer `422` first."""
+    agent: AgentService | None = request.app.state.agent
+    if agent is None:
+        raise AgentUnavailable("The management site is not available yet.")
+    return agent
+
+
 @router.get("")
 async def overview(slug: SlugPath) -> MerchantOverview:
     raise NotBuiltYet("#132")
@@ -104,8 +114,8 @@ async def slots(
 
 
 @router.get("/guests")
-async def guests(slug: SlugPath, q: Search = "") -> GuestsOutput:
-    raise NotBuiltYet("#144")
+async def guests(slug: SlugPath, request: Request, q: Search = "") -> GuestsOutput:
+    return GuestsOutput(guests=tuple(await _agent(request).list_guests(slug, q)))
 
 
 @router.get("/search")
