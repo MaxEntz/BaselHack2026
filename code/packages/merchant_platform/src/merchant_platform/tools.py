@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
 
-from agent.service import AgentService, MerchantCancelOutcome
+from agent.service import AgentService
 from builder.build import AlreadyProvisioned
 from builder.llm import ToolCall, ToolSpec
 from core.errors import AgentError, AgentUnavailable, InvalidInput
@@ -29,6 +29,7 @@ from core.models import (
     ErrorCode,
     GetStatsInput,
     ListReservationsInput,
+    MerchantCancelOutcome,
     PolicyCard,
     ProfileCard,
     ReservationsCard,
@@ -64,6 +65,7 @@ SITE_TAKEN = (
 CANCELLED: dict[MerchantCancelOutcome, str] = {
     "notified": "{id} cancelled. The guest will be notified.",
     "ended": "{id} is in the past: cancelled, no notice sent.",
+    "own_booking": "{id} cancelled. You made this booking, so no notice is sent.",
     "guest_cancelled": "{id} was already cancelled by the guest.",
     "already_cancelled": "{id} was already cancelled: no new notice sent.",
 }

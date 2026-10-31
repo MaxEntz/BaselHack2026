@@ -47,6 +47,7 @@ from core.db import (
 from core.errors import InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import (
     AdminReservationRow,
+    MerchantCancelOutcome,
     Policy,
     Reservation,
     Service,
@@ -70,9 +71,6 @@ IDEMPOTENCY_CONSTRAINT = "reservations_idempotency_key_key"
 NOTICE_WINDOW = timedelta(hours=24)
 
 Outcome = Literal["done", "taken", "key_taken"]
-
-
-MerchantCancelOutcome = admin.CancelOutcome
 
 
 @dataclass(frozen=True)

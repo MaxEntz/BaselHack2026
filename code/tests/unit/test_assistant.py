@@ -6,7 +6,7 @@ import logging
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -14,7 +14,7 @@ from openai import AsyncOpenAI
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from agent.service import AgentService, MerchantCancellation, MerchantCancelOutcome
+from agent.service import AgentService, MerchantCancellation
 from builder.build import AlreadyProvisioned
 from builder.llm import (
     LLMClient,
@@ -34,6 +34,7 @@ from core.models import (
     BuildAgentOutput,
     ChatEvent,
     GeneratedTool,
+    MerchantCancelOutcome,
     MerchantProfile,
     Policy,
     Reservation,
@@ -53,7 +54,13 @@ from merchant_platform.assistant import (
     system_prompt,
 )
 from merchant_platform.sessions import Session
-from merchant_platform.tools import NOT_AVAILABLE, NOT_ONBOARDED, SITE_TAKEN, AdminTools
+from merchant_platform.tools import (
+    CANCELLED,
+    NOT_AVAILABLE,
+    NOT_ONBOARDED,
+    SITE_TAKEN,
+    AdminTools,
+)
 
 TZ = ZoneInfo("Europe/Zurich")
 NOW = datetime(2026, 10, 31, 18, 30, tzinfo=TZ)
@@ -855,3 +862,8 @@ def test_a_model_call_that_stops_sending_gives_up_after_60_s(
     assert kwargs["timeout"].read == 60
     assert kwargs["timeout"].connect == 5
     assert kwargs["max_retries"] == 0
+
+
+def test_every_cancellation_outcome_has_its_wording() -> None:
+    # A new outcome (own_booking, #129) must never reach the card as a KeyError.
+    assert set(CANCELLED) == set(get_args(MerchantCancelOutcome))

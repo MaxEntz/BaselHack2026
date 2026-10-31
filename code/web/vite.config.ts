@@ -1,10 +1,12 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, searchForWorkspaceRoot } from 'vite'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
+    // The management mock reads the demo fixture the seed also loads (#131).
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), '../tests/fixtures/demo'] },
     // The platform API serves /chat and /events; /api avoids CORS in dev.
     proxy: {
       '/api': {

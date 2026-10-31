@@ -1,5 +1,5 @@
-"""FastAPI app: `/chat` (SSE), `/events` (SSE), `/session`, the public booking API and
-`/health`."""
+"""FastAPI app: `/chat` (SSE), `/events` (SSE), `/session`, the public booking API, the
+management site's `/merchants/{slug}` routes and `/health`."""
 
 import asyncio
 import logging
@@ -29,6 +29,7 @@ from core.models import (
     ErrorCode,
     ErrorEvent,
     GuestText,
+    ManagementError,
     ReservationOutput,
     SessionMerchant,
     SessionOutput,
@@ -45,6 +46,8 @@ from merchant_platform.assistant import (
 )
 from merchant_platform.events import LiveBus, LiveListener
 from merchant_platform.logs import configure_logging
+from merchant_platform.management import NotBuiltYet
+from merchant_platform.management import router as management_router
 from merchant_platform.sessions import Session, SessionStore
 
 log = logging.getLogger("merchant_platform.api")
@@ -143,6 +146,13 @@ def create_app(
             for issue in error.errors()
         )
         return tool_error("invalid_input", problems or "Invalid request.")
+
+    @app.exception_handler(NotBuiltYet)
+    async def not_built_yet(_: Request, error: NotBuiltYet) -> JSONResponse:
+        body = ManagementError(error="agent_unavailable", message=str(error))
+        return JSONResponse(body.model_dump(mode="json", exclude_none=True), status_code=501)
+
+    app.include_router(management_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

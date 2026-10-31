@@ -13,7 +13,7 @@ guest's.
 
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from pydantic import TypeAdapter, ValidationError
@@ -31,7 +31,16 @@ from core.db import (
     tables_t,
 )
 from core.errors import InvalidInput, NotFound
-from core.models import AdminReservationRow, FloorPlan, Policy, Service, Services, Stats, TableSpec
+from core.models import (
+    AdminReservationRow,
+    FloorPlan,
+    MerchantCancelOutcome,
+    Policy,
+    Service,
+    Services,
+    Stats,
+    TableSpec,
+)
 
 # Any row shape (SQLAlchemy 2.1 rows are variadic generics).
 _Row = Row[*tuple[Any, ...]]
@@ -283,9 +292,8 @@ async def _check_plan_change(
         )
 
 
-# What a merchant's cancellation did (#82): cancelled with a notice for the guest, cancelled
-# without one since it is over, or nothing, since the guest or the merchant already cancelled it.
-CancelOutcome = Literal["notified", "ended", "guest_cancelled", "already_cancelled"]
+# What a merchant's cancellation did (#82): see `core.models.MerchantCancelOutcome`.
+CancelOutcome = MerchantCancelOutcome
 
 
 async def cancel_by_merchant(

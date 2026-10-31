@@ -20,7 +20,7 @@ profile, reservations incl. empty, stats, policy, notifications, errors).
 
 | Variable | Effect |
 |---|---|
-| `VITE_MOCK=1` | Replays the contract mocks with realistic delays instead of calling the API. During onboarding, a description containing the word "cut" drops the stream while the agent is being built (#86). |
+| `VITE_MOCK=1` | Replays the contract mocks with realistic delays instead of calling the API. During onboarding, a description containing the word "cut" drops the stream while the agent is being built (#86). The management client (`src/management/`) then serves the demo fixture, `code/tests/fixtures/demo/la-graine-verte-management.json`, with the server's booking rules (#129). |
 | `VITE_MERCHANT_SLUG` | Skips onboarding: the chat starts as this merchant and subscribes to its live events. |
 | `VITE_MERCHANT_NAME` | Name shown in the header with `VITE_MERCHANT_SLUG` (defaults to the slug). |
 
@@ -39,6 +39,9 @@ message replays `tonight.json`, and messages mentioning *block*, *busy*, *stats*
 - `src/chat/client.ts`: `POST /api/chat` SSE client and `EventSource` on
   `/api/events?merchant=<slug>`; `src/mocks/mockClient.ts` is its mock twin.
 - `src/chat/useChat.ts`: wires the client to the reducer.
+- `src/management/client.ts`: the management site's calls, one per `/api/merchants/<slug>` route
+  (`ManagementClient`, #129); `src/mocks/managementClient.ts` is its mock twin, and
+  `src/management/index.ts` picks one of them.
 - `src/components/`: header, message list (auto-scroll), composer.
 - `src/cards/`: rich messages rendered from `step`/`card` events and live
   notifications, never from the assistant's Markdown; `Gallery.tsx` is `/?gallery`.
