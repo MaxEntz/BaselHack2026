@@ -49,6 +49,7 @@ flowchart LR
     Node -->|4 route + filters| Agent[AgentService<br/>multi-tenant]
     Agent <--> DB[(PostgreSQL<br/>schema per merchant)]
     Platform[Platform API<br/>FastAPI] --> Assistant[Platform assistant<br/>OpenAI API + admin tools]
+    Platform -->|management routes| Agent
     Assistant --> Agent
     Assistant --> Builder[Builder<br/>Playwright + OpenAI API]
     Builder -->|provision| Agent
@@ -213,7 +214,7 @@ make lint                               # ruff check, ruff format --check, mypy
 make gateway    # MCP server        -> http://localhost:8001/mcp
 make node       # BATP node         -> batp://127.0.0.1:4710
 make platform   # Platform API      -> http://localhost:8002
-make web        # merchant chat UI  -> http://localhost:5173
+make web        # merchant chat and management site -> http://localhost:5173
 make sites      # demo websites     -> http://localhost:8080, :8081, :8082
 make demo-reset # known demo state; make outage / make restore SLUG=…
 make deploy     # gateway + node to the team server
@@ -290,7 +291,6 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 |---|---|---|
 | 2026-10-31 | Python, MCP SDK v2 (`mcp` 2.3.0), Postgres, FastAPI, Vite/React | [ADR-0002](documentation/adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md), #3 |
 | 2026-10-31 | The LLM fills a schema, never writes code | [ADR-0003](documentation/adr/0003-llm-fills-a-schema-never-generates-code.md) |
-| 2026-10-31 | Both sides are chat-only | §1 |
 | 2026-10-31 | Code in `code/`; package `platform` renamed `merchant_platform` | [ADR-0005](documentation/adr/0005-rename-platform-package-to-merchant-platform.md) |
 | 2026-10-31 | OpenAI API for every backend LLM call | [ADR-0004](documentation/adr/0004-openai-for-backend-llm-calls.md), #4 |
 | 2026-10-31 | `AGENTS.md` is the shared instruction file, `CLAUDE.md` imports it | — |
@@ -347,7 +347,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | Merchant accounts (#132): a secret link per merchant, shown once on the profile card and stored as its SHA-256; it sets a signed `HttpOnly` cookie naming the merchant and the link, needed by `/merchants/{slug}` and `/events`; `PLATFORM_INVITE_CODE` gates new builds before any model call; `owner_name` stays empty until something asks for it; the `ProfileCard` gains `login_url` | No ownership proof is in scope (§15), but guest names and the OpenAI key must not be open to anyone with a slug; a stdlib HMAC cookie needs no new dependency or session table, and the link fingerprint makes a new link end old sessions ([ADR-0018](documentation/adr/0018-open-a-merchants-site-with-a-secret-link.md)) |
 | 2026-10-31 | La Graine Verte's management data is exported from the mockup (`scripts/export_management_fixture.py`) and loaded by `seed.py --with-management`, on in `make seed` and demo mode, dated from the seed's day: the 7 days keep R-001 to R-055 from the merchant's sequence (the live booking is R-056), the 29 days before are bookings made up to the mockup's daily totals, the agent requests go to `public.agent_requests`; it goes in once, into a La Graine Verte without bookings. The assistant's opening conversation is a file of its own, in the web chat's item shapes, since `ManagementFixture` is frozen | #131 |
 | 2026-10-31 | Bookings from the management site (#134): `agent.management.ManagementService` beside the `AgentService` protocol; merchant moves keep the guests' machinery (table lock, SAVEPOINT per table, exclusion constraint) and their keys in `reservation_changes`; `notify_reservation()` carries `actor` from the transaction-local `sesame.actor` (migration `0005`); no guest notice for a booking the merchant entered, a notice when the merchant moves a guest's booking | The live listener couldn't tell a merchant's move from a guest's (both are UPDATEs), and a merchant schema can't take a column (ADR-0001): the function lives in `public`; the protocol is frozen and `service.py` is at its size limit; the guest who never booked has nothing to be told |
-| 2026-10-31 | Merchants get a management site next to the chat (replaces "Both sides are chat-only"): pages and forms are a second path to the same `AgentService` operations; the agent site has no interface; the v10 mockups in `documentation/design/poc-v10/` are the reference | [ADR-0015](documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #128 |
+| 2026-10-31 | Merchants get a management site next to the chat: pages and forms are a second path to the same `AgentService` operations; the agent site has no interface; the v10 mockups in `documentation/design/poc-v10/` are the reference | [ADR-0015](documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #128 |
 
 ## 15. Out of scope (POC)
 
