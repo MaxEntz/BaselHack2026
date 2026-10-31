@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import demo_booking
 import demo_reset
 import pytest
 import seed
@@ -240,3 +241,25 @@ def test_outage_switch(registry: FakeRegistry, capsys: pytest.CaptureFixture[str
 
     assert set_status.main(["chez-mimi", "down"]) == 1
     assert "not_found" in capsys.readouterr().err
+
+
+def test_the_live_booking_key_is_stable_and_short() -> None:
+    """`GuestText` caps the key at 200 characters, and a guest name may take all 200 (#79)."""
+    starts_at = datetime(2026, 10, 31, 20, 0, tzinfo=ZURICH)
+    longest = ["--merchant", "m" * 61, "--guest", "K" * 200]
+    key = demo_booking.idempotency_key(demo_booking.parser().parse_args(longest), starts_at)
+
+    assert key == demo_booking.idempotency_key(demo_booking.parser().parse_args(longest), starts_at)
+    assert len(key) <= 200
+    other = demo_booking.parser().parse_args([*longest, "--key", "2"])
+    assert demo_booking.idempotency_key(other, starts_at) != key
+
+
+def test_the_live_booking_needs_no_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("GATEWAY_TOKEN", "s3cret")
+
+    settings = demo_booking.GatewaySettings(_env_file=None)
+
+    assert settings.gateway_token is not None
+    assert settings.gateway_token.get_secret_value() == "s3cret"

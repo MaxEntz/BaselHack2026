@@ -7,11 +7,13 @@ the same "New booking via Claude" as for a guest in Claude. Run from `code/`, wi
     uv run python scripts/demo_booking.py
     uv run python scripts/demo_booking.py --url http://127.0.0.1:8001/mcp --date 2026-11-01
 
-The idempotency key is made of the arguments: running it twice books once.
+The idempotency key is made of the arguments: running it twice books once. A booking cancelled
+since then isn't booked again (the key replays it): `--key` with any word gives a new one.
 """
 
 import argparse
 import asyncio
+import hashlib
 import sys
 from collections.abc import Sequence
 from datetime import date, datetime, time
@@ -22,11 +24,17 @@ import httpx2
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
-from core.config import get_settings
+from core.config import Settings
 
 GATEWAY_URL = "http://127.0.0.1:8001/mcp"
 MERCHANT = "la-graine-verte"
 GUEST = "Kim Weber"
+
+
+class GatewaySettings(Settings):
+    """`MERCHANT_TZ` and `GATEWAY_TOKEN` from the environment and `.env`; no database needed."""
+
+    database_url: str = ""
 
 
 def parser() -> argparse.ArgumentParser:
@@ -37,7 +45,14 @@ def parser() -> argparse.ArgumentParser:
     parser.add_argument("--time", type=time.fromisoformat, default=time(20, 0), metavar="HH:MM")
     parser.add_argument("--party-size", type=int, default=2)
     parser.add_argument("--guest", default=GUEST)
+    parser.add_argument("--key", default="", help="any word, for a new booking with these values")
     return parser
+
+
+def idempotency_key(args: argparse.Namespace, starts_at: datetime) -> str:
+    """The same for the same arguments, and short whatever the guest's name (`GuestText`)."""
+    values = (args.merchant, starts_at.isoformat(), str(args.party_size), args.guest, args.key)
+    return f"demo-booking-{hashlib.sha256(repr(values).encode()).hexdigest()[:32]}"
 
 
 async def book(url: str, arguments: dict[str, Any], token: str | None) -> dict[str, Any]:
@@ -56,7 +71,7 @@ async def book(url: str, arguments: dict[str, Any], token: str | None) -> dict[s
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
-    settings = get_settings()
+    settings = GatewaySettings()
     tz = ZoneInfo(settings.merchant_tz)
     starts_at = datetime.combine(args.date or datetime.now(tz).date(), args.time, tz)
     arguments = {
@@ -64,9 +79,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "starts_at": starts_at.isoformat(),
         "party_size": args.party_size,
         "guest_name": args.guest,
-        "idempotency_key": (
-            f"demo-booking-{args.merchant}-{starts_at.isoformat()}-{args.party_size}-{args.guest}"
-        ),
+        "idempotency_key": idempotency_key(args, starts_at),
     }
     token = settings.gateway_token.get_secret_value() if settings.gateway_token else None
     label = f"{args.merchant} {starts_at:%Y-%m-%d %H:%M}"
@@ -85,10 +98,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Fallback: {result['fallback_url']}", file=sys.stderr)
         return 1
     reservation = result["reservation"]
-    print(
+    summary = (
         f"{label}: {reservation['id']}, {reservation['party_size']} guests, "
-        f"table {reservation['table_label']}, via {reservation['via']}"
+        f"table {reservation['table_label']}, via {reservation['via']}, {reservation['status']}"
     )
+    if reservation["status"] == "cancelled":  # a replay: the merchant gets no notification
+        print(summary, file=sys.stderr)
+        print(
+            "Already booked with these values, then cancelled: `make demo-reset`, "
+            'or BOOKING="--key 2" for a new booking.',
+            file=sys.stderr,
+        )
+        return 1
+    print(summary)
     return 0
 
 

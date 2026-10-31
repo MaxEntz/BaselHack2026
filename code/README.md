@@ -50,7 +50,7 @@ Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_pr
 | `make demo-reset` | Before each rehearsal: migrations, drops every `m_*` schema, empties the registry and guest notices, seeds all but Le Petit Zinc (onboarding builds it live). Refuses a non-localhost `DATABASE_URL`. `SEED="--all --with-bookings"` for a full state |
 | `make seed` | The 3 merchants, live, plus tonight's bookings at Le Petit Zinc; idempotent. `SEED="--except le-petit-zinc"` for demo mode |
 | `make bookings` | Tonight's bookings at Le Petit Zinc (19:00–21:00, via website and merchant), e.g. after its live onboarding; times already past are skipped |
-| `make demo-booking` | The demo's live booking: Kim Weber, 2 guests at 20:00 tonight at La Graine Verte, through the gateway's `create_reservation` (needs `make gateway`), so the merchant gets a real "New booking via Claude"; idempotent. `BOOKING="--time 19:30 --url …"` for other values |
+| `make demo-booking` | The demo's live booking: Kim Weber, 2 guests at 20:00 tonight at La Graine Verte, through the gateway's `create_reservation` (needs `make gateway`), so the merchant gets a real "New booking via Claude"; idempotent, and exits 1 when that booking was cancelled since (`BOOKING="--key 2"` books a new one). `BOOKING="--time 19:30 --url …"` for other values |
 | `make outage` / `make restore` | Sets `SLUG` (default `le-petit-zinc`) `down` / `live`: Claude gets the fallback URL while it is down |
 
 ## Checks
