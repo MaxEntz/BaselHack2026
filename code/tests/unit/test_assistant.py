@@ -481,10 +481,53 @@ def test_the_prompt_carries_the_date_time_zone_and_mode() -> None:
     onboarding = system_prompt(NOW, None)
     operations = system_prompt(NOW, PROFILE)
 
-    assert "Today is Saturday 2026-10-31, it is 18:30 (Europe/Zurich)." in onboarding
+    assert "Today is Saturday 2026-10-31, it is 18:30 (Europe/Zurich, UTC+01:00)." in onboarding
     assert "Mode: onboarding" in onboarding
     assert "Mode: operations" in operations
     assert PROFILE.name in operations
+
+
+@pytest.mark.parametrize(
+    ("now", "today", "change"),
+    [
+        (NOW, "UTC+01:00", "The offset becomes UTC+02:00 on Sunday 2027-03-28"),
+        (
+            datetime(2026, 7, 1, 12, 0, tzinfo=TZ),
+            "UTC+02:00",
+            "The offset becomes UTC+01:00 on Sunday 2026-10-25",
+        ),
+        (
+            datetime(2026, 10, 24, 23, 0, tzinfo=TZ),
+            "UTC+02:00",
+            "The offset becomes UTC+01:00 on Sunday 2026-10-25",
+        ),
+        (
+            datetime(2026, 10, 25, 1, 30, tzinfo=TZ),
+            "UTC+02:00",
+            "The offset becomes UTC+01:00 on Sunday 2026-10-25",
+        ),
+        (
+            datetime(2026, 10, 25, 18, 0, tzinfo=TZ),
+            "UTC+01:00",
+            "The offset becomes UTC+02:00 on Sunday 2027-03-28",
+        ),
+    ],
+)
+def test_the_prompt_gives_the_utc_offset_and_its_next_change(
+    now: datetime, today: str, change: str
+) -> None:
+    """A model guessing the offset blocks the wrong hour after a clock change (#83)."""
+    prompt = system_prompt(now, PROFILE)
+
+    assert f"(Europe/Zurich, {today})." in prompt
+    assert change in prompt
+
+
+def test_the_prompt_mentions_no_offset_change_in_a_zone_without_one() -> None:
+    prompt = system_prompt(datetime(2026, 10, 31, 18, 30, tzinfo=ZoneInfo("UTC")), None)
+
+    assert "(UTC, UTC+00:00)." in prompt
+    assert "The offset becomes" not in prompt
 
 
 def test_compact_cuts_long_tool_results_from_old_turns_only() -> None:
