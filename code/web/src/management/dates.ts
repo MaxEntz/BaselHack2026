@@ -13,6 +13,11 @@ export function dayShort(date: string): string {
   return format(date, { weekday: "short", day: "numeric", month: "short" });
 }
 
+/** "Saturday" */
+export function dayName(date: string): string {
+  return format(date, { weekday: "long" });
+}
+
 /** "Saturday 31 October" */
 export function dayLong(date: string): string {
   return format(date, { weekday: "long", day: "numeric", month: "long" });

@@ -1,12 +1,14 @@
 import { type FormEvent, useState } from "react";
 import { strings } from "../strings.ts";
+import { useHoldRefresh } from "./live.ts";
 import { errorMessage } from "./problems.ts";
 import { useDraft, useToast } from "./ui/index.ts";
 
 /**
  * A page form over `initial`: Save sends the draft through `save` and keeps what the server
  * answered; Discard restores the saved values. A refused rule shows in the save bar, its
- * services named by `names` from the saved value.
+ * services named by `names` from the saved value. Unsaved changes hold the live refresh (#137);
+ * without any, the form takes `initial` again when a change elsewhere (the assistant) alters it.
  */
 export function useSavedForm<T>(
   initial: T,
@@ -17,6 +19,13 @@ export function useSavedForm<T>(
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  useHoldRefresh(draft.dirty);
+  const fresh = JSON.stringify(initial);
+  const [read, setRead] = useState(fresh);
+  if (fresh !== read) {
+    setRead(fresh);
+    if (!draft.dirty) draft.commit(initial);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
