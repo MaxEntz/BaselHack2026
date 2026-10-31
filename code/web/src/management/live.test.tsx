@@ -60,25 +60,54 @@ describe("useHoldRefresh", () => {
   });
 });
 
-describe("changes", () => {
-  afterEach(() => vi.restoreAllMocks());
+// Another window's channel: what it hears, in order.
+function otherWindow() {
+  const channel = new BroadcastChannel("sesame:changes");
+  const heard: unknown[] = [];
+  channel.onmessage = (event: MessageEvent) => heard.push(event.data);
+  return { channel, heard };
+}
 
-  it("reach the listeners of their merchant only", () => {
+describe("changes", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("reach the listeners of their merchant only, in this window and in the others", async () => {
     const mine = vi.fn();
     const other = vi.fn();
     const stop = onChange("la-graine-verte", mine);
-    onChange("le-petit-zinc", other)();
+    const stopOther = onChange("le-petit-zinc", other);
+    const frame = otherWindow();
     announceChange("la-graine-verte");
-    announceChange("le-petit-zinc");
+    await vi.waitFor(() => expect(frame.heard).toEqual([{ slug: "la-graine-verte" }]));
+    await vi.waitFor(() => expect(mine).toHaveBeenCalledTimes(1));
+    // Announced in the other window: heard here.
+    frame.channel.postMessage({ slug: "le-petit-zinc" });
+    await vi.waitFor(() => expect(other).toHaveBeenCalledTimes(1));
     stop();
     announceChange("la-graine-verte");
+    announceChange("le-petit-zinc");
+    await vi.waitFor(() => expect(other).toHaveBeenCalledTimes(2));
     expect(mine).toHaveBeenCalledTimes(1);
-    expect(other).not.toHaveBeenCalled();
+    stopOther();
+    frame.channel.close();
+  });
+
+  it("stay in this window where there is no BroadcastChannel", () => {
+    vi.stubGlobal("BroadcastChannel", undefined);
+    const heard = vi.fn();
+    const stop = onChange("s", heard);
+    announceChange("s");
+    announceChange("t");
+    stop();
+    announceChange("s");
+    expect(heard).toHaveBeenCalledTimes(1);
   });
 
   it("are announced after a mutation that succeeds, not after a read or a refusal", async () => {
-    const heard = vi.fn();
-    const stop = onChange("s", heard);
+    const frame = otherWindow();
     const client = announcingChanges({
       rules: vi.fn(async () => ({})),
       saveRules: vi.fn(async () => ({ saved: true })),
@@ -87,11 +116,10 @@ describe("changes", () => {
       }),
     } as unknown as ManagementClient);
     await client.rules("s");
-    expect(heard).not.toHaveBeenCalled();
     expect(await client.saveRules("s", {} as never)).toEqual({ saved: true });
-    expect(heard).toHaveBeenCalledTimes(1);
     await expect(client.cancelBooking("s", "R-001")).rejects.toThrow("refused");
-    expect(heard).toHaveBeenCalledTimes(1);
-    stop();
+    announceChange("end");
+    await vi.waitFor(() => expect(frame.heard).toEqual([{ slug: "s" }, { slug: "end" }]));
+    frame.channel.close();
   });
 });

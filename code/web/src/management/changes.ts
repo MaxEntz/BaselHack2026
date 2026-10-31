@@ -3,22 +3,38 @@
 // here, and the shell reads the pages again.
 import type { ManagementClient } from "./client.ts";
 
-const EVENT = "sesame:changed";
+const NAME = "sesame:changes";
 
 type ChangeDetail = { slug: string };
 
-/** Something changed `slug`'s data: the pages read it again. The assistant (#140) calls it after a tool. */
+/**
+ * Something changed `slug`'s data: the pages read it again, in every window of the site
+ * (another tab, Studio's frame). The chat calls it after a tool that changed something.
+ */
 export function announceChange(slug: string): void {
-  window.dispatchEvent(new CustomEvent<ChangeDetail>(EVENT, { detail: { slug } }));
+  if (typeof BroadcastChannel === "undefined") {
+    window.dispatchEvent(new CustomEvent<ChangeDetail>(NAME, { detail: { slug } }));
+    return;
+  }
+  // Every other channel of this name hears it, those of this window too.
+  const channel = new BroadcastChannel(NAME);
+  channel.postMessage({ slug } satisfies ChangeDetail);
+  channel.close();
 }
 
 /** Runs `listener` on every change of `slug`; returns the unsubscribe function. */
 export function onChange(slug: string, listener: () => void): () => void {
-  const handle = (event: Event) => {
-    if ((event as CustomEvent<ChangeDetail>).detail?.slug === slug) listener();
+  const hear = (detail?: ChangeDetail) => {
+    if (detail?.slug === slug) listener();
   };
-  window.addEventListener(EVENT, handle);
-  return () => window.removeEventListener(EVENT, handle);
+  if (typeof BroadcastChannel === "undefined") {
+    const handle = (event: Event) => hear((event as CustomEvent<ChangeDetail>).detail);
+    window.addEventListener(NAME, handle);
+    return () => window.removeEventListener(NAME, handle);
+  }
+  const channel = new BroadcastChannel(NAME);
+  channel.onmessage = (event: MessageEvent<ChangeDetail>) => hear(event.data);
+  return () => channel.close();
 }
 
 // The calls that change something, checked against the client's keys: a renamed
