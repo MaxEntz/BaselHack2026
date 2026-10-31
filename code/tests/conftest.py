@@ -6,6 +6,12 @@ import pytest
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.models import MerchantProfile
+
+FIXTURES = Path(__file__).parent / "fixtures"
+# The demo's fictional restaurants in Mulhouse (#10), in name order.
+DEMO_MERCHANTS = ("la-graine-verte", "le-petit-zinc", "maison-albane")
+
 
 class _LlmEnv(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
@@ -38,5 +44,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 @pytest.fixture
 def profile_data() -> dict[str, Any]:
-    path = Path(__file__).parent / "fixtures" / "le-petit-zinc.json"
+    path = FIXTURES / "le-petit-zinc.json"
     return json.loads(path.read_text())
+
+
+@pytest.fixture
+def demo_profiles() -> dict[str, MerchantProfile]:
+    """The 3 demo merchants by slug, as `scripts/seed.py` provisions them."""
+    return {
+        slug: MerchantProfile.model_validate_json((FIXTURES / f"{slug}.json").read_text())
+        for slug in DEMO_MERCHANTS
+    }

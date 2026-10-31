@@ -1,0 +1,420 @@
+.card-title {
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+}
+
+.card-subtitle {
+  margin: 20px 0 8px;
+  font-size: 1rem;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.strong {
+  font-weight: 600;
+}
+
+.button-secondary {
+  padding: 6px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  padding: 2px 12px;
+  font-size: 0.9rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.chip-blocked {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 24px;
+  margin: 0;
+}
+
+.fact dt {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Steps */
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  column-gap: 10px;
+  padding: 6px 0;
+}
+
+.step-icon {
+  display: inline-flex;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.step-waiting {
+  color: var(--text-muted);
+}
+
+.step-waiting .step-icon::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+}
+
+.step-running .step-label {
+  font-weight: 600;
+}
+
+.step-done .step-icon {
+  color: var(--success);
+}
+
+.step-error .step-icon,
+.step-error .step-label {
+  color: var(--danger);
+}
+
+.step-duration {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.step-detail {
+  grid-column: 2 / -1;
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.step-error .step-detail {
+  color: var(--danger);
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 3px solid var(--info-bg);
+  border-top-color: var(--info);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Profile */
+
+.profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.profile-header .card-title {
+  margin-bottom: 2px;
+  font-size: 1.4rem;
+}
+
+.profile-header p {
+  margin: 0;
+}
+
+.assumptions {
+  margin-top: 16px;
+  padding: 12px 16px;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border: 1px solid #f0d58a;
+  border-radius: 10px;
+}
+
+.assumptions ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  color: var(--text);
+}
+
+.tools {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tools li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+
+.tools code,
+.mcp-url code,
+.reservations code {
+  font: 0.9em var(--mono);
+}
+
+.tools code {
+  font-weight: 600;
+}
+
+.mcp-url {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.mcp-url code {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+  background: var(--bg);
+  border-radius: 6px;
+  user-select: all;
+}
+
+/* Reservations */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.reservations {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.reservations th,
+.reservations td {
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.reservations th {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.reservations .numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.reservations tfoot td {
+  border-bottom: 0;
+  font-weight: 600;
+}
+
+.reservations .is-cancelled td {
+  color: var(--text-muted);
+}
+
+.reservations .is-cancelled td:first-child {
+  text-decoration: line-through;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-radius: 999px;
+}
+
+.badge-claude {
+  color: var(--claude);
+  background: var(--claude-bg);
+}
+
+.badge-website {
+  color: var(--info);
+  background: var(--info-bg);
+}
+
+.badge-merchant {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* Stats */
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column-reverse;
+  padding: 12px 16px;
+  background: var(--bg);
+  border-radius: 10px;
+}
+
+.figure dd {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.figure dt {
+  color: var(--text-muted);
+}
+
+/* Confirmation, notification, error */
+
+.confirmation {
+  align-self: flex-start;
+  padding: 10px 16px;
+  font-weight: 600;
+  color: var(--success);
+  background: var(--success-bg);
+  border-radius: var(--radius);
+}
+
+.notification {
+  --tone: var(--notify);
+  --tone-bg: var(--notify-bg);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  align-self: stretch;
+  padding: 14px 18px;
+  color: var(--tone);
+  background: var(--tone-bg);
+  border-left: 6px solid var(--tone);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  animation:
+    slide-in 0.4s ease-out,
+    flash 1.6s ease-out 0.4s;
+}
+
+.notification-updated {
+  --tone: var(--info);
+  --tone-bg: var(--info-bg);
+}
+
+.notification-cancelled {
+  --tone: var(--danger);
+  --tone-bg: var(--danger-bg);
+}
+
+.notification strong {
+  font-size: 1.1rem;
+}
+
+.notification p {
+  margin: 2px 0 0;
+  color: var(--text);
+}
+
+.notification-icon {
+  font-size: 1.6rem;
+}
+
+.error-item {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 12px 16px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-radius: var(--radius);
+}
+
+.error-item p {
+  margin: 0 0 8px;
+}
+
+.error-item p:last-child {
+  margin-bottom: 0;
+}
+
+.error-item .button-secondary {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@keyframes flash {
+  0%,
+  100% {
+    box-shadow: var(--shadow);
+  }
+  30% {
+    box-shadow: 0 0 0 6px var(--tone-bg), var(--shadow);
+  }
+}

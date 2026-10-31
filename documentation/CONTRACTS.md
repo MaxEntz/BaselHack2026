@@ -76,6 +76,30 @@ are ordered arrays of chat events. `notification.json` is one live event. The
 onboarding profile matches the Python fixture and the 44-seat plan from #10; the
 live booking also appears in tonight's reservations.
 
+## Platform HTTP API
+
+`merchant_platform.api` (port 8002; the web chat reaches it through Vite's `/api` proxy):
+
+- `POST /chat` with `{"session_id": str | null, "message": str}` (1–4000 characters):
+  the `ChatEvent` stream above, always ending with exactly one `done`. A failing turn
+  sends a generic `error` (details only in the logs) before `done`. `409` while the same
+  session is still answering. A `null` session is the single POC merchant session.
+- `GET /events?merchant=<slug>`: `LiveEvent` stream, with an SSE comment every 15 s. Fed
+  by `LISTEN reservations`: every committed INSERT/UPDATE on a registered merchant's
+  `reservations` becomes `new_booking`, `updated` or `cancelled`, re-read from the
+  merchant's schema. An UPDATE that changes nothing (an idempotent replay) is skipped by
+  the `reservations_skip_noop` trigger and sends nothing. The listener reconnects after 1, 2, 4 then 10 s; each open stream
+  keeps at most 100 pending events (oldest dropped).
+- `POST /public/{slug}/reservations` (the showcase site's form) with `{starts_at,
+  party_size, guest_name, idempotency_key}`: `201` + `{"reservation": Reservation}`
+  booked `via="website"`. Errors use the `ToolError` body with `404` (`not_found`), `409`
+  (`slot_unavailable`), `422` (`party_too_large`, `invalid_input`), `503`
+  (`agent_unavailable`). CORS allows `PUBLIC_CORS_ORIGINS` only (default
+  `http://localhost:8080` and `http://127.0.0.1:8080`).
+- Request validation errors on any route are `422` + `ToolError` (`invalid_input`).
+- `POST /dev/reset-session` with `{"session_id": str | null}` restarts onboarding (disabled
+  with `PLATFORM_DEV_ROUTES=0`). `GET /health`.
+
 ## Checks
 
 With Python 3.12, uv and Node.js 24 installed, run from `code/`:
@@ -85,7 +109,7 @@ uv sync --locked
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy --strict packages/core packages/agent
+uv run mypy --strict packages/core packages/agent packages/gateway
 npm --prefix web ci
 npm --prefix web run check:contracts
 ```

@@ -34,12 +34,29 @@ Le Petit Zinc's booking form posts to `http://localhost:8002/public/le-petit-zin
 
 Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md).
 
+## Demo data
+
+Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_profiles` pytest fixture):
+
+| Slug | Tags | Price | Services | Tables | Max party |
+|---|---|---|---|---|---|
+| `le-petit-zinc` | vegetarian, gluten-free, terrace, kid-friendly | €€ | 12:00–14:00, 19:00–22:00 | 4×2, 6×4, 2×6 | 6 |
+| `la-graine-verte` | vegan, vegetarian, gluten-free | € | 11:30–14:30, 18:30–21:30 | 6×2, 3×4 | 4 |
+| `maison-albane` | vegetarian, terrace | €€€€ | 19:30–22:30 | 5×2, 3×4 | 6 |
+
+| Command | What |
+|---|---|
+| `make demo-reset` | Before each rehearsal: migrations, drops every `m_*` schema, empties the registry and guest notices, seeds all but Le Petit Zinc (onboarding builds it live). Refuses a non-localhost `DATABASE_URL`. `SEED="--all --with-bookings"` for a full state |
+| `make seed` | The 3 merchants, live, plus tonight's bookings at Le Petit Zinc; idempotent. `SEED="--except le-petit-zinc"` for demo mode |
+| `make bookings` | Tonight's bookings at Le Petit Zinc (19:00–21:00, via website and merchant), e.g. after its live onboarding; times already past are skipped |
+| `make outage` / `make restore` | Sets `SLUG` (default `le-petit-zinc`) `down` / `live`: Claude gets the fallback URL while it is down |
+
 ## Checks
 
 ```bash
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
-uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core
+uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway
 make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 ```

@@ -6,6 +6,8 @@ This file is the single source of truth for this repository. Read it fully befor
 
 `CLAUDE.md` only imports this file (`@AGENTS.md`), so Claude Code and opencode read the same instructions. Edit this file, never `CLAUDE.md`.
 
+Architecture overview, component boundaries and decision records: [`documentation/ARCHITECTURE.md`](documentation/ARCHITECTURE.md) and [`documentation/adr/`](documentation/adr/README.md).
+
 ## 0. Corrections (take precedence over the sections below)
 
 - **All code lives in `code/`** (BaselHack template: `code/`, `documentation/`, `assets/`). The `merchant-agents/` root of §4 is `code/`; run every command of §10 from `code/`.
@@ -13,6 +15,8 @@ This file is the single source of truth for this repository. Read it fully befor
 - **MCP Python SDK v2**: `from mcp.server import MCPServer`. `FastMCP` no longer exists in v2; do not copy v1 examples. Behind a tunnel, set `allowed_hosts` or the transport answers 421.
 - **`templates/restaurant.json` lives in `agent`** (provisioning consumes it), not in `builder`.
 - **Merchant schema name** = `m_` + slug with `-` replaced by `_`; slugs are ≤ 61 characters (Postgres identifiers are limited to 63 bytes).
+- **DB access (`core/db.py`, ADR-0001)**: Alembic manages only `public` (migration `0001`). Merchant tables (and the `reservations_notify` trigger) are declared once in SQLAlchemy Core under the placeholder schema `merchant`, so `merchant_metadata.create_all` on a translated connection builds a whole merchant schema; always query them through `merchant_conn(engine, slug)` (`schema_translate_map` → `m_<slug>`) with Core constructs, never `text()`, which is not translated. Turn a slug into a schema only with `schema_for(slug)`. Reservation IDs come from `next_reservation_id(conn)`. SQL changes vs §7.2: `merchants.status` defaults to `building` (`deploy` sets `live`), `notify_reservation()` lives in `public`, is shared by every merchant trigger and also sends `via`; `reservations.during` must not be empty (an empty range would slip past the exclusion constraint).
+- **Provisioning (`agent/provisioning.py`)**: `provision(profile)` (one transaction: schema, tables, policy, registry row in `building`), `deploy(slug)` / `set_status(slug, "live"|"down")`, `deprovision(slug)` (idempotent). Each takes an optional keyword `engine=`: long-running processes pass theirs; scripts omit it and get a short-lived engine on `DATABASE_URL`. A slug already in use (or racing another `provision`) raises `SlugTaken` (an `InvalidInput`). After provisioning, the merchant's `tables` and `policy` rows are authoritative; the registry's `profile` jsonb is a display copy that `update_policy` / `update_tables` must keep in sync (#9). `default_tables(seats)` and `generated_tools(profile)` are pure; `templates/restaurant.json` is validated at import (unknown `{placeholder}` = crash at startup).
 - **Tool contract changes vs §8**: `update_reservation` and `cancel_reservation` also take `guest_name` (checked against the booking); `search_merchants` also returns `suggestions` and `ignored_filters`; admin tool `update_tables` added; table `public.guest_notices` added to the §7.2 SQL; `search_merchants` merchants also carry `website`; `Reservation` also carries `merchant`, `guest_name` and `via`; the admin `cancel_reservation` input has no `by` (the tool is merchant-only, the service receives `by="merchant"`).
 - **Backend LLM calls use OpenAI**, not Anthropic (§14): the builder's `extract` step and the platform assistant use the OpenAI Python SDK (Responses API), with `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-6.1-terra`). The sections below are updated. Claude stays the **user-side** client (Claude.ai connects to the gateway).
 - Work is tracked in GitHub issues (milestones M0–M4, Demo); the tracking issue #26 lists every issue and these corrections.
@@ -322,7 +326,7 @@ uv run python -m gateway                  # MCP server  → http://localhost:800
 uv run uvicorn platform.api:app --port 8002
 cd web && npm i && npm run dev            # merchant chat UI → http://localhost:5173
 uv run pytest                             # all tests (testcontainers starts Postgres)
-uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core
+uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway
 npx @modelcontextprotocol/inspector       # manual MCP testing against :8001/mcp
 ```
 
@@ -358,6 +362,8 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 - Log every tool call (tool, merchant, latency, outcome) as structured JSON; never log guest names at INFO level.
 - Tests first for `availability.py` and anything touching the exclusion constraint.
 - Commits: Conventional Commits (`feat:`, `fix:`, `test:` …), one milestone per branch/PR.
+- **Living docs, same PR as the code**: update `documentation/ARCHITECTURE.md` when you add, rename or remove a component, change the main flow, the stack, a protocol or data format, or a guarantee (§4 Components, §3 Main flow, §5 Stack, §6 Invariants, §7 Glossary). A new or replaced technology or a structural choice gets a new ADR in `documentation/adr/` (never edit an accepted one: supersede it). A local fix, a rename of a variable or an extra test needs neither.
+- Everything in the repo is in **English**: code, comments, docs, commits, PRs, issues. Only the demo site's content is in French. `documentation/runbooks/connector.md` is still in French and is to be translated.
 
 ## 13. Default decisions (apply without asking)
 
@@ -392,6 +398,11 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | Gateway stays on MCP SDK v2 (`mcp` 2.3.0), no fallback to v1 | Spike #3: works from Claude.ai, Claude Code and the SDK client (`documentation/runbooks/connector.md`) |
 | 2026-10-31 | `GATEWAY_TOKEN` is optional; public URL = team LXC behind Caddy (`https://191-96-88-152.sslip.io/mcp`), ngrok as documented alternative; gateway binds `127.0.0.1` | Static header auth on Claude.ai connectors is a beta for limited organizations; fixed URL independent of a laptop and of hackathon Wi-Fi; only Caddy reaches the gateway |
 | 2026-10-31 | OpenAI API for every backend LLM call (replaces the "Claude API" row above) | The team's API key is an OpenAI one; still one SDK. Spike #4 validated strict function calling for the extraction |
+| 2026-10-31 | Platform assistant (#17) on the OpenAI Responses API behind an `LLMClient` interface; history stored in a provider-neutral format, `store=False`; reasoning effort `low` by default | Same provider as the builder; the loop and its tests don't depend on OpenAI types; nothing kept on OpenAI's side; first words fast in a chat |
+| 2026-10-31 | Until the builder lands (#22), `build_agent` provisions the Le Petit Zinc fixture while emitting the five steps; `PLATFORM_MERCHANT` starts the chat as an existing merchant | Onboarding demoable end to end now; a page reload or a seeded demo doesn't force a new onboarding |
+| 2026-10-31 | One Postgres schema per merchant, tables declared once in Core and translated per merchant; no migrations for merchant schemas (drop + re-provision) | Structural isolation, per-merchant exclusion constraint and sequence, no SQL built from slugs ([ADR-0001](documentation/adr/0001-one-postgres-schema-per-merchant.md)) |
+| 2026-10-31 | Keep the name "Le Petit Zinc" (slug `le-petit-zinc`): the site uses a fictional address and says on every page that the restaurant is fictional | A bistro of that name existed in Mulhouse (15 rue des Bons Enfants) but is listed as closed; renaming would touch every team's fixtures and mocks |
+| 2026-10-31 | La Graine Verte and Maison Albane have one-page sites on :8081 and :8082 (`make sites`); their `fallback_url` is the page's `#reserver` section | Their fallback link opens a real page in the demo, next to Le Petit Zinc on :8080 |
 | 2026-10-31 | The crawler checks every browser request after DNS resolution, follows redirects itself hop by hop and never lets the browser follow one (each page's redirects are resolved before loading it); it never loads WebSockets, images, fonts or media; link-local addresses (169.254.169.254) stay refused with `CRAWL_ALLOW_PRIVATE=1`; DNS rebinding is not covered | Chromium doesn't route redirect hops, so a public page could otherwise reach the team server's local services, even by answering the check and the browser differently; only text is read (#21) |
 | 2026-10-31 | The crawl's link filter (§8.3) also matches German (`karte`, `zeiten`, `kontakt`), accents ignored; crawl failures are `InvalidInput` with the message shown in the `crawl` step | Most Basel restaurant sites are in German (tested on kronenhalle.com); the merchant can fix the address (#21) |
 

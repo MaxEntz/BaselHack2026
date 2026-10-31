@@ -1,1 +1,230 @@
-"""Platform assistant: OpenAI API tool-use loop over the admin tools."""
+"""Platform assistant: tool-use loop over the admin tools, for onboarding and daily operations.
+
+Only validated data enters the prompt (the merchant's profile from the registry), never the
+crawled website text.
+"""
+
+import json
+import logging
+from collections.abc import Awaitable, Callable, Sequence
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from openai import AsyncOpenAI
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from agent.service import AgentService
+from core.config import Settings
+from core.db import merchants_t
+from core.models import ErrorEvent, MerchantProfile, TextEvent
+from merchant_platform.build_stub import fixture_build_agent
+from merchant_platform.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
+from merchant_platform.sessions import Session
+from merchant_platform.tools import SPECS, AdminTools, Emit
+
+log = logging.getLogger("merchant_platform.assistant")
+
+RunTurn = Callable[[Session, str, Emit], Awaitable[None]]
+ProfileLookup = Callable[[str], Awaitable[MerchantProfile | None]]
+
+MAX_ITERATIONS = 8
+# Tool results older than this many merchant messages are cut down when long.
+KEEP_TURNS = 3
+LONG_RESULT_CHARS = 600
+
+UNAVAILABLE = "The assistant is temporarily unavailable, please retry."
+INTERRUPTED = "Interrupted before it finished."
+TOO_MANY_STEPS = "I couldn't finish that request. Could you rephrase it or split it up?"
+
+BASE_PROMPT = """\
+You are the assistant of Merchant Agents, a platform that turns a restaurant's website into a \
+booking agent that Claude users can book through. You talk with the restaurant owner.
+
+Rules:
+- Reply in the merchant's language. Be brief and warm: one to three sentences per message.
+- The interface shows tool results as cards (tables, figures, profile, confirmations). Never \
+copy their content into your reply: comment on it in one or two sentences.
+- Only state facts that come from tool results or from the merchant.
+- Dates: work out "tonight", "tomorrow" or "Saturday" from today's date below. Times are local \
+({tz}); pass them with their UTC offset.
+"""
+
+ONBOARDING_PROMPT = """\
+Mode: onboarding. The merchant has no agent yet; only build_agent is available.
+1. Greet them and say in one sentence what will happen: you read their website and their \
+description, then publish an agent that Claude users can book through.
+2. Ask for their website URL.
+3. Ask, in a single message, for a short description of how they work: service hours, number \
+of tables and their sizes, largest group bookable online, dietary options (vegetarian, vegan, \
+gluten-free, halal, kosher), terrace, children, cancellation policy.
+4. If an answer is vague, ask one targeted follow-up at most, then call build_agent with the \
+URL and a description that sums up their answers.
+"""
+
+OPERATIONS_PROMPT = """\
+Mode: operations. The merchant's agent is live.
+- Use the tools for bookings, figures, blocked times, the booking policy and the floor plan.
+- Right after build_agent in this conversation, the profile card is shown: list the \
+assumptions from its result (default values used) and ask the merchant to confirm or correct \
+them. Corrections go through update_policy or update_tables. Then wrap up with: "Your agent \
+is live: Claude users can now book you."
+- Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel \
+and say the guest will be notified.
+
+The merchant's validated profile:
+{profile}
+"""
+
+
+def system_prompt(now: datetime, profile: MerchantProfile | None) -> str:
+    tz = str(now.tzinfo)
+    parts = [BASE_PROMPT.format(tz=tz), f"Today is {now:%A %Y-%m-%d}, it is {now:%H:%M} ({tz}).\n"]
+    if profile is None:
+        parts.append(ONBOARDING_PROMPT)
+    else:
+        parts.append(OPERATIONS_PROMPT.format(profile=profile.model_dump_json(indent=1)))
+    return "\n".join(parts)
+
+
+def close_dangling_calls(history: Sequence[Message]) -> list[Message]:
+    """Give every tool call an output: the API rejects a call left unanswered.
+
+    A turn cancelled while a tool runs (the client left mid-`build_agent`) or a crash leaves
+    one behind; without this, every later message in the session would fail.
+    """
+    answered = {message["call_id"] for message in history if message["role"] == "tool"}
+    closed: list[Message] = []
+    for message in history:
+        closed.append(message)
+        if message["role"] != "assistant":
+            continue
+        closed.extend(
+            {"role": "tool", "call_id": call["id"], "content": INTERRUPTED, "is_error": True}
+            for call in message.get("tool_calls", ())
+            if call["id"] not in answered
+        )
+    return closed
+
+
+def compact(history: Sequence[Message]) -> list[Message]:
+    """Keep the history small: long tool results from old turns are replaced by a stub."""
+    user_turns = [i for i, message in enumerate(history) if message["role"] == "user"]
+    cutoff = user_turns[-KEEP_TURNS] if len(user_turns) >= KEEP_TURNS else 0
+    compacted = []
+    for index, message in enumerate(history):
+        if (
+            index < cutoff
+            and message["role"] == "tool"
+            and len(message["content"]) > LONG_RESULT_CHARS
+        ):
+            message = {**message, "content": "(older result omitted)"}
+        compacted.append(message)
+    return compacted
+
+
+class Assistant:
+    """`RunTurn` implementation: answers one merchant message."""
+
+    def __init__(
+        self,
+        llm: LLMClient,
+        tools: AdminTools,
+        profiles: ProfileLookup,
+        tz: ZoneInfo,
+        *,
+        default_merchant: str | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._llm = llm
+        self._tools = tools
+        self._profiles = profiles
+        self._default_merchant = default_merchant
+        self._clock = clock or (lambda: datetime.now(tz))
+
+    async def __call__(self, session: Session, user_message: str, emit: Emit) -> None:
+        default = self._default_merchant
+        if session.merchant_slug is None and default and await self._profiles(default):
+            session.merchant_slug = default
+        session.messages.append({"role": "user", "content": user_message})
+
+        async def on_text(delta: str) -> None:
+            await emit(TextEvent(delta=delta))
+
+        for _ in range(MAX_ITERATIONS):
+            # Rebuilt every iteration: build_agent switches onboarding to operations mid-turn.
+            profile = await self._profiles(session.merchant_slug) if session.merchant_slug else None
+            try:
+                reply = await self._llm.respond(
+                    instructions=system_prompt(self._clock(), profile),
+                    tools=SPECS,
+                    history=compact(close_dangling_calls(session.messages)),
+                    on_text=on_text,
+                )
+            except LLMUnavailable as error:
+                log.warning("assistant_unavailable", extra={"error": str(error)})
+                await emit(ErrorEvent(message=UNAVAILABLE))
+                return
+            session.messages.append(reply.as_message())
+            if not reply.tool_calls:
+                return
+            for call in reply.tool_calls:
+                result = await self._tools.run(session, call, emit)
+                session.messages.append(
+                    {
+                        "role": "tool",
+                        "call_id": call.id,
+                        "content": result.content,
+                        "is_error": result.is_error,
+                    }
+                )
+        log.warning("assistant_iteration_limit", extra={"session": session.id})
+        await emit(ErrorEvent(message=TOO_MANY_STEPS))
+
+
+def registry_profiles(engine: AsyncEngine) -> ProfileLookup:
+    """The validated profile stored in the registry, or None for an unknown merchant."""
+
+    async def lookup(slug: str) -> MerchantProfile | None:
+        async with engine.connect() as conn:
+            stored = await conn.scalar(
+                select(merchants_t.c.profile).where(merchants_t.c.slug == slug)
+            )
+        if stored is None:
+            return None
+        return MerchantProfile.model_validate_json(json.dumps(stored))
+
+    return lookup
+
+
+async def run_turn(session: Session, user_message: str, emit: Emit) -> None:
+    """Stand-in when no LLM is configured (no OPENAI_API_KEY)."""
+    await emit(TextEvent(delta="The platform assistant needs an OpenAI API key (OPENAI_API_KEY)."))
+
+
+def gateway_mcp_url(public_url: str | None) -> str:
+    """The protocol's MCP URL shown on the profile card."""
+    if not public_url:
+        return "http://localhost:8001/mcp"
+    url = public_url if "://" in public_url else f"https://{public_url}"
+    return f"{url.rstrip('/')}/mcp"
+
+
+def default_assistant(
+    settings: Settings, engine: AsyncEngine, agent: AgentService | None = None
+) -> RunTurn:
+    """The assistant wired to OpenAI, the registry and the builder stub (#22 replaces it)."""
+    if settings.openai_api_key is None:
+        return run_turn
+    tz = ZoneInfo(settings.merchant_tz)
+    llm = OpenAIClient(
+        # Retries are ours (one, before any text reached the merchant).
+        AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value(), max_retries=0),
+        settings.openai_model,
+        reasoning_effort=settings.openai_reasoning_effort,
+    )
+    build = fixture_build_agent(engine, gateway_mcp_url(settings.gateway_public_url))
+    tools = AdminTools(agent, build, tz, today=lambda: datetime.now(tz).date())
+    return Assistant(
+        llm, tools, registry_profiles(engine), tz, default_merchant=settings.platform_merchant
+    )
