@@ -23,8 +23,8 @@ TABLES = {"tables": [{"label": "T1", "seats": 2}]}
 RULES = {"max_party_size": 4, "fallback_url": "http://localhost:8081/#reserver"}
 SETTINGS = {"name": "La Graine Verte", "city": "Mulhouse", "price_level": "€", "tags": []}
 
-# (method, path under /merchants/{slug}, body, issue that implements it)
-ROUTES: list[tuple[str, str, dict[str, Any] | None, str]] = [
+# (method, path under /merchants/{slug}, body, issue that implements it; None once built)
+ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
     ("GET", "/dashboard?date=2026-10-31", None, "#135"),
     ("GET", "/dashboard", None, "#135"),  # the server's today
     ("GET", "/reservations?date=2026-10-31", None, "#134"),
@@ -32,7 +32,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str]] = [
     ("PATCH", "/reservations/R-001", MOVE, "#134"),
     ("POST", "/reservations/R-001/cancel", None, "#134"),
     ("GET", "/slots?date=2026-10-31&party_size=2&ignore=R-001", None, "#134"),
-    ("GET", "/guests?q=kim", None, "#144"),
+    ("GET", "/guests?q=kim", None, None),
     ("GET", "/search?q=kim", None, "#135"),
     ("GET", "/hours", None, "#133"),
     ("PUT", "/hours", HOURS, "#133"),
@@ -48,6 +48,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str]] = [
     ("POST", "/agent/resume", None, "#146"),
     ("GET", "/agent/requests?date=2026-10-31&refused=true", None, "#146"),
 ]
+NOT_BUILT = [route for route in ROUTES if route[3]]
 
 
 def settings(**overrides: Any) -> Settings:
@@ -73,7 +74,7 @@ async def call(
         return await http.request(method, f"/merchants/{slug}{path}", json=body)
 
 
-@pytest.mark.parametrize(("method", "path", "body", "issue"), ROUTES)
+@pytest.mark.parametrize(("method", "path", "body", "issue"), NOT_BUILT)
 async def test_each_route_answers_501_naming_its_issue(
     method: str, path: str, body: dict[str, Any] | None, issue: str
 ) -> None:
@@ -87,7 +88,7 @@ async def test_each_route_answers_501_naming_its_issue(
 
 @pytest.mark.parametrize(("method", "path", "body", "issue"), [*ROUTES, ("GET", "", None, "")])
 async def test_each_route_is_closed_to_anyone_but_the_owner(
-    method: str, path: str, body: dict[str, Any] | None, issue: str
+    method: str, path: str, body: dict[str, Any] | None, issue: str | None
 ) -> None:
     anonymous = await call(method, path, body, owner=None)
     other = await call(method, path, body, owner="maison-albane")
@@ -156,6 +157,13 @@ async def test_a_form_that_breaks_a_rule_names_it(
     assert error.error == "invalid_input"
     assert error.problem is not None
     assert error.problem.model_dump(mode="json", exclude_defaults=True) == problem
+
+
+async def test_a_built_route_without_an_agent_is_unavailable() -> None:
+    response = await call("GET", "/guests")
+
+    assert response.status_code == 503
+    assert ManagementError.model_validate(response.json()).error == "agent_unavailable"
 
 
 @pytest.mark.parametrize(

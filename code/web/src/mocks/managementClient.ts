@@ -813,7 +813,7 @@ function guests(count: number): string {
   return count === 1 ? "1 guest" : `${count} guests`;
 }
 
-// `same_guest`'s comparison (agent/service.py): runs of spaces are one, case folded.
-function fold(value: string): string {
-  return value.trim().split(/\s+/).join(" ").toLowerCase();
+// `guest_key` (agent/guests.py): runs of spaces are one, accents dropped, case folded.
+function fold(text: string): string {
+  return text.normalize("NFKD").replace(/\p{M}/gu, "").trim().split(/\s+/).join(" ").toLowerCase();
 }
