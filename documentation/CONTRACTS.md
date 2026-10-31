@@ -206,7 +206,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 
 | Route | Body | Answer | Issue |
 |---|---|---|---|
-| `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo` | #132 |
+| `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo`, `look` (the site's, #149; null: the default look) | #132 |
 | `POST /publish` | | `MerchantOverview`, now `live`: publishes the agent a build left `building`. A paused (`down`) agent is refused with `invalid_input` | #136 |
 | `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
 | `GET /reservations?date=` | | `ReservationDay`: the day's services, every start of its grid, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |

@@ -507,6 +507,8 @@ class MerchantOverview(_Model):
     management_url: str  # https://<web host>/manage/<slug>
     owner_name: str | None  # what the owner asked to be called; None until known
     demo: bool  # built from one of the demo sites (code/sites/)
+    # The site's look (#149) for the management site's tokens (#150); None: the default look.
+    look: Look | None = None
 
 
 class ManagedReservation(_Model):

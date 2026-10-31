@@ -207,6 +207,8 @@ export type MerchantOverview = {
   owner_name: string | null;
   // Built from one of the demo sites (code/sites/).
   demo: boolean;
+  // The site's look (#149), for the management site's tokens (#150); null: the default look.
+  look?: Look | null;
 };
 
 export type ManagedReservation = {

@@ -356,15 +356,21 @@ def read_look(sample: Mapping[str, Any] | None) -> tuple[Look | None, list[Build
 
 
 # A family is the page's own text, and flags reach the assistant's model (ARCHITECTURE.md §4):
-# only a name that looks like a font's is repeated, never a sentence (#197 review).
-FONT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .'-]{0,39}$")
+# a flag only names a family of this list, in the list's spelling, never the page's (#197).
+KNOWN_FONTS = (
+    "Iowan Old Style", "Palatino", "Georgia", "Times New Roman", "Garamond", "EB Garamond",
+    "Cormorant Garamond", "Libre Baskerville", "Baskerville", "Book Antiqua", "Playfair Display",
+    "Merriweather", "Lora", "PT Serif", "Noto Serif", "DM Serif Display", "Crimson Text",
+    "Montserrat", "Lato", "Roboto", "Open Sans", "Inter", "Poppins", "Raleway", "Nunito",
+    "Oswald", "Source Sans Pro", "Source Sans 3", "Noto Sans", "DM Sans", "Work Sans",
+    "Helvetica", "Helvetica Neue", "Arial", "Verdana", "Segoe UI", "Futura", "Gill Sans",
+)  # fmt: skip
+_KNOWN = {font.lower(): font for font in KNOWN_FONTS}
 
 
 def _font_name(family: str) -> str:
-    """`family` if it looks like a font name (40 characters, 4 words at most), else "a font"."""
-    if FONT_NAME.fullmatch(family) and len(family.split()) <= 4:
-        return family
-    return "a font"
+    """The family as `KNOWN_FONTS` spells it, else "a font": never the page's own words."""
+    return _KNOWN.get(" ".join(family.split()).lower(), "a font")
 
 
 def _display(font: str) -> DisplayFont:

@@ -446,14 +446,28 @@ def bounded_look(styles: dict[str, Any]) -> dict[str, Any]:
         ranked = sorted(weights.items(), key=lambda kv: -kv[1])[:LOOK_KEYS]
         return dict(ranked)
 
+    def number(value: Any) -> float | None:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed == parsed and abs(parsed) != float("inf") else None
+
     heading = styles.get("heading")
     numbers = ("blob_area", "textures", "page_area", "page_width")
+    radii = [
+        values
+        for item in styles.get("radii") or []
+        if isinstance(item, list)
+        and len(item) == 3
+        and None not in (values := [number(v) for v in item])
+    ]
     return {
         "bg": cut(styles.get("bg")),
         "ink": cut(styles.get("ink")),
         "body_font": cut(styles.get("body_font"), LOOK_FONT_CHARS),
         "heading": {
-            "size": heading.get("size"),
+            "size": number(heading.get("size")),
             "color": cut(heading.get("color")),
             "font": cut(heading.get("font"), LOOK_FONT_CHARS),
         }
@@ -462,8 +476,8 @@ def bounded_look(styles: dict[str, Any]) -> dict[str, Any]:
         "backgrounds": heaviest(styles.get("backgrounds")),
         "texts": heaviest(styles.get("texts")),
         "borders": heaviest(styles.get("borders")),
-        "radii": [r for r in styles.get("radii") or [] if isinstance(r, list)][:500],
-        **{name: styles.get(name) for name in numbers},
+        "radii": radii[:500],
+        **{name: number(styles.get(name)) for name in numbers},
     }
 
 
