@@ -15,11 +15,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import AgentService
+from builder.build import Builder, gateway_mcp_url
+from builder.cache import BuildCache
+from builder.crawl import StepEmitter
+from builder.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
 from core.config import Settings
 from core.db import merchants_t
-from core.models import ErrorEvent, MerchantProfile, TextEvent
-from merchant_platform.build_stub import fixture_build_agent
-from merchant_platform.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
+from core.models import (
+    BuildAgentInput,
+    BuildAgentOutput,
+    ErrorEvent,
+    MerchantProfile,
+    TextEvent,
+)
 from merchant_platform.sessions import Session
 from merchant_platform.tools import SPECS, AdminTools, Emit
 
@@ -202,28 +210,32 @@ async def run_turn(session: Session, user_message: str, emit: Emit) -> None:
     await emit(TextEvent(delta="The platform assistant needs an OpenAI API key (OPENAI_API_KEY)."))
 
 
-def gateway_mcp_url(public_url: str | None) -> str:
-    """The protocol's MCP URL shown on the profile card."""
-    if not public_url:
-        return "http://localhost:8001/mcp"
-    url = public_url if "://" in public_url else f"https://{public_url}"
-    return f"{url.rstrip('/')}/mcp"
-
-
 def default_assistant(
     settings: Settings, engine: AsyncEngine, agent: AgentService | None = None
 ) -> RunTurn:
-    """The assistant wired to OpenAI, the registry and the builder stub (#22 replaces it)."""
+    """The assistant wired to OpenAI, the registry and the builder."""
     if settings.openai_api_key is None:
         return run_turn
     tz = ZoneInfo(settings.merchant_tz)
+    # Retries are ours (one, before any text reached the merchant).
+    openai = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value(), max_retries=0)
     llm = OpenAIClient(
-        # Retries are ours (one, before any text reached the merchant).
-        AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value(), max_retries=0),
-        settings.openai_model,
-        reasoning_effort=settings.openai_reasoning_effort,
+        openai, settings.openai_model, reasoning_effort=settings.openai_reasoning_effort
     )
-    build = fixture_build_agent(engine, gateway_mcp_url(settings.gateway_public_url))
+    builder = Builder(
+        # Spike #4: no reasoning extracts as well, a second faster.
+        OpenAIClient(
+            openai, settings.openai_model, reasoning_effort=settings.builder_reasoning_effort
+        ),
+        engine,
+        model=settings.openai_model,
+        mcp_url=gateway_mcp_url(settings.gateway_public_url),
+        cache=BuildCache(settings.builder_cache),
+    )
+
+    async def build(arguments: BuildAgentInput, emit: StepEmitter) -> BuildAgentOutput:
+        return await builder.build_agent(str(arguments.website), arguments.description, emit)
+
     tools = AdminTools(agent, build, tz, today=lambda: datetime.now(tz).date())
     return Assistant(
         llm, tools, registry_profiles(engine), tz, default_merchant=settings.platform_merchant

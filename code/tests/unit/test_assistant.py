@@ -14,6 +14,16 @@ from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from agent.service import AgentService
+from builder.llm import (
+    LLMClient,
+    LLMReply,
+    LLMUnavailable,
+    Message,
+    OnText,
+    OpenAIClient,
+    ToolCall,
+    ToolSpec,
+)
 from core.errors import NotFound
 from core.models import (
     AdminReservationRow,
@@ -37,16 +47,6 @@ from merchant_platform.assistant import (
     Assistant,
     compact,
     system_prompt,
-)
-from merchant_platform.llm import (
-    LLMClient,
-    LLMReply,
-    LLMUnavailable,
-    Message,
-    OnText,
-    OpenAIClient,
-    ToolCall,
-    ToolSpec,
 )
 from merchant_platform.sessions import Session
 from merchant_platform.tools import NOT_AVAILABLE, NOT_ONBOARDED, AdminTools

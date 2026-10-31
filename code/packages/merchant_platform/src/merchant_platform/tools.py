@@ -15,6 +15,8 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ValidationError
 
 from agent.service import AgentService
+from builder.build import AlreadyProvisioned
+from builder.llm import ToolCall, ToolSpec
 from core.errors import AgentError, AgentUnavailable
 from core.models import (
     AdminCancelInput,
@@ -37,7 +39,6 @@ from core.models import (
     UpdatePolicyInput,
     UpdateTablesInput,
 )
-from merchant_platform.llm import ToolCall, ToolSpec
 from merchant_platform.sessions import Session
 
 log = logging.getLogger("merchant_platform.tools")
@@ -170,6 +171,10 @@ class AdminTools:
             return ToolResult(f"invalid_input: {problems}", is_error=True)
         try:
             outcome = await self._handle(session, tool.name, arguments, emit)
+        except AlreadyProvisioned as error:
+            # The merchant onboards again with a site that has an agent: work on that one.
+            session.merchant_slug = error.slug
+            return ToolResult(f"{error.code}: {error}", is_error=True)
         except AgentError as error:
             return ToolResult(f"{error.code}: {error}", is_error=True)
         except Exception:

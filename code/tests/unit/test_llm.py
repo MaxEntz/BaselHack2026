@@ -8,7 +8,7 @@ import httpx
 import pytest
 from openai import AsyncOpenAI
 
-from merchant_platform.llm import (
+from builder.llm import (
     LLMUnavailable,
     Message,
     OpenAIClient,
