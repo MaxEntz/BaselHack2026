@@ -1,4 +1,4 @@
-import "../forms.css";
+import "../pages.css";
 import type { ReactNode } from "react";
 import { Under } from "../ui/index.ts";
 

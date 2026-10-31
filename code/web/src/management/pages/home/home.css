@@ -44,9 +44,6 @@
 .mg .t-time { font-family: var(--display); font-style: italic; font-weight: 900; font-variation-settings: "SOFT" 55, "opsz" 144; letter-spacing: -.005em; font-size: 19px; line-height: 1.1; color: var(--olive); font-variant-numeric: lining-nums; }
 .mg .t-name { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mg .t-det { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.mg .src { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 14px; white-space: nowrap; }
-.mg .src i { width: 9px; height: 9px; border-radius: 48% 52% 44% 56%; background: var(--olive); }
-.mg .src.a i { background: var(--brick); }
 .mg .t-row.off .t-name, .mg .t-row.off .t-det { color: var(--mut); text-decoration: line-through; }
 .mg .fresh { animation: mg-fresh 3.6s ease-out; }
 @keyframes mg-fresh { 0%, 50% { background: rgb(147 80 70 / .22); } 100% { background: transparent; } }

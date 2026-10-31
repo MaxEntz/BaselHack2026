@@ -10,11 +10,10 @@ import type {
 } from "../../../types.ts";
 import type { ManagementClient } from "../../client.ts";
 import { useClient } from "../../data.ts";
-import { Blob, Box, Pill, Tag, Under } from "../../ui/index.ts";
+import { Blob, Box, Pill, Source, Tag, Under } from "../../ui/index.ts";
 import { GuestsCard } from "./GuestsCard.tsx";
 import {
   KIND,
-  SOURCE,
   agentShare,
   bookings,
   clockOf,
@@ -182,16 +181,6 @@ function tonightOf({ dashboard, day }: HomeData): ManagedReservation[] {
   return day.reservations
     .filter((b) => b.date === dashboard.date && minutes(b.time) >= start && minutes(b.time) < end)
     .sort((a, b) => a.time.localeCompare(b.time) || a.id.localeCompare(b.id));
-}
-
-function Source({ via }: { via: ManagedReservation["via"] }) {
-  const { label, agent } = SOURCE[via];
-  return (
-    <span className={agent ? "src a" : "src"}>
-      <i />
-      {label}
-    </span>
-  );
 }
 
 function TonightCard({

@@ -11,10 +11,10 @@ export function useClient(): ManagementClient {
 }
 
 /**
- * What `load` answers, read once per `load` (memoize it). `update` changes it, with the answer
- * of a save.
+ * What `load` answers, read once per `load` (memoize it) and again when `version` changes.
+ * `update` changes it, with the answer of a save.
  */
-export function useLoad<T>(load: (signal: AbortSignal) => Promise<T>) {
+export function useLoad<T>(load: (signal: AbortSignal) => Promise<T>, version = 0) {
   const [state, setState] = useState<{ data?: T; error?: string }>({});
   useEffect(() => {
     const controller = new AbortController();
@@ -25,7 +25,7 @@ export function useLoad<T>(load: (signal: AbortSignal) => Promise<T>) {
       },
     );
     return () => controller.abort();
-  }, [load]);
+  }, [load, version]);
   const update = useCallback(
     (change: (data: T) => T) =>
       setState((state) => (state.data === undefined ? state : { data: change(state.data) })),
