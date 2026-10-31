@@ -156,9 +156,9 @@ def history_bookings(
             busy.append(BusyInterval(table.id, start, start + slot_length))
             placed.append((start, table, size, via, False))
         for n in range(entry["cancelled"]):  # cancelled bookings hold no table
-            via: Via = "claude" if n % 2 == 0 else "merchant"
+            cancelled_via: Via = "claude" if n % 2 == 0 else "merchant"
             table = min((t for t in tables if t.seats >= 2), key=lambda t: (t.seats, t.label))
-            placed.append((order[n % len(order)], table, 2, via, True))
+            placed.append((order[n % len(order)], table, 2, cancelled_via, True))
         for n, (start, table, size, via, cancelled) in enumerate(placed, start=1):
             reference = f"H-{day:%m%d}-{n:02d}"
             rows.append(
