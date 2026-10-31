@@ -646,3 +646,25 @@ async def test_a_broken_fallback_lookup_still_answers_503() -> None:
         writer.close()
     finally:
         await server.stop()
+
+
+async def test_the_client_logs_an_error_frame_from_the_node(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        error = {"type": "error", "status": 400, "message": "Request r-1 is in flight"}
+        answer = {"type": "response", "id": requests[-1]["id"], "status": 200, "result": {}}
+        return [error, answer]
+
+    with caplog.at_level(logging.WARNING, logger="matp.client"):
+        async with (
+            scripted_node(script) as (port, _),
+            MatpClient("127.0.0.1", port, CALLER) as client,
+        ):
+            assert await client.request("PING") == {}
+
+    [record] = [r for r in caplog.records if r.getMessage() == "matp error frame"]
+    assert (record.__dict__["status"], record.__dict__["detail"]) == (
+        400,
+        "Request r-1 is in flight",
+    )

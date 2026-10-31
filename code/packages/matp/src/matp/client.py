@@ -12,6 +12,7 @@ key, so the caller can retry them safely).
 
 import asyncio
 import itertools
+import logging
 import ssl
 from types import TracebackType
 from typing import Any, Self
@@ -32,6 +33,8 @@ from matp.messages import (
     Welcome,
 )
 from matp.status import raise_for
+
+log = logging.getLogger("matp.client")
 
 UNREACHABLE = "The MATP node is unreachable"
 CLOSED = "The MATP session was closed before the answer"
@@ -187,6 +190,13 @@ class MatpClient:
     ) -> None:
         try:
             while (frame := await read_frame(reader)) is not None:
+                if frame.get("type") == "error":
+                    # Says which request of ours the node couldn't read; without this line, the
+                    # only symptom would be that request timing out (#93).
+                    log.warning(
+                        "matp error frame",
+                        extra={"status": frame.get("status"), "detail": frame.get("message")},
+                    )
                 if frame.get("type") != "response":
                     continue
                 try:
