@@ -25,9 +25,8 @@
 .mg .tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .mg .tbl th { padding: 8px 14px 8px 0; font-weight: 600; font-size: 15px; color: var(--mut); text-align: left; white-space: nowrap; }
 .mg .tbl td { padding: 9px 14px 9px 0; border-top: 1px solid var(--line); white-space: nowrap; }
-.mg .tbl :is(button, b, a.guest) { font-weight: 600; text-align: left; }
-.mg .tbl a.guest { text-decoration: none; }
-.mg .tbl :is(button, a.guest):hover { color: var(--brick); }
+.mg .tbl :is(button, b) { font-weight: 600; text-align: left; }
+.mg .tbl button:hover { color: var(--brick); }
 
 .mg .dlg-form { display: contents; }
 .mg fieldset { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
