@@ -169,7 +169,9 @@ data: {"type":"done"}
 Both streams also carry SSE comments, which hold no event (#87): a `: ping` every 15 s, and
 `/events` opens with `: connected` so that a proxy forwards the headers at once (Vite's dev
 proxy waits for the first body bytes). The web chat gives up on a turn after 90 s without
-any byte, comments included, so a slow but pinged turn keeps going.
+any byte, comments included, so a slow but pinged turn keeps going. The server bounds a stuck
+turn instead: a model call that sends nothing for 60 s fails (`assistant.LLM_TIMEOUT`, one
+retry), and the turn ends with "The assistant is temporarily unavailable".
 
 `ChatEvent` and `LiveEvent` exist in `core/models.py` and `web/src/types.ts`; change
 both together. `code/web/src/mocks/onboarding.json`, `tonight.json` and `cards.json`
