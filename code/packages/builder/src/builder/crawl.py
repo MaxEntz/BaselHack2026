@@ -225,9 +225,7 @@ async def crawl(
             _finished("error", "Something went wrong while reading the website.", started)
         )
         raise
-    names = ", ".join(["homepage", *(page_name(page.url) for page in result.pages[1:])])
-    count = len(result.pages)
-    await on_event(_finished("done", f"{count} page{'s' * (count > 1)} read: {names}", started))
+    await on_event(_finished("done", pages_read(result.pages), started))
     return result
 
 
@@ -401,6 +399,13 @@ def useful_links(links: Sequence[Sequence[str]], home: str, max_pages: int) -> l
             seen.add(_page_key(href))
             found.append(urlunsplit(parts._replace(fragment="")))
     return found
+
+
+def pages_read(pages: list[Page]) -> str:
+    """The `crawl` step's closing note: how many pages, and their paths."""
+    paths = ", ".join(urlsplit(page.url).path or "/" for page in pages)
+    count = len(pages)
+    return f"Read {count} page{'s' * (count > 1)}: {paths}"
 
 
 def page_name(url: str) -> str:

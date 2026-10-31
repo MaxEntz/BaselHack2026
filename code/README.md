@@ -27,7 +27,7 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 | `make gateway` | MCP server (protocol), `uv run python -m gateway`: the 6 user tools, JSON logs, `GET /health` | http://localhost:8001/mcp |
 | `make node` | BATP node (our agent protocol, `documentation/PROTOCOL.md`), `uv run python -m merchant_node` | batp://127.0.0.1:4710 |
 | `make platform` | Platform API, `uv run uvicorn merchant_platform.api:app --port 8002` | http://localhost:8002 |
-| `make web` | Merchant chat UI (Vite) | http://localhost:5173 |
+| `make web` | Studio and the management site (Vite) | http://localhost:5173 |
 | `make site` | Demo restaurant website "Le Petit Zinc" (static, in French) | http://localhost:8080 |
 | `make sites` | The 3 demo websites: Le Petit Zinc, La Graine Verte, Maison Albane | http://localhost:8080, :8081, :8082 |
 
@@ -92,7 +92,7 @@ packages/
 ├── merchant_node/      the BATP node that serves this backend's merchant agents
 ├── builder/            crawl (Playwright) + extraction (OpenAI API) -> MerchantProfile
 └── merchant_platform/  FastAPI /chat + /events, platform assistant
-web/                    merchant chat UI (Vite + React + TS)
+web/                    Studio and the management site (Vite + React + TS)
 sites/                  demo restaurant websites: le-petit-zinc (crawl target), 2 one-page sites
 migrations/             Alembic (public schema only; merchant schemas come from provisioning)
 scripts/                seed.py, demo_reset.py, set_status.py (outage switch),

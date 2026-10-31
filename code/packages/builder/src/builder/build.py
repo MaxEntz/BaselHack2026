@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import deploy, deprovision, generated_tools, provision
 from builder.cache import BuildCache, crawl_key, extraction_key
-from builder.crawl import CrawlResult, StepEmitter, crawl, normalize_url, page_name
+from builder.crawl import CrawlResult, StepEmitter, crawl, normalize_url, pages_read
 from builder.extract import PROMPT_VERSION, ExtractionFailed, ExtractionResult, extract_profile
 from builder.llm import LLMClient, LLMUnavailable
 from core.db import merchants_t
@@ -116,7 +116,10 @@ class Builder:
             nonlocal created
             await provision(profile, engine=self._engine)
             created = True
-            return f"Created {len(profile.tables)} tables with {profile.seats} seats."
+            return (
+                f"{len(profile.tables)} tables, {profile.seats} seats. "
+                "Hidden from guests until you publish."
+            )
 
         try:
             await self._step("provision", on_event, provisioned)
@@ -153,9 +156,7 @@ class Builder:
             return result
 
         async def replay() -> str:
-            names = ", ".join(["homepage", *(page_name(p.url) for p in cached.pages[1:])])
-            count = len(cached.pages)
-            return f"{count} page{'s' * (count > 1)} read: {names}"
+            return pages_read(cached.pages)
 
         await self._step("crawl", on_event, replay)
         return cached
@@ -175,7 +176,6 @@ class Builder:
                 StepEvent(
                     step=name,
                     status="done",
-                    detail="Combined your website with your description.",
                     duration_ms=_ms_since(started),
                 )
             )
@@ -200,15 +200,11 @@ class Builder:
         except Exception:
             await self._failed(on_event, current[-1], STEP_FAILED)
             raise
-        profile = result.profile
         await on_event(
             StepEvent(
                 step="validate",
                 status="done",
-                detail=(
-                    f"Profile complete: {len(profile.tables)} tables, {profile.seats} seats, "
-                    f"{len(profile.services)} services."
-                ),
+                detail="Hours, tables and links are valid.",
                 duration_ms=_ms_since(current[-1][1]),
             )
         )

@@ -700,6 +700,11 @@ export function createMockManagementClient(
       return respond({ blocked: blockedAhead() });
     },
 
+    async publish() {
+      data = { ...data, merchant: { ...data.merchant, status: "live" } };
+      return respond({ ...data.merchant, now: nowIso() });
+    },
+
     async pauseAgent() {
       data = { ...data, merchant: { ...data.merchant, status: "down" } };
       log("paused", "Guests get your booking page.", "merchant");
