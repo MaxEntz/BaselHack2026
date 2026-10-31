@@ -12,7 +12,7 @@ The onboarding moment of the demo is a live build: crawl the site, extract with 
 - The builder caches the result of the network-bound steps (crawl, extraction), keyed by their inputs, under `code/.cache/builder/` (git-ignored). Cache use is logged, so we know whether a demo ran for real.
 - `BUILDER_CACHE` (`core/config.py`) selects the mode:
   - `read_write` (default): use a cached result if present, otherwise call and store;
-  - `read_only`: rehearsals and the demo; never call out when a cached result exists;
+  - `read_only`: rehearsals and the demo. Use the cache and never write to it, so it stays the rehearsed version. On a miss, call live and log the miss;
   - `off`: always call, for development.
 - Steps are still emitted to the chat in the same order with real durations, so a cached build looks the same and stays honest about what happened.
 

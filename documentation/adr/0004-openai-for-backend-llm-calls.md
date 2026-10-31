@@ -13,7 +13,7 @@ Claude stays the **user-side** client either way: users book from Claude.ai, whi
 
 - Every backend LLM call uses the **OpenAI Python SDK** with the Responses API. The model comes from `OPENAI_MODEL` (default `gpt-6.1-terra`) and the key from `OPENAI_API_KEY`.
 - Extraction uses a **forced strict function call**. The `MerchantProfile` JSON schema goes through `strict_schema()` (from `scripts/spike_extract.py`), because strict mode rejects `format: uri` and optional properties.
-- These calls are isolated in two functions (builder `extract`, platform `assistant`), so the provider can be switched.
+- These calls will be isolated in two functions, the builder's `extract` (#22) and the platform's `assistant` (#17), so the provider can be switched.
 
 ## Alternatives considered
 

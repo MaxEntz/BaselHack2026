@@ -8,7 +8,7 @@
 A 24-hour hackathon POC with three hard requirements:
 
 - Claude.ai must call our server as a **remote MCP connector**.
-- Two merchants must never get the same table at the same time, even under concurrent requests.
+- Two bookings must never get the same table at the same time, even under concurrent requests.
 - A booking made from Claude must appear in the merchant's chat **within 2 seconds**.
 
 On top of that, the builder must read real restaurant websites (often JavaScript-rendered) and call an LLM. The team works in parallel on 5 Python packages and one web app.

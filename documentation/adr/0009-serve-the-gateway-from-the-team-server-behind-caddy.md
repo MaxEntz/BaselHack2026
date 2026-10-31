@@ -29,7 +29,7 @@ Only Caddy needs to reach the gateway. Exposing it directly would bypass TLS and
 
 ## Consequences
 
-- Positive: a fixed URL, validated from Claude.ai, Claude Code and the SDK client, and still the same after a reboot (spike #3).
+- Positive: a fixed URL, validated from Claude.ai and the SDK client, and still the same after a reboot (spike #3). Claude Code was tested against `localhost`.
 - Negative: a change only reaches Claude.ai once deployed. The server is shared, so deploys and Caddy changes need care (AGENTS.md §0).
 - Negative: the URL is public, and `GATEWAY_TOKEN` (a static bearer) cannot be set from Claude.ai unless the organization has the header-auth beta. Before the write tools land (#11), restrict access, for example by limiting Caddy to Anthropic's address range `160.79.104.0/21`.
 - Negative: `sslip.io` is a third-party DNS service. A real domain would be safer for the demo.
