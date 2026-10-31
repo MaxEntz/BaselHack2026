@@ -205,7 +205,7 @@ The dialog's layout varies between organizations.
 
 ### 6. One restaurant's own connector (optional)
 
-Each live restaurant also has its own endpoint, `/m/<slug>/mcp` (#23, ADR-0012), with only its 4 booking tools, no `search_merchants`, and descriptions naming the restaurant, its hours and its largest group. The profile card shows it under **This restaurant only**.
+Each live restaurant also has its own endpoint, `/m/<slug>/mcp` (#23, ADR-0012), with only its 4 booking tools, no `search_merchants`, and descriptions naming the restaurant, its hours and its largest group. The cancellation policy, free text from the restaurant's website, is never put in a description. The profile card shows it under **This restaurant only**.
 
 1. Add a connector as in step 5, named after the restaurant, with the URL `https://191-96-88-152.sslip.io/m/le-petit-zinc/mcp`.
 2. In a conversation, enable only that connector and ask: "Table for 2 tomorrow at 8pm".

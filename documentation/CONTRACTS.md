@@ -95,6 +95,10 @@ comes from the path, and the same results, errors and log line (`fallback.call_m
   Services: 12:00-14:00, 19:00-22:00. Groups up to 6.". It is read from the registry's `profile`
   at each `tools/list`, so a policy change shows at the next listing. If the profile can't be
   read, the generic descriptions stay.
+- Tool descriptions read as the connector's instructions, and a profile's free text comes from a
+  website anyone can onboard. So the cancellation policy never goes in ("Policy: see the
+  restaurant's own website"), and the name and city are cut to one line of at most 80 characters,
+  without control characters. Services and party size are validated values.
 - An unknown slug, a slug outside `^[a-z0-9-]{3,61}$` or a `building` merchant: HTTP `404`
   before MCP. A `down` merchant keeps its endpoint, and its tools answer `agent_unavailable` with
   the fallback URL. A merchant deployed after startup has its endpoint at once.

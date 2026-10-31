@@ -18,6 +18,7 @@ The MCP SDK v2 binds tools and their descriptions to an `MCPServer` instance, an
 - **One second `MCPServer`** serves every merchant endpoint. Its route is `/m/{slug}/mcp` in the gateway's Starlette app, and its session manager runs in the gateway's lifespan next to the shared one.
 - **The tools read the slug from the HTTP request** attached to each MCP message (`ctx.request_context.request.path_params`). They call `fallback.call_merchant`, like the shared tools, through the same `AgentClient`.
 - **A middleware rewrites `tools/list`**: each description is prefixed with the merchant's sentence from `templates/restaurant.json` (`generated_tools(profile)`), read from the registry at each listing.
+- **Merchant free text is kept out of the descriptions.** Clients treat tool descriptions as the connector's instructions, a stronger position than tool results, where the shared `/mcp` keeps merchant data. The profile's free text comes from a crawled website, and anyone can onboard any URL. So the cancellation policy is replaced by "see the restaurant's own website", and the name and city are cut to one line of at most 80 characters, without control characters. Services and party size are validated values (`HH:MM`, integers).
 - **An ASGI wrapper answers `404`** before MCP for an unknown slug, a malformed one, or a `building` merchant. A `down` merchant keeps its endpoint and gets the fallback URL from its tools.
 - The profile card derives the URL from `mcp_url` (`/mcp` → `/m/<slug>/mcp`), so the frozen `BuildAgentOutput` contract doesn't change.
 
@@ -43,6 +44,7 @@ The contracts are frozen (AGENTS.md §14) and the URL follows from `mcp_url` and
 - Negative: a session opened on one merchant's path, then reused on another's, answers for the path of each request. Harmless, since each path only acts on its own merchant.
 - Negative: the middleware relies on the SDK's middleware API, which the SDK calls provisional. The e2e tests pin the descriptions.
 - Negative: the server's `instructions` are generic. Only the tool descriptions name the merchant.
+- Negative: 80 characters of a name can still carry a short instruction. The bound limits tool-description injection, it doesn't remove it; real merchant verification is out of scope (AGENTS.md §15). Claude doesn't learn the cancellation policy from this endpoint.
 - This choice becomes wrong if: merchants need different tool sets (other verticals), or the SDK lets an instance's tools change at runtime with `tools/list_changed`.
 
 ## Sources
