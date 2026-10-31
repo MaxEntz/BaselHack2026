@@ -1,0 +1,630 @@
+{
+  "now": "2026-10-31T19:40:00+01:00",
+  "merchant": {
+    "slug": "la-graine-verte",
+    "name": "La Graine Verte",
+    "city": "Mulhouse",
+    "price_level": "€",
+    "tags": [
+      "vegan",
+      "vegetarian",
+      "gluten-free"
+    ],
+    "website": "http://localhost:8081/",
+    "status": "live",
+    "timezone": "Europe/Zurich",
+    "now": "2026-10-31T19:40:00+01:00",
+    "agent_address": "batp://191-96-88-152.sslip.io/la-graine-verte",
+    "mcp_url": "https://191-96-88-152.sslip.io/m/la-graine-verte/mcp",
+    "management_url": "http://localhost:5173/manage/la-graine-verte",
+    "owner_name": "Léa",
+    "demo": true
+  },
+  "hours": {
+    "services": [
+      {
+        "start": "11:30",
+        "end": "14:30"
+      },
+      {
+        "start": "18:30",
+        "end": "21:30"
+      }
+    ]
+  },
+  "tables": [
+    {
+      "label": "T1",
+      "seats": 2
+    },
+    {
+      "label": "T2",
+      "seats": 2
+    },
+    {
+      "label": "T3",
+      "seats": 2
+    },
+    {
+      "label": "T4",
+      "seats": 2
+    },
+    {
+      "label": "T5",
+      "seats": 2
+    },
+    {
+      "label": "T6",
+      "seats": 2
+    },
+    {
+      "label": "T7",
+      "seats": 4
+    },
+    {
+      "label": "T8",
+      "seats": 4
+    },
+    {
+      "label": "T9",
+      "seats": 4
+    }
+  ],
+  "rules": {
+    "max_party_size": 4,
+    "slot_length_min": 120,
+    "fallback_url": "http://localhost:8081/#reserver",
+    "cancellation_policy": "Free cancellation up to 1 hour before the booking.",
+    "tools": [
+      {
+        "name": "get_availability",
+        "description": "Check free tables at La Graine Verte (Mulhouse). Services: 11:30-14:30, 18:30-21:30. Groups up to 4."
+      },
+      {
+        "name": "create_reservation",
+        "description": "Book a table at La Graine Verte. Always confirm with the guest first."
+      },
+      {
+        "name": "update_reservation",
+        "description": "Move or resize a booking at La Graine Verte."
+      },
+      {
+        "name": "cancel_reservation",
+        "description": "Cancel a booking at La Graine Verte. Policy: see the restaurant's own website."
+      }
+    ]
+  },
+  "settings": {
+    "name": "La Graine Verte",
+    "city": "Mulhouse",
+    "website": "http://localhost:8081/",
+    "price_level": "€",
+    "tags": [
+      "vegan",
+      "vegetarian",
+      "gluten-free"
+    ]
+  },
+  "history": [
+    {
+      "date": "2026-10-02",
+      "bookings": 12,
+      "guests": 29,
+      "agent_guests": 16,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-03",
+      "bookings": 13,
+      "guests": 26,
+      "agent_guests": 15,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-04",
+      "bookings": 14,
+      "guests": 30,
+      "agent_guests": 16,
+      "cancelled": 0
+    },
+    {
+      "date": "2026-10-05",
+      "bookings": 15,
+      "guests": 34,
+      "agent_guests": 20,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-06",
+      "bookings": 16,
+      "guests": 38,
+      "agent_guests": 19,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-07",
+      "bookings": 9,
+      "guests": 19,
+      "agent_guests": 10,
+      "cancelled": 0
+    },
+    {
+      "date": "2026-10-08",
+      "bookings": 10,
+      "guests": 23,
+      "agent_guests": 14,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-09",
+      "bookings": 11,
+      "guests": 27,
+      "agent_guests": 13,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-10",
+      "bookings": 12,
+      "guests": 24,
+      "agent_guests": 14,
+      "cancelled": 0
+    },
+    {
+      "date": "2026-10-11",
+      "bookings": 13,
+      "guests": 28,
+      "agent_guests": 16,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-12",
+      "bookings": 14,
+      "guests": 32,
+      "agent_guests": 17,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-13",
+      "bookings": 15,
+      "guests": 36,
+      "agent_guests": 18,
+      "cancelled": 0
+    },
+    {
+      "date": "2026-10-14",
+      "bookings": 16,
+      "guests": 33,
+      "agent_guests": 20,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-15",
+      "bookings": 9,
+      "guests": 21,
+      "agent_guests": 11,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-16",
+      "bookings": 10,
+      "guests": 25,
+      "agent_guests": 12,
+      "cancelled": 0
+    },
+    {
+      "date": "2026-10-17",
+      "bookings": 11,
+      "guests": 22,
+      "agent_guests": 14,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-18",
+      "bookings": 12,
+      "guests": 26,
+      "agent_guests": 15,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-19",
+      "bookings": 13,
+      "guests": 30,
+      "agent_guests": 14,
+      "cancelled": 0
+    },
+    {
+      "date": "2026-10-20",
+      "bookings": 14,
+      "guests": 34,
+      "agent_guests": 18,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-21",
+      "bookings": 15,
+      "guests": 31,
+      "agent_guests": 19,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-22",
+      "bookings": 16,
+      "guests": 35,
+      "agent_guests": 18,
+      "cancelled": 0
+    },
+    {
+      "date": "2026-10-23",
+      "bookings": 9,
+      "guests": 23,
+      "agent_guests": 12,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-24",
+      "bookings": 10,
+      "guests": 20,
+      "agent_guests": 13,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-25",
+      "bookings": 11,
+      "guests": 24,
+      "agent_guests": 12,
+      "cancelled": 0
+    },
+    {
+      "date": "2026-10-26",
+      "bookings": 12,
+      "guests": 28,
+      "agent_guests": 16,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-27",
+      "bookings": 13,
+      "guests": 32,
+      "agent_guests": 15,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-28",
+      "bookings": 14,
+      "guests": 29,
+      "agent_guests": 16,
+      "cancelled": 0
+    },
+    {
+      "date": "2026-10-29",
+      "bookings": 15,
+      "guests": 33,
+      "agent_guests": 20,
+      "cancelled": 2
+    },
+    {
+      "date": "2026-10-30",
+      "bookings": 16,
+      "guests": 37,
+      "agent_guests": 19,
+      "cancelled": 1
+    },
+    {
+      "date": "2026-10-31",
+      "bookings": 8,
+      "guests": 22,
+      "agent_guests": 14,
+      "cancelled": 1
+    }
+  ],
+  "channels": [
+    {
+      "via": "claude",
+      "bookings": 216
+    },
+    {
+      "via": "merchant",
+      "bookings": 162
+    }
+  ],
+  "reservations": [
+    {
+      "id": "R-001",
+      "date": "2026-10-31",
+      "time": "12:00",
+      "guest_name": "Paul Schmitt",
+      "party_size": 2,
+      "table_label": "T1",
+      "via": "merchant",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-30T16:12:00+01:00"
+    },
+    {
+      "id": "R-002",
+      "date": "2026-10-31",
+      "time": "12:30",
+      "guest_name": "Nora Klein",
+      "party_size": 3,
+      "table_label": "T7",
+      "via": "claude",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-31T09:41:00+01:00"
+    },
+    {
+      "id": "R-003",
+      "date": "2026-10-31",
+      "time": "18:30",
+      "guest_name": "Sara Muller",
+      "party_size": 2,
+      "table_label": "T1",
+      "via": "claude",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-29T18:03:00+01:00"
+    },
+    {
+      "id": "R-004",
+      "date": "2026-10-31",
+      "time": "19:00",
+      "guest_name": "Lena Becker",
+      "party_size": 4,
+      "table_label": "T7",
+      "via": "claude",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-30T11:20:00+01:00"
+    },
+    {
+      "id": "R-005",
+      "date": "2026-10-31",
+      "time": "19:00",
+      "guest_name": "Hugo Bernard",
+      "party_size": 2,
+      "table_label": "T2",
+      "via": "merchant",
+      "status": "cancelled",
+      "cancelled_by": "merchant",
+      "created_at": "2026-10-28T14:55:00+01:00"
+    },
+    {
+      "id": "R-006",
+      "date": "2026-10-31",
+      "time": "19:30",
+      "guest_name": "Jonas Weiss",
+      "party_size": 4,
+      "table_label": "T8",
+      "via": "merchant",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-27T10:30:00+01:00"
+    },
+    {
+      "id": "R-007",
+      "date": "2026-10-31",
+      "time": "20:00",
+      "guest_name": "Emma Roth",
+      "party_size": 3,
+      "table_label": "T9",
+      "via": "claude",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-31T10:05:00+01:00"
+    },
+    {
+      "id": "R-008",
+      "date": "2026-10-31",
+      "time": "20:30",
+      "guest_name": "Lucas Martin",
+      "party_size": 2,
+      "table_label": "T2",
+      "via": "claude",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-31T13:12:00+01:00"
+    },
+    {
+      "id": "R-009",
+      "date": "2026-10-31",
+      "time": "20:30",
+      "guest_name": "Mia Fischer",
+      "party_size": 2,
+      "table_label": "T3",
+      "via": "merchant",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-30T19:47:00+01:00"
+    },
+    {
+      "id": "R-010",
+      "date": "2026-11-01",
+      "time": "12:00",
+      "guest_name": "Lena Becker",
+      "party_size": 2,
+      "table_label": "T1",
+      "via": "claude",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-31T08:15:00+01:00"
+    },
+    {
+      "id": "R-011",
+      "date": "2026-11-01",
+      "time": "19:30",
+      "guest_name": "Tom Keller",
+      "party_size": 4,
+      "table_label": "T7",
+      "via": "claude",
+      "status": "cancelled",
+      "cancelled_by": "guest",
+      "created_at": "2026-10-30T21:10:00+01:00"
+    },
+    {
+      "id": "R-012",
+      "date": "2026-11-01",
+      "time": "20:00",
+      "guest_name": "Clara Meyer",
+      "party_size": 2,
+      "table_label": "T1",
+      "via": "claude",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-31T12:02:00+01:00"
+    },
+    {
+      "id": "R-013",
+      "date": "2026-11-02",
+      "time": "19:00",
+      "guest_name": "Anna Weiß",
+      "party_size": 3,
+      "table_label": "T7",
+      "via": "merchant",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-29T09:00:00+01:00"
+    },
+    {
+      "id": "R-014",
+      "date": "2026-11-03",
+      "time": "20:00",
+      "guest_name": "David Wolf",
+      "party_size": 4,
+      "table_label": "T7",
+      "via": "claude",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-31T11:30:00+01:00"
+    },
+    {
+      "id": "R-015",
+      "date": "2026-11-05",
+      "time": "12:30",
+      "guest_name": "Julia Braun",
+      "party_size": 2,
+      "table_label": "T1",
+      "via": "claude",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-31T07:48:00+01:00"
+    },
+    {
+      "id": "R-016",
+      "date": "2026-11-06",
+      "time": "19:30",
+      "guest_name": "Max Hoffmann",
+      "party_size": 4,
+      "table_label": "T8",
+      "via": "merchant",
+      "status": "confirmed",
+      "cancelled_by": null,
+      "created_at": "2026-10-30T17:25:00+01:00"
+    }
+  ],
+  "blocked": [
+    {
+      "starts_at": "2026-11-01T13:00:00+01:00",
+      "date": "2026-11-01",
+      "time": "13:00"
+    }
+  ],
+  "activity": [
+    {
+      "id": 4,
+      "at": "2026-10-31T13:12:00+01:00",
+      "kind": "new_booking",
+      "text": "R-008, Lucas Martin, 2 guests, today 20:30",
+      "source": "claude",
+      "reservation_id": "R-008"
+    },
+    {
+      "id": 3,
+      "at": "2026-10-31T12:02:00+01:00",
+      "kind": "new_booking",
+      "text": "R-012, Clara Meyer, 2 guests, tomorrow 20:00",
+      "source": "claude",
+      "reservation_id": "R-012"
+    },
+    {
+      "id": 2,
+      "at": "2026-10-31T11:30:00+01:00",
+      "kind": "new_booking",
+      "text": "R-014, David Wolf, 4 guests, Tue 3 Nov 20:00",
+      "source": "claude",
+      "reservation_id": "R-014"
+    },
+    {
+      "id": 1,
+      "at": "2026-10-31T09:12:00+01:00",
+      "kind": "blocked",
+      "text": "Sun 1 Nov 13:00",
+      "source": "merchant",
+      "reservation_id": null
+    }
+  ],
+  "agent_requests": [
+    {
+      "id": 4,
+      "at": "2026-10-31T13:37:15+01:00",
+      "agent_name": "Claude",
+      "intent": "BOOK",
+      "status": 409,
+      "refused": true,
+      "title": "Lucas Martin asked for a time that had just gone",
+      "text": "Claude offered them another one.",
+      "request": "{\"type\": \"request\", \"id\": \"r-4\", \"intent\": \"BOOK\", \"merchant\": \"la-graine-verte\", \"params\": {\"starts_at\": \"2026-10-31T20:00:00+01:00\", \"party_size\": 2, \"guest_name\": \"Lucas Martin\", \"idempotency_key\": \"c-91bd\"}}",
+      "response": "{\"type\": \"response\", \"id\": \"r-4\", \"status\": 409, \"error\": {\"code\": \"slot_unavailable\", \"message\": \"That time was just taken.\"}}"
+    },
+    {
+      "id": 3,
+      "at": "2026-10-31T11:04:40+01:00",
+      "agent_name": "Claude",
+      "intent": "AVAILABILITY",
+      "status": 413,
+      "refused": true,
+      "title": "A group of 8 was sent to your booking page",
+      "text": "Your limit is 4, so the guest got your link instead.",
+      "request": "{\"type\": \"request\", \"id\": \"r-3\", \"intent\": \"AVAILABILITY\", \"merchant\": \"la-graine-verte\", \"params\": {\"date\": \"2026-11-01\", \"time\": \"19:30\", \"party_size\": 8}}",
+      "response": "{\"type\": \"response\", \"id\": \"r-3\", \"status\": 413, \"error\": {\"code\": \"party_too_large\", \"message\": \"La Graine Verte takes groups of up to 4.\", \"fallback_url\": \"http://localhost:8081/#reserver\"}}"
+    },
+    {
+      "id": 2,
+      "at": "2026-10-31T10:05:03+01:00",
+      "agent_name": "Claude",
+      "intent": "BOOK",
+      "status": 200,
+      "refused": false,
+      "title": "Emma Roth booked through Claude",
+      "text": "Saturday 31 October, 20:00, 3 guests, table T9.",
+      "request": "{\"type\": \"request\", \"id\": \"r-2\", \"intent\": \"BOOK\", \"merchant\": \"la-graine-verte\", \"params\": {\"starts_at\": \"2026-10-31T20:00:00+01:00\", \"party_size\": 3, \"guest_name\": \"Emma Roth\", \"idempotency_key\": \"c-7f3a\"}}",
+      "response": "{\"type\": \"response\", \"id\": \"r-2\", \"status\": 200, \"result\": {\"reservation\": {\"id\": \"R-007\", \"merchant\": \"la-graine-verte\", \"starts_at\": \"2026-10-31T20:00:00+01:00\", \"party_size\": 3, \"table_label\": \"T9\", \"status\": \"confirmed\", \"guest_name\": \"Emma Roth\", \"via\": \"claude\"}}}"
+    },
+    {
+      "id": 1,
+      "at": "2026-10-31T10:04:12+01:00",
+      "agent_name": "Claude",
+      "intent": "AVAILABILITY",
+      "status": 200,
+      "refused": false,
+      "title": "Claude checked 20:00 for 3 guests",
+      "text": "Saturday 31 October. Your agent offered the closest free times.",
+      "request": "{\"type\": \"request\", \"id\": \"r-1\", \"intent\": \"AVAILABILITY\", \"merchant\": \"la-graine-verte\", \"params\": {\"date\": \"2026-10-31\", \"time\": \"20:00\", \"party_size\": 3}}",
+      "response": "{\"type\": \"response\", \"id\": \"r-1\", \"status\": 200, \"result\": {\"slots\": [{\"starts_at\": \"2026-10-31T20:00:00+01:00\", \"table_label\": \"T9\"}, {\"starts_at\": \"2026-10-31T20:30:00+01:00\", \"table_label\": \"T9\"}]}}"
+    }
+  ],
+  "live_booking": {
+    "type": "notification",
+    "kind": "new_booking",
+    "via": "claude",
+    "date": "2026-10-31",
+    "reservation": {
+      "id": "R-017",
+      "time": "20:00",
+      "guest_name": "Kim Weber",
+      "party_size": 2,
+      "table_label": "T4",
+      "via": "claude",
+      "status": "confirmed"
+    }
+  }
+}

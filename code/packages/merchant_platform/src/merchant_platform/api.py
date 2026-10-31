@@ -1,5 +1,5 @@
-"""FastAPI app: `/chat` (SSE), `/events` (SSE), `/session`, the public booking API and
-`/health`."""
+"""FastAPI app: `/chat` (SSE), `/events` (SSE), `/session`, the public booking API, the
+management site's `/merchants/{slug}` routes and `/health`."""
 
 import asyncio
 import logging
@@ -21,7 +21,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 from agent.service import AgentService, PgAgentService
 from core.config import Settings, get_settings
 from core.db import make_engine
-from core.errors import AgentError, AgentUnavailable
+from core.errors import AgentError, AgentUnavailable, FormProblem
 from core.models import (
     BookingTime,
     ChatEvent,
@@ -29,6 +29,8 @@ from core.models import (
     ErrorCode,
     ErrorEvent,
     GuestText,
+    ManagementError,
+    ManagementErrorCode,
     ReservationOutput,
     SessionMerchant,
     SessionOutput,
@@ -43,8 +45,11 @@ from merchant_platform.assistant import (
     run_turn,
     session_merchant,
 )
+from merchant_platform.auth import NotSignedIn, OtherMerchant
 from merchant_platform.events import LiveBus, LiveListener
 from merchant_platform.logs import configure_logging
+from merchant_platform.management import NotBuiltYet
+from merchant_platform.management import router as management_router
 from merchant_platform.sessions import Session, SessionStore
 
 log = logging.getLogger("merchant_platform.api")
@@ -124,6 +129,7 @@ def create_app(
     app = FastAPI(title="Sésame platform", lifespan=lifespan)
     app.state.sessions = sessions
     app.state.bus = live
+    app.state.development_merchant = settings.platform_merchant
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.public_cors_origins),
@@ -143,6 +149,25 @@ def create_app(
             for issue in error.errors()
         )
         return tool_error("invalid_input", problems or "Invalid request.")
+
+    @app.exception_handler(FormProblem)
+    async def form_problem(_: Request, error: FormProblem) -> JSONResponse:
+        body = ManagementError(error=error.code, message=str(error), problem=error.problem)
+        return JSONResponse(body.model_dump(mode="json", exclude_none=True), status_code=422)
+
+    @app.exception_handler(NotSignedIn)
+    async def not_signed_in(_: Request, error: NotSignedIn) -> JSONResponse:
+        return management_error(401, "not_signed_in", str(error))
+
+    @app.exception_handler(OtherMerchant)
+    async def other_merchant(_: Request, error: OtherMerchant) -> JSONResponse:
+        return management_error(403, "other_merchant", str(error))
+
+    @app.exception_handler(NotBuiltYet)
+    async def not_built_yet(_: Request, error: NotBuiltYet) -> JSONResponse:
+        return management_error(501, "not_built_yet", str(error))
+
+    app.include_router(management_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -286,6 +311,11 @@ async def _chat_stream(
         # Client gone mid-turn: stop the assistant rather than run it for nobody.
         if not turn.done():
             turn.cancel()
+
+
+def management_error(status: int, code: ManagementErrorCode, message: str) -> JSONResponse:
+    body = ManagementError(error=code, message=message)
+    return JSONResponse(body.model_dump(mode="json", exclude_none=True), status_code=status)
 
 
 def tool_error(code: ErrorCode, message: str) -> JSONResponse:

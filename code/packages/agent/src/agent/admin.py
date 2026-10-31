@@ -21,6 +21,7 @@ from sqlalchemy import Row, delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from core import forms
 from core.availability import bookable_starts, is_bookable_start
 from core.db import (
     blocked_slots_t,
@@ -31,13 +32,22 @@ from core.db import (
     tables_t,
 )
 from core.errors import InvalidInput, NotFound
-from core.models import AdminReservationRow, FloorPlan, Policy, Service, Services, Stats, TableSpec
+from core.models import (
+    AdminReservationRow,
+    FloorPlan,
+    MerchantCancelOutcome,
+    Policy,
+    Service,
+    Services,
+    Stats,
+    TableSpec,
+)
 
 # Any row shape (SQLAlchemy 2.1 rows are variadic generics).
 _Row = Row[*tuple[Any, ...]]
 
 # Bounds for merchant input, well inside Postgres `integer`: a typo never reaches the DB.
-MAX_SEATS = 1000
+MAX_SEATS = forms.MAX_SEATS
 
 _SERVICES = TypeAdapter(Services)
 _FLOOR_PLAN = TypeAdapter(FloorPlan)
@@ -296,9 +306,8 @@ async def _check_plan_change(
         )
 
 
-# What a merchant's cancellation did (#82): cancelled with a notice for the guest, cancelled
-# without one since it is over, or nothing, since the guest or the merchant already cancelled it.
-CancelOutcome = Literal["notified", "ended", "guest_cancelled", "already_cancelled"]
+# What a merchant's cancellation did (#82): see `core.models.MerchantCancelOutcome`.
+CancelOutcome = MerchantCancelOutcome
 
 
 async def cancel_by_merchant(
