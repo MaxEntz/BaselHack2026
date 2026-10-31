@@ -341,6 +341,7 @@ dependencies = [
     { name = "agent" },
     { name = "core" },
     { name = "mcp" },
+    { name = "starlette" },
     { name = "uvicorn" },
 ]
 
@@ -349,6 +350,7 @@ requires-dist = [
     { name = "agent", editable = "packages/agent" },
     { name = "core", editable = "packages/core" },
     { name = "mcp", specifier = ">=2.3,<3" },
+    { name = "starlette", specifier = ">=1.10" },
     { name = "uvicorn", specifier = ">=0.54" },
 ]
 
@@ -628,6 +630,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
+    { name = "jsonschema" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -647,6 +650,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = ">=0.28" },
+    { name = "jsonschema", specifier = ">=4.26" },
     { name = "mypy", specifier = ">=2" },
     { name = "pytest", specifier = ">=9" },
     { name = "pytest-asyncio", specifier = ">=1" },

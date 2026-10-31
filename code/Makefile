@@ -1,4 +1,10 @@
-.PHONY: setup db migrate gateway platform web site tunnel seed demo-reset test lint fmt
+-include .env
+
+DEPLOY_HOST ?= root@191.96.88.152
+DEPLOY_SSH ?= ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes
+DEPLOY_DIR := /opt/merchant-agents/code
+
+.PHONY: setup db migrate gateway platform web site tunnel deploy seed demo-reset test lint fmt
 
 setup: ## .env, Python deps, Chromium for the crawler, web deps
 	test -f .env || cp .env.example .env
@@ -24,8 +30,25 @@ web: ## Merchant chat UI -> http://localhost:5173
 site: ## Demo restaurant website -> http://localhost:8080
 	uv run python -m http.server 8080 -b 127.0.0.1 -d sites/le-petit-zinc
 
-tunnel: ## Public HTTPS URL for the Claude.ai connector
-	@echo "tunnel: not configured yet (needs a fixed-domain ngrok or cloudflared tunnel)" >&2; exit 1
+tunnel: ## Expose a local gateway through ngrok (the team URL is served by `make deploy`)
+	@test -n "$(GATEWAY_PUBLIC_URL)" || (echo "GATEWAY_PUBLIC_URL is empty: see documentation/runbooks/connector.md" >&2; exit 1)
+	ngrok http --url="$(GATEWAY_PUBLIC_URL)" 8001
+
+deploy: ## Ship the gateway to the team server -> https://191-96-88-152.sslip.io/mcp
+	rsync -rlptz --delete --exclude .venv --exclude .env --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
+	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
+		cd $(DEPLOY_DIR) && \
+		/opt/uv/bin/uv sync --frozen --no-dev --package gateway -q && \
+		install -m 644 deploy/merchant-gateway.service /etc/systemd/system/ && \
+		systemctl daemon-reload && \
+		systemctl enable --quiet merchant-gateway && \
+		systemctl restart merchant-gateway && \
+		if ! cmp -s deploy/Caddyfile /etc/caddy/Caddyfile; then \
+			caddy validate --adapter caddyfile --config deploy/Caddyfile && \
+			install -m 644 deploy/Caddyfile /etc/caddy/Caddyfile && \
+			systemctl restart caddy; \
+		fi && \
+		systemctl enable --now --quiet caddy'
 
 seed:
 	uv run python scripts/seed.py

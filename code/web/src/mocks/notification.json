@@ -1,0 +1,14 @@
+{
+  "type": "notification",
+  "kind": "new_booking",
+  "via": "claude",
+  "reservation": {
+    "id": "R-002",
+    "time": "20:00",
+    "guest_name": "Sam Dupont",
+    "party_size": 4,
+    "table_label": "T5",
+    "via": "claude",
+    "status": "confirmed"
+  }
+}

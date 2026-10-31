@@ -13,9 +13,22 @@ This file is the single source of truth for this repository. Read it fully befor
 - **MCP Python SDK v2**: `from mcp.server import MCPServer`. `FastMCP` no longer exists in v2; do not copy v1 examples. Behind a tunnel, set `allowed_hosts` or the transport answers 421.
 - **`templates/restaurant.json` lives in `agent`** (provisioning consumes it), not in `builder`.
 - **Merchant schema name** = `m_` + slug with `-` replaced by `_`; slugs are ≤ 61 characters (Postgres identifiers are limited to 63 bytes).
-- **Tool contract changes vs §8**: `update_reservation` and `cancel_reservation` also take `guest_name` (checked against the booking); `search_merchants` also returns `suggestions` and `ignored_filters`; admin tool `update_tables` added; table `public.guest_notices` added to the §7.2 SQL.
+- **Tool contract changes vs §8**: `update_reservation` and `cancel_reservation` also take `guest_name` (checked against the booking); `search_merchants` also returns `suggestions` and `ignored_filters`; admin tool `update_tables` added; table `public.guest_notices` added to the §7.2 SQL; `search_merchants` merchants also carry `website`; `Reservation` also carries `merchant`, `guest_name` and `via`; the admin `cancel_reservation` input has no `by` (the tool is merchant-only, the service receives `by="merchant"`).
 - **Backend LLM calls use OpenAI**, not Anthropic: the builder's `extract` step and the platform assistant use the OpenAI Python SDK (Responses API), with `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-6.1-terra`). Read "OpenAI API" wherever §3, §4, §5, §8.3, §10 and §11 say "Claude API", "Anthropic SDK" or `ANTHROPIC_*`. Claude stays the **user-side** client (Claude.ai connects to the gateway).
 - Work is tracked in GitHub issues (milestones M0–M4, Demo); the tracking issue #26 lists every issue and these corrections.
+
+### Team server (LXC)
+
+We have a server: use it to test anything Claude.ai must reach, instead of opening a tunnel.
+
+- **Host:** `root@191.96.88.152`, Ubuntu 24.04. SSH by key only, passwords are refused.
+- **SSH key:** `~/.ssh/baselhack2026_lxc` on the user's machine. If it isn't there, **ask the user**, they may have it. Never commit a private key or paste it in a conversation.
+  ```bash
+  ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
+  ```
+- **Gateway:** `https://191-96-88-152.sslip.io/mcp`, deployed with `make deploy` from `code/`. Code in `/opt/merchant-agents/code`, service `merchant-gateway`, HTTPS by Caddy. Details in `documentation/runbooks/connector.md`.
+- **The server is shared, it doesn't only run the gateway.** Ask the user before rebooting it, stopping a service or changing anything outside `/opt/merchant-agents`. When `code/deploy/Caddyfile` changed, `make deploy` validates it, overwrites `/etc/caddy/Caddyfile` and restarts Caddy, so any other site must also be declared there.
+- **Firewall (`/etc/nftables.conf`):** only ports 22, 80 and 443 are open inbound, and new outbound connections to private networks are refused. A new service needs a rule there. `fail2ban` bans IPs that repeatedly fail SSH logins.
 
 ---
 
@@ -369,6 +382,15 @@ Env (`.env.example`): `DATABASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `M
 | 2026-10-31 | Code in `code/`, `platform` → `merchant_platform`, MCP SDK v2 (`MCPServer`) | BaselHack template; stdlib name clash; FastMCP removed in v2 (§0) |
 | 2026-10-31 | Claude API for every LLM call (OpenAI not used) | One SDK; a multi-provider layer costs time for no demo gain |
 | 2026-10-31 | `AGENTS.md` is the shared instruction file, `CLAUDE.md` imports it | Team uses both Claude Code and opencode |
+| 2026-10-31 | Freeze `core/models.py`, the `AgentService` protocol and `web/src/types.ts` in #2; later contract changes need a dedicated PR and team announcement | Unblock parallel backend and frontend work |
+| 2026-10-31 | Require `guest_name` on guest updates and cancellations | A reservation reference alone is not guest identity |
+| 2026-10-31 | Discovery returns `suggestions` and `ignored_filters`; search tags accept unknown strings | Let Claude explain unsupported filters and propose relaxing preferences |
+| 2026-10-31 | `BuildAgentOutput` includes `assumptions`, `tools` and `mcp_url`; admin tools include `UpdateTablesInput` | Populate the profile card and allow table-plan corrections during onboarding |
+| 2026-10-31 | Optional profile/location fields default to `None`; card JSON includes nulls; `HHMM` validates real 24-hour clock values | Keep Python/TS outputs aligned and reject impossible times at the boundary |
+| 2026-10-31 | Contract models use tuples, reject blank identity fields, invalid floor plans, overlapping or sub-hour services and no-op updates; SSE events are also Pydantic models | Deep immutability, no empty guest identity, errors caught at the `validate` step, Python/TS drift caught by the mocks |
+| 2026-10-31 | `max_party_size` may exceed the largest table and `seats` may differ from the tables' total; the service raises `PartyTooLarge` when no table fits | Template default and #10 fixtures rely on it; #7 trusts `tables`; the guest still gets the fallback URL |
+| 2026-10-31 | Gateway stays on MCP SDK v2 (`mcp` 2.3.0), no fallback to v1 | Spike #3: works from Claude.ai, Claude Code and the SDK client (`documentation/runbooks/connector.md`) |
+| 2026-10-31 | `GATEWAY_TOKEN` is optional; public URL = team LXC behind Caddy (`https://191-96-88-152.sslip.io/mcp`), ngrok as documented alternative; gateway binds `127.0.0.1` | Static header auth on Claude.ai connectors is a beta for limited organizations; fixed URL independent of a laptop and of hackathon Wi-Fi; only Caddy reaches the gateway |
 | 2026-10-31 | OpenAI API for every backend LLM call (replaces the "Claude API" row above) | The team's API key is an OpenAI one; still one SDK. Spike #4 validated strict function calling for the extraction |
 
 ## 15. Out of scope (POC)

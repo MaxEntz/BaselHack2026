@@ -24,10 +24,12 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 
 | Command | What | URL |
 |---|---|---|
-| `make gateway` | MCP server (protocol), `uv run python -m gateway`; stub until #3 / #11 | http://localhost:8001/mcp |
+| `make gateway` | MCP server (protocol), `uv run python -m gateway`; only `ping` until #11 | http://localhost:8001/mcp |
 | `make platform` | Platform API, `uv run uvicorn merchant_platform.api:app --port 8002` | http://localhost:8002 |
 | `make web` | Merchant chat UI (Vite) | http://localhost:5173 |
 | `make site` | Demo restaurant website (static) | http://localhost:8080 |
+
+Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md).
 
 ## Checks
 
@@ -39,6 +41,8 @@ npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 ```
 
 Test markers: `integration` (needs Docker), `llm` (calls the OpenAI API, skipped when `OPENAI_API_KEY` is empty).
+
+Shared tool and SSE contracts, fixtures and checks: [CONTRACTS.md](../documentation/CONTRACTS.md).
 
 ## Layout
 
