@@ -98,6 +98,7 @@ async def test_writes_tell_claude_to_confirm_first(name: str) -> None:
 async def test_search_tells_claude_to_pass_preferences_and_not_drop_them() -> None:
     description = (await list_tools())["search_merchants"].description or ""
 
+    assert "before any web or map search" in description
     assert "ALWAYS pass the user's known preferences" in description
     assert "never drop a filter silently" in description
     assert "fallback_url" in description

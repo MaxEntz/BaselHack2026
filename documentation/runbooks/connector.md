@@ -20,9 +20,9 @@ Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not f
 | MCP client (e2e, in CI) | ✅ validated | `tests/e2e/test_gateway_mcp.py`, real server and real Postgres |
 | Deployed server, 6 tools | ✅ validated | SDK client run on the LXC, on `http://127.0.0.1:8001/mcp`: booking, move, cancellation, party too large, outage and restore |
 | Claude.ai, connection | ✅ validated | Spike #3: the former `ping` tool called from a conversation, screenshot below |
-| Claude.ai, §9 scenarios | ⏳ to do | by hand, see [User scenarios](#user-scenarios) |
+| Claude Desktop, §9 scenarios | 🔶 5 of 6 | by hand, through the connector, see [User scenarios](#user-scenarios) |
 | Claude.ai's calls accepted by the server | ✅ validated | coming from `160.79.106.x`, all `200`, no `Host` or `Origin` rejected in the logs |
-| Anthropic's calls through the filter | ✅ validated | one `POST /mcp` from `160.79.106.173` got `200` in the logs, with a filter on the same range; no tool was called at that moment |
+| Anthropic's calls through the filter | ✅ validated | Claude Desktop's tool calls came from `160.79.106.x`, all `200`, with the deployed Caddyfile |
 | Caddy IP filter (#45): `403` outside `160.79.104.0/21` | ✅ validated | `403` and `server: Caddy` on `/mcp`, `/health` and `/.env` from outside, on the LXC |
 | SSH tunnel (`ssh -L`) | ❌ refused | `AllowTcpForwarding no` in the server's SSH hardening |
 | MCP Inspector | ✅ validated | `tools/list` locally: the 6 tools, their schemas and annotations |
@@ -187,22 +187,24 @@ Claude Desktop is **not** an independent plan B: its custom connector also goes 
 
 ## User scenarios
 
-Start from a known database (locally: `make db`, `make migrate`, `make seed`; on the LXC: `demo_reset.py`, see [Postgres on the LXC](#postgres-on-the-lxc)). In Claude, set these personal preferences: *"I'm vegetarian. My budget is mid-range (max €€). My name is Alex Martin."*
+Start from a known database (locally: `make db`, `make migrate`, `make seed`; on the LXC: `demo_reset.py`, see [Postgres on the LXC](#postgres-on-the-lxc)). In Claude, under **Settings > Account > Instructions for Claude**, set: *"I'm vegetarian. My budget is mid-range (max €€). My name is Alex Martin."*
 
-| Message | Expected | Plan B (Claude Code) | Claude.ai |
+| Message | Expected | Plan B (Claude Code) | Claude Desktop |
 |---|---|---|---|
-| "Table for 4 tonight at 8pm in Mulhouse" | `filters` passed without repeating them, times proposed, **confirmation requested**, booking, summary | ✅ | ⏳ |
-| "Move it to 9pm" | Confirmation, then `update_reservation` | ✅ | ⏳ |
-| "Cancel my booking" | Confirmation, then `cancel_reservation` | ✅ | ⏳ |
-| "A vegan place with a terrace" | No results, Claude offers to drop a filter | ✅ | ⏳ |
-| "Table for 8 at Le Petit Zinc" | Fallback link given (`party_too_large`) | ✅ | ⏳ |
-| Le Petit Zinc down (`make outage`, or `set_status.py` on the LXC), then "Table for 2 at Le Petit Zinc" | Fallback link given (`agent_unavailable`); back to `live`, it works again without a restart | ✅ | ⏳ |
+| "Table for 4 tonight at 8pm in Mulhouse" | `filters` passed without repeating them, times proposed, **confirmation requested**, booking, summary | ✅ | ✅ |
+| "Move it to 9pm" | Confirmation, then `update_reservation` | ✅ | ✅ |
+| "Cancel my booking" | Confirmation, then `cancel_reservation` | ✅ | ✅ |
+| "A vegan place with a terrace in Mulhouse" | No results, Claude offers to drop a filter | ✅ | ⏳ |
+| "Table for 8 at Le Petit Zinc" | Fallback link given (`party_too_large`) | ✅ | ✅ |
+| Le Petit Zinc down (`make outage`, or `set_status.py` on the LXC), then "Table for 2 at Le Petit Zinc" | Fallback link given (`agent_unavailable`); back to `live`, it works again without a restart | ✅ | ✅ |
+
+Claude Desktop ran on 2026-10-31 against the LXC. Its first try at the vegan scenario, worded "A vegan place with a terrace", never called the connector: Claude used its own place search and proposed restaurants in Basel, where it located the user. The `search_merchants` description now asks Claude to call it first; that wording is what the ⏳ retests. Name the city in demo prompts anyway: the demo restaurants are in Mulhouse.
 
 Plan B ran on 2026-10-31 with Claude Code, locally, mostly with Sonnet: `get_availability` took 11 to 28 ms server-side, and no guest name appeared in the INFO logs. It also validated two merchant-side scenarios: a cancellation by the restaurant, whose notice Claude relays, and a blocked slot, which Claude no longer offers. For Claude.ai, store a screenshot of each conversation in `assets/screenshots/`.
 
 Watch the confirmation: Claude's behaviour varies between conversations. With the first descriptions, it once booked as soon as the user picked a restaurant. With the current ones, it waited for the yes in 9 conversations out of 9 (Sonnet and Opus). In Claude.ai, check that no booking goes out before your "yes".
 
-Fallback links and the fixtures' websites point to `localhost` (`make sites`), so they only open on the machine serving those sites: the demo's.
+Fallback links and the fixtures' websites point to `localhost` (`make sites`), so they only open on the machine serving those sites: the demo's. Claude notices: in Claude Desktop, it warned that the link probably won't open and suggested calling the restaurant. For a demo where the audience sees the link, the sites need a public URL (#25).
 
 To simulate a slow agent, `CHAOS_DELAY_MS=3000` (with `CHAOS_MERCHANTS=le-petit-zinc` to target one merchant) triggers the 2 s timeout, then the fallback link.
 
