@@ -6,6 +6,7 @@ merchant sees is built here from the same result, never from the model's text.
 
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -17,7 +18,7 @@ from pydantic import BaseModel, ValidationError
 from agent.service import AgentService, MerchantCancelOutcome
 from builder.build import AlreadyProvisioned
 from builder.llm import ToolCall, ToolSpec
-from core.errors import AgentError, AgentUnavailable
+from core.errors import AgentError, AgentUnavailable, InvalidInput
 from core.models import (
     AdminCancelInput,
     BuildAgentInput,
@@ -25,6 +26,7 @@ from core.models import (
     ChatEvent,
     ConfirmationCard,
     ConfirmationCardData,
+    ErrorCode,
     GetStatsInput,
     ListReservationsInput,
     PolicyCard,
@@ -71,6 +73,12 @@ CANCELLED: dict[MerchantCancelOutcome, str] = {
 class ToolResult:
     content: str
     is_error: bool = False
+    # The §8.4 code of a failed call, for the log line; the model reads `content`.
+    error: ErrorCode | None = None
+
+
+def _error(code: ErrorCode, content: str) -> ToolResult:
+    return ToolResult(content, is_error=True, error=code)
 
 
 @dataclass(frozen=True)
@@ -113,13 +121,15 @@ TOOLS = (
     ),
     _Tool(
         "block_slot",
-        "Stop new bookings starting at one time (ISO 8601 with offset). Existing bookings stay.",
+        "Stop new bookings starting at one time (ISO 8601 with the local UTC offset given in "
+        "your instructions). Existing bookings stay.",
         "Blocking the time slot…",
         SlotInput,
     ),
     _Tool(
         "unblock_slot",
-        "Accept bookings again at a previously blocked time (ISO 8601 with offset).",
+        "Accept bookings again at a previously blocked time (ISO 8601 with the local UTC "
+        "offset given in your instructions).",
         "Opening the time slot…",
         SlotInput,
     ),
@@ -170,14 +180,35 @@ class AdminTools:
         self._owned_merchant = owned_merchant
 
     async def run(self, session: Session, call: ToolCall, emit: Emit) -> ToolResult:
+        """Runs one call and logs it (§12): tool, merchant, latency, and `ok` or the error code.
+
+        Never the arguments or the result: they hold guest names (`list_reservations`)."""
+        started = time.perf_counter()
+        outcome = "cancelled"
+        try:
+            result = await self._run(session, call, emit)
+            outcome = result.error or "ok"
+            return result
+        finally:
+            log.info(
+                "admin_tool",
+                extra={
+                    "tool": call.name if call.name in _BY_NAME else "unknown",
+                    "merchant": session.merchant_slug,
+                    "latency_ms": round((time.perf_counter() - started) * 1000),
+                    "outcome": outcome,
+                },
+            )
+
+    async def _run(self, session: Session, call: ToolCall, emit: Emit) -> ToolResult:
         tool = _BY_NAME.get(call.name)
         if tool is None:
-            return ToolResult(f"Unknown tool {call.name!r}.", is_error=True)
+            return _error("invalid_input", f"Unknown tool {call.name!r}.")
         await emit(ToolStartEvent(tool=tool.name, label=tool.label))
         if tool.name == "build_agent" and session.merchant_slug is not None:
-            return ToolResult(ALREADY_ONBOARDED, is_error=True)
+            return _error("invalid_input", ALREADY_ONBOARDED)
         if tool.name != "build_agent" and session.merchant_slug is None:
-            return ToolResult(NOT_ONBOARDED, is_error=True)
+            return _error("invalid_input", NOT_ONBOARDED)
         try:
             arguments = tool.input.model_validate_json(call.arguments or "{}")
         except ValidationError as error:
@@ -185,21 +216,21 @@ class AdminTools:
                 f"{'.'.join(str(p) for p in e['loc']) or 'arguments'}: {e['msg']}"
                 for e in error.errors(include_url=False)
             )
-            return ToolResult(f"invalid_input: {problems}", is_error=True)
+            return _error("invalid_input", f"invalid_input: {problems}")
         try:
             outcome = await self._handle(session, tool.name, arguments, emit)
         except AlreadyProvisioned as error:
             if error.slug != self._owned_merchant:
                 # Typing someone's URL must not hand over their bookings and settings.
-                return ToolResult(f"{error.code}: {SITE_TAKEN}", is_error=True)
+                return _error(error.code, f"{error.code}: {SITE_TAKEN}")
             # The demo's merchant onboards again: work on its existing agent.
             session.merchant_slug = error.slug
-            return ToolResult(f"{error.code}: {error}", is_error=True)
+            return _error(error.code, f"{error.code}: {error}")
         except AgentError as error:
-            return ToolResult(f"{error.code}: {error}", is_error=True)
+            return _error(error.code, f"{error.code}: {error}")
         except Exception:
             log.exception("tool_failed", extra={"tool": tool.name})
-            return ToolResult(TOOL_FAILED, is_error=True)
+            return _error("agent_unavailable", TOOL_FAILED)
         if outcome.card is not None:
             await emit(outcome.card)
         return ToolResult(json.dumps(outcome.data, default=str, ensure_ascii=False))
@@ -228,9 +259,11 @@ class AdminTools:
                     StatsCard(data=card_data),
                 )
             case "block_slot", SlotInput(starts_at=starts_at):
+                self._check_offset(starts_at)
                 await agent.block_slot(slug, starts_at)
                 return self._confirmation(f"{self._when(starts_at)} blocked: no new bookings.")
             case "unblock_slot", SlotInput(starts_at=starts_at):
+                self._check_offset(starts_at)
                 await agent.unblock_slot(slug, starts_at)
                 return self._confirmation(f"{self._when(starts_at)} open for bookings again.")
             case "update_policy", UpdatePolicyInput(max_party_size=size, services=services):
@@ -265,6 +298,24 @@ class AdminTools:
         return Outcome(
             {"shown_to_merchant": "confirmation", "text": text},
             ConfirmationCard(data=ConfirmationCardData(text=text)),
+        )
+
+    def _check_offset(self, starts_at: datetime) -> None:
+        """Refuse a time whose offset isn't the merchant's at that instant (#83).
+
+        A model sending the summer offset after the switch would otherwise block another hour
+        without failing. A valid instant in another offset (`20:00Z` for 21:00 in winter) is
+        refused too: the tool descriptions ask for the local offset, and the error names the
+        time the model most likely meant.
+        """
+        expected = starts_at.astimezone(self._tz).utcoffset()
+        if starts_at.utcoffset() == expected:
+            return
+        meant = starts_at.replace(tzinfo=self._tz)
+        raise InvalidInput(
+            f"{starts_at.isoformat()} doesn't use the {self._tz} offset, which is "
+            f"UTC{meant:%:z} on {meant:%Y-%m-%d}. For {meant:%H:%M} local time, send "
+            f"{meant.isoformat()}."
         )
 
     def _when(self, starts_at: datetime) -> str:

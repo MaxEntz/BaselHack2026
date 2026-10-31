@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -305,6 +306,52 @@ async def test_invalid_arguments_are_a_tool_error() -> None:
     assert session.messages[2]["content"].startswith("invalid_input: starts_at")
 
 
+@pytest.mark.parametrize("tool", ["block_slot", "unblock_slot"])
+@pytest.mark.parametrize("starts_at", ["2026-10-31T21:00:00+02:00", "2026-10-31T21:00:00Z"])
+async def test_a_slot_outside_the_local_offset_is_refused(tool: str, starts_at: str) -> None:
+    """A summer offset after the switch would block another hour without failing (#83)."""
+    agent = FakeAgent()
+    agent.blocked.append(datetime(2026, 10, 31, 21, tzinfo=TZ))
+    llm = ScriptedLLM(([], [call(tool, starts_at=starts_at)]), (["Sorry."], []))
+    harness = Harness(llm, agent=agent)
+    harness.provisioned.add(SLUG)
+    session = onboarded()
+
+    events = await harness.turn(session, "Block 21:00 tonight")
+
+    result = session.messages[2]
+    assert result["is_error"] is True
+    assert result["content"] == (
+        f"invalid_input: {starts_at} doesn't use the Europe/Zurich offset, which is UTC+01:00"
+        " on 2026-10-31. For 21:00 local time, send 2026-10-31T21:00:00+01:00."
+    ).replace(starts_at, datetime.fromisoformat(starts_at).isoformat())
+    assert "card" not in kinds(events)
+    assert agent.blocked == [datetime(2026, 10, 31, 21, tzinfo=TZ)]
+
+
+@pytest.mark.parametrize(
+    "starts_at",
+    [
+        "2026-10-31T21:00:00+01:00",
+        "2027-07-01T21:00:00+02:00",
+        # The hour that repeats on the night of the switch exists in both offsets.
+        "2026-10-25T02:30:00+02:00",
+        "2026-10-25T02:30:00+01:00",
+    ],
+)
+async def test_a_slot_in_the_local_offset_is_blocked(starts_at: str) -> None:
+    agent = FakeAgent()
+    llm = ScriptedLLM(([], [call("block_slot", starts_at=starts_at)]), (["Done."], []))
+    harness = Harness(llm, agent=agent)
+    harness.provisioned.add(SLUG)
+    session = onboarded()
+
+    await harness.turn(session, "Block it")
+
+    assert session.messages[2]["is_error"] is False
+    assert agent.blocked == [datetime.fromisoformat(starts_at)]
+
+
 async def test_a_turn_cancelled_during_a_tool_leaves_the_session_usable() -> None:
     started = asyncio.Event()
 
@@ -510,6 +557,86 @@ async def test_a_merchant_cancellation_card_says_what_was_done(
     assert json.loads(tool_message["content"])["text"] == text  # what the model relays
 
 
+def admin_tool_lines(caplog: pytest.LogCaptureFixture) -> list[dict[str, Any]]:
+    return [
+        {key: record.__dict__[key] for key in ("tool", "merchant", "outcome", "latency_ms")}
+        for record in caplog.records
+        if record.getMessage() == "admin_tool"
+    ]
+
+
+async def test_each_admin_tool_call_logs_one_line_without_guest_names(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    llm = ScriptedLLM(
+        ([], [call("list_reservations", "a", date="2026-10-31")]),
+        ([], [call("cancel_reservation", "b", reservation_id="R-001")]),
+        ([], [call("cancel_reservation", "c", reservation_id="R-404")]),
+        ([], [call("block_slot", "d", starts_at="tonight")]),
+        ([], [call("drop_tables", "e")]),
+        (["Done."], []),
+    )
+    harness = Harness(llm, agent=FakeAgent())
+    harness.provisioned.add(SLUG)
+
+    with caplog.at_level(logging.INFO, logger="merchant_platform.tools"):
+        await harness.turn(onboarded(), "Tonight's bookings, then cancel")
+
+    logged = admin_tool_lines(caplog)
+    assert [(line["tool"], line["merchant"], line["outcome"]) for line in logged] == [
+        ("list_reservations", SLUG, "ok"),
+        ("cancel_reservation", SLUG, "ok"),
+        ("cancel_reservation", SLUG, "not_found"),
+        ("block_slot", SLUG, "invalid_input"),
+        ("unknown", SLUG, "invalid_input"),
+    ]
+    assert all(isinstance(line["latency_ms"], int) for line in logged)
+    assert "Alex Martin" not in caplog.text
+    assert not any("Alex Martin" in str(record.__dict__) for record in caplog.records)
+
+
+async def test_build_agent_logs_the_new_merchant(caplog: pytest.LogCaptureFixture) -> None:
+    llm = ScriptedLLM(
+        ([], [call("build_agent", website="https://lepetitzinc.example", description="Bistro")]),
+        (["Your agent is live."], []),
+    )
+
+    with caplog.at_level(logging.INFO, logger="merchant_platform.tools"):
+        await Harness(llm).turn(Session(id="s"), "Here is my site")
+
+    assert [
+        (line["tool"], line["merchant"], line["outcome"]) for line in admin_tool_lines(caplog)
+    ] == [("build_agent", SLUG, "ok")]
+
+
+async def test_a_tool_cancelled_mid_call_still_logs_its_line(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    started = asyncio.Event()
+
+    async def slow_build(arguments: BuildAgentInput, emit: Any) -> BuildAgentOutput:
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    tools = AdminTools(None, slow_build, TZ, today=lambda: TODAY)
+
+    async def ignore(event: ChatEvent) -> None:
+        pass
+
+    build = call("build_agent", website="https://lepetitzinc.example", description="Bistro")
+    with caplog.at_level(logging.INFO, logger="merchant_platform.tools"):
+        task = asyncio.create_task(tools.run(Session(id="s"), build, ignore))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert [(line["tool"], line["outcome"]) for line in admin_tool_lines(caplog)] == [
+        ("build_agent", "cancelled")
+    ]
+
+
 async def test_merchant_tools_without_an_agent_service_explain_it() -> None:
     llm = ScriptedLLM(([], [call("get_stats", date="2026-10-31")]), (["Not yet."], []))
     harness = Harness(llm, agent=None)
@@ -528,10 +655,53 @@ def test_the_prompt_carries_the_date_time_zone_and_mode() -> None:
     onboarding = system_prompt(NOW, None)
     operations = system_prompt(NOW, PROFILE)
 
-    assert "Today is Saturday 2026-10-31, it is 18:30 (Europe/Zurich)." in onboarding
+    assert "Today is Saturday 2026-10-31, it is 18:30 (Europe/Zurich, UTC+01:00)." in onboarding
     assert "Mode: onboarding" in onboarding
     assert "Mode: operations" in operations
     assert PROFILE.name in operations
+
+
+@pytest.mark.parametrize(
+    ("now", "today", "change"),
+    [
+        (NOW, "UTC+01:00", "The offset becomes UTC+02:00 on Sunday 2027-03-28"),
+        (
+            datetime(2026, 7, 1, 12, 0, tzinfo=TZ),
+            "UTC+02:00",
+            "The offset becomes UTC+01:00 on Sunday 2026-10-25",
+        ),
+        (
+            datetime(2026, 10, 24, 23, 0, tzinfo=TZ),
+            "UTC+02:00",
+            "The offset becomes UTC+01:00 on Sunday 2026-10-25",
+        ),
+        (
+            datetime(2026, 10, 25, 1, 30, tzinfo=TZ),
+            "UTC+02:00",
+            "The offset becomes UTC+01:00 on Sunday 2026-10-25",
+        ),
+        (
+            datetime(2026, 10, 25, 18, 0, tzinfo=TZ),
+            "UTC+01:00",
+            "The offset becomes UTC+02:00 on Sunday 2027-03-28",
+        ),
+    ],
+)
+def test_the_prompt_gives_the_utc_offset_and_its_next_change(
+    now: datetime, today: str, change: str
+) -> None:
+    """A model guessing the offset blocks the wrong hour after a clock change (#83)."""
+    prompt = system_prompt(now, PROFILE)
+
+    assert f"(Europe/Zurich, {today})." in prompt
+    assert change in prompt
+
+
+def test_the_prompt_mentions_no_offset_change_in_a_zone_without_one() -> None:
+    prompt = system_prompt(datetime(2026, 10, 31, 18, 30, tzinfo=ZoneInfo("UTC")), None)
+
+    assert "(UTC, UTC+00:00)." in prompt
+    assert "The offset becomes" not in prompt
 
 
 def test_compact_cuts_long_tool_results_from_old_turns_only() -> None:
@@ -626,7 +796,11 @@ async def test_live_max_party_size() -> None:
 @pytest.mark.llm
 async def test_live_how_busy() -> None:
     _, session = await live_turns("How busy are we tonight?")
-    assert tools_called(session) == [("get_stats", {"date": "2026-10-31"})]
+    calls = tools_called(session)
+    # Facts, not one exact path: tonight's stats, and only reads (the model may also list the
+    # bookings, #109).
+    assert ("get_stats", {"date": "2026-10-31"}) in calls
+    assert {name for name, _ in calls} <= {"get_stats", "list_reservations"}
 
 
 @pytest.mark.llm
