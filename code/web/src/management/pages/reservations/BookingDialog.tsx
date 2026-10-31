@@ -1,9 +1,10 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { DaySlot, ManagedReservation, MerchantCancelOutput } from "../../../types.ts";
 import { useClient } from "../../data.ts";
+import { useIdempotencyKey } from "../../keys.ts";
 import { errorMessage } from "../../problems.ts";
 import { Dialog, Pill, useToast } from "../../ui/index.ts";
-import { bookedLine, guestBooked, guests, nearest, whenLine } from "./words.ts";
+import { bookedLine, cancelNote, guests, nearest, whenLine } from "./words.ts";
 
 /**
  * One booking: its facts, and for a live one, a move to another free time of the day and a
@@ -15,6 +16,7 @@ export function BookingDialog({
   booking,
   slotLengthMin,
   started,
+  ended,
   onClose,
   onMoved,
   onCancelled,
@@ -23,6 +25,7 @@ export function BookingDialog({
   booking: ManagedReservation | null;
   slotLengthMin: number;
   started: boolean;
+  ended: boolean;
   onClose: () => void;
   onMoved: (booking: ManagedReservation) => void;
   onCancelled: (answer: MerchantCancelOutput) => void;
@@ -36,6 +39,7 @@ export function BookingDialog({
           booking={booking}
           slotLengthMin={slotLengthMin}
           started={started}
+          ended={ended}
           onMoved={onMoved}
           onCancelled={onCancelled}
         />
@@ -49,6 +53,7 @@ function BookingBody({
   booking,
   slotLengthMin,
   started,
+  ended,
   onMoved,
   onCancelled,
 }: {
@@ -56,6 +61,7 @@ function BookingBody({
   booking: ManagedReservation;
   slotLengthMin: number;
   started: boolean;
+  ended: boolean;
   onMoved: (booking: ManagedReservation) => void;
   onCancelled: (answer: MerchantCancelOutput) => void;
 }) {
@@ -69,6 +75,7 @@ function BookingBody({
   const [free, setFree] = useState<DaySlot[] | null>(null);
   const times = free?.map((slot) => slot.time) ?? null;
   const [chosen, setChosen] = useState<string | null>(null);
+  const keyFor = useIdempotencyKey();
 
   const loadTimes = useCallback(
     async (signal: AbortSignal) => {
@@ -115,7 +122,7 @@ function BookingBody({
     try {
       const moved = await client.moveBooking(slug, booking.id, {
         starts_at: slot.starts_at,
-        idempotency_key: crypto.randomUUID(),
+        idempotency_key: keyFor({ id: booking.id, starts_at: slot.starts_at }),
       });
       toast(
         <>
@@ -195,9 +202,7 @@ function BookingBody({
           <>
             <p className="note">
               <b>Cancel this booking?</b>{" "}
-              {guestBooked(booking)
-                ? `${booking.guest_name} sees a notice the next time their assistant checks.`
-                : "The table goes back on offer straight away."}
+              {cancelNote(booking, ended)}
             </p>
             <div className="dlg-foot">
               <Pill small onClick={() => setConfirming(false)}>

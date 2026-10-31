@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { DaySlot, ManagedReservation } from "../../../types.ts";
-import { bookedLine, columnTitle, dayLabel, newBookingNote, rowNote, summary, whenLine } from "./words.ts";
+import {
+  bookedLine,
+  cancelNote,
+  columnTitle,
+  dayLabel,
+  hasEnded,
+  hasStarted,
+  newBookingNote,
+  rowNote,
+  summary,
+  whenLine,
+} from "./words.ts";
 
 const TODAY = "2026-10-31";
 
@@ -75,11 +86,33 @@ describe("the booking dialog", () => {
   });
 });
 
+describe("a booking's time", () => {
+  it("has started from its start, and ended after its slot, by the merchant's clock", () => {
+    expect(hasStarted(booking(), TODAY, "19:59")).toBe(false);
+    expect(hasStarted(booking(), TODAY, "20:00")).toBe(true);
+    expect(hasStarted(booking({ date: "2026-10-30" }), TODAY, "08:00")).toBe(true);
+    expect(hasEnded(booking(), TODAY, "21:59", 120)).toBe(false);
+    expect(hasEnded(booking(), TODAY, "22:00", 120)).toBe(true);
+    expect(hasEnded(booking({ date: "2026-11-01" }), TODAY, "23:00", 120)).toBe(false);
+  });
+
+  it.each([
+    [booking(), false, "Marie Lang sees a notice the next time their assistant checks."],
+    [booking({ via: "website" }), false, "Marie Lang sees a notice the next time their assistant checks."],
+    [booking({ via: "merchant" }), false, "The table goes back on offer straight away."],
+    [booking(), true, "It has already ended, so nobody is told."],
+  ])("asks before cancelling %#, as the server will act", (row, ended, note) => {
+    expect(cancelNote(row, ended)).toBe(note);
+  });
+});
+
 describe("the new booking's note", () => {
   const slots = [slot("20:00", null), slot("20:30", "T4"), slot("21:00", null, true)];
 
   it.each([
-    [{ slots: [], time: null, party: 2 }, "Every time is blocked on this day.", false],
+    // After the last seating the server sends no start at all: nothing is blocked.
+    [{ slots: [], time: null, party: 2 }, "No time is left on this day.", false],
+    [{ slots: [slot("21:00", "T4", true)], time: null, party: 2 }, "Every time is blocked on this day.", false],
     [{ slots, time: "20:30", party: 0 }, "A booking needs at least one guest.", false],
     [{ slots, time: "20:30", party: 1.5 }, "A booking needs at least one guest.", false],
     [{ slots, time: "20:30", party: 5 }, "Your limit is 4. You can change it in the booking rules.", false],

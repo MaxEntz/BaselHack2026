@@ -11,8 +11,9 @@ import { ClientContext } from "../../data.ts";
 // 18:30-21:30, groups up to 4). The live booking stays away unless a test waits for it.
 const SLUG = "la-graine-verte";
 
-function open(query = "", liveBookingDelayMs = 60_000) {
-  const client = createMockManagementClient(fixture as ManagementFixture, { latencyMs: 0, liveBookingDelayMs });
+function open(query = "", liveBookingDelayMs = 60_000, changes: Partial<ManagementFixture> = {}) {
+  const data = { ...(fixture as ManagementFixture), ...changes };
+  const client = createMockManagementClient(data, { latencyMs: 0, liveBookingDelayMs });
   const router = createMemoryRouter(routes, { initialEntries: [`/manage/${SLUG}/reservations${query}`] });
   render(
     <ClientContext.Provider value={client}>
@@ -114,7 +115,18 @@ describe("A booking", () => {
     await waitFor(() => expect(document.querySelector(".who.fresh")?.textContent).toMatch(/^Marie Lang/));
   });
 
-  it("can't move once it has started, and says no other time is free", async () => {
+  it("says when no other time is free", async () => {
+    // 20:30, the only other start still to come tonight, is blocked.
+    const blocked = { starts_at: "2026-10-31T20:30:00+01:00", date: "2026-10-31", time: "20:30" };
+    open("?booking=R-014", 60_000, { blocked: [...(fixture as ManagementFixture).blocked, blocked] });
+    const box = within(await dialog());
+    const select = await box.findByRole<HTMLSelectElement>("combobox", { name: "Move to another time" });
+    await waitFor(() => expect(select.textContent).toBe("No other time is free"));
+    expect(select.disabled).toBe(true);
+    expect(box.getByRole("button", { name: "Move" })).toHaveProperty("disabled", true);
+  });
+
+  it("can't move once it has started", async () => {
     open("?booking=R-009");
     const box = within(await dialog());
     expect(box.getByRole("heading", { name: "Sara Muller" })).toBeTruthy();
@@ -152,6 +164,15 @@ describe("A booking", () => {
     fireEvent.click(box.getAllByRole("button", { name: "Cancel the booking" }).at(-1) as HTMLElement);
 
     expect(await toast("Ines Schmitt is cancelled")).toBe("Ines Schmitt is cancelledTable T2 is free again.");
+  });
+});
+
+describe("A link", () => {
+  it("to a day past the next 7 opens today and says so", async () => {
+    open("?date=2026-11-20&booking=R-099");
+    expect(await screen.findByText("That booking is on Friday 20 November, past the next 7 days.")).toBeTruthy();
+    expect(screen.getByText("Tonight, 6 bookings and 17 guests.")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 

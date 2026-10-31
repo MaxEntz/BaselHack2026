@@ -5,7 +5,7 @@ import type { ManagedReservation, ReservationDay, Via } from "../../../types.ts"
 import { BlockDialog } from "../../BlockDialog.tsx";
 import { DayBar } from "../../DayBar.tsx";
 import { useClient, useLoad } from "../../data.ts";
-import { addDays } from "../../dates.ts";
+import { addDays, dayLong } from "../../dates.ts";
 import { useFresh } from "../../fresh.ts";
 import { PAGES } from "../../pages.ts";
 import { defaultService, serviceNames, serviceOf } from "../../services.ts";
@@ -14,7 +14,7 @@ import { throughAgent } from "../home/format.ts";
 import { PageTitle } from "../PageTitle.tsx";
 import { BookingDialog } from "./BookingDialog.tsx";
 import { NewBookingDialog } from "./NewBookingDialog.tsx";
-import { columnTitle, dayLabel, rowNote, summary } from "./words.ts";
+import { columnTitle, dayLabel, hasEnded, hasStarted, rowNote, summary } from "./words.ts";
 
 const DAYS_AHEAD = 7;
 
@@ -46,12 +46,13 @@ export function ReservationsPage({ slug, version }: { slug: string; version: num
   const load = useCallback(
     async (signal: AbortSignal): Promise<Base> => {
       const merchant = await client.merchant(slug, signal);
-      // The merchant's today and time are the platform's, never the browser's.
+      // The merchant's today and time are the platform's, never the browser's, read again with the
+      // bookings so that a page left open through a service knows what has started.
       return { today: merchant.now.slice(0, 10), clock: merchant.now.slice(11, 16) };
     },
     [client, slug],
   );
-  const { data, error } = useLoad(load, 0, false);
+  const { data, error } = useLoad(load, version, false);
   return (
     <>
       <PageTitle title={PAGES.reservations} />
@@ -71,6 +72,8 @@ function Day({ slug, version, today, clock }: Base & { slug: string; version: nu
   const days = Array.from({ length: DAYS_AHEAD }, (_, i) => addDays(today, i));
   const asked = params.get("date");
   const day = asked && days.includes(asked) ? asked : today;
+  // A link to a day past the 7 shown (a booking weeks ahead) opens today, and says so.
+  const elsewhere = asked && asked !== day && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : null;
   const [chosenService, setChosenService] = useState<{ day: string; index: number } | null>(null);
   const [who, setWho] = useState<Who>("");
   const [moved, setMoved] = useState<string | null>(null);
@@ -129,6 +132,11 @@ function Day({ slug, version, today, clock }: Base & { slug: string; version: nu
 
   return (
     <>
+      {elsewhere && (
+        <p className="note" role="status">
+          {params.get("booking") ? "That booking is" : "That day is"} on {dayLong(elsewhere)}, past the next 7 days.
+        </p>
+      )}
       {services.length > 0 && (
         <DayBar
           days={days}
@@ -159,7 +167,8 @@ function Day({ slug, version, today, clock }: Base & { slug: string; version: nu
         slug={slug}
         booking={opened}
         slotLengthMin={data.slot_length_min}
-        started={opened !== null && (opened.date < today || (opened.date === today && opened.time <= clock))}
+        started={opened !== null && hasStarted(opened, today, clock)}
+        ended={opened !== null && hasEnded(opened, today, clock, data.slot_length_min)}
         onClose={() => go({ booking: null })}
         onMoved={(booking) => {
           setMoved(booking.id);

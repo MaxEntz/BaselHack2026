@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { DaySlot, ManagedReservation, Service } from "../../../types.ts";
 import { useClient } from "../../data.ts";
 import { dayLong } from "../../dates.ts";
+import { useIdempotencyKey } from "../../keys.ts";
 import { errorMessage } from "../../problems.ts";
 import { Dialog, Pill, useToast } from "../../ui/index.ts";
 import { guests, newBookingNote } from "./words.ts";
@@ -79,6 +80,7 @@ function NewBookingForm({
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const name = useRef<HTMLInputElement>(null);
+  const keyFor = useIdempotencyKey();
 
   const size = Number(party);
   // The starts don't depend on the party: an invalid one still lists them, for 1 guest.
@@ -94,7 +96,7 @@ function NewBookingForm({
       (answer) => {
         if (controller.signal.aborted) return;
         const offered = answer.slots.filter((slot) => !slot.blocked);
-        setSlots(offered);
+        setSlots(answer.slots);
         setTime((current) => {
           if (current && offered.some((slot) => slot.time === current)) return current;
           const inService = offered.find(
@@ -126,12 +128,8 @@ function NewBookingForm({
     setBusy(true);
     setFailure(null);
     try {
-      const booked = await client.addBooking(slug, {
-        starts_at: slot.starts_at,
-        party_size: size,
-        guest_name: guest.trim(),
-        idempotency_key: crypto.randomUUID(),
-      });
+      const payload = { starts_at: slot.starts_at, party_size: size, guest_name: guest.trim() };
+      const booked = await client.addBooking(slug, { ...payload, idempotency_key: keyFor(payload) });
       toast(
         <>
           <b>{booked.guest_name} is booked</b>
@@ -187,9 +185,11 @@ function NewBookingForm({
               setFailure(null);
             }}
           >
-            {slots?.map((slot) => (
-              <option key={slot.time}>{slot.time}</option>
-            ))}
+            {slots
+              ?.filter((slot) => !slot.blocked)
+              .map((slot) => (
+                <option key={slot.time}>{slot.time}</option>
+              ))}
           </select>
         </label>
       </div>
