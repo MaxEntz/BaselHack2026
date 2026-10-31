@@ -331,7 +331,9 @@ async def update_policy(
             checked = _SERVICES.validate_python(tuple(services))
         except ValidationError as error:
             raise InvalidInput(f"Invalid services: {_reasons(error)}") from None
-        values["services"] = [service.model_dump() for service in checked]
+        # In the order `get_policy` serves them: the same hours in another order are no change,
+        # and the tool descriptions word them alike (#201).
+        values["services"] = [s.model_dump() for s in sorted(checked, key=lambda s: s.start)]
     before = (await conn.execute(select(policy_t.c.max_party_size, policy_t.c.services))).one()
     row = (await conn.execute(update(policy_t).values(values).returning(policy_t))).one()
     await _update_profile(conn, slug, values)
@@ -340,7 +342,8 @@ async def update_policy(
         await activity.record(
             conn, slug, "saved", "merchant", details={"what": activity.BOOKING_RULES}, at=at
         )
-    if "services" in values and values["services"] != before.services:
+    stored_services = sorted(before.services, key=lambda s: str(s["start"]))
+    if "services" in values and values["services"] != stored_services:
         await activity.record(
             conn, slug, "saved", "merchant", details={"what": activity.OPENING_HOURS}, at=at
         )
@@ -551,12 +554,13 @@ async def update_rules(
         raise FormProblem(
             "The booking page stays on your website.", Problem(code="booking_page_off_site")
         )
+    stored = registry.profile.get("cancellation_policy")
     policy = cancellation_policy or None
-    before = (
-        await conn.scalar(select(policy_t.c.max_party_size)),
-        registry.fallback_url,
-        registry.profile.get("cancellation_policy"),
-    )
+    if isinstance(stored, str) and policy == one_line(stored, MAX_POLICY_TEXT):
+        # The form got the stored text cut to one paragraph (`get_rules`): sent back as it
+        # was served, the policy keeps its full text (#201).
+        policy = stored
+    before = (await conn.scalar(select(policy_t.c.max_party_size)), registry.fallback_url, stored)
     await conn.execute(update(policy_t).values(max_party_size=max_party_size))
     await conn.execute(
         update(merchants_t).where(merchants_t.c.slug == slug).values(fallback_url=fallback_url)
