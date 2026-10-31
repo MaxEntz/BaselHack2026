@@ -16,7 +16,8 @@ Claude.ai appelle les connecteurs **depuis le cloud d'Anthropic** (`160.79.104.0
 | Claude Code (plan B), token | ✅ validé | spike #3 : appel réel en local, avec et sans token |
 | Claude Code (plan B), scénarios du §9 | ✅ validé | les 6 outils en local, voir « Scénarios utilisateur » |
 | Client MCP (e2e, en CI) | ✅ validé | `tests/e2e/test_gateway_mcp.py`, vrai serveur et vrai Postgres |
-| Serveur déployé, 6 outils | ✅ validé | client du SDK lancé sur le LXC, sur `http://127.0.0.1:8001/mcp` |
+| Serveur déployé, 6 outils | ✅ validé | client du SDK lancé sur le LXC, sur `http://127.0.0.1:8001/mcp` : réservation, déplacement, annulation, groupe trop grand, panne et retour |
+| Appels d'Anthropic à travers le filtre | ✅ validé | un `POST /mcp` de `160.79.106.173` en `200` dans les logs, filtre actif ; aucun outil appelé à ce moment-là |
 | Claude.ai, connexion | ✅ validé | spike #3 : l'ancien outil `ping` appelé depuis une conversation, capture ci-dessous |
 | Claude.ai, scénarios du §9 | ⏳ à faire | à la main, voir « Scénarios utilisateur » |
 | Appels de Claude.ai acceptés par le serveur | ✅ validé | venus de `160.79.106.x`, en `200`, aucun `Host` ni `Origin` rejeté dans les logs |
@@ -38,7 +39,12 @@ Il faut la clé `~/.ssh/baselhack2026_lxc`. Si elle n'est pas sur la machine, de
 ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
 ```
 
-Sur le serveur, Caddy gère le HTTPS et renvoie vers `127.0.0.1:8001`. Le service `merchant-gateway` tourne sous un utilisateur sans droits. Sa configuration est dans `/opt/merchant-agents/code/.env`, et ses logs avec `journalctl -u merchant-gateway`. `make deploy` ne touche pas à ce `.env` : sur un nouveau serveur, il faut le créer avec `DATABASE_URL`, sans laquelle le service ne démarre pas, et `GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io`, sans laquelle toute requête publique répond `421`. Sur le serveur, `curl 127.0.0.1:8001/health` indique si le gateway tourne et s'il joint Postgres.
+Sur le serveur, Caddy gère le HTTPS et renvoie vers `127.0.0.1:8001`. Le service `merchant-gateway` tourne sous un utilisateur sans droits. Sa configuration est dans `/opt/merchant-agents/code/.env`, et ses logs avec `journalctl -u merchant-gateway`. `make deploy` ne touche pas à ce `.env` : sur un nouveau serveur, il faut le créer avec `DATABASE_URL`, sans laquelle le service ne démarre pas, et `GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io`, sans laquelle toute requête publique répond `421`. Pour savoir si le gateway tourne et s'il joint Postgres, lance sur le serveur (`curl` n'y est pas installé) :
+
+```bash
+cd /opt/merchant-agents/code
+.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8001/health').read().decode())"
+```
 
 ## Postgres sur le LXC
 
