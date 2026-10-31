@@ -3,6 +3,10 @@
 Every write on a merchant's `reservations` notifies the `reservations` channel with
 identifiers only (trigger from migration 0001). `LiveListener` turns each notification
 into a `LiveEvent` and `LiveBus` hands it to the merchant's open `/events` streams.
+
+Live events report what guests do. The merchant's own changes (its cancellations, the
+bookings it enters itself) are not sent: its chat already confirms them, and the
+booking's channel would read as the guest's ("Booking cancelled via Claude", #81).
 """
 
 import asyncio
@@ -72,17 +76,31 @@ class Notification(BaseModel):
     via: Via
 
 
+Kind = Literal["new_booking", "updated", "cancelled"]
+
+
 class Booking(NamedTuple):
     """A reservation as re-read for a live event."""
 
     row: AdminReservationRow
     day: date
+    cancelled_by: Literal["guest", "merchant"] | None
 
 
-def classify(op: str, status: str) -> Literal["new_booking", "updated", "cancelled"] | None:
+def classify(op: str, status: str) -> Kind | None:
     if op == "INSERT":
         return "new_booking" if status == "confirmed" else None
     return "cancelled" if status == "cancelled" else "updated"
+
+
+def made_by_merchant(kind: Kind, booking: Booking) -> bool:
+    """The merchant's own change, which its chat already confirms.
+
+    An update is always the guest's: no admin tool moves a booking (AGENTS.md §8.2).
+    """
+    if kind == "cancelled":
+        return booking.cancelled_by == "merchant"
+    return kind == "new_booking" and booking.row.via == "merchant"
 
 
 class LiveListener:
@@ -154,6 +172,9 @@ class LiveListener:
         if booking is None:
             return
         row = booking.row
+        if made_by_merchant(kind, booking):
+            log.info("live_event_skipped", extra={"merchant": slug, "kind": kind, "id": row.id})
+            return
         event = LiveEvent(kind=kind, via=notification.via, date=booking.day, reservation=row)
         self._bus.publish(slug, event)
         log.info("live_event", extra={"merchant": slug, "kind": kind, "id": row.id})
@@ -186,6 +207,7 @@ class LiveListener:
                 tables_t.c.label,
                 reservations_t.c.via,
                 reservations_t.c.status,
+                reservations_t.c.cancelled_by,
             )
             .join(tables_t, tables_t.c.id == reservations_t.c.table_id)
             .where(reservations_t.c.id == reservation_id)
@@ -204,4 +226,4 @@ class LiveListener:
             via=row.via,
             status=row.status,
         )
-        return Booking(reservation, start.date())
+        return Booking(reservation, start.date(), row.cancelled_by)

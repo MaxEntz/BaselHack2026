@@ -161,10 +161,12 @@ async def test_website_bookings_updates_and_cancellations(
         await conn.execute(
             update(reservations_t)
             .where(reservations_t.c.id == reservation_id)
-            .values(status="cancelled", cancelled_by="merchant")
+            .values(status="cancelled", cancelled_by="guest")
         )
     cancelled = await next_event(queue)
     assert (cancelled.kind, cancelled.reservation.status) == ("cancelled", "cancelled")
+    # The channel the booking was made through, not the one the guest cancelled from.
+    assert cancelled.via == "website"
 
 
 async def test_a_booking_for_another_day_carries_its_date(
