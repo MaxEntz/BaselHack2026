@@ -17,7 +17,7 @@ npm run test:e2e           # Playwright (e2e/), 1440 px, starts Vite in mock mod
 ```
 
 Routes ([ADR-0017](../../documentation/adr/0017-router-and-test-tools-for-the-management-site.md)):
-`/` is Studio (today the chat below), `/manage/<slug>` and `/manage/<slug>/<page>`
+`/` is Studio, `/manage/<slug>` and `/manage/<slug>/<page>`
 (`assistant`, `reservations`, `guests`, `hours`, `floor`, `rules`, `agent`, `settings`) the
 management site. An unknown page goes to that merchant's Home, any other path to `/`.
 
@@ -34,12 +34,14 @@ profile, reservations incl. empty, stats, policy, notifications, errors).
 |---|---|
 | `VITE_MOCK=1` | Replays the contract mocks with realistic delays instead of calling the API. During onboarding, a description containing the word "cut" drops the stream while the agent is being built (#86). The management client (`src/management/`) then serves the demo fixture, `code/tests/fixtures/demo/la-graine-verte-management.json`, with the server's booking rules (#129). |
 | `VITE_MERCHANT_SLUG` | Skips onboarding: the chat starts as this merchant and subscribes to its live events. |
-| `VITE_MERCHANT_NAME` | Name shown in the header with `VITE_MERCHANT_SLUG` (defaults to the slug). |
+| `VITE_MERCHANT_NAME` | Name shown in the top bar with `VITE_MERCHANT_SLUG` (defaults to the slug). |
+| `VITE_DEMO=1` | Offers the three demo restaurants in Studio (always on with `VITE_MOCK=1`). |
+| `VITE_DEMO_SITES_DOMAIN` | Their sites' domain, as `<slug>.<domain>`; without it, the `make sites` ports. |
 
 ## Mock conversation
 
-Without `VITE_MERCHANT_SLUG`: send a website address, then a short description to
-replay `onboarding.json`. A "new booking via Claude" notification
+Without `VITE_MERCHANT_SLUG`: send a website address and a short description to replay
+`onboarding.json` (La Graine Verte, like the management fixture). A "new booking via Claude" notification
 (`notification.json`) arrives a few seconds after the agent is live. Then any
 message replays `tonight.json`, and messages mentioning *block*, *busy*, *stats*,
 *policy* or *party* replay `cards.json`.
@@ -53,6 +55,10 @@ the code once and removes it from the address bar.
 
 ## Layout
 
+- `src/studio/`: Studio (#141). `phase.ts` holds, as pure functions, what each conversation state
+  shows: the phase, the feed, the chips and the top bar's pill. `feed.tsx` draws the feed and its
+  cards with the fixed sentences, `Canvas.tsx` the pasteboard, `motion.ts` the crossfades and the
+  split's opening. Its classes start with `st-`, because `cards.css` is global.
 - `src/chat/state.ts`: `ChatItem` union and the pure reducer that turns `ChatEvent`
   and `LiveEvent` into chat items (steps of one build grouped, text deltas merged).
 - `src/chat/client.ts`: `POST /api/chat` SSE client and `EventSource` on

@@ -3,16 +3,18 @@
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from builder.build import gateway_mcp_url
 from core.config import Settings
 from core.db import merchants_t
-from core.models import MerchantOverview, MerchantStatus, PriceLevel, Tag
+from core.models import Look, MerchantOverview, MerchantStatus, PriceLevel, Tag
 
 # The fictional restaurants of `code/sites/`; a rebuild of one may take a `-2` suffix (#22).
 DEMO_SLUGS = ("le-petit-zinc", "la-graine-verte", "maison-albane")
@@ -29,6 +31,7 @@ class MerchantRecord:
     tags: tuple[Tag, ...]
     website: str
     status: MerchantStatus
+    look: Look | None = None
 
 
 RegistryLookup = Callable[[str], Awaitable[MerchantRecord | None]]
@@ -46,16 +49,34 @@ def registry_records(engine: AsyncEngine) -> RegistryLookup:
             columns.tags,
             columns.website,
             columns.status,
+            columns.profile,
         ).where(columns.slug == slug)
         async with engine.connect() as conn:
             row = (await conn.execute(query)).one_or_none()
         if row is None:
             return None
         return MerchantRecord(
-            row.slug, row.name, row.city, row.price_level, tuple(row.tags), row.website, row.status
+            row.slug,
+            row.name,
+            row.city,
+            row.price_level,
+            tuple(row.tags),
+            row.website,
+            row.status,
+            stored_look(row.profile),
         )
 
     return lookup
+
+
+def stored_look(profile: Any) -> Look | None:
+    """The stored profile's look (#149); None for a profile stored before it, or unreadable:
+    the management site then uses the default look."""
+    look = profile.get("look") if isinstance(profile, dict) else None
+    try:
+        return Look.model_validate(look) if look is not None else None
+    except ValidationError:
+        return None
 
 
 def is_demo(slug: str) -> bool:
@@ -84,4 +105,5 @@ def merchant_overview(
         management_url=f"{web}/manage/{record.slug}",
         owner_name=owner_name,
         demo=is_demo(record.slug),
+        look=record.look,
     )

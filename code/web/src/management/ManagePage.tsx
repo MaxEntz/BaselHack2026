@@ -4,6 +4,7 @@ import type { LiveEvent } from "../types.ts";
 import { announcingChanges, onChange } from "./changes.ts";
 import { ClientContext, useClient, useLoad } from "./data.ts";
 import { RefreshContext, type RefreshStore, createRefreshStore, useLatestVersion, usePageVersion } from "./live.ts";
+import { AgentPage } from "./pages/AgentPage.tsx";
 import { FloorPage } from "./pages/FloorPage.tsx";
 import { GuestsPage } from "./pages/GuestsPage.tsx";
 import { HoursPage } from "./pages/HoursPage.tsx";
@@ -21,8 +22,9 @@ import { useAssistantOpen } from "./shell/useAssistantOpen.ts";
 import "./shell/shell.css";
 import { ToastProvider, useToast } from "./ui/index.ts";
 
-// The pages built so far; the others come with their issues (#139, #140, #146).
+// The pages built so far; the others come with their issues (#139, #140).
 const VIEWS: Partial<Record<PageId, ComponentType<{ slug: string; version: number }>>> = {
+  agent: AgentPage,
   guests: GuestsPage,
   floor: FloorPage,
   hours: HoursPage,

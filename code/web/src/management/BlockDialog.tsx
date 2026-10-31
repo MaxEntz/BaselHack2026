@@ -13,6 +13,7 @@ export function BlockDialog({
   date,
   services,
   blocked,
+  after = null,
   open,
   onClose,
   onSaved,
@@ -22,6 +23,9 @@ export function BlockDialog({
   services: readonly Service[];
   // The day's blocked times, HH:MM.
   blocked: readonly string[];
+  // The merchant's time now (HH:MM) when `date` is today: starts up to it have passed, and the
+  // server ignores them, so they aren't offered.
+  after?: string | null;
   open: boolean;
   onClose: () => void;
   onSaved: (blocked: BlockedTimes) => void;
@@ -33,13 +37,20 @@ export function BlockDialog({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const times = new FormData(event.currentTarget).getAll("time").map(String).toSorted();
+    const checked = new FormData(event.currentTarget).getAll("time").map(String);
+    let answer: BlockedTimes;
     try {
-      onSaved(await client.setBlocked(slug, date, times));
+      answer = await client.setBlocked(slug, date, checked);
     } catch (failure) {
       setError(errorMessage(failure));
       return;
     }
+    onSaved(answer);
+    // Worded from what the server kept: it ignores a time that has passed meanwhile (#133).
+    const times = answer.blocked
+      .filter((b) => b.date === date)
+      .map((b) => b.time)
+      .toSorted();
     toast(
       times.length ? (
         <>
@@ -67,12 +78,14 @@ export function BlockDialog({
           <fieldset key={service.start}>
             <legend>{names[index]}</legend>
             <div className="pick">
-              {startsOf(service).map((time) => (
-                <label key={time}>
-                  <input type="checkbox" name="time" value={time} defaultChecked={blocked.includes(time)} />
-                  <span>{time}</span>
-                </label>
-              ))}
+              {startsOf(service)
+                .filter((time) => after === null || time > after)
+                .map((time) => (
+                  <label key={time}>
+                    <input type="checkbox" name="time" value={time} defaultChecked={blocked.includes(time)} />
+                    <span>{time}</span>
+                  </label>
+                ))}
             </div>
           </fieldset>
         ))}

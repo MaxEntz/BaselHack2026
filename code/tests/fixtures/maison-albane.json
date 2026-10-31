@@ -22,5 +22,6 @@
   "tags": ["vegetarian", "terrace"],
   "price_level": "€€€€",
   "cancellation_policy": "Free cancellation up to 24 hours before the booking.",
-  "fallback_url": "http://localhost:8082/#reserver"
+  "fallback_url": "http://localhost:8082/#reserver",
+  "look": {"bg": "#151413", "surface": "#1e1c1a", "line": "#3a3530", "ink": "#efe9df", "muted": "#b3aa9c", "accent": "#c8a96a", "accent_2": "#b0955d", "on_accent": "#111111", "display_font": "serif", "body_font": "sans", "corners": "square", "radius_px": 0, "texture": "none"}
 }

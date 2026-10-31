@@ -31,7 +31,7 @@ from core.db import (
     reservations_t,
     tables_t,
 )
-from core.errors import InvalidInput, NotFound, SlotUnavailable
+from core.errors import BookingStarted, InvalidInput, NotFound, SlotUnavailable
 from core.models import (
     Dashboard,
     DaySlot,
@@ -332,7 +332,7 @@ class ManagementService:
         if current.status != "confirmed":
             raise SlotUnavailable(f"Booking {current.id} is cancelled")
         if _utc(current.during.lower) <= _utc(self.clock()):
-            raise SlotUnavailable(f"Booking {current.id} has already started")
+            raise BookingStarted(current.id)
         if starts_at.astimezone(self.tz).date() != current.during.lower.astimezone(self.tz).date():
             raise InvalidInput("A booking moves within its day")
 

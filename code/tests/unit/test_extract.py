@@ -460,8 +460,9 @@ async def test_every_fact_of_the_card_is_there_in_order() -> None:
         "Cancelling",
         "Price level",
         "Booking page",
+        "Look",
     ]
-    assert result.facts[-1].value == "/#reserver, used as the fallback"
+    assert result.facts[-2].value == "/#reserver, used as the fallback"
 
 
 async def test_flags_are_written_by_code() -> None:
@@ -534,8 +535,73 @@ async def test_a_quote_too_short_to_prove_anything_is_no_source(quote: str) -> N
     assert (largest.value, largest.source, largest.quote) == ("4", None, None)
 
 
+async def test_a_short_name_or_tag_found_in_the_page_stays_a_source() -> None:
+    # A name or a tag is a word the page must hold: "Noma" proves more than "4" (#184).
+    noma = CrawlResult(
+        website=SITE,
+        pages=[Page(url=SITE, title="Noma", text="Noma. Vegan menu. Tables of 4.", json_ld=[])],
+    )
+    llm = FakeLLM(
+        sourced(
+            fields={"name": "Noma", "tags": ["vegan"]},
+            name={"page": SITE, "quote": "Noma"},
+            tags={"page": SITE, "quote": "Vegan"},
+            max_party_size={"page": SITE, "quote": "4"},
+        )
+    )
+
+    result = await extract_profile(noma, "", llm)
+
+    facts = {fact.key: (fact.source, fact.quote) for fact in result.facts}
+    assert facts["name"] == ("/", "Noma")
+    assert facts["tags"] == ("/", "Vegan")
+    assert facts["max_party_size"] == (None, None)
+
+
 async def test_the_booking_page_is_the_crawls_finding_without_a_source() -> None:
     result = await extract_profile(CRAWL, "", FakeLLM(draft()))
 
     [booking] = [f for f in result.facts if f.key == "booking_page"]
     assert (booking.value, booking.source) == ("/reservation.html, used as the fallback", None)
+
+
+# The look (#149): read by code from the homepage's computed styles.
+
+
+async def test_the_homepages_styles_give_the_profiles_look_and_its_fact() -> None:
+    styled = CrawlResult(
+        website=SITE,
+        pages=[
+            Page(
+                url=SITE,
+                title="Le Petit Zinc",
+                text="Bistrot alsacien.",
+                json_ld=[],
+                look={
+                    "bg": "rgb(247, 242, 232)",
+                    "ink": "rgb(42, 35, 32)",
+                    "body_font": "system-ui, sans-serif",
+                    "heading": {"size": 64, "color": "rgb(143, 45, 42)", "font": "Georgia, serif"},
+                    "backgrounds": {"rgb(143, 45, 42)": 100_000},
+                    "page_area": 1_000_000,
+                },
+            )
+        ],
+    )
+
+    result = await extract_profile(styled, "", FakeLLM(draft()))
+
+    assert result.profile.look is not None
+    assert (result.profile.look.bg, result.profile.look.accent) == ("#f7f2e8", "#8f2d2a")
+    [look] = [f for f in result.facts if f.key == "look"]
+    assert look.source == "/"
+    assert look.value.endswith("Serif titles. Square corners.")
+
+
+async def test_a_homepage_without_styles_keeps_the_default_look_and_says_so() -> None:
+    result = await extract_profile(CRAWL, "", FakeLLM(draft()))
+
+    assert result.profile.look is None
+    [look] = [f for f in result.facts if f.key == "look"]
+    assert (look.value, look.source) == ("Sésame's default look, until you pick some", None)
+    assert "The colours will be plain until you pick some." in [f.detail for f in result.flags]

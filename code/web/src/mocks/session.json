@@ -1,1 +1,6 @@
-{ "merchant": { "slug": "le-petit-zinc", "name": "Le Petit Zinc" } }
+{
+  "merchant": {
+    "slug": "la-graine-verte",
+    "name": "La Graine Verte"
+  }
+}

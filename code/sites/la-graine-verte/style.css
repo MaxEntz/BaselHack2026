@@ -1,4 +1,5 @@
-/* La Graine Verte, in the look of its management site (#148). From
+/* La Graine Verte, in the look of its management site (#148). Its text, secondary text and
+   border colours are the management tokens (#149), so the builder reads exactly them. From
    documentation/design/poc-v10/la-graine-verte-public.html: the rules down to the footer are the
    mockup's, so the page matches it at 1440 px; focus, other widths and anchors are added below.
    Self-hosted fonts, SIL OFL (licences in fonts/). "Fraunces Soft" is a local name for
@@ -9,7 +10,7 @@
 html { scroll-behavior: auto; scroll-padding-top: 85px; }
 body { margin: 0; background: #edebe2; }
 
-.pub { --bg: #edebe2; --cream: #f8f6ef; --olive: #727f55; --olive-band: #6c744d; --olive-foot: #758257; --ink: #4f5b39;
+.pub { --bg: #edebe2; --cream: #f8f6ef; --olive: #727f55; --olive-band: #6c744d; --olive-foot: #758257; --ink: #47522f; --mut: #5f6a45; --line: #d5d2c3;
   --brick: #935046; --brick-deep: #7a4138; --brick-soft: #a25d52; --on: #f4f2ea;
   --display: "Fraunces Soft", Georgia, serif; --body: "Karla", "Helvetica Neue", Arial, sans-serif;
   --leather: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.32' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .2 -.04'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -21,7 +22,7 @@ body { margin: 0; background: #edebe2; }
 .pub a { color: inherit; }
 .pub-d { font-family: var(--display); font-style: italic; font-weight: 900; font-variation-settings: "SOFT" 55, "opsz" 144; letter-spacing: -.005em; }
 
-.pub-hd { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 24px; min-height: 85px; padding-inline: 80px; background: var(--bg); }
+.pub-hd { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 24px; min-height: 85px; padding-inline: 80px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .pub-brand { font-size: 34px; line-height: 1; color: var(--olive); text-decoration: none; white-space: nowrap; }
 .pub-nav { display: flex; margin-left: auto; }
 .pub-nav a { padding: 0 13px; border-right: 1px solid var(--brick); font-size: 18px; line-height: 23px; text-decoration: none; white-space: nowrap; }
@@ -33,7 +34,7 @@ body { margin: 0; background: #edebe2; }
 .pub-giant { font-size: 150px; line-height: .98; color: var(--olive); }
 .pub-giant span { position: relative; display: inline-block; }
 .pub-giant span::after { content: ""; position: absolute; left: 4%; right: -2%; bottom: -.1em; height: .22em; background: var(--stroke-brick) center / 100% 100% no-repeat; }
-.pub-lead { max-width: 760px; margin: 34px auto 0 !important; font-size: 21px; }
+.pub-lead { max-width: 760px; margin: 34px auto 0 !important; font-size: 21px; color: var(--mut); }
 .pub-tags { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 22px 0 0; padding: 0; list-style: none; }
 .pub-tags li { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 16px; border: 1px solid var(--olive); border-radius: 30px; font-size: 16px; font-weight: 500; }
 

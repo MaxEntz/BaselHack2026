@@ -63,7 +63,8 @@ Search = Annotated[SearchText, Query()]
 
 
 class NotBuiltYet(Exception):
-    """A frozen route whose issue hasn't landed: `501` with a `ManagementError` body."""
+    """A frozen route whose issue hasn't landed: `501` with a `ManagementError` body. Every
+    route is built now (#133 was the last); kept for the next frozen route."""
 
     def __init__(self, issue: str) -> None:
         super().__init__(f"Not built yet: see {issue}.")
@@ -178,57 +179,65 @@ async def search(slug: SlugPath, service: Bookings, q: Search = "") -> SearchOut
 
 
 @router.get("/hours")
-async def hours(slug: SlugPath) -> Hours:
-    raise NotBuiltYet("#133")
+async def hours(slug: SlugPath, request: Request) -> Hours:
+    return Hours(services=(await _agent(request).get_policy(slug)).services)
 
 
 @router.put("/hours")
-async def save_hours(slug: SlugPath, body: HoursInput) -> Hours:
-    checked_services(body)
-    raise NotBuiltYet("#133")
+async def save_hours(slug: SlugPath, body: HoursInput, request: Request) -> Hours:
+    services = checked_services(body)
+    policy = await _agent(request).update_policy(slug, services=services)
+    return Hours(services=tuple(sorted(policy.services, key=lambda s: s.start)))
 
 
 @router.get("/tables")
-async def tables(slug: SlugPath) -> FloorPlanOutput:
-    raise NotBuiltYet("#133")
+async def tables(slug: SlugPath, request: Request) -> FloorPlanOutput:
+    return FloorPlanOutput(tables=tuple(await _agent(request).get_tables(slug)))
 
 
 @router.put("/tables")
-async def save_tables(slug: SlugPath, body: FloorPlanInput) -> FloorPlanOutput:
-    checked_tables(body)
-    raise NotBuiltYet("#133")
+async def save_tables(slug: SlugPath, body: FloorPlanInput, request: Request) -> FloorPlanOutput:
+    plan = checked_tables(body)
+    return FloorPlanOutput(tables=tuple(await _agent(request).update_tables(slug, plan)))
 
 
 @router.get("/rules")
-async def rules(slug: SlugPath) -> Rules:
-    raise NotBuiltYet("#133")
+async def rules(slug: SlugPath, request: Request) -> Rules:
+    return await _agent(request).get_rules(slug)
 
 
 @router.put("/rules")
-async def save_rules(slug: SlugPath, body: RulesInput) -> Rules:
-    checked_rules(body)
-    raise NotBuiltYet("#133")
+async def save_rules(slug: SlugPath, body: RulesInput, request: Request) -> Rules:
+    checked = checked_rules(body)
+    return await _agent(request).update_rules(
+        slug, checked.max_party_size, str(checked.fallback_url), checked.cancellation_policy
+    )
 
 
 @router.get("/settings")
-async def merchant_settings(slug: SlugPath) -> MerchantSettings:
-    raise NotBuiltYet("#133")
+async def merchant_settings(slug: SlugPath, request: Request) -> MerchantSettings:
+    return await _agent(request).get_settings(slug)
 
 
 @router.put("/settings")
-async def save_settings(slug: SlugPath, body: SettingsInput) -> MerchantSettings:
-    checked_settings(body)
-    raise NotBuiltYet("#133")
+async def save_settings(slug: SlugPath, body: SettingsInput, request: Request) -> MerchantSettings:
+    checked = checked_settings(body)
+    return await _agent(request).update_settings(
+        slug, checked.name, checked.city, checked.price_level, checked.tags
+    )
 
 
 @router.get("/blocked")
-async def blocked(slug: SlugPath) -> BlockedTimes:
-    raise NotBuiltYet("#133")
+async def blocked(slug: SlugPath, request: Request) -> BlockedTimes:
+    return BlockedTimes(blocked=tuple(await _agent(request).list_blocked(slug)))
 
 
 @router.put("/blocked")
-async def set_blocked(slug: SlugPath, date: Day, body: BlockedDayInput) -> BlockedTimes:
-    raise NotBuiltYet("#133")
+async def set_blocked(
+    slug: SlugPath, date: Day, body: BlockedDayInput, request: Request
+) -> BlockedTimes:
+    found = await _agent(request).set_blocked(slug, date, body.times)
+    return BlockedTimes(blocked=tuple(found))
 
 
 @router.post("/agent/pause")

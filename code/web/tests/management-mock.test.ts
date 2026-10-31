@@ -25,6 +25,8 @@ const SETTINGS = {
 };
 const client = (delay = 0) =>
   createMockManagementClient(data, { latencyMs: 0, liveBookingDelayMs: delay });
+const clientOf = (changes: Partial<ManagementFixture>) =>
+  createMockManagementClient({ ...data, ...changes }, { latencyMs: 0, liveBookingDelayMs: 0 });
 
 async function refusal(promise: Promise<unknown>): Promise<ManagementRequestError> {
   const error = await promise.then(
@@ -188,7 +190,7 @@ test("each form rule answers the problem the web words", async () => {
   assert.deepEqual(await problemOf(plan(tables.filter((t) => t.label !== "T9"))), {
     code: "table_in_use",
     table: "T9",
-    guest: "Sam Moreau",
+    guest: "Marie Lang",
   });
   const shrunk = await problemOf(plan(tables.map((t) => (t.label === "T8" ? { ...t, seats: 2 } : t))));
   assert.equal(shrunk?.code, "table_too_small");
@@ -202,6 +204,76 @@ test("each form rule answers the problem the web words", async () => {
   assert.deepEqual(await problemOf(mock.saveSettings(SLUG, { ...SETTINGS, name: " " })), {
     code: "name_required",
   });
+});
+
+test("a floor plan names the first booking it strands by start, a running one included", async () => {
+  const mock = client();
+  const { tables } = await mock.tables(SLUG);
+  const plan = (removed: string[], shrunk: Record<string, number> = {}) =>
+    problemOf(
+      mock.saveTables(SLUG, {
+        tables: tables
+          .filter((t) => !removed.includes(t.label))
+          .map((t) => ({ ...t, seats: shrunk[t.label] ?? t.seats })),
+      }),
+    );
+  const tooSmall = { code: "table_too_small", table: "T7", guest: "Theo Bauer", seats: 4 };
+
+  assert.deepEqual(await plan([], { T7: 3 }), tooSmall); // 19:00 to 21:00, under way
+  assert.deepEqual(await plan(["T2"], { T7: 3 }), tooSmall); // before R-010, at 20:00
+  assert.deepEqual(await plan(["T5", "T6"]), {
+    code: "table_in_use",
+    table: "T6",
+    guest: "Eli Dupont",
+  }); // T5 only has a past and a cancelled booking
+  assert.deepEqual(await plan(["T5"]), { code: "table_in_use", table: "T5", guest: "Anna Klein" });
+});
+
+test("the booking page stays on the site: host without www., port by default the scheme's", async () => {
+  const page = (fallback_url: string, website = data.merchant.website) =>
+    clientOf({ merchant: { ...data.merchant, website } }).saveRules(SLUG, { ...RULES, fallback_url });
+  const offSite = { code: "booking_page_off_site" };
+
+  const www = "http://www.localhost:8081/#reserver";
+  assert.equal((await page(www)).fallback_url, www);
+  assert.ok(await page("https://localhost:8081/"));
+  assert.deepEqual(await problemOf(page("http://localhost/")), offSite);
+  assert.ok(await page("http://zinc.example:443/reserver", "https://zinc.example/"));
+  assert.deepEqual(await problemOf(page("http://zinc.example/", "https://zinc.example/")), offSite);
+});
+
+test("an identical save writes no activity line", async () => {
+  const mock = client();
+  const before = (await mock.dashboard(SLUG)).activity;
+
+  await mock.saveHours(SLUG, { services: data.hours.services });
+  await mock.saveTables(SLUG, { tables: data.tables.toReversed() });
+  await mock.saveRules(SLUG, RULES);
+  await mock.saveSettings(SLUG, SETTINGS);
+
+  assert.deepEqual((await mock.dashboard(SLUG)).activity, before);
+});
+
+test("a form's malformed field is refused before any of its rules", async () => {
+  const mock = client();
+  const generic = async (promise: Promise<unknown>) => {
+    const { status, body } = await refusal(promise);
+    assert.deepEqual([status, body.error, body.problem], [422, "invalid_input", undefined]);
+  };
+  const hours = (services: { start?: string; end?: string }[]) => mock.saveHours(SLUG, { services });
+  const t1 = { label: "T1", seats: 2 };
+
+  await generic(hours([{ start: "18:30" }, { start: "25:00", end: "26:00" }]));
+  assert.deepEqual(await problemOf(hours([{ start: "18:30", end: " " }])), {
+    code: "service_incomplete",
+    services: [0],
+  });
+  await generic(mock.saveTables(SLUG, { tables: [t1, t1, { label: "T".repeat(21), seats: 2 }] }));
+  await generic(mock.saveTables(SLUG, { tables: [...data.tables, { label: "T\u00a010", seats: 2 }] }));
+  await generic(mock.saveRules(SLUG, { ...RULES, max_party_size: 0, fallback_url: "not a url" }));
+  const price = "€€€€€" as typeof SETTINGS.price_level;
+  await generic(mock.saveSettings(SLUG, { ...SETTINGS, name: " ", price_level: price }));
+  await generic(mock.saveSettings(SLUG, { ...SETTINGS, tags: Array(8).fill("vegan") }));
 });
 
 test("forms refuse what the platform's models refuse", async () => {
@@ -254,6 +326,34 @@ test("blocking sets the day's whole set, with one activity line per save", async
   assert.equal(activity.filter((a) => a.kind === "blocked").length, 2); // with the fixture's
   await mock.setBlocked(SLUG, TOMORROW, []);
   assert.equal((await mock.dashboard(SLUG)).activity[0]?.kind, "reopened");
+});
+
+test("blocking a time that isn't a start of the day changes nothing", async () => {
+  const mock = client();
+
+  const error = await refusal(mock.setBlocked(SLUG, TOMORROW, ["19:00", "21:30"]));
+
+  assert.deepEqual([error.status, error.body.error], [422, "invalid_input"]);
+  assert.match(error.body.message, /^21:30 is not a start time on 2026-11-01; valid times: 11:30, 12:00, /);
+  assert.deepEqual((await mock.reservations(SLUG, TOMORROW)).blocked, ["13:00"]);
+});
+
+test("a blocked-times save keeps the day's past blocks and ignores past times sent", async () => {
+  const past = { starts_at: `${TODAY}T19:00:00+01:00`, date: TODAY, time: "19:00" };
+  const mock = clientOf({ blocked: [...data.blocked, past] });
+  const line = async () => {
+    const [item] = (await mock.dashboard(SLUG)).activity;
+    return [item?.kind, item?.text];
+  };
+
+  const { blocked } = await mock.setBlocked(SLUG, TODAY, ["19:30", "20:30"]);
+
+  assert.deepEqual(blocked.map((b) => b.time), ["20:30", "13:00"]);
+  assert.deepEqual((await mock.reservations(SLUG, TODAY)).blocked, ["19:00", "20:30"]);
+  assert.deepEqual(await line(), ["blocked", "today 20:30"]);
+  await mock.setBlocked(SLUG, TODAY, []);
+  assert.deepEqual((await mock.reservations(SLUG, TODAY)).blocked, ["19:00"]);
+  assert.deepEqual(await line(), ["reopened", "today 20:30"]);
 });
 
 test("guests are grouped by name, and search finds a booking by reference", async () => {
@@ -330,6 +430,9 @@ test("pausing the agent is the merchant's status, and requests filter by refusal
   const mock = client();
 
   assert.equal((await mock.pauseAgent(SLUG)).status, "down");
+  assert.equal((await mock.merchant(SLUG)).status, "down");
+  // Like the server: publishing doesn't silently undo a pause.
+  await assert.rejects(mock.publish(SLUG), /resume it rather than publish it again/);
   assert.equal((await mock.merchant(SLUG)).status, "down");
   assert.equal((await mock.resumeAgent(SLUG)).status, "live");
   const refused = await mock.agentRequests(SLUG, { date: TODAY, refused: true });

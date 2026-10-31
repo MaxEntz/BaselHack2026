@@ -1,7 +1,8 @@
 """Merchant-side operations of `PgAgentService` (#9).
 
-Reservations list, stats, slot blocking, policy and floor-plan changes, and merchant
-cancellation with a guest notice. Only the platform assistant calls them, never Claude users
+Reservations list, stats, slot blocking, policy and floor-plan changes, the management site's
+forms (#133: rules, settings, a day's blocked times), and merchant cancellation with a guest
+notice. Only the platform assistant and the management site call them, never Claude users
 (AGENTS.md §8.2). Each function runs on a connection from `merchant_conn`, so whatever one
 call changes, in the merchant's schema and in the registry, commits or rolls back together.
 
@@ -14,6 +15,7 @@ guest's.
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from pydantic import TypeAdapter, ValidationError
@@ -23,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from agent import activity
 from agent.guests import guest_key
+from agent.provisioning import described_tools, one_line
 from agent.requests import describe
 from core import forms
 from core.availability import bookable_starts, is_bookable_start
@@ -35,19 +38,27 @@ from core.db import (
     reservations_t,
     tables_t,
 )
-from core.errors import InvalidInput, NotFound
+from core.errors import FormProblem, InvalidInput, NotFound
 from core.models import (
+    MAX_POLICY_TEXT,
     ActivityKind,
     AdminReservationRow,
     AgentRequest,
+    BlockedTime,
     FloorPlan,
     GuestRow,
     MerchantCancelOutcome,
+    MerchantProfile,
+    MerchantSettings,
     Policy,
+    PriceLevel,
+    Problem,
+    Rules,
     Service,
     Services,
     Stats,
     TableSpec,
+    Tag,
 )
 
 # Any row shape (SQLAlchemy 2.1 rows are variadic generics).
@@ -320,7 +331,9 @@ async def update_policy(
             checked = _SERVICES.validate_python(tuple(services))
         except ValidationError as error:
             raise InvalidInput(f"Invalid services: {_reasons(error)}") from None
-        values["services"] = [service.model_dump() for service in checked]
+        # In the order `get_policy` serves them: the same hours in another order are no change,
+        # and the tool descriptions word them alike (#201).
+        values["services"] = [s.model_dump() for s in sorted(checked, key=lambda s: s.start)]
     before = (await conn.execute(select(policy_t.c.max_party_size, policy_t.c.services))).one()
     row = (await conn.execute(update(policy_t).values(values).returning(policy_t))).one()
     await _update_profile(conn, slug, values)
@@ -329,7 +342,8 @@ async def update_policy(
         await activity.record(
             conn, slug, "saved", "merchant", details={"what": activity.BOOKING_RULES}, at=at
         )
-    if "services" in values and values["services"] != before.services:
+    stored_services = sorted(before.services, key=lambda s: str(s["start"]))
+    if "services" in values and values["services"] != stored_services:
         await activity.record(
             conn, slug, "saved", "merchant", details={"what": activity.OPENING_HOURS}, at=at
         )
@@ -415,6 +429,7 @@ async def _check_plan_change(
         select(
             reservations_t.c.id,
             reservations_t.c.table_id,
+            reservations_t.c.guest_name,
             reservations_t.c.party_size,
             reservations_t.c.status,
             _start_of.label("starts_at"),
@@ -423,29 +438,296 @@ async def _check_plan_change(
         .where(reservations_t.c.table_id.in_(affected))
         .order_by(_start_of, reservations_t.c.id)
     )
-    problems: list[str] = []
-    history: set[str] = set()
+    # Each refusal is also a `Problem`, the first one found, so the management site can word
+    # it ("T3 has to stay, because Kim Weber's booking refers to it.", #133).
+    problems: list[tuple[str, Problem]] = []
+    history: dict[str, str] = {}  # removed table -> guest of its first past booking
     for booking in bookings:
         label = labels[booking.table_id]
         upcoming = booking.status == "confirmed" and booking.ends_at > now
         when = f"{booking.starts_at.astimezone(tz):%Y-%m-%d %H:%M}"
+        guest = booking.guest_name
         if label not in wanted:
             if upcoming:
-                problems.append(f"{label} holds {booking.id} ({when})")
+                problems.append(
+                    (
+                        f"{label} holds {booking.id} ({when})",
+                        Problem(code="table_in_use", table=label, guest=guest),
+                    )
+                )
             else:
-                history.add(label)
+                history.setdefault(label, guest)
         elif upcoming and booking.party_size > wanted[label]:
             problems.append(
-                f"{label} would seat {wanted[label]}, but {booking.id} ({when}) is for "
-                f"{booking.party_size}"
+                (
+                    f"{label} would seat {wanted[label]}, but {booking.id} ({when}) is for "
+                    f"{booking.party_size}",
+                    Problem(
+                        code="table_too_small", table=label, guest=guest, seats=booking.party_size
+                    ),
+                )
             )
     if problems:
-        raise InvalidInput("The new floor plan strands bookings: " + "; ".join(problems))
-    if history:
-        raise InvalidInput(
-            f"{', '.join(sorted(history))} cannot be removed: past bookings refer to it. "
-            "Keep it in the floor plan."
+        raise FormProblem(
+            "The new floor plan strands bookings: " + "; ".join(text for text, _ in problems),
+            problems[0][1],
         )
+    if history:
+        first = sorted(history)[0]
+        raise FormProblem(
+            f"{', '.join(sorted(history))} cannot be removed: past bookings refer to it. "
+            "Keep it in the floor plan.",
+            Problem(code="table_in_use", table=first, guest=history[first]),
+        )
+
+
+# The management site's forms (#133): each read answers what its form saves back; each save
+# keeps the registry's columns and `profile` in step with the merchant's rows, in one
+# transaction, and writes one activity line when something changed.
+
+
+async def get_policy(conn: AsyncConnection) -> Policy:
+    row = (await conn.execute(select(policy_t))).one()
+    return Policy(
+        max_party_size=row.max_party_size,
+        slot_length_min=row.slot_length_min,
+        services=tuple(
+            sorted((Service.model_validate(s) for s in row.services), key=lambda s: s.start)
+        ),
+    )
+
+
+async def get_tables(conn: AsyncConnection, slug: str) -> list[TableSpec]:
+    """The floor plan in the order it was last saved (the registry's copy keeps it), so a
+    form shows its rows where the merchant put them; a table missing from it comes last."""
+    profile = await _profile(conn, slug)
+    order = {t.get("label"): i for i, t in enumerate(profile.get("tables") or [])}
+    rows = (
+        await conn.execute(select(tables_t.c.label, tables_t.c.seats).order_by(tables_t.c.id))
+    ).all()
+    ordered = sorted(rows, key=lambda row: order.get(row.label, len(order)))
+    return [TableSpec(label=row.label, seats=row.seats) for row in ordered]
+
+
+async def get_rules(conn: AsyncConnection, slug: str) -> Rules:
+    registry = await _registry(conn, slug)
+    policy = await get_policy(conn)
+    stored = registry.profile.get("cancellation_policy")
+    # The builder keeps the site's text: cut to what `RulesInput` takes back, one paragraph.
+    paragraph = one_line(stored, MAX_POLICY_TEXT) if isinstance(stored, str) else None
+    profile = MerchantProfile.model_validate(
+        {
+            **registry.profile,
+            "max_party_size": policy.max_party_size,
+            "services": [s.model_dump() for s in policy.services],
+        }
+    )
+    return Rules(
+        max_party_size=policy.max_party_size,
+        slot_length_min=policy.slot_length_min,
+        fallback_url=registry.fallback_url,
+        cancellation_policy=paragraph or None,
+        tools=tuple(described_tools(profile)),
+    )
+
+
+async def update_rules(
+    conn: AsyncConnection,
+    slug: str,
+    max_party_size: int,
+    fallback_url: str,
+    cancellation_policy: str | None,
+    *,
+    at: datetime | None = None,
+) -> Rules:
+    """The group limit, the booking page guests are sent to, and the cancellation policy.
+
+    The booking page stays on the merchant's website, as the builder's (#22): guests only see
+    it when the agent has failed, so it must be the restaurant's own.
+    """
+    if not 1 <= max_party_size <= MAX_SEATS:
+        raise InvalidInput(
+            f"max_party_size must be between 1 and {MAX_SEATS}, got {max_party_size}"
+        )
+    registry = await _registry(conn, slug, lock=True)
+    if not _same_site(fallback_url, registry.website):
+        raise FormProblem(
+            "The booking page stays on your website.", Problem(code="booking_page_off_site")
+        )
+    stored = registry.profile.get("cancellation_policy")
+    policy = cancellation_policy or None
+    if isinstance(stored, str) and policy == one_line(stored, MAX_POLICY_TEXT):
+        # The form got the stored text cut to one paragraph (`get_rules`): sent back as it
+        # was served, the policy keeps its full text (#201).
+        policy = stored
+    before = (await conn.scalar(select(policy_t.c.max_party_size)), registry.fallback_url, stored)
+    await conn.execute(update(policy_t).values(max_party_size=max_party_size))
+    await conn.execute(
+        update(merchants_t).where(merchants_t.c.slug == slug).values(fallback_url=fallback_url)
+    )
+    await _update_profile(
+        conn,
+        slug,
+        {
+            "max_party_size": max_party_size,
+            "fallback_url": fallback_url,
+            "cancellation_policy": policy,
+        },
+    )
+    if before != (max_party_size, fallback_url, policy):
+        await activity.record(
+            conn, slug, "saved", "merchant", details={"what": activity.BOOKING_RULES}, at=at
+        )
+    return await get_rules(conn, slug)
+
+
+async def get_settings(conn: AsyncConnection, slug: str) -> MerchantSettings:
+    registry = await _registry(conn, slug)
+    return MerchantSettings(
+        name=registry.name,
+        city=registry.city,
+        website=registry.website,
+        price_level=registry.price_level,
+        tags=tuple(registry.tags),
+    )
+
+
+async def update_settings(
+    conn: AsyncConnection,
+    slug: str,
+    name: str,
+    city: str | None,
+    price_level: PriceLevel,
+    tags: Sequence[Tag],
+    *,
+    at: datetime | None = None,
+) -> MerchantSettings:
+    """What discovery and the tool descriptions show of the merchant: its name, city, price
+    and tags. The website stays: it is the agent's identity (one agent per site, #22)."""
+    if not name.strip():
+        raise FormProblem("The restaurant needs a name.", Problem(code="name_required"))
+    registry = await _registry(conn, slug, lock=True)
+    tags = list(dict.fromkeys(tags))
+    city = city or None
+    before = (registry.name, registry.city, registry.price_level, list(registry.tags))
+    await conn.execute(
+        update(merchants_t)
+        .where(merchants_t.c.slug == slug)
+        .values(name=name, city=city, price_level=price_level, tags=tags)
+    )
+    location = {**(registry.profile.get("location") or {}), "city": city}
+    await _update_profile(
+        conn,
+        slug,
+        {"name": name, "location": location, "price_level": price_level, "tags": tags},
+    )
+    if before != (name, city, price_level, tags):
+        await activity.record(
+            conn, slug, "saved", "merchant", details={"what": activity.SETTINGS}, at=at
+        )
+    return await get_settings(conn, slug)
+
+
+async def list_blocked(conn: AsyncConnection, now: datetime, tz: ZoneInfo) -> list[BlockedTime]:
+    """The blocked starts to come, by time."""
+    rows = await conn.scalars(
+        select(blocked_slots_t.c.starts_at)
+        .where(blocked_slots_t.c.starts_at > now)
+        .order_by(blocked_slots_t.c.starts_at)
+    )
+    local = [moment.astimezone(tz) for moment in rows]
+    return [
+        BlockedTime(starts_at=moment, date=moment.date(), time=f"{moment:%H:%M}")
+        for moment in local
+    ]
+
+
+async def set_blocked(
+    conn: AsyncConnection,
+    slug: str,
+    services: Sequence[Service],
+    day: date,
+    times: Sequence[str],
+    tz: ZoneInfo,
+    *,
+    now: datetime,
+    at: datetime | None = None,
+) -> None:
+    """The day's blocked starts still to come become `times` (local `HH:MM`): the last write
+    wins (#83).
+
+    Every time must be a start of the day. Only starts after `now` change: the form only knows
+    those (`list_blocked`), so the day's past blocks and its history stay, and a past time sent
+    is ignored. One activity line for the whole save: the times it blocked, else the ones it
+    reopened. Bookings already made stay (AGENTS.md §6).
+    """
+    starts = {_hhmm(moment, tz): moment for moment in bookable_starts(services, day, tz)}
+    unknown = sorted(set(times) - starts.keys())
+    if unknown:
+        raise InvalidInput(
+            f"{', '.join(unknown)} is not a start time on {day:%Y-%m-%d}; valid times: "
+            f"{', '.join(starts) or 'none'}"
+        )
+    wanted = [starts[time] for time in sorted(set(times)) if starts[time] > now]
+    start, end = _day_bounds(day, tz)
+    in_day = (
+        blocked_slots_t.c.starts_at >= start,
+        blocked_slots_t.c.starts_at > now,
+        blocked_slots_t.c.starts_at < end,
+    )
+    removed = list(
+        await conn.scalars(
+            delete(blocked_slots_t)
+            .where(*in_day, blocked_slots_t.c.starts_at.not_in(wanted))
+            .returning(blocked_slots_t.c.starts_at)
+        )
+    )
+    added: list[datetime] = []
+    if wanted:
+        added = list(
+            await conn.scalars(
+                pg_insert(blocked_slots_t)
+                .values([{"starts_at": moment} for moment in wanted])
+                .on_conflict_do_nothing()
+                .returning(blocked_slots_t.c.starts_at)
+            )
+        )
+    if added:
+        await activity.record_times(conn, slug, "blocked", added, at=at)
+    elif removed:
+        await activity.record_times(conn, slug, "reopened", removed, at=at)
+
+
+def _same_site(url: str, website: str) -> bool:
+    """Same host, `www.` aside, and same port: the demo sites differ only by their port."""
+
+    def site(value: str) -> tuple[str, int | None]:
+        parts = urlsplit(value)
+        try:
+            port = parts.port or {"http": 80, "https": 443}.get(parts.scheme)
+        except ValueError:
+            return "", None
+        return (parts.hostname or "").removeprefix("www."), port
+
+    return bool(site(url)[0]) and site(url) == site(website)
+
+
+async def _registry(conn: AsyncConnection, slug: str, *, lock: bool = False) -> _Row:
+    """The merchant's registry row; `lock` serializes the forms that save it."""
+    query = select(merchants_t).where(merchants_t.c.slug == slug)
+    if lock:
+        query = query.with_for_update(key_share=True)
+    row = (await conn.execute(query)).one_or_none()
+    if row is None:
+        raise NotFound(f"Unknown merchant: {slug!r}")
+    return row
+
+
+async def _profile(conn: AsyncConnection, slug: str) -> dict[str, Any]:
+    profile = await conn.scalar(select(merchants_t.c.profile).where(merchants_t.c.slug == slug))
+    if profile is None:
+        raise NotFound(f"Unknown merchant: {slug!r}")
+    return dict(profile)
 
 
 # What a merchant's cancellation did (#82): see `core.models.MerchantCancelOutcome`.

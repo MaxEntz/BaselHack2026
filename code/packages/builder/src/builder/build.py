@@ -8,13 +8,14 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import deploy, deprovision, generated_tools, provision
 from builder.cache import BuildCache, crawl_key, extraction_key
-from builder.crawl import CrawlResult, StepEmitter, crawl, normalize_url, page_name
+from builder.crawl import CrawlResult, StepEmitter, crawl, normalize_url, pages_read
 from builder.extract import PROMPT_VERSION, ExtractionFailed, ExtractionResult, extract_profile
 from builder.llm import LLMClient, LLMUnavailable
 from core.db import merchants_t
@@ -40,11 +41,15 @@ STEP_FAILED = "Something went wrong while creating your agent."
 class BeingBuilt(InvalidInput):
     """The website has an agent waiting to be published, less than `ABANDONED_AFTER` old."""
 
-    def __init__(self, slug: str, website: str, free_at: datetime) -> None:
+    def __init__(
+        self, slug: str, website: str, free_at: datetime, tz: ZoneInfo | None = None
+    ) -> None:
+        # On the merchant's clock, as everything else they read (AGENTS.md §13, #184).
+        local = free_at.astimezone(tz or UTC)
+        when = f"{local:%Y-%m-%d %H:%M}" + ("" if tz else " UTC")
         super().__init__(
             f"{website} already has an agent waiting to be published ({slug}). Its owner can "
-            f"finish it from their private link; anyone else can build it again after "
-            f"{free_at:%Y-%m-%d %H:%M} UTC."
+            f"finish it from their private link; anyone else can build it again after {when}."
         )
         self.slug = slug
 
@@ -79,6 +84,7 @@ class Builder:
         cache: BuildCache | None = None,
         crawl: Crawl = crawl,
         generated_dir: Path | None = GENERATED_DIR,
+        tz: ZoneInfo | None = None,
     ) -> None:
         self._llm = llm
         self._engine = engine
@@ -87,6 +93,7 @@ class Builder:
         self._cache = cache or BuildCache()
         self._crawl = crawl
         self._generated_dir = generated_dir
+        self._tz = tz  # the merchants' zone, for the times they read; None: UTC
 
     async def build_agent(
         self, website: str, description: str, on_event: StepEmitter
@@ -116,7 +123,10 @@ class Builder:
             nonlocal created
             await provision(profile, engine=self._engine)
             created = True
-            return f"Created {len(profile.tables)} tables with {profile.seats} seats."
+            return (
+                f"{len(profile.tables)} tables, {profile.seats} seats. "
+                "Hidden from guests until you publish."
+            )
 
         try:
             await self._step("provision", on_event, provisioned)
@@ -153,9 +163,7 @@ class Builder:
             return result
 
         async def replay() -> str:
-            names = ", ".join(["homepage", *(page_name(p.url) for p in cached.pages[1:])])
-            count = len(cached.pages)
-            return f"{count} page{'s' * (count > 1)} read: {names}"
+            return pages_read(cached.pages)
 
         await self._step("crawl", on_event, replay)
         return cached
@@ -175,7 +183,6 @@ class Builder:
                 StepEvent(
                     step=name,
                     status="done",
-                    detail="Combined your website with your description.",
                     duration_ms=_ms_since(started),
                 )
             )
@@ -200,15 +207,11 @@ class Builder:
         except Exception:
             await self._failed(on_event, current[-1], STEP_FAILED)
             raise
-        profile = result.profile
         await on_event(
             StepEvent(
                 step="validate",
                 status="done",
-                detail=(
-                    f"Profile complete: {len(profile.tables)} tables, {profile.seats} seats, "
-                    f"{len(profile.services)} services."
-                ),
+                detail="Hours, tables and links are valid.",
                 duration_ms=_ms_since(current[-1][1]),
             )
         )
@@ -251,7 +254,7 @@ class Builder:
                 raise AlreadyProvisioned(slug, site)
             free_at = created_at + ABANDONED_AFTER
             if datetime.now(UTC) < free_at:
-                raise BeingBuilt(slug, site, free_at)
+                raise BeingBuilt(slug, site, free_at, self._tz)
             log.info("build_replaced", extra={"merchant": slug})
             await deprovision(slug, engine=self._engine)
 

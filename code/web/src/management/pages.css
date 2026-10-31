@@ -60,7 +60,7 @@
 .mg .tb.busy { color: var(--ink); filter: drop-shadow(0 4px 7px rgb(0 0 0 / .18)); }
 .mg .tb.busy > svg { fill: var(--on); stroke: none; opacity: 1; }
 .mg .tb.soon > svg { stroke-dasharray: 5 6; stroke-width: 2; opacity: 1; }
-.mg .lg { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 22px; font-size: 16px; }
+.mg .lg { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 22px; margin-top: 16px; font-size: 16px; }
 .mg .lg i { display: inline-block; width: 16px; height: 13px; margin-right: 7px; vertical-align: -1px; border: 1.5px solid var(--on); border-radius: 48% 52% 46% 54%; opacity: .75; }
 .mg .lg i.f { background: var(--on); opacity: 1; }
 .mg .lg i.d { border-style: dashed; opacity: 1; }
@@ -72,6 +72,29 @@
 .mg .room { display: grid; gap: 22px; padding: 26px clamp(18px, 2.6vw, 34px) 30px; }
 .mg .room .pill.off { text-decoration: line-through; }
 
+/* Agent (#147) */
+.mg .right { margin-left: auto; }
+.mg .ag { display: grid; gap: 18px; padding: 24px clamp(18px, 2.6vw, 30px); }
+.mg .ag h2 { font-size: 34px; line-height: 1.05; }
+.mg .ag-hd { margin-top: 8px; }
+.mg .ag-none { padding: 13px 0; border-top: 1px solid rgb(244 242 234 / .32); font-size: 17px; }
+.mg .addr { display: grid; gap: 3px; }
+.mg .addr span { font-size: 15px; }
+.mg .addr div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.mg .addr code { flex: 1 1 240px; min-width: 0; font: 400 15px/1.35 var(--mono); overflow-wrap: anywhere; }
+.mg .status { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 19px; }
+.mg .status i { width: 12px; height: 12px; border-radius: 50%; background: #c7d59b; }
+.mg .status.off i { background: #e8b7a9; }
+.mg .item { padding: 13px 0; border-top: 1px solid rgb(244 242 234 / .32); }
+.mg .item summary { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 1px 12px; align-items: baseline; list-style: none; cursor: pointer; }
+.mg .item summary::-webkit-details-marker { display: none; }
+.mg .item time { font-size: 16px; font-variant-numeric: tabular-nums; }
+.mg .item b { font-weight: 500; font-size: 19px; line-height: 1.2; }
+.mg .item u { font-size: 15px; text-underline-offset: .2em; white-space: nowrap; }
+.mg .item p { grid-column: 2 / -1; font-size: 16px; }
+.mg .item.ref b::after { content: "Refused"; margin-left: 8px; padding: 1px 8px; border-radius: 30px; background: var(--on); color: var(--brick-deep); font-weight: 700; font-size: 13px; vertical-align: 2px; }
+.mg .item pre { margin-top: 10px; padding: 11px 13px; overflow-x: auto; border-radius: 14px; background: var(--brick-deep); font: 400 13px/1.5 var(--mono); }
+
 @container (max-width: 540px) {
   .mg .sv { grid-template-columns: 62px minmax(0, 1fr) minmax(0, 1fr); }
   .mg .sv small { grid-column: 2 / -1; margin-top: -4px; }
@@ -80,4 +103,6 @@
   .mg .tb.s4 { width: calc(50% - 8px); }
   .mg .tb b { font-size: 24px; }
   .mg .tb small { font-size: 13.5px; max-width: 9ch; }
+  .mg .item summary { grid-template-columns: 46px minmax(0, 1fr); }
+  .mg .item u { grid-column: 2; }
 }
