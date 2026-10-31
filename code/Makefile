@@ -4,7 +4,7 @@ DEPLOY_HOST ?= root@191.96.88.152
 DEPLOY_SSH ?= ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes
 DEPLOY_DIR := /opt/merchant-agents/code
 
-.PHONY: setup db migrate gateway platform web site sites tunnel deploy seed demo-reset test lint fmt
+.PHONY: setup db migrate gateway platform web site sites tunnel deploy seed demo-reset test lint fmt rfc
 
 setup: ## .env, Python deps, Chromium for the crawler, web deps
 	test -f .env || cp .env.example .env
@@ -89,3 +89,16 @@ lint:
 fmt:
 	uv run ruff check --fix .
 	uv run ruff format .
+
+RFC_DIR := ../documentation/rfc
+RFC := draft-merchant-agents-matp-00
+XML2RFC := uvx --from xml2rfc==3.35.0 xml2rfc --quiet
+
+rfc: ## MATP Internet-Draft: schemas, .xml, .txt, .html, then idnits (needs Docker and npx)
+	uv run python scripts/matp_schemas.py
+	docker run --rm -v "$(abspath $(RFC_DIR))":/rfc -w /rfc ruby:3.3-slim sh -c '\
+		gem install --no-document --quiet kramdown-rfc -v 1.7.43 >/dev/null && \
+		kramdown-rfc --v3 $(RFC).md > $(RFC).v2.xml'
+	cd $(RFC_DIR) && $(XML2RFC) --v2v3 $(RFC).v2.xml -o $(RFC).xml && rm $(RFC).v2.xml
+	cd $(RFC_DIR) && $(XML2RFC) --text --html $(RFC).xml
+	cd $(RFC_DIR) && npx --yes @ietf-tools/idnits@3.3.0 $(RFC).xml

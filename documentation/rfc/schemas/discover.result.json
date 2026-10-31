@@ -1,0 +1,124 @@
+{
+  "$comment": "Generated from core.models.SearchMerchantsOutput",
+  "$defs": {
+    "FilterSuggestion": {
+      "additionalProperties": false,
+      "properties": {
+        "drop": {
+          "title": "Drop",
+          "type": "string"
+        },
+        "matches": {
+          "title": "Matches",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "drop",
+        "matches"
+      ],
+      "title": "FilterSuggestion",
+      "type": "object"
+    },
+    "MerchantSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "City"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "price_level": {
+          "enum": [
+            "€",
+            "€€",
+            "€€€",
+            "€€€€"
+          ],
+          "title": "Price Level",
+          "type": "string"
+        },
+        "slug": {
+          "pattern": "^[a-z0-9-]{3,61}$",
+          "title": "Slug",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "enum": [
+              "gluten-free",
+              "vegetarian",
+              "vegan",
+              "halal",
+              "kosher",
+              "terrace",
+              "kid-friendly"
+            ],
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "website": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Website",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "name",
+        "city",
+        "tags",
+        "price_level",
+        "website"
+      ],
+      "title": "MerchantSummary",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "ignored_filters": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Ignored Filters",
+      "type": "array"
+    },
+    "merchants": {
+      "items": {
+        "$ref": "#/$defs/MerchantSummary"
+      },
+      "title": "Merchants",
+      "type": "array"
+    },
+    "suggestions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FilterSuggestion"
+      },
+      "title": "Suggestions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "merchants"
+  ],
+  "title": "MATP DISCOVER result",
+  "type": "object"
+}

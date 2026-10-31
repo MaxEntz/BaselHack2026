@@ -1,0 +1,2128 @@
+
+
+
+
+Network Working Group                   Merchant Agents (BaselHack 2026)
+Internet-Draft                                           31 October 2026
+Intended status: Experimental                                           
+Expires: 4 May 2027
+
+
+                Merchant Agent Transfer Protocol (MATP)
+                     draft-merchant-agents-matp-00
+
+Abstract
+
+   This document specifies the Merchant Agent Transfer Protocol (MATP),
+   an application protocol reserved for software agents that book with
+   merchants on behalf of people or businesses.  A MATP session runs
+   over TCP, starts with a handshake that names the calling agent, and
+   carries newline-delimited JSON frames.  Each request states an intent
+   (discover merchants, check availability, book, amend, cancel, recall
+   bookings, ping) and the merchant it addresses.  Responses carry
+   numeric status codes and, when the merchant's own agent cannot serve
+   the request, a fallback URL to the merchant's website.  MATP is
+   designed to sit behind a Model Context Protocol (MCP) server, which
+   acts as a bridge for assistants that only speak MCP.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 4 May 2027.
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+
+
+
+
+
+
+                           Expires 4 May 2027                   [Page 1]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents (https://trustee.ietf.org/
+   license-info) in effect on the date of publication of this document.
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   3
+     1.1.  Scope . . . . . . . . . . . . . . . . . . . . . . . . . .   3
+     1.2.  Relation to MCP . . . . . . . . . . . . . . . . . . . . .   3
+     1.3.  Relation to AGTP  . . . . . . . . . . . . . . . . . . . .   4
+   2.  Conventions and Definitions . . . . . . . . . . . . . . . . .   4
+   3.  Protocol Overview . . . . . . . . . . . . . . . . . . . . . .   5
+   4.  Transport . . . . . . . . . . . . . . . . . . . . . . . . . .   5
+     4.1.  Addressing  . . . . . . . . . . . . . . . . . . . . . . .   6
+   5.  Framing . . . . . . . . . . . . . . . . . . . . . . . . . . .   6
+   6.  Session . . . . . . . . . . . . . . . . . . . . . . . . . . .   7
+     6.1.  hello . . . . . . . . . . . . . . . . . . . . . . . . . .   7
+     6.2.  welcome . . . . . . . . . . . . . . . . . . . . . . . . .   8
+     6.3.  reject  . . . . . . . . . . . . . . . . . . . . . . . . .   9
+   7.  Requests and Responses  . . . . . . . . . . . . . . . . . . .   9
+     7.1.  request . . . . . . . . . . . . . . . . . . . . . . . . .   9
+     7.2.  response  . . . . . . . . . . . . . . . . . . . . . . . .  10
+     7.3.  Concurrency . . . . . . . . . . . . . . . . . . . . . . .  11
+     7.4.  Idle sessions . . . . . . . . . . . . . . . . . . . . . .  11
+     7.5.  Session errors  . . . . . . . . . . . . . . . . . . . . .  12
+     7.6.  Idempotency . . . . . . . . . . . . . . . . . . . . . . .  12
+     7.7.  Confirmation before writes  . . . . . . . . . . . . . . .  13
+   8.  Intents . . . . . . . . . . . . . . . . . . . . . . . . . . .  13
+     8.1.  DISCOVER  . . . . . . . . . . . . . . . . . . . . . . . .  13
+     8.2.  AVAILABILITY  . . . . . . . . . . . . . . . . . . . . . .  14
+     8.3.  BOOK  . . . . . . . . . . . . . . . . . . . . . . . . . .  14
+     8.4.  AMEND . . . . . . . . . . . . . . . . . . . . . . . . . .  14
+     8.5.  CANCEL  . . . . . . . . . . . . . . . . . . . . . . . . .  15
+     8.6.  RECALL  . . . . . . . . . . . . . . . . . . . . . . . . .  15
+     8.7.  PING  . . . . . . . . . . . . . . . . . . . . . . . . . .  15
+   9.  Status Codes  . . . . . . . . . . . . . . . . . . . . . . . .  15
+   10. Events  . . . . . . . . . . . . . . . . . . . . . . . . . . .  16
+   11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  16
+   12. Security Considerations . . . . . . . . . . . . . . . . . . .  17
+   13. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  18
+   14. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  18
+   15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  19
+     15.1.  Normative References . . . . . . . . . . . . . . . . . .  19
+     15.2.  Informative References . . . . . . . . . . . . . . . . .  20
+   Appendix A.  The MCP Bridge . . . . . . . . . . . . . . . . . . .  21
+   Appendix B.  Example Session  . . . . . . . . . . . . . . . . . .  22
+
+
+
+                           Expires 4 May 2027                   [Page 2]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   Appendix C.  JSON Schemas . . . . . . . . . . . . . . . . . . . .  23
+     C.1.  DISCOVER params . . . . . . . . . . . . . . . . . . . . .  23
+     C.2.  DISCOVER result . . . . . . . . . . . . . . . . . . . . .  25
+     C.3.  AVAILABILITY params . . . . . . . . . . . . . . . . . . .  28
+     C.4.  AVAILABILITY result . . . . . . . . . . . . . . . . . . .  29
+     C.5.  BOOK params . . . . . . . . . . . . . . . . . . . . . . .  30
+     C.6.  BOOK, AMEND and CANCEL result . . . . . . . . . . . . . .  31
+     C.7.  AMEND params  . . . . . . . . . . . . . . . . . . . . . .  33
+     C.8.  CANCEL params . . . . . . . . . . . . . . . . . . . . . .  34
+     C.9.  RECALL params . . . . . . . . . . . . . . . . . . . . . .  35
+     C.10. RECALL result . . . . . . . . . . . . . . . . . . . . . .  35
+     C.11. PING params and result  . . . . . . . . . . . . . . . . .  37
+   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  38
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  38
+
+1.  Introduction
+
+   Software agents increasingly act for people: they search for a
+   restaurant, check a table and book it.  When that traffic uses HTTP,
+   a merchant cannot tell it apart from a browser, so it cannot identify
+   the calling agent, route agent traffic separately, or apply rules
+   meant for agents.
+
+   MATP gives that traffic its own channel.  Every frame says which
+   agent is talking (established once per session), what it intends to
+   do, and to which merchant.  The protocol is deliberately small: it
+   covers what a network of merchant agents needs to take bookings, and
+   nothing else.
+
+1.1.  Scope
+
+   This version covers the guest side of booking with restaurants:
+   discovery, availability, booking, amending, cancelling and recalling
+   a guest's bookings.  Merchant-side operations (listing a day's
+   bookings, blocking a slot, changing a policy) are out of scope: they
+   stay on the merchant's own platform.
+
+1.2.  Relation to MCP
+
+   Assistants such as Claude connect to remote tools through MCP [MCP].
+   An MCP server can act as a bridge: each of its tools maps to one MATP
+   intent (Appendix A).  Any other agent can speak MATP directly.
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                   [Page 3]
+
+Internet-Draft                    MATP                      October 2026
+
+
+1.3.  Relation to AGTP
+
+   The idea of an application protocol reserved for agent traffic, with
+   agent identity and intent-named methods, comes from the AGTP
+   Internet-Draft [I-D.hood-independent-agtp].  MATP is independent from
+   it: it does not implement AGTP, it uses a different transport framing
+   and method set, and it is limited to the booking use case.
+
+2.  Conventions and Definitions
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   BCP 14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+   This document uses the Augmented Backus-Naur Form (ABNF) notation of
+   [RFC5234].  JSON terminology ("object", "member", "string") is that
+   of [RFC8259].
+
+   Node:  A MATP server.  It serves the merchant agents of one backend.
+
+   Merchant agent:  One merchant's booking logic and data, served by a
+      node and addressed by the merchant's slug.
+
+   Caller:  An agent that opens a session with a node: a user's
+      assistant, a merchant's agent, or a bridge acting for one of them.
+
+   Session:  One transport connection between a caller and a node, from
+      the caller's hello to the connection's close.
+
+   Frame:  One JSON object followed by a line feed (Section 5).
+
+   Intent:  What a request asks the node to do, for example BOOK.
+
+   Slug:  The stable identifier of a merchant on a node: 3 to 61
+      characters among lowercase ASCII letters, digits and "-".
+
+   Guest:  The person a booking is for, identified in this version by
+      the name the caller gives (see Section 13).
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                   [Page 4]
+
+Internet-Draft                    MATP                      October 2026
+
+
+3.  Protocol Overview
+
+   A caller opens a TCP connection to a node and sends hello, naming
+   itself.  The node answers welcome, which opens the session, or
+   reject, which closes it.  The caller then sends requests.  Each
+   request carries an id, an intent, the addressed merchant when the
+   intent needs one, and parameters.  The node answers each request with
+   exactly one response carrying the same id.  Several requests may be
+   in flight at once, and responses may arrive in any order.
+
+   user's        +-------------+   MCP over HTTPS   +-------------+
+   assistant --->| MCP client  |------------------->| MCP gateway |
+                 +-------------+                    |  (bridge)   |
+                                                    +------+------+
+                                                           | MATP
+   other agent ------------------- MATP --------------+    | TCP 4710
+                                                      v    v
+                                                    +-------------+
+                                                    |  MATP node  |
+                                                    +------+------+
+                                                           |
+                                          merchant agents (one per slug)
+
+              Figure 1: MATP deployment with an MCP bridge
+
+     Caller                                        Node
+       |  hello {agent, token, matp: "0.1"}         |
+       |------------------------------------------->|
+       |  welcome {node, intents, session}          |
+       |<-------------------------------------------|
+       |  request {id: "r-1", intent: AVAILABILITY} |
+       |------------------------------------------->|
+       |  request {id: "r-2", intent: DISCOVER}     |
+       |------------------------------------------->|
+       |  response {id: "r-2", status: 200}         |
+       |<-------------------------------------------|
+       |  response {id: "r-1", status: 200}         |
+       |<-------------------------------------------|
+
+        Figure 2: A session with two requests answered out of order
+
+4.  Transport
+
+   MATP runs over TCP [RFC9293].  A node listens on a configured port.
+   This document uses port 4710 for its examples and its reference
+   implementation; that port is not registered for MATP (Section 14), so
+   a caller MUST be able to use another port.
+
+
+
+
+                           Expires 4 May 2027                   [Page 5]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   On the loopback interface, a session MAY use plain TCP.  On any other
+   path, the caller and the node MUST use TLS 1.3 [RFC9846] or a later
+   version, and the caller MUST authenticate the node's certificate
+   against the host name it connected to.  TLS is set up before the
+   first frame.
+
+   Either side MAY close the connection at any time.  Closing the
+   connection ends the session.  A request in flight when the session
+   ends has no response, and the caller MUST NOT assume it was or was
+   not carried out (see Section 7.6 for retrying writes safely).
+
+4.1.  Addressing
+
+   A merchant agent is named by a URI [RFC3986] of the form:
+
+   matp-URI = "matp://" host [ ":" port ] "/" slug
+   slug     = 3*61( %x61-7A / DIGIT / "-" )   ; a-z, 0-9, "-"
+
+   where host and port are those of [RFC3986].  When port is absent, it
+   is 4710.  For example, matp://node.example/le-petit-zinc names the
+   merchant agent le-petit-zinc on the node at node.example.  The slug
+   is not sent in the handshake: a session reaches every merchant agent
+   of a node, and each request names its merchant (Section 7).
+
+5.  Framing
+
+   Every message is a frame: one JSON object [RFC8259], encoded in UTF-8
+   [RFC3629], followed by one line feed (%x0A).
+
+   frame = object LF
+   LF    = %x0A
+
+   The rule object, and the rules it uses, are those of [RFC8259],
+   Sections 2 to 7, with one change: inside a frame, the rule ws is
+
+   ws = *( %x20 / %x09 )   ; space or tab, never LF or CR
+
+   so that a frame never contains a line feed before its end.  A line
+   feed inside a string is escaped as \n, as JSON requires.
+
+   *  A frame, without its final LF, MUST NOT exceed 65536 octets.  A
+      node that has read 65536 octets of a frame without finding its LF
+      MUST send an error frame with status 413 (Section 7.5) and close
+      the session, without parsing the frame.
+
+   *  The object MUST have a member type whose value is a string.  The
+      types defined in this version are hello, welcome, reject, request,
+      response and error.  The type event is reserved (Section 10).
+
+
+
+                           Expires 4 May 2027                   [Page 6]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   *  A sender MUST NOT generate an object with two members of the same
+      name.  A receiver MAY treat such a frame as invalid.
+
+   *  A receiver MUST ignore members of a frame that this document does
+      not define for its type (Section 11).  This rule applies to the
+      frame object itself, not to params (Section 7).
+
+   *  An empty line (an LF alone) is not a frame.  A node MUST ignore
+      it.
+
+6.  Session
+
+   The caller speaks first.  Its first frame MUST be a hello.  Until the
+   node has sent welcome, the caller MUST NOT send any other frame, and
+   a node that receives one MUST answer reject with status 400 and close
+   the session.
+
+6.1.  hello
+
+          +========+=============================+=============+
+          | Member | Type                        | Requirement |
+          +========+=============================+=============+
+          | type   | "hello"                     | REQUIRED    |
+          +--------+-----------------------------+-------------+
+          | matp   | version string (Section 11) | REQUIRED    |
+          +--------+-----------------------------+-------------+
+          | agent  | object, below               | REQUIRED    |
+          +--------+-----------------------------+-------------+
+          | token  | string                      | see below   |
+          +--------+-----------------------------+-------------+
+
+                        Table 1: Members of hello
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                   [Page 7]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   +=================+=============================+==================+
+   | Member of agent | Type                        | Requirement      |
+   +=================+=============================+==================+
+   | id              | string, 1 to 256 characters | REQUIRED         |
+   +-----------------+-----------------------------+------------------+
+   | name            | string                      | OPTIONAL, for    |
+   |                 |                             | display and logs |
+   +-----------------+-----------------------------+------------------+
+   | kind            | "user-agent" or "merchant-  | REQUIRED         |
+   |                 | agent"                      |                  |
+   +-----------------+-----------------------------+------------------+
+   | operator        | string                      | OPTIONAL, who    |
+   |                 |                             | runs the agent   |
+   +-----------------+-----------------------------+------------------+
+
+                     Table 2: Members of hello.agent
+
+   *  agent.id names the calling agent.  The node treats it as an opaque
+      string and attributes every request of the session to it.  This
+      document uses identifiers of the form urn:matp:agent:<name>; matp
+      is not a registered URN namespace [RFC8141], so these identifiers
+      are only meaningful between parties that agreed on them.
+
+   *  agent.kind is user-agent when the caller acts for a guest, and
+      merchant-agent when it acts for a business.
+
+   *  token is the caller's credential on this node, issued out of band.
+      A node MUST refuse a hello from a non-loopback peer that has no
+      token.  A node MAY accept a hello without token on the loopback
+      interface.
+
+   The node MUST answer a hello with exactly one welcome or reject.
+
+6.2.  welcome
+
+       +=========+===================================+=============+
+       | Member  | Type                              | Requirement |
+       +=========+===================================+=============+
+       | type    | "welcome"                         | REQUIRED    |
+       +---------+-----------------------------------+-------------+
+       | matp    | the version the node will use for | REQUIRED    |
+       |         | this session                      |             |
+       +---------+-----------------------------------+-------------+
+       | node    | object with id (string, REQUIRED) | REQUIRED    |
+       |         | and name (string, OPTIONAL)       |             |
+       +---------+-----------------------------------+-------------+
+       | intents | array of intent names the node    | REQUIRED    |
+       |         | serves                            |             |
+
+
+
+                           Expires 4 May 2027                   [Page 8]
+
+Internet-Draft                    MATP                      October 2026
+
+
+       +---------+-----------------------------------+-------------+
+       | session | string, the node's identifier for | REQUIRED    |
+       |         | this session                      |             |
+       +---------+-----------------------------------+-------------+
+
+                        Table 3: Members of welcome
+
+   A caller MUST NOT send a request whose intent is not in intents.  A
+   node that receives one MUST answer it with status 400.
+
+6.3.  reject
+
+          +=========+=============================+=============+
+          | Member  | Type                        | Requirement |
+          +=========+=============================+=============+
+          | type    | "reject"                    | REQUIRED    |
+          +---------+-----------------------------+-------------+
+          | status  | 400, 401 or 426             | REQUIRED    |
+          +---------+-----------------------------+-------------+
+          | message | string, for humans          | REQUIRED    |
+          +---------+-----------------------------+-------------+
+          | matp    | the version the node speaks | OPTIONAL    |
+          +---------+-----------------------------+-------------+
+
+                         Table 4: Members of reject
+
+   *  401: the agent is unknown to the node, the token is missing where
+      it is required, or the token does not match the agent.
+
+   *  426: the node does not speak the major version in hello.matp
+      (Section 11).  The node SHOULD include matp.
+
+   *  400: the first frame was not a valid hello.
+
+   After sending reject, the node MUST close the connection.
+
+7.  Requests and Responses
+
+7.1.  request
+
+     +==========+===============+====================================+
+     | Member   | Type          | Requirement                        |
+     +==========+===============+====================================+
+     | type     | "request"     | REQUIRED                           |
+     +----------+---------------+------------------------------------+
+     | id       | string, 1 to  | REQUIRED                           |
+     |          | 64 characters |                                    |
+     +----------+---------------+------------------------------------+
+
+
+
+                           Expires 4 May 2027                   [Page 9]
+
+Internet-Draft                    MATP                      October 2026
+
+
+     | intent   | intent name   | REQUIRED                           |
+     |          | (Section 8)   |                                    |
+     +----------+---------------+------------------------------------+
+     | merchant | slug          | REQUIRED for AVAILABILITY, BOOK,   |
+     |          |               | AMEND and CANCEL; absent otherwise |
+     +----------+---------------+------------------------------------+
+     | params   | object        | REQUIRED ({} when the intent takes |
+     |          |               | none)                              |
+     +----------+---------------+------------------------------------+
+
+                        Table 5: Members of request
+
+   *  The caller chooses id.  It MUST be unique among the requests of
+      the session that have not been answered yet.  A node that receives
+      a request whose id is already in flight MUST send an error frame
+      with status 400 and MUST NOT carry out the request.
+
+   *  params MUST validate against the intent's params schema
+      (Appendix C).  Unlike frame members, unknown members of params are
+      invalid: a node MUST answer status 400 with code invalid_input.
+
+   *  A request for an intent that needs merchant and lacks it, or for
+      an intent that takes none and has it, MUST be answered with status
+      400.
+
+7.2.  response
+
+        +========+=========================+======================+
+        | Member | Type                    | Requirement          |
+        +========+=========================+======================+
+        | type   | "response"              | REQUIRED             |
+        +--------+-------------------------+----------------------+
+        | id     | the request's id        | REQUIRED             |
+        +--------+-------------------------+----------------------+
+        | status | status code (Section 9) | REQUIRED             |
+        +--------+-------------------------+----------------------+
+        | result | object                  | present if and only  |
+        |        |                         | if status is 200     |
+        +--------+-------------------------+----------------------+
+        | error  | object, below           | present if and only  |
+        |        |                         | if status is not 200 |
+        +--------+-------------------------+----------------------+
+
+                        Table 6: Members of response
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 10]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   +==============+=====================+==============================+
+   | Member of    | Type                | Requirement                  |
+   | error        |                     |                              |
+   +==============+=====================+==============================+
+   | code         | error code          | REQUIRED                     |
+   |              | (Section 9)         |                              |
+   +--------------+---------------------+------------------------------+
+   | message      | string, for         | REQUIRED                     |
+   |              | the guest or        |                              |
+   |              | the caller          |                              |
+   +--------------+---------------------+------------------------------+
+   | fallback_url | absolute URI        | REQUIRED for party_too_large |
+   |              |                     | and agent_unavailable;       |
+   |              |                     | absent otherwise             |
+   +--------------+---------------------+------------------------------+
+
+                     Table 7: Members of response.error
+
+   *  A node MUST send exactly one response to each request it accepted,
+      unless the session ends first.
+
+   *  result MUST validate against the intent's result schema
+      (Appendix C).
+
+   *  fallback_url is the merchant's own booking page.  A caller SHOULD
+      give it to the guest, so that the guest can still book when the
+      merchant agent cannot serve the request.
+
+   *  message MUST NOT contain stack traces or internal identifiers
+      (Section 12).
+
+7.3.  Concurrency
+
+   A caller MAY send a request before earlier ones are answered.  A node
+   MAY carry out the requests of one session concurrently, and MAY
+   answer them in any order.  A caller MUST match responses to requests
+   by id only.
+
+   A node MUST accept at least 32 requests in flight per session.  A
+   node MAY answer a request beyond its limit with status 400 and code
+   invalid_input, without carrying it out.
+
+7.4.  Idle sessions
+
+   A node SHOULD close a session that has received no frame for 60
+   seconds, and MUST NOT close it for idleness sooner.  A caller that
+   wants to keep a session open sends PING (Section 8.7).
+
+
+
+
+                           Expires 4 May 2027                  [Page 11]
+
+Internet-Draft                    MATP                      October 2026
+
+
+7.5.  Session errors
+
+   An error frame reports a problem that no response can carry because
+   no request id can be attributed: the frame is not JSON, has no valid
+   type or id, is too large, or reuses an id in flight.
+
+                  +=========+============+=============+
+                  | Member  | Type       | Requirement |
+                  +=========+============+=============+
+                  | type    | "error"    | REQUIRED    |
+                  +---------+------------+-------------+
+                  | status  | 400 or 413 | REQUIRED    |
+                  +---------+------------+-------------+
+                  | message | string     | REQUIRED    |
+                  +---------+------------+-------------+
+
+                        Table 8: Members of error
+
+   After an error frame with status 413, the node closes the session.
+   After one with status 400, the session stays open.  A node that
+   receives a frame of an unknown type MUST send an error frame with
+   status 400.  A caller that receives a frame of an unknown type MUST
+   ignore it, so that later versions can add frames sent by the node
+   (Section 10).
+
+7.6.  Idempotency
+
+   A write sent again after a lost session must not book twice.
+
+   *  BOOK and AMEND carry params.idempotency_key, chosen by the caller.
+      A caller retrying a write MUST reuse the key of the first attempt,
+      with the same params, and SHOULD use a fresh unpredictable key for
+      every new write.
+
+   *  For BOOK, the key is scoped to the merchant.  A node that receives
+      a BOOK with a key already used at that merchant, and the same
+      starts_at, party_size and guest, MUST return status 200 with the
+      reservation the first request created, and MUST NOT create
+      another.  If the params differ, it MUST answer status 400 with
+      code invalid_input.
+
+   *  An AMEND sent again with the same params MUST leave the booking as
+      the first one left it, and return it.
+
+   *  CANCEL is idempotent without a key: cancelling a booking already
+      cancelled by the guest returns it again, with status 200.
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 12]
+
+Internet-Draft                    MATP                      October 2026
+
+
+7.7.  Confirmation before writes
+
+   BOOK, AMEND and CANCEL change a guest's plans.  A caller acting for a
+   guest MUST obtain the guest's explicit confirmation of the merchant,
+   time, party size and name before sending any of them.  A node cannot
+   verify this; it is a requirement on callers, and a bridge enforces it
+   through what it tells the assistant (Appendix A).
+
+8.  Intents
+
+   Times are RFC 3339 [RFC3339] date-time values with an explicit
+   offset. date is an RFC 3339 full-date and time is HH:MM (24-hour
+   clock), both in the merchant's local time zone.  The params and
+   result of each intent are defined by the JSON Schemas of Appendix C;
+   this section states their meaning and errors.
+
+           +==============+==========+=========================+
+           | Intent       | merchant | Purpose                 |
+           +==============+==========+=========================+
+           | DISCOVER     | absent   | Find merchants matching |
+           |              |          | a query and preferences |
+           +--------------+----------+-------------------------+
+           | AVAILABILITY | required | Up to 3 start times     |
+           |              |          | with a free table       |
+           +--------------+----------+-------------------------+
+           | BOOK         | required | Create a booking        |
+           +--------------+----------+-------------------------+
+           | AMEND        | required | Move a booking or       |
+           |              |          | change its party size   |
+           +--------------+----------+-------------------------+
+           | CANCEL       | required | Cancel a booking as the |
+           |              |          | guest                   |
+           +--------------+----------+-------------------------+
+           | RECALL       | absent   | A guest's upcoming      |
+           |              |          | bookings and notices    |
+           +--------------+----------+-------------------------+
+           | PING         | absent   | Liveness check, keeps   |
+           |              |          | the session open        |
+           +--------------+----------+-------------------------+
+
+                         Table 9: MATP 0.1 intents
+
+8.1.  DISCOVER
+
+   Params: query (string), and optionally near (string), date, and
+   filters with tags (array of strings) and max_price: one to four EURO
+   SIGN characters (U+20AC), from "€" (cheapest) to "€€€€".
+
+
+
+
+                           Expires 4 May 2027                  [Page 13]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   Result: merchants, the live merchants matching the query and all
+   filters, each with slug, name, city, tags, price_level and website.
+   When filters exclude every merchant, suggestions lists which filter
+   to drop (drop) and how many merchants would then match (matches).
+   ignored_filters lists the tags the node does not know.
+
+   A caller MUST send the guest's preferences as filters.  A node MUST
+   NOT store them beyond the request.
+
+   Errors: 400.
+
+8.2.  AVAILABILITY
+
+   Params: date, party_size (integer, at least 1), and optionally time.
+
+   Result: slots, at most 3, each with starts_at and table_label.  When
+   time is given, the node returns the start times closest to it (the
+   earlier one at equal distance); otherwise, the earliest ones.  Start
+   times already past are never returned.  The result is sorted by
+   starts_at.  An empty slots array means nothing is free that day for
+   that party.
+
+   Errors: 400, 404, 413, 503.
+
+8.3.  BOOK
+
+   Params: starts_at, party_size, guest_name (non-empty string),
+   idempotency_key (non-empty string).
+
+   Result: reservation, with id (the merchant's reference, for example
+   "R-001"), merchant, starts_at, party_size, table_label, status
+   ("confirmed"), guest_name and via.  The node records how the booking
+   was made: in the reference implementation, via is "claude" for a
+   user-agent caller and "merchant" for a merchant-agent caller.
+
+   starts_at MUST be a start time the merchant offers; AVAILABILITY
+   returns such times.  Errors: 400, 404, 409, 413, 503.
+
+8.4.  AMEND
+
+   Params: reservation_id, guest_name, idempotency_key, and at least one
+   of starts_at and party_size.
+
+   The booking MUST be confirmed and MUST belong to guest_name;
+   otherwise the node answers 404, without saying which check failed.
+   Result: reservation, as amended.
+
+   Errors: 400, 404, 409, 413, 503.
+
+
+
+                           Expires 4 May 2027                  [Page 14]
+
+Internet-Draft                    MATP                      October 2026
+
+
+8.5.  CANCEL
+
+   Params: reservation_id, guest_name.  The same ownership rule as AMEND
+   applies.  Result: reservation, with status "cancelled".
+
+   Errors: 400, 404, 503.
+
+8.6.  RECALL
+
+   Params: guest_name.
+
+   Result: reservations, the guest's upcoming confirmed bookings at
+   every live merchant of the node, and notices, messages for the guest
+   (for example, that a merchant cancelled a booking).  A notice is
+   returned once: the node MUST NOT return it again in a later RECALL.
+
+   Errors: 400, 503.
+
+8.7.  PING
+
+   Params: {}. Result: pong (true) and server_time, the node's clock.
+
+   Errors: none defined.
+
+9.  Status Codes
+
+   +========+===================+=======================+==============+
+   | Status | error.code        | Meaning               | fallback_url |
+   +========+===================+=======================+==============+
+   | 200    | none              | Success               | no           |
+   +--------+-------------------+-----------------------+--------------+
+   | 400    | invalid_input     | Invalid params,       | no           |
+   |        |                   | unknown intent,       |              |
+   |        |                   | missing or            |              |
+   |        |                   | unexpected            |              |
+   |        |                   | merchant, too many    |              |
+   |        |                   | requests in flight    |              |
+   +--------+-------------------+-----------------------+--------------+
+   | 401    | none              | hello refused (in     | no           |
+   |        |                   | reject only)          |              |
+   +--------+-------------------+-----------------------+--------------+
+   | 404    | not_found         | Unknown merchant,     | no           |
+   |        |                   | merchant not yet      |              |
+   |        |                   | live, unknown         |              |
+   |        |                   | booking, or a         |              |
+   |        |                   | booking that is       |              |
+   |        |                   | not the guest's       |              |
+   +--------+-------------------+-----------------------+--------------+
+
+
+
+                           Expires 4 May 2027                  [Page 15]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   | 409    | slot_unavailable  | The time is taken,    | no           |
+   |        |                   | blocked, in the       |              |
+   |        |                   | past, or not one      |              |
+   |        |                   | the merchant          |              |
+   |        |                   | offers                |              |
+   +--------+-------------------+-----------------------+--------------+
+   | 413    | party_too_large   | The party is above    | yes          |
+   |        |                   | the merchant's        |              |
+   |        |                   | online limit, or      |              |
+   |        |                   | no table fits it      |              |
+   +--------+-------------------+-----------------------+--------------+
+   | 426    | none              | Unsupported major     | no           |
+   |        |                   | version (in reject    |              |
+   |        |                   | only)                 |              |
+   +--------+-------------------+-----------------------+--------------+
+   | 503    | agent_unavailable | The merchant agent    | yes          |
+   |        |                   | is down, failed,      |              |
+   |        |                   | or timed out          |              |
+   +--------+-------------------+-----------------------+--------------+
+
+                      Table 10: MATP 0.1 status codes
+
+   The status values 400 and 413 also appear in error frames
+   (Section 7.5), which carry no error.code; there, 413 means a frame
+   above the size limit.
+
+   A node MUST answer 503 to AVAILABILITY, BOOK, AMEND and CANCEL when
+   the merchant is marked as down, without consulting the merchant
+   agent.  A caller that gets 413 or 503 MUST NOT retry the same request
+   to the same merchant in a loop; it SHOULD offer the guest the
+   fallback_url.
+
+   A caller that receives a status it does not know MUST handle it as
+   the class of its first digit: 2 as success, 4 as a caller error, 5 as
+   a node error.
+
+10.  Events
+
+   Frames of type event, sent by the node without a request, are
+   reserved for a later version.  One intended use is to tell a guest's
+   agent that a merchant cancelled a booking; in this version, that
+   reaches the guest as a notice returned by RECALL.  A 0.1 caller
+   ignores them (Section 7.5).
+
+11.  Versioning and Extensibility
+
+   A version is written major.minor:
+
+
+
+
+                           Expires 4 May 2027                  [Page 16]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   version = 1*DIGIT "." 1*DIGIT
+
+   This document defines version 0.1.  In hello, the caller sends the
+   highest version it speaks.  If the node speaks the same major
+   version, it answers welcome with the highest minor version both
+   speak, and both sides use that version for the session.  Otherwise it
+   answers reject with status 426.
+
+   Within a major version, a later minor version MAY add intents,
+   optional frame members, optional params, result members and status
+   codes.  It MUST NOT change the meaning of what an earlier minor
+   version defined.  Because unknown params members are invalid
+   (Section 7), a caller MUST NOT send params that the session's version
+   does not define.  A caller MUST ignore result members it does not
+   know.
+
+12.  Security Considerations
+
+   Agent identity and tokens:  The node attributes every request to the
+      agent.id of its session.  That attribution is only as good as the
+      token check: a node MUST bind each token to one agent.id and
+      refuse a hello whose token does not match.  A node SHOULD compare
+      tokens in constant time.  Tokens MUST NOT be sent outside TLS
+      except on the loopback interface, and SHOULD be long random
+      strings that a node can revoke individually.
+
+   Transport:  Without TLS, anyone on the path reads guest names,
+      bookings and tokens, and can change them.  Section 4 therefore
+      requires TLS 1.3 off the loopback interface.  A node bound to the
+      loopback interface is reachable by every local process:
+      deployments on shared hosts SHOULD still require tokens.
+
+   Limits and denial of service:  The frame size limit, the limit on
+      requests in flight and the idle timeout bound what one session
+      costs a node.  A node SHOULD also limit sessions per peer and per
+      agent.  A node MUST stop reading a frame at the size limit instead
+      of buffering it.
+
+   Writes without confirmation:  A misbehaving caller can book, amend or
+      cancel without asking the guest.  The node cannot detect it.
+      Idempotency keys prevent duplicate bookings on retries, not
+      unwanted ones.
+
+   Guest identity:  In this version, a booking belongs to whoever gives
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 17]
+
+Internet-Draft                    MATP                      October 2026
+
+
+      its guest name and reference.  Any authenticated caller that knows
+      both can amend or cancel it, and RECALL returns the bookings of
+      any name.  This is acceptable only in an experiment with trusted
+      callers.  A deployment beyond that needs guest authentication,
+      which a later version would define.
+
+   Error messages:  error.message reaches people.  A node MUST NOT put
+      stack traces, internal names or data of other guests in it.
+
+   Fallback URLs:  A caller passes fallback_url to a person.  A caller
+      SHOULD only offer https URLs, and a node SHOULD only send URLs on
+      the merchant's own website.
+
+13.  Privacy Considerations
+
+   Guest names:  Guest names and party sizes are personal data.  A node
+      SHOULD NOT write guest names to logs at a level enabled in
+      production.  The reference implementation logs, for each request,
+      the agent id, intent, merchant, status and latency, and nothing
+      that names the guest.
+
+   Preferences:  DISCOVER filters can reveal diet or religion (vegan,
+      halal, kosher).  A node MUST NOT store them beyond the request or
+      link them to a guest.
+
+   Recall:  As Section 12 says, RECALL returns the bookings of any name
+      it is given.  Callers SHOULD only send the name of the guest they
+      act for.
+
+   Agent identity:  agent.id identifies software, not a person.  A
+      caller SHOULD NOT put personal data in it.
+
+14.  IANA Considerations
+
+   This document has no IANA actions.  The values below are used by this
+   experiment without registration.
+
+   Port:  The reference implementation listens on TCP port 4710.  That
+      port is unassigned in the IANA Service Name and Transport Protocol
+      Port Number Registry; this document does not request it.
+      Registration would follow the procedures of [RFC6335].
+
+   URI scheme:  The matp scheme of Section 4 is not registered.  A later
+      version would request provisional registration under [RFC7595]
+      with this template:
+
+      *  Scheme name: matp
+
+
+
+
+                           Expires 4 May 2027                  [Page 18]
+
+Internet-Draft                    MATP                      October 2026
+
+
+      *  Status: Provisional
+
+      *  Applications/protocols that use this scheme name: the Merchant
+         Agent Transfer Protocol (this document)
+
+      *  Contact: the authors of this document
+
+      *  Change controller: the authors of this document
+
+      *  References: this document
+
+   URN namespace:  The urn:matp: identifiers used in examples are not a
+      registered URN namespace ([RFC8141]).
+
+15.  References
+
+15.1.  Normative References
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119,
+              DOI 10.17487/RFC2119, March 1997,
+              <https://www.rfc-editor.org/rfc/rfc2119>.
+
+   [RFC3339]  Klyne, G. and C. Newman, "Date and Time on the Internet:
+              Timestamps", RFC 3339, DOI 10.17487/RFC3339, July 2002,
+              <https://www.rfc-editor.org/rfc/rfc3339>.
+
+   [RFC3629]  Yergeau, F., "UTF-8, a transformation format of ISO
+              10646", STD 63, RFC 3629, DOI 10.17487/RFC3629, November
+              2003, <https://www.rfc-editor.org/rfc/rfc3629>.
+
+   [RFC3986]  Berners-Lee, T., Fielding, R., and L. Masinter, "Uniform
+              Resource Identifier (URI): Generic Syntax", STD 66,
+              RFC 3986, DOI 10.17487/RFC3986, January 2005,
+              <https://www.rfc-editor.org/rfc/rfc3986>.
+
+   [RFC5234]  Crocker, D., Ed. and P. Overell, "Augmented BNF for Syntax
+              Specifications: ABNF", STD 68, RFC 5234,
+              DOI 10.17487/RFC5234, January 2008,
+              <https://www.rfc-editor.org/rfc/rfc5234>.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
+              May 2017, <https://www.rfc-editor.org/rfc/rfc8174>.
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 19]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   [RFC8259]  Bray, T., Ed., "The JavaScript Object Notation (JSON) Data
+              Interchange Format", STD 90, RFC 8259,
+              DOI 10.17487/RFC8259, December 2017,
+              <https://www.rfc-editor.org/rfc/rfc8259>.
+
+   [RFC9293]  Eddy, W., Ed., "Transmission Control Protocol (TCP)",
+              STD 7, RFC 9293, DOI 10.17487/RFC9293, August 2022,
+              <https://www.rfc-editor.org/rfc/rfc9293>.
+
+   [RFC9846]  Rescorla, E., "The Transport Layer Security (TLS) Protocol
+              Version 1.3", RFC 9846, DOI 10.17487/RFC9846, July 2026,
+              <https://www.rfc-editor.org/rfc/rfc9846>.
+
+15.2.  Informative References
+
+   [I-D.bhutton-json-schema]
+              Wright, A., Andrews, H. H., Hutton, B., and G. Dennis,
+              "JSON Schema: A Media Type for Describing JSON Documents",
+              Work in Progress, Internet-Draft, draft-bhutton-json-
+              schema-01, 10 June 2022,
+              <https://datatracker.ietf.org/doc/html/draft-bhutton-json-
+              schema-01>.
+
+   [I-D.hood-independent-agtp]
+              Hood, C., "Agent Transfer Protocol (AGTP)", Work in
+              Progress, Internet-Draft, draft-hood-independent-agtp-10,
+              30 October 2026, <https://datatracker.ietf.org/doc/html/
+              draft-hood-independent-agtp-10>.
+
+   [MATP-SCHEMAS]
+              Merchant Agents (BaselHack 2026), "MATP JSON Schemas
+              (generated from the reference implementation)", 31 October
+              2026, <https://github.com/MaxEntz/BaselHack2026/tree/main/
+              documentation/rfc/schemas>.
+
+   [MCP]      Model Context Protocol, "Model Context Protocol
+              Specification",
+              <https://modelcontextprotocol.io/specification>.
+
+   [RFC6335]  Cotton, M., Eggert, L., Touch, J., Westerlund, M., and S.
+              Cheshire, "Internet Assigned Numbers Authority (IANA)
+              Procedures for the Management of the Service Name and
+              Transport Protocol Port Number Registry", BCP 165,
+              RFC 6335, DOI 10.17487/RFC6335, August 2011,
+              <https://www.rfc-editor.org/rfc/rfc6335>.
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 20]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   [RFC7595]  Thaler, D., Ed., Hansen, T., and T. Hardie, "Guidelines
+              and Registration Procedures for URI Schemes", BCP 35,
+              RFC 7595, DOI 10.17487/RFC7595, June 2015,
+              <https://www.rfc-editor.org/rfc/rfc7595>.
+
+   [RFC8141]  Saint-Andre, P. and J. Klensin, "Uniform Resource Names
+              (URNs)", RFC 8141, DOI 10.17487/RFC8141, April 2017,
+              <https://www.rfc-editor.org/rfc/rfc8141>.
+
+Appendix A.  The MCP Bridge
+
+   An MCP server can let an assistant that only speaks MCP use a MATP
+   node.  The reference bridge opens one session with agent.id
+   urn:matp:agent:claude-gateway and agent.kind user-agent, and maps its
+   tools to intents:
+
+   +=====================+==============+=============================+
+   | MCP tool            | MATP intent  | Notes                       |
+   +=====================+==============+=============================+
+   | search_merchants    | DISCOVER     |                             |
+   +---------------------+--------------+-----------------------------+
+   | get_availability    | AVAILABILITY | the tool's merchant becomes |
+   |                     |              | the request's merchant      |
+   +---------------------+--------------+-----------------------------+
+   | create_reservation  | BOOK         | idem                        |
+   +---------------------+--------------+-----------------------------+
+   | update_reservation  | AMEND        | idem                        |
+   +---------------------+--------------+-----------------------------+
+   | cancel_reservation  | CANCEL       | the tool returns {"status": |
+   |                     |              | "cancelled"}                |
+   +---------------------+--------------+-----------------------------+
+   | get_my_reservations | RECALL       |                             |
+   +---------------------+--------------+-----------------------------+
+
+                   Table 11: MCP tools and MATP intents
+
+   *  The tool descriptions tell the assistant to confirm with the guest
+      before create_reservation, update_reservation and
+      cancel_reservation, which is how the bridge meets the confirmation
+      requirement of Section 7.
+
+   *  The bridge answers each tool call within 2 seconds, including the
+      round trip to the node.  A timeout, a lost session or a 503
+      becomes an agent_unavailable tool error with the merchant's
+      fallback_url.
+
+   *  A status and its error object become the tool error {"error":
+      code, "message": ..., "fallback_url": ...}.
+
+
+
+                           Expires 4 May 2027                  [Page 21]
+
+Internet-Draft                    MATP                      October 2026
+
+
+Appendix B.  Example Session
+
+   The caller is the MCP bridge.  Lines starting with "C:" go from the
+   caller to the node, and lines starting with "N:" from the node to the
+   caller.  Long frames are wrapped here for readability: on the wire,
+   each is one line.
+
+C: {"type": "hello", "matp": "0.1",
+    "agent": {"id": "urn:matp:agent:claude-gateway",
+              "name": "Claude via the merchant-agents gateway",
+              "kind": "user-agent", "operator": "merchant-agents"},
+    "token": "q7Lr..."}
+N: {"type": "welcome", "matp": "0.1",
+    "node": {"id": "urn:matp:node:merchant-agents",
+             "name": "Merchant Agents"},
+    "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
+                "RECALL", "PING"],
+    "session": "s-2f6c"}
+C: {"type": "request", "id": "r-1", "intent": "DISCOVER",
+    "params": {"query": "bistro", "filters": {"tags": ["vegetarian"],
+               "max_price": "€€"}}}
+N: {"type": "response", "id": "r-1", "status": 200,
+    "result": {"merchants": [{"slug": "le-petit-zinc",
+      "name": "Le Petit Zinc", "city": "Mulhouse",
+      "tags": ["vegetarian", "terrace"], "price_level": "€€",
+      "website": "https://le-petit-zinc.example/"}],
+      "suggestions": [], "ignored_filters": []}}
+C: {"type": "request", "id": "r-2", "intent": "AVAILABILITY",
+    "merchant": "le-petit-zinc",
+    "params": {"date": "2026-11-02", "time": "20:00", "party_size": 4}}
+N: {"type": "response", "id": "r-2", "status": 200,
+    "result": {"slots": [
+      {"starts_at": "2026-11-02T19:30:00+01:00", "table_label": "T5"},
+      {"starts_at": "2026-11-02T20:00:00+01:00", "table_label": "T5"},
+      {"starts_at": "2026-11-02T20:30:00+01:00", "table_label": "T5"}]}}
+
+      Figure 3: Opening the session, discovery and availability
+
+   The caller then books, and checks a larger party while the booking is
+   in flight: the second answer arrives first.
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 22]
+
+Internet-Draft                    MATP                      October 2026
+
+
+C: {"type": "request", "id": "r-3", "intent": "BOOK",
+    "merchant": "le-petit-zinc",
+    "params": {"starts_at": "2026-11-02T20:00:00+01:00",
+               "party_size": 4, "guest_name": "Ada Martin",
+               "idempotency_key": "b1f0c2d4-3a9e"}}
+C: {"type": "request", "id": "r-4", "intent": "AVAILABILITY",
+    "merchant": "le-petit-zinc",
+    "params": {"date": "2026-11-02", "party_size": 9}}
+N: {"type": "response", "id": "r-4", "status": 413,
+    "error": {"code": "party_too_large",
+      "message":
+        "Le Petit Zinc takes online bookings for up to 6 guests",
+      "fallback_url": "https://le-petit-zinc.example/reservation.html"}}
+N: {"type": "response", "id": "r-3", "status": 200,
+    "result": {"reservation": {"id": "R-001",
+      "merchant": "le-petit-zinc",
+      "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
+      "table_label": "T5", "status": "confirmed",
+      "guest_name": "Ada Martin", "via": "claude"}}}
+C: {"type": "request", "id": "r-5", "intent": "PING", "params": {}}
+N: {"type": "response", "id": "r-5", "status": 200,
+    "result": {"pong": true,
+               "server_time": "2026-10-31T18:02:11+01:00"}}
+
+             Figure 4: Two requests in flight, and a ping
+
+Appendix C.  JSON Schemas
+
+   These schemas use JSON Schema 2020-12 [I-D.bhutton-json-schema].
+   They are generated from the reference implementation's contract
+   models, so this appendix and the implementation cannot drift
+   [MATP-SCHEMAS].  In the params of AVAILABILITY, BOOK, AMEND and
+   CANCEL, the merchant is not a member: it is the request's merchant.
+
+C.1.  DISCOVER params
+
+   {
+     "$comment": "Generated from core.models.SearchMerchantsInput",
+     "$defs": {
+       "SearchFilters": {
+         "additionalProperties": false,
+         "properties": {
+           "max_price": {
+             "anyOf": [
+               {
+                 "enum": [
+                   "€",
+                   "€€",
+
+
+
+                           Expires 4 May 2027                  [Page 23]
+
+Internet-Draft                    MATP                      October 2026
+
+
+                   "€€€",
+                   "€€€€"
+                 ],
+                 "type": "string"
+               },
+               {
+                 "type": "null"
+               }
+             ],
+             "default": null,
+             "title": "Max Price"
+           },
+           "tags": {
+             "default": [],
+             "items": {
+               "type": "string"
+             },
+             "title": "Tags",
+             "type": "array"
+           }
+         },
+         "title": "SearchFilters",
+         "type": "object"
+       }
+     },
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "date": {
+         "anyOf": [
+           {
+             "format": "date",
+             "type": "string"
+           },
+           {
+             "type": "null"
+           }
+         ],
+         "default": null,
+         "title": "Date"
+       },
+       "filters": {
+         "anyOf": [
+           {
+             "$ref": "#/$defs/SearchFilters"
+           },
+           {
+             "type": "null"
+
+
+
+                           Expires 4 May 2027                  [Page 24]
+
+Internet-Draft                    MATP                      October 2026
+
+
+           }
+         ],
+         "default": null
+       },
+       "near": {
+         "anyOf": [
+           {
+             "type": "string"
+           },
+           {
+             "type": "null"
+           }
+         ],
+         "default": null,
+         "title": "Near"
+       },
+       "query": {
+         "title": "Query",
+         "type": "string"
+       }
+     },
+     "required": [
+       "query"
+     ],
+     "title": "MATP DISCOVER params",
+     "type": "object"
+   }
+
+C.2.  DISCOVER result
+
+   {
+     "$comment": "Generated from core.models.SearchMerchantsOutput",
+     "$defs": {
+       "FilterSuggestion": {
+         "additionalProperties": false,
+         "properties": {
+           "drop": {
+             "title": "Drop",
+             "type": "string"
+           },
+           "matches": {
+             "title": "Matches",
+             "type": "integer"
+           }
+         },
+         "required": [
+           "drop",
+           "matches"
+
+
+
+                           Expires 4 May 2027                  [Page 25]
+
+Internet-Draft                    MATP                      October 2026
+
+
+         ],
+         "title": "FilterSuggestion",
+         "type": "object"
+       },
+       "MerchantSummary": {
+         "additionalProperties": false,
+         "properties": {
+           "city": {
+             "anyOf": [
+               {
+                 "type": "string"
+               },
+               {
+                 "type": "null"
+               }
+             ],
+             "title": "City"
+           },
+           "name": {
+             "title": "Name",
+             "type": "string"
+           },
+           "price_level": {
+             "enum": [
+               "€",
+               "€€",
+               "€€€",
+               "€€€€"
+             ],
+             "title": "Price Level",
+             "type": "string"
+           },
+           "slug": {
+             "pattern": "^[a-z0-9-]{3,61}$",
+             "title": "Slug",
+             "type": "string"
+           },
+           "tags": {
+             "items": {
+               "enum": [
+                 "gluten-free",
+                 "vegetarian",
+                 "vegan",
+                 "halal",
+                 "kosher",
+                 "terrace",
+                 "kid-friendly"
+               ],
+
+
+
+                           Expires 4 May 2027                  [Page 26]
+
+Internet-Draft                    MATP                      October 2026
+
+
+               "type": "string"
+             },
+             "title": "Tags",
+             "type": "array"
+           },
+           "website": {
+             "format": "uri",
+             "maxLength": 2083,
+             "minLength": 1,
+             "title": "Website",
+             "type": "string"
+           }
+         },
+         "required": [
+           "slug",
+           "name",
+           "city",
+           "tags",
+           "price_level",
+           "website"
+         ],
+         "title": "MerchantSummary",
+         "type": "object"
+       }
+     },
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "ignored_filters": {
+         "default": [],
+         "items": {
+           "type": "string"
+         },
+         "title": "Ignored Filters",
+         "type": "array"
+       },
+       "merchants": {
+         "items": {
+           "$ref": "#/$defs/MerchantSummary"
+         },
+         "title": "Merchants",
+         "type": "array"
+       },
+       "suggestions": {
+         "default": [],
+         "items": {
+           "$ref": "#/$defs/FilterSuggestion"
+         },
+
+
+
+                           Expires 4 May 2027                  [Page 27]
+
+Internet-Draft                    MATP                      October 2026
+
+
+         "title": "Suggestions",
+         "type": "array"
+       }
+     },
+     "required": [
+       "merchants"
+     ],
+     "title": "MATP DISCOVER result",
+     "type": "object"
+   }
+
+C.3.  AVAILABILITY params
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 28]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   {
+     "$comment": "Generated from core.models.GetAvailabilityInput",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "date": {
+         "format": "date",
+         "title": "Date",
+         "type": "string"
+       },
+       "party_size": {
+         "exclusiveMinimum": 0,
+         "title": "Party Size",
+         "type": "integer"
+       },
+       "time": {
+         "anyOf": [
+           {
+             "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+             "type": "string"
+           },
+           {
+             "type": "null"
+           }
+         ],
+         "default": null,
+         "title": "Time"
+       }
+     },
+     "required": [
+       "date",
+       "party_size"
+     ],
+     "title": "MATP AVAILABILITY params",
+     "type": "object"
+   }
+
+C.4.  AVAILABILITY result
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 29]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   {
+     "$comment": "Generated from core.models.GetAvailabilityOutput",
+     "$defs": {
+       "Slot": {
+         "additionalProperties": false,
+         "properties": {
+           "starts_at": {
+             "format": "date-time",
+             "title": "Starts At",
+             "type": "string"
+           },
+           "table_label": {
+             "title": "Table Label",
+             "type": "string"
+           }
+         },
+         "required": [
+           "starts_at",
+           "table_label"
+         ],
+         "title": "Slot",
+         "type": "object"
+       }
+     },
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "slots": {
+         "items": {
+           "$ref": "#/$defs/Slot"
+         },
+         "maxItems": 3,
+         "title": "Slots",
+         "type": "array"
+       }
+     },
+     "required": [
+       "slots"
+     ],
+     "title": "MATP AVAILABILITY result",
+     "type": "object"
+   }
+
+C.5.  BOOK params
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 30]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   {
+     "$comment": "Generated from core.models.CreateReservationInput",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "guest_name": {
+         "minLength": 1,
+         "title": "Guest Name",
+         "type": "string"
+       },
+       "idempotency_key": {
+         "minLength": 1,
+         "title": "Idempotency Key",
+         "type": "string"
+       },
+       "party_size": {
+         "exclusiveMinimum": 0,
+         "title": "Party Size",
+         "type": "integer"
+       },
+       "starts_at": {
+         "format": "date-time",
+         "title": "Starts At",
+         "type": "string"
+       }
+     },
+     "required": [
+       "starts_at",
+       "party_size",
+       "guest_name",
+       "idempotency_key"
+     ],
+     "title": "MATP BOOK params",
+     "type": "object"
+   }
+
+C.6.  BOOK, AMEND and CANCEL result
+
+   The three intents return the same reservation object.
+
+   {
+     "$comment": "Generated from core.models.ReservationOutput",
+     "$defs": {
+       "Reservation": {
+         "additionalProperties": false,
+         "properties": {
+           "guest_name": {
+             "title": "Guest Name",
+
+
+
+                           Expires 4 May 2027                  [Page 31]
+
+Internet-Draft                    MATP                      October 2026
+
+
+             "type": "string"
+           },
+           "id": {
+             "title": "Id",
+             "type": "string"
+           },
+           "merchant": {
+             "pattern": "^[a-z0-9-]{3,61}$",
+             "title": "Merchant",
+             "type": "string"
+           },
+           "party_size": {
+             "exclusiveMinimum": 0,
+             "title": "Party Size",
+             "type": "integer"
+           },
+           "starts_at": {
+             "format": "date-time",
+             "title": "Starts At",
+             "type": "string"
+           },
+           "status": {
+             "enum": [
+               "confirmed",
+               "cancelled"
+             ],
+             "title": "Status",
+             "type": "string"
+           },
+           "table_label": {
+             "title": "Table Label",
+             "type": "string"
+           },
+           "via": {
+             "enum": [
+               "claude",
+               "merchant",
+               "website"
+             ],
+             "title": "Via",
+             "type": "string"
+           }
+         },
+         "required": [
+           "id",
+           "merchant",
+           "starts_at",
+           "party_size",
+
+
+
+                           Expires 4 May 2027                  [Page 32]
+
+Internet-Draft                    MATP                      October 2026
+
+
+           "table_label",
+           "status",
+           "guest_name",
+           "via"
+         ],
+         "title": "Reservation",
+         "type": "object"
+       }
+     },
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "reservation": {
+         "$ref": "#/$defs/Reservation"
+       }
+     },
+     "required": [
+       "reservation"
+     ],
+     "title": "MATP BOOK result",
+     "type": "object"
+   }
+
+C.7.  AMEND params
+
+   {
+     "$comment": "Generated from core.models.UpdateReservationInput",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "guest_name": {
+         "minLength": 1,
+         "title": "Guest Name",
+         "type": "string"
+       },
+       "idempotency_key": {
+         "minLength": 1,
+         "title": "Idempotency Key",
+         "type": "string"
+       },
+       "party_size": {
+         "anyOf": [
+           {
+             "exclusiveMinimum": 0,
+             "type": "integer"
+           },
+           {
+             "type": "null"
+
+
+
+                           Expires 4 May 2027                  [Page 33]
+
+Internet-Draft                    MATP                      October 2026
+
+
+           }
+         ],
+         "default": null,
+         "title": "Party Size"
+       },
+       "reservation_id": {
+         "minLength": 1,
+         "title": "Reservation Id",
+         "type": "string"
+       },
+       "starts_at": {
+         "anyOf": [
+           {
+             "format": "date-time",
+             "type": "string"
+           },
+           {
+             "type": "null"
+           }
+         ],
+         "default": null,
+         "title": "Starts At"
+       }
+     },
+     "required": [
+       "reservation_id",
+       "guest_name",
+       "idempotency_key"
+     ],
+     "title": "MATP AMEND params",
+     "type": "object"
+   }
+
+C.8.  CANCEL params
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 34]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   {
+     "$comment": "Generated from core.models.CancelReservationInput",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "guest_name": {
+         "minLength": 1,
+         "title": "Guest Name",
+         "type": "string"
+       },
+       "reservation_id": {
+         "minLength": 1,
+         "title": "Reservation Id",
+         "type": "string"
+       }
+     },
+     "required": [
+       "reservation_id",
+       "guest_name"
+     ],
+     "title": "MATP CANCEL params",
+     "type": "object"
+   }
+
+C.9.  RECALL params
+
+   {
+     "$comment": "Generated from core.models.GetMyReservationsInput",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "guest_name": {
+         "minLength": 1,
+         "title": "Guest Name",
+         "type": "string"
+       }
+     },
+     "required": [
+       "guest_name"
+     ],
+     "title": "MATP RECALL params",
+     "type": "object"
+   }
+
+C.10.  RECALL result
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 35]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   {
+     "$comment": "Generated from core.models.GetMyReservationsOutput",
+     "$defs": {
+       "Reservation": {
+         "additionalProperties": false,
+         "properties": {
+           "guest_name": {
+             "title": "Guest Name",
+             "type": "string"
+           },
+           "id": {
+             "title": "Id",
+             "type": "string"
+           },
+           "merchant": {
+             "pattern": "^[a-z0-9-]{3,61}$",
+             "title": "Merchant",
+             "type": "string"
+           },
+           "party_size": {
+             "exclusiveMinimum": 0,
+             "title": "Party Size",
+             "type": "integer"
+           },
+           "starts_at": {
+             "format": "date-time",
+             "title": "Starts At",
+             "type": "string"
+           },
+           "status": {
+             "enum": [
+               "confirmed",
+               "cancelled"
+             ],
+             "title": "Status",
+             "type": "string"
+           },
+           "table_label": {
+             "title": "Table Label",
+             "type": "string"
+           },
+           "via": {
+             "enum": [
+               "claude",
+               "merchant",
+               "website"
+             ],
+             "title": "Via",
+
+
+
+                           Expires 4 May 2027                  [Page 36]
+
+Internet-Draft                    MATP                      October 2026
+
+
+             "type": "string"
+           }
+         },
+         "required": [
+           "id",
+           "merchant",
+           "starts_at",
+           "party_size",
+           "table_label",
+           "status",
+           "guest_name",
+           "via"
+         ],
+         "title": "Reservation",
+         "type": "object"
+       }
+     },
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "additionalProperties": false,
+     "properties": {
+       "notices": {
+         "items": {
+           "type": "string"
+         },
+         "title": "Notices",
+         "type": "array"
+       },
+       "reservations": {
+         "items": {
+           "$ref": "#/$defs/Reservation"
+         },
+         "title": "Reservations",
+         "type": "array"
+       }
+     },
+     "required": [
+       "reservations",
+       "notices"
+     ],
+     "title": "MATP RECALL result",
+     "type": "object"
+   }
+
+C.11.  PING params and result
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 37]
+
+Internet-Draft                    MATP                      October 2026
+
+
+   {
+     "$comment": "Generated from matp_schemas.PingParams",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "description": "`PING` takes no params: `{}`.",
+     "properties": {},
+     "title": "MATP PING params",
+     "type": "object"
+   }
+
+   {
+     "$comment": "Generated from matp_schemas.PingResult",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "properties": {
+       "pong": {
+         "const": true,
+         "title": "Pong",
+         "type": "boolean"
+       },
+       "server_time": {
+         "format": "date-time",
+         "title": "Server Time",
+         "type": "string"
+       }
+     },
+     "required": [
+       "pong",
+       "server_time"
+     ],
+     "title": "MATP PING result",
+     "type": "object"
+   }
+
+Acknowledgments
+
+   The agent-only protocol idea comes from the AGTP Internet-Draft
+   [I-D.hood-independent-agtp].
+
+Author's Address
+
+   Merchant Agents (BaselHack 2026)
+   URI:   https://github.com/MaxEntz/BaselHack2026
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 38]

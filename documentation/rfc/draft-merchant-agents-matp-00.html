@@ -1,0 +1,3863 @@
+<!DOCTYPE html>
+<html lang="en" class="Internet-Draft">
+<head>
+<meta charset="utf-8">
+<meta content="Common,Latin" name="scripts">
+<meta content="initial-scale=1.0" name="viewport">
+<title>Merchant Agent Transfer Protocol (MATP)</title>
+<meta content="Merchant Agents (BaselHack 2026)" name="author">
+<meta content="
+       This document specifies the Merchant Agent Transfer Protocol (MATP), an
+application protocol reserved for software agents that book with merchants
+on behalf of people or businesses. A MATP session runs over TCP, starts with
+a handshake that names the calling agent, and carries newline-delimited JSON
+frames. Each request states an intent (discover merchants, check
+availability, book, amend, cancel, recall bookings, ping) and the merchant it
+addresses. Responses carry numeric status codes and, when the merchant's own
+agent cannot serve the request, a fallback URL to the merchant's website.
+MATP is designed to sit behind a Model Context Protocol (MCP) server, which
+acts as a bridge for assistants that only speak MCP. 
+    " name="description">
+<meta content="xml2rfc 3.35.0" name="generator">
+<meta content="agents" name="keyword">
+<meta content="booking" name="keyword">
+<meta content="MCP" name="keyword">
+<meta content="draft-merchant-agents-matp-00" name="ietf.draft">
+<!-- Generator version information:
+  xml2rfc 3.35.0
+    Python 3.12.16
+    ConfigArgParse 1.9.0
+    google-i18n-address 3.1.1
+    intervaltree 3.2.1
+    Jinja2 3.1.6
+    lxml 6.1.3
+    natsort 8.4.0
+    platformdirs 4.14.0
+    pycountry 26.2.16
+    PyYAML 6.0.3
+    requests 2.34.2
+    wcwidth 0.9.4
+-->
+<link href="draft-merchant-agents-matp-00.xml" rel="alternate" type="application/rfc+xml">
+<link href="#copyright" rel="license">
+<style type="text/css">/*
+
+  NOTE: Changes at the bottom of this file overrides some earlier settings.
+
+  Once the style has stabilized and has been adopted as an official RFC style,
+  this can be consolidated so that style settings occur only in one place, but
+  for now the contents of this file consists first of the initial CSS work as
+  provided to the RFC Formatter (xml2rfc) work, followed by itemized and
+  commented changes found necessary during the development of the v3
+  formatters.
+
+*/
+
+/* fonts */
+@import url('https://static.ietf.org/fonts/noto-sans/import.css'); /* Sans-serif */
+@import url('https://static.ietf.org/fonts/noto-serif/import.css'); /* Serif (print) */
+@import url('https://static.ietf.org/fonts/roboto-mono/import.css'); /* Monospace */
+
+:root {
+  --font-sans: 'Noto Sans', Arial, Helvetica, sans-serif;
+  --font-serif: 'Noto Serif', 'Times', 'Times New Roman', serif;
+  --font-mono: 'Roboto Mono', Courier, 'Courier New', monospace;
+}
+
+@viewport {
+  zoom: 1.0;
+}
+@-ms-viewport {
+  width: extend-to-zoom;
+  zoom: 1.0;
+}
+/* general and mobile first */
+html {
+}
+body {
+  max-width: 90%;
+  margin: 1.5em auto;
+  color: #222;
+  background-color: #fff;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  scroll-behavior: smooth;
+  overflow-wrap: break-word;
+}
+.ears {
+  display: none;
+}
+
+/* headings */
+#title, h1, h2, h3, h4, h5, h6 {
+  margin: 1em 0 0.5em;
+  font-weight: bold;
+  line-height: 1.3;
+}
+#title {
+  clear: both;
+  border-bottom: 1px solid #ddd;
+  margin: 0 0 0.5em 0;
+  padding: 1em 0 0.5em;
+}
+.author {
+  padding-bottom: 4px;
+}
+h1 {
+  font-size: 26px;
+  margin: 1em 0;
+}
+h2 {
+  font-size: 22px;
+  margin-top: -20px;  /* provide offset for in-page anchors */
+  padding-top: 33px;
+}
+h3 {
+  font-size: 18px;
+  margin-top: -36px;  /* provide offset for in-page anchors */
+  padding-top: 42px;
+}
+h4 {
+  font-size: 16px;
+  margin-top: -36px;  /* provide offset for in-page anchors */
+  padding-top: 42px;
+}
+h5, h6 {
+  font-size: 14px;
+}
+#n-copyright-notice {
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 1em;
+  margin-bottom: 1em;
+}
+/* general structure */
+p {
+  padding: 0;
+  margin: 0 0 1em 0;
+  text-align: left;
+}
+div, span {
+  position: relative;
+}
+div {
+  margin: 0;
+}
+.alignRight.art-text {
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 3px;
+  padding: 1em 1em 0;
+  margin-bottom: 1.5em;
+}
+.alignRight.art-text pre {
+  padding: 0;
+}
+.alignRight {
+  margin: 1em 0;
+}
+.alignRight > *:first-child {
+  border: none;
+  margin: 0;
+  float: right;
+  clear: both;
+}
+.alignRight > *:nth-child(2) {
+  clear: both;
+  display: block;
+  border: none;
+}
+svg {
+  display: block;
+}
+@media print {
+  svg {
+    max-height: 850px;
+    max-width: 660px;
+  }
+}
+svg[font-family~="serif" i], svg [font-family~="serif" i] {
+  font-family: var(--font-serif);
+}
+svg[font-family~="sans-serif" i], svg [font-family~="sans-serif" i] {
+  font-family: var(--font-sans);
+}
+svg[font-family~="monospace" i], svg [font-family~="monospace" i] {
+  font-family: var(--font-mono);
+}
+.alignCenter.art-text {
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 3px;
+  padding: 1em 1em 0;
+  margin-bottom: 1.5em;
+}
+.alignCenter.art-text pre {
+  padding: 0;
+}
+.alignCenter {
+  margin: 1em 0;
+}
+.alignCenter > *:first-child {
+  display: table;
+  border: none;
+  margin: 0 auto;
+}
+
+/* lists */
+ol, ul {
+  padding: 0;
+  margin: 0 0 1em 2em;
+}
+ol ol, ul ul, ol ul, ul ol {
+  margin-left: 1em;
+}
+li {
+  margin: 0 0 0.25em 0;
+}
+.ulCompact li {
+  margin: 0;
+}
+ul.empty, .ulEmpty {
+  list-style-type: none;
+}
+ul.empty li, .ulEmpty li {
+  margin-top: 0.5em;
+}
+ul.ulBare, li.ulBare {
+  margin-left: 0em !important;
+}
+ul.compact, .ulCompact,
+ol.compact, .olCompact {
+  line-height: 100%;
+  margin: 0 0 0 2em;
+}
+
+/* definition lists */
+dl {
+}
+dl > dt {
+  float: left;
+  margin-right: 1em;
+}
+/* 
+dl.nohang > dt {
+  float: none;
+}
+*/
+dl > dd {
+  margin-bottom: .8em;
+  min-height: 1.3em;
+}
+dl.compact > dd, .dlCompact > dd {
+  margin-bottom: 0em;
+}
+dl > dd > dl {
+  margin-top: 0.5em;
+  margin-bottom: 0em;
+}
+
+/* links */
+a {
+  text-decoration: none;
+}
+a[href] {
+  color: #22e; /* Arlen: WCAG 2019 */
+}
+a[href]:hover {
+  background-color: #f2f2f2;
+}
+figcaption a[href],
+a[href].selfRef {
+  color: #222;
+}
+/* XXX probably not this:
+a.selfRef:hover {
+  background-color: transparent;
+  cursor: default;
+} */
+
+/* Figures */
+tt, code, pre {
+  background-color: #f9f9f9;
+  font-family: var(--font-mono);
+}
+pre {
+  border: 1px solid #eee;
+  margin: 0;
+  padding: 1em;
+}
+img {
+  max-width: 100%;
+}
+figure {
+  margin: 0;
+}
+figure blockquote {
+  margin: 0.8em 0.4em 0.4em;
+}
+figcaption {
+  font-style: italic;
+  margin: 0 0 1em 0;
+}
+@media screen {
+  pre {
+    overflow-x: auto;
+    max-width: 100%;
+    max-width: calc(100% - 22px);
+  }
+}
+
+/* aside, blockquote */
+aside, blockquote {
+  margin-left: 0;
+  padding: 1.2em 2em;
+}
+blockquote {
+  background-color: #f9f9f9;
+  color: #111; /* Arlen: WCAG 2019 */
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  margin: 1em 0;
+}
+blockquote > *:last-child {
+  margin-bottom: 0;
+}
+cite {
+  display: block;
+  text-align: right;
+  font-style: italic;
+}
+.xref {
+  overflow-wrap: normal;
+}
+
+/* tables */
+table {
+  width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+  border: 1px solid #eee;
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5em 0.75em;
+}
+th {
+  text-align: left;
+  background-color: #e9e9e9;
+}
+tr:nth-child(2n+1) > td {
+  background-color: #f5f5f5;
+}
+table caption {
+  font-style: italic;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+table p {
+  /* XXX to avoid bottom margin on table row signifiers. If paragraphs should
+     be allowed within tables more generally, it would be far better to select on a class. */
+  margin: 0;
+}
+sub,
+sup {
+ white-space: nowrap;
+}
+
+/* pilcrow */
+a.pilcrow {
+  color: #666; /* Arlen: AHDJ 2019 */
+  text-decoration: none;
+  visibility: hidden;
+  user-select: none;
+  -ms-user-select: none;
+  -o-user-select:none;
+  -moz-user-select: none;
+  -khtml-user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media screen {
+  aside:hover > a.pilcrow,
+  p:hover > a.pilcrow,
+  blockquote:hover > a.pilcrow,
+  div:hover > a.pilcrow,
+  li:hover > a.pilcrow,
+  pre:hover > a.pilcrow {
+    visibility: visible;
+  }
+  a.pilcrow:hover {
+    background-color: transparent;
+  }
+}
+
+/* misc */
+hr {
+  border: 0;
+  border-top: 1px solid #eee;
+}
+.bcp14 {
+  font-variant: small-caps;
+}
+
+.role {
+  font-variant: all-small-caps;
+}
+
+/* info block */
+#identifiers {
+  margin: 0;
+  font-size: 0.9em;
+}
+#identifiers dt {
+  width: 3em;
+  clear: left;
+}
+#identifiers dd {
+  float: left;
+  margin-bottom: 0;
+}
+/* Fix PDF info block run off issue */
+@media print {
+  #identifiers dd {
+    max-width: 100%;
+  }
+}
+#identifiers .authors .author {
+  display: inline-block;
+  margin-right: 1.5em;
+}
+#identifiers .authors .org {
+  font-style: italic;
+}
+
+/* The prepared/rendered info at the very bottom of the page */
+.docInfo {
+  color: #666; /* Arlen: WCAG 2019 */
+  font-size: 0.9em;
+  font-style: italic;
+  margin-top: 2em;
+}
+.docInfo .prepared {
+  float: left;
+}
+.docInfo .prepared {
+  float: right;
+}
+
+/* table of contents */
+#toc  {
+  padding: 0.75em 0 2em 0;
+  margin-bottom: 1em;
+}
+nav.toc ul {
+  margin: 0 0.5em 0 0;
+  padding: 0;
+  list-style: none;
+}
+nav.toc li {
+  line-height: 1.3em;
+  margin: 0.75em 0;
+  padding-left: 1.2em;
+  text-indent: -1.2em;
+}
+/* references */
+.references dt {
+  text-align: right;
+  font-weight: bold;
+  min-width: 7em;
+}
+.references dd {
+  margin-left: 8em;
+  overflow: auto;
+}
+
+.refInstance {
+  margin-bottom: 1.25em;
+}
+
+.refSubseries {
+  margin-bottom: 1.25em;
+}
+
+.references .ascii {
+  margin-bottom: 0.25em;
+}
+
+/* index */
+.index ul {
+  margin: 0 0 0 1em;
+  padding: 0;
+  list-style: none;
+}
+.index ul ul {
+  margin: 0;
+}
+.index li {
+  margin: 0;
+  text-indent: -2em;
+  padding-left: 2em;
+  padding-bottom: 5px;
+}
+.indexIndex {
+  margin: 0.5em 0 1em;
+}
+.index a {
+  font-weight: 700;
+}
+/* make the index two-column on all but the smallest screens */
+@media (min-width: 600px) {
+  .index ul {
+    -moz-column-count: 2;
+    -moz-column-gap: 20px;
+  }
+  .index ul ul {
+    -moz-column-count: 1;
+    -moz-column-gap: 0;
+  }
+}
+
+/* authors */
+address.vcard {
+  font-style: normal;
+  margin: 1em 0;
+}
+
+address.vcard .nameRole {
+  font-weight: 700;
+  margin-left: 0;
+}
+address.vcard .label {
+  font-family: var(--font-sans);
+  margin: 0.5em 0;
+}
+address.vcard .type {
+  display: none;
+}
+.alternative-contact {
+  margin: 1.5em 0 1em;
+}
+hr.addr {
+  border-top: 1px dashed;
+  margin: 0;
+  color: #ddd;
+  max-width: calc(100% - 16px);
+}
+
+/* temporary notes */
+.rfcEditorRemove::before {
+  position: absolute;
+  top: 0.2em;
+  right: 0.2em;
+  padding: 0.2em;
+  content: "The RFC Editor will remove this note";
+  color: #9e2a00; /* Arlen: WCAG 2019 */
+  background-color: #ffd; /* Arlen: WCAG 2019 */
+}
+.rfcEditorRemove {
+  position: relative;
+  padding-top: 1.8em;
+  background-color: #ffd; /* Arlen: WCAG 2019 */
+  border-radius: 3px;
+}
+.cref {
+  background-color: #ffd; /* Arlen: WCAG 2019 */
+  padding: 2px 4px;
+}
+.crefSource {
+  font-style: italic;
+}
+/* alternative layout for smaller screens */
+@media screen and (max-width: 1023px) {
+  body {
+    padding-top: 2em;
+  }
+  #title {
+    padding: 1em 0;
+  }
+  h1 {
+    font-size: 24px;
+  }
+  h2 {
+    font-size: 20px;
+    margin-top: -18px;  /* provide offset for in-page anchors */
+    padding-top: 38px;
+  }
+  #identifiers dd {
+    max-width: 60%;
+  }
+  #toc {
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    right: 0;
+    padding: 0;
+    margin: 0;
+    background-color: inherit;
+    border-bottom: 1px solid #ccc;
+  }
+  #toc h2 {
+    margin: -1px 0 0 0;
+    padding: 4px 0 4px 6px;
+    padding-right: 1em;
+    min-width: 190px;
+    font-size: 1.1em;
+    text-align: right;
+    background-color: #444;
+    color: white;
+    cursor: pointer;
+  }
+  #toc h2::before { /* css hamburger */
+    float: right;
+    position: relative;
+    width: 1em;
+    height: 1px;
+    left: -164px;
+    margin: 6px 0 0 0;
+    background: white none repeat scroll 0 0;
+    box-shadow: 0 4px 0 0 white, 0 8px 0 0 white;
+    content: "";
+  }
+  #toc nav {
+    display: none;
+    padding: 0.5em 1em 1em;
+    overflow: auto;
+    height: calc(100vh - 48px);
+    border-left: 1px solid #ddd;
+  }
+}
+
+/* alternative layout for wide screens */
+@media screen and (min-width: 1024px) {
+  body {
+    max-width: 724px;
+    margin: 42px auto;
+    padding-left: 1.5em;
+    padding-right: 29em;
+  }
+  #toc {
+    position: fixed;
+    top: 42px;
+    right: 42px;
+    width: 25%;
+    margin: 0;
+    padding: 0 1em;
+    z-index: 1;
+  }
+  #toc h2 {
+    border-top: none;
+    border-bottom: 1px solid #ddd;
+    font-size: 1em;
+    font-weight: normal;
+    margin: 0;
+    padding: 0.25em 1em 1em 0;
+  }
+  #toc nav {
+    display: block;
+    height: calc(90vh - 84px);
+    bottom: 0;
+    padding: 0.5em 0 0;
+    overflow: auto;
+  }
+  img { /* future proofing */
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* pagination */
+@media print {
+  body {
+    width: 100%;
+  }
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+  #n-copyright-notice {
+    border-bottom: none;
+  }
+  #toc, #n-introduction {
+    page-break-before: always;
+  }
+  #toc {
+    border-top: none;
+    padding-top: 0;
+  }
+  figure, pre {
+    page-break-inside: avoid;
+  }
+  figure {
+    overflow: scroll;
+  }
+  .breakable pre {
+    break-inside: auto;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+  h2+*, h3+*, h4+*, h5+*, h6+* {
+    page-break-before: avoid;
+  }
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 10pt;
+  }
+  table {
+    border: 1px solid #ddd;
+  }
+  td {
+    border-top: 1px solid #ddd;
+  }
+}
+
+/* This is commented out here, as the string-set: doesn't
+   pass W3C validation currently */
+/*
+.ears thead .left {
+  string-set: ears-top-left content();
+}
+
+.ears thead .center {
+  string-set: ears-top-center content();
+}
+
+.ears thead .right {
+  string-set: ears-top-right content();
+}
+
+.ears tfoot .left {
+  string-set: ears-bottom-left content();
+}
+
+.ears tfoot .center {
+  string-set: ears-bottom-center content();
+}
+
+.ears tfoot .right {
+  string-set: ears-bottom-right content();
+}
+*/
+
+@page :first {
+  padding-top: 0;
+  @top-left {
+    content: normal;
+    border: none;
+  }
+  @top-center {
+    content: normal;
+    border: none;
+  }
+  @top-right {
+    content: normal;
+    border: none;
+  }
+}
+
+@page {
+  size: A4;
+  margin-bottom: 45mm;
+  padding-top: 20px;
+  /* The following is commented out here, but set appropriately by in code, as
+     the content depends on the document */
+  /*
+  @top-left {
+    content: 'Internet-Draft';
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @top-left {
+    content: string(ears-top-left);
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @top-center {
+    content: string(ears-top-center);
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @top-right {
+    content: string(ears-top-right);
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @bottom-left {
+    content: string(ears-bottom-left);
+    vertical-align: top;
+    border-top: solid 1px #ccc;
+  }
+  @bottom-center {
+    content: string(ears-bottom-center);
+    vertical-align: top;
+    border-top: solid 1px #ccc;
+  }
+  @bottom-right {
+      content: '[Page ' counter(page) ']';
+      vertical-align: top;
+      border-top: solid 1px #ccc;
+  }
+  */
+
+}
+
+/* Changes introduced to fix issues found during implementation */
+/* Make sure links are clickable even if overlapped by following H* */
+a {
+  z-index: 2;
+}
+/* Separate body from document info even without intervening H1 */
+section {
+  clear: both;
+}
+
+
+/* Top align author divs, to avoid names without organization dropping level with org names */
+.author {
+  vertical-align: top;
+}
+
+/* Leave room in document info to show Internet-Draft on one line */
+#identifiers dt {
+  width: 8em;
+}
+
+/* Don't waste quite as much whitespace between label and value in doc info */
+#identifiers dd {
+  margin-left: 1em;
+}
+
+/* Give floating toc a background color (needed when it's a div inside section */
+#toc {
+  background-color: white;
+}
+
+/* Make the collapsed ToC header render white on gray also when it's a link */
+@media screen and (max-width: 1023px) {
+  #toc h2 a,
+  #toc h2 a:link,
+  #toc h2 a:focus,
+  #toc h2 a:hover,
+  #toc a.toplink,
+  #toc a.toplink:hover {
+    color: white;
+    background-color: #444;
+    text-decoration: none;
+  }
+}
+
+/* Give the bottom of the ToC some whitespace */
+@media screen and (min-width: 1024px) {
+  #toc {
+    padding: 0 0 1em 1em;
+  }
+}
+
+/* Style section numbers with more space between number and title */
+.section-number {
+  padding-right: 0.5em;
+}
+
+/* prevent monospace from becoming overly large */
+tt, code, pre {
+  font-size: 95%;
+}
+
+/* Fix the height/width aspect for ascii art*/
+.sourcecode pre,
+.art-text pre {
+  line-height: 1.12;
+}
+
+
+/* Add styling for a link in the ToC that points to the top of the document */
+a.toplink {
+  float: right;
+  margin-right: 0.5em;
+}
+
+/* Fix the dl styling to match the RFC 7992 attributes */
+dl > dt,
+dl.dlParallel > dt {
+  float: left;
+  margin-right: 1em;
+}
+dl.dlNewline > dt {
+  float: none;
+}
+
+/* Provide styling for table cell text alignment */
+table td.text-left,
+table th.text-left {
+  text-align: left;
+}
+table td.text-center,
+table th.text-center {
+  text-align: center;
+}
+table td.text-right,
+table th.text-right {
+  text-align: right;
+}
+
+/* Make the alternative author contact information look less like just another
+   author, and group it closer with the primary author contact information */
+.alternative-contact {
+  margin: 0.5em 0 0.25em 0;
+}
+address .non-ascii {
+  margin: 0 0 0 2em;
+}
+
+/* With it being possible to set tables with alignment
+  left, center, and right, { width: 100%; } does not make sense */
+table {
+  width: auto;
+}
+
+/* Avoid reference text that sits in a block with very wide left margin,
+   because of a long floating dt label.*/
+.references dd {
+  overflow: visible;
+}
+
+/* Control caption placement */
+caption {
+  caption-side: bottom;
+}
+
+/* Limit the width of the author address vcard, so names in right-to-left
+   script don't end up on the other side of the page. */
+
+address.vcard {
+  max-width: 30em;
+  margin-right: auto;
+}
+
+/* For address alignment dependent on LTR or RTL scripts */
+address div.left {
+  text-align: left;
+}
+address div.right {
+  text-align: right;
+}
+
+/* Provide table alignment support.  We can't use the alignX classes above
+   since they do unwanted things with caption and other styling. */
+table.right {
+ margin-left: auto;
+ margin-right: 0;
+}
+table.center {
+ margin-left: auto;
+ margin-right: auto;
+}
+table.left {
+ margin-left: 0;
+ margin-right: auto;
+}
+
+/* Give the table caption label the same styling as the figcaption */
+caption a[href] {
+  color: #222;
+}
+
+@media print {
+  .toplink {
+    display: none;
+  }
+
+  /* avoid overwriting the top border line with the ToC header */
+  #toc {
+    padding-top: 1px;
+  }
+
+  /* Avoid page breaks inside dl and author address entries */
+  .vcard {
+    page-break-inside: avoid;
+  }
+
+}
+/* Tweak the bcp14 keyword presentation */
+.bcp14 {
+  font-variant: small-caps;
+  font-weight: bold;
+  font-size: 0.9em;
+}
+/* Tweak the invisible space above H* in order not to overlay links in text above */
+ h2 {
+  margin-top: -18px;  /* provide offset for in-page anchors */
+  padding-top: 31px;
+ }
+ h3 {
+  margin-top: -18px;  /* provide offset for in-page anchors */
+  padding-top: 24px;
+ }
+ h4 {
+  margin-top: -18px;  /* provide offset for in-page anchors */
+  padding-top: 24px;
+ }
+/* Float artwork pilcrow to the right */
+@media screen {
+  .artwork a.pilcrow {
+    display: block;
+    line-height: 0.7;
+    margin-top: 0.15em;
+  }
+}
+/* Make pilcrows on dd visible */
+@media screen {
+  dd:hover > a.pilcrow {
+    visibility: visible;
+  }
+}
+/* Make the placement of figcaption match that of a table's caption
+   by removing the figure's added bottom margin */
+.alignLeft.art-text,
+.alignCenter.art-text,
+.alignRight.art-text {
+   margin-bottom: 0;
+}
+.alignLeft,
+.alignCenter,
+.alignRight {
+  margin: 1em 0 0 0;
+}
+/* In print, the pilcrow won't show on hover, so prevent it from taking up space,
+   possibly even requiring a new line */
+@media print {
+  a.pilcrow {
+    display: none;
+  }
+}
+/* Styling for the external metadata */
+div#external-metadata {
+  background-color: #eee;
+  padding: 0.5em;
+  margin-bottom: 0.5em;
+  display: none;
+}
+div#internal-metadata {
+  padding: 0.5em;                       /* to match the external-metadata padding */
+}
+/* Styling for title RFC Number */
+h1#rfcnum {
+  clear: both;
+  margin: 0 0 -1em;
+  padding: 1em 0 0 0;
+}
+/* Make .olPercent look the same as <ol><li> */
+dl.olPercent > dd {
+  margin-bottom: 0.25em;
+  min-height: initial;
+}
+/* Give aside some styling to set it apart */
+aside {
+  border-left: 1px solid #ddd;
+  margin: 1em 0 1em 2em;
+  padding: 0.2em 2em;
+}
+aside > dl,
+aside > ol,
+aside > ul,
+aside > table,
+aside > p {
+  margin-bottom: 0.5em;
+}
+/* Additional page break settings */
+@media print {
+  figcaption, table caption {
+    page-break-before: avoid;
+  }
+  table {
+    page-break-inside: avoid;
+  }
+}
+/* Font size adjustments for print */
+@media print {
+  body  { font-size: 10pt;      line-height: normal; max-width: 96%; }
+  h1    { font-size: 1.72em;    padding-top: 1.5em; } /* 1*1.2*1.2*1.2 */
+  h2    { font-size: 1.44em;    padding-top: 1.5em; } /* 1*1.2*1.2 */
+  h3    { font-size: 1.2em;     padding-top: 1.5em; } /* 1*1.2 */
+  h4    { font-size: 1em;       padding-top: 1.5em; }
+  h5, h6 { font-size: 1em;      margin: initial; padding: 0.5em 0 0.3em; }
+}
+/* Sourcecode margin in print, when there's no pilcrow */
+@media print {
+  .artwork,
+  .artwork > pre,
+  .sourcecode {
+    margin-bottom: 1em;
+  }
+}
+/* Avoid narrow tables forcing too narrow table captions, which may render badly */
+table {
+  min-width: 20em;
+}
+/* ol type a */
+ol.type-a { list-style-type: lower-alpha; }
+ol.type-A { list-style-type: upper-alpha; }
+ol.type-i { list-style-type: lower-roman; }
+ol.type-I { list-style-type: upper-roman; }
+/* Apply the print table and row borders in general, on request from the RPC,
+and increase the contrast between border and odd row background slightly */
+table {
+  border: 1px solid #ddd;
+}
+td {
+  border-top: 1px solid #ddd;
+}
+tr {
+  break-inside: avoid;
+}
+tr:nth-child(2n+1) > td {
+  background-color: #f8f8f8;
+}
+/* Use style rules to govern display of the TOC. */
+@media screen and (max-width: 1023px) {
+  #toc nav { display: none; }
+  #toc.active nav { display: block; }
+}
+/* Add support for keepWithNext */
+.keepWithNext {
+  break-after: avoid-page;
+  break-after: avoid-page;
+}
+/* Add support for keepWithPrevious */
+.keepWithPrevious {
+  break-before: avoid-page;
+}
+/* Change the approach to avoiding breaks inside artwork etc. */
+figure, pre, table, .artwork, .sourcecode  {
+  break-before: auto;
+  break-after: auto;
+}
+/* Avoid breaks between <dt> and <dd> */
+dl {
+  break-before: auto;
+  break-inside: auto;
+}
+dt {
+  break-before: auto;
+  break-after: avoid-page;
+}
+dd {
+  break-before: avoid-page;
+  break-after: auto;
+  orphans: 3;
+  widows: 3
+}
+span.break, dd.break {
+  margin-bottom: 0;
+  min-height: 0;
+  break-before: auto;
+  break-inside: auto;
+  break-after: auto;
+}
+/* Undo break-before ToC */
+@media print {
+  #toc {
+    break-before: auto;
+  }
+}
+/* Text in compact lists should not get extra bottom margin space,
+   since that would makes the list not compact */
+ul.compact p, .ulCompact p,
+ol.compact p, .olCompact p {
+ margin: 0;
+}
+/* But the list as a whole needs the extra space at the end */
+section ul.compact,
+section .ulCompact,
+section ol.compact,
+section .olCompact {
+  margin-bottom: 1em;                    /* same as p not within ul.compact etc. */
+}
+/* The tt and code background above interferes with for instance table cell
+   backgrounds.  Changed to something a bit more selective. */
+tt, code {
+  background-color: transparent;
+}
+p tt, p code, li tt, li code, dt tt, dt code {
+  background-color: #f8f8f8;
+}
+/* Tweak the pre margin -- 0px doesn't come out well */
+pre {
+   margin-top: 0.5px;
+}
+/* Tweak the compact list text */
+ul.compact, .ulCompact,
+ol.compact, .olCompact,
+dl.compact, .dlCompact {
+  line-height: normal;
+}
+/* Don't add top margin for nested lists */
+li > ul, li > ol, li > dl,
+dd > ul, dd > ol, dd > dl,
+dl > dd > dl {
+  margin-top: initial;
+}
+/* Elements that should not be rendered on the same line as a <dt> */
+/* This should match the element list in writer.text.TextWriter.render_dl() */
+dd > div.artwork:first-child,
+dd > aside:first-child,
+dd > blockquote:first-child,
+dd > figure:first-child,
+dd > ol:first-child,
+dd > div.sourcecode:first-child,
+dd > table:first-child,
+dd > ul:first-child {
+  clear: left;
+}
+/* fix for weird browser behaviour when <dd/> is empty */
+dt+dd:empty::before{
+  content: "\00a0";
+}
+/* Make paragraph spacing inside <li> smaller than in body text, to fit better within the list */
+li > p {
+  margin-bottom: 0.5em
+}
+/* Don't let p margin spill out from inside list items */
+li > p:last-of-type:only-child {
+  margin-bottom: 0;
+}
+</style>
+<link href="rfc-local.css" rel="stylesheet" type="text/css">
+<script type="application/javascript">async function addMetadata(){try{const e=document.styleSheets[0].cssRules;for(let t=0;t<e.length;t++)if(/#identifiers/.exec(e[t].selectorText)){const a=e[t].cssText.replace("#identifiers","#external-updates");document.styleSheets[0].insertRule(a,document.styleSheets[0].cssRules.length)}}catch(e){console.log(e)}const e=document.getElementById("external-metadata");if(e)try{var t,a="",o=function(e){const t=document.getElementsByTagName("meta");for(let a=0;a<t.length;a++)if(t[a].getAttribute("name")===e)return t[a].getAttribute("content");return""}("rfc.number");if(o){t="https://www.rfc-editor.org/rfc/rfc"+o+".json";try{const e=await fetch(t);a=await e.json()}catch(e){t=document.URL.indexOf("html")>=0?document.URL.replace(/html$/,"json"):document.URL+".json";const o=await fetch(t);a=await o.json()}}if(!a)return;e.style.display="block";const s="",d="https://datatracker.ietf.org/doc",n="https://datatracker.ietf.org/ipr/search",c="https://www.rfc-editor.org/info",l=a.doc_id.toLowerCase(),i=a.doc_id.slice(0,3).toLowerCase(),f=a.doc_id.slice(3).replace(/^0+/,""),u={status:"Status",obsoletes:"Obsoletes",obsoleted_by:"Obsoleted By",updates:"Updates",updated_by:"Updated By",see_also:"See Also",errata_url:"Errata"};let h="<dl style='overflow:hidden' id='external-updates'>";["status","obsoletes","obsoleted_by","updates","updated_by","see_also","errata_url"].forEach(e=>{if("status"==e){a[e]=a[e].toLowerCase();var t=a[e].split(" "),o=t.length,w="",p=1;for(let e=0;e<o;e++)p<o?w=w+r(t[e])+" ":w+=r(t[e]),p++;a[e]=w}else if("obsoletes"==e||"obsoleted_by"==e||"updates"==e||"updated_by"==e){var g,m="",b=1;g=a[e].length;for(let t=0;t<g;t++)a[e][t]&&(a[e][t]=String(a[e][t]).toLowerCase(),m=b<g?m+"<a href='"+s+"/rfc/".concat(a[e][t])+"'>"+a[e][t].slice(3)+"</a>, ":m+"<a href='"+s+"/rfc/".concat(a[e][t])+"'>"+a[e][t].slice(3)+"</a>",b++);a[e]=m}else if("see_also"==e){var y,L="",C=1;y=a[e].length;for(let t=0;t<y;t++)if(a[e][t]){a[e][t]=String(a[e][t]);var _=a[e][t].slice(0,3),v=a[e][t].slice(3).replace(/^0+/,"");L=C<y?"RFC"!=_?L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+_+" "+v+"</a>, ":L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+v+"</a>, ":"RFC"!=_?L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+_+" "+v+"</a>":L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+v+"</a>",C++}a[e]=L}else if("errata_url"==e){var R="";R=a[e]?R+"<a href='"+a[e]+"'>Errata exist</a> | <a href='"+d+"/"+l+"'>Datatracker</a>| <a href='"+n+"/?"+i+"="+f+"&submit="+i+"'>IPR</a> | <a href='"+c+"/"+l+"'>Info page</a>":"<a href='"+d+"/"+l+"'>Datatracker</a> | <a href='"+n+"/?"+i+"="+f+"&submit="+i+"'>IPR</a> | <a href='"+c+"/"+l+"'>Info page</a>",a[e]=R}""!=a[e]?"Errata"==u[e]?h+=`<dt>More info:</dt><dd>${a[e]}</dd>`:h+=`<dt>${u[e]}:</dt><dd>${a[e]}</dd>`:"Errata"==u[e]&&(h+=`<dt>More info:</dt><dd>${a[e]}</dd>`)}),h+="</dl>",e.innerHTML=h}catch(e){console.log(e)}else console.log("Could not locate metadata <div> element");function r(e){return e.charAt(0).toUpperCase()+e.slice(1)}}window.removeEventListener("load",addMetadata),window.addEventListener("load",addMetadata);</script>
+</head>
+<body class="xml2rfc">
+<table class="ears">
+<thead><tr>
+<td class="left">Internet-Draft</td>
+<td class="center">MATP</td>
+<td class="right">October 2026</td>
+</tr></thead>
+<tfoot><tr>
+<td class="left"></td>
+<td class="center">Expires 4 May 2027</td>
+<td class="right">[Page]</td>
+</tr></tfoot>
+</table>
+<div id="external-metadata" class="document-information"></div>
+<div id="internal-metadata" class="document-information">
+<dl id="identifiers">
+<dt class="label-workgroup">Workgroup:</dt>
+<dd class="workgroup">Network Working Group</dd>
+<dt class="label-internet-draft">Internet-Draft:</dt>
+<dd class="internet-draft">draft-merchant-agents-matp-00</dd>
+<dt class="label-published">Published:</dt>
+<dd class="published">
+<time datetime="2026-10-31" class="published">31 October 2026</time>
+    </dd>
+<dt class="label-intended-status">Intended Status:</dt>
+<dd class="intended-status">Experimental</dd>
+<dt class="label-expires">Expires:</dt>
+<dd class="expires"><time datetime="2027-05-04">4 May 2027</time></dd>
+<dt class="label-authors">Author:</dt>
+<dd class="authors">
+<div class="author">
+      <div class="org">Merchant Agents (BaselHack 2026)</div>
+</div>
+</dd>
+</dl>
+</div>
+<h1 id="title">Merchant Agent Transfer Protocol (MATP)</h1>
+<section id="section-abstract">
+      <h2 id="abstract"><a href="#abstract" class="selfRef">Abstract</a></h2>
+<p id="section-abstract-1">This document specifies the Merchant Agent Transfer Protocol (MATP), an
+application protocol reserved for software agents that book with merchants
+on behalf of people or businesses. A MATP session runs over TCP, starts with
+a handshake that names the calling agent, and carries newline-delimited JSON
+frames. Each request states an intent (discover merchants, check
+availability, book, amend, cancel, recall bookings, ping) and the merchant it
+addresses. Responses carry numeric status codes and, when the merchant's own
+agent cannot serve the request, a fallback URL to the merchant's website.
+MATP is designed to sit behind a Model Context Protocol (MCP) server, which
+acts as a bridge for assistants that only speak MCP.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+</section>
+<div id="status-of-memo">
+<section id="section-boilerplate.1">
+        <h2 id="name-status-of-this-memo">
+<a href="#name-status-of-this-memo" class="section-name selfRef">Status of This Memo</a>
+        </h2>
+<p id="section-boilerplate.1-1">
+        This Internet-Draft is submitted in full conformance with the
+        provisions of BCP 78 and BCP 79.<a href="#section-boilerplate.1-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-2">
+        Internet-Drafts are working documents of the Internet Engineering Task
+        Force (IETF). Note that other groups may also distribute working
+        documents as Internet-Drafts. The list of current Internet-Drafts is
+        at <span><a href="https://datatracker.ietf.org/drafts/current/">https://datatracker.ietf.org/drafts/current/</a></span>.<a href="#section-boilerplate.1-2" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-3">
+        Internet-Drafts are draft documents valid for a maximum of six months
+        and may be updated, replaced, or obsoleted by other documents at any
+        time. It is inappropriate to use Internet-Drafts as reference
+        material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-4">
+        This Internet-Draft will expire on 4 May 2027.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="copyright">
+<section id="section-boilerplate.2">
+        <h2 id="name-copyright-notice">
+<a href="#name-copyright-notice" class="section-name selfRef">Copyright Notice</a>
+        </h2>
+<p id="section-boilerplate.2-1">
+            Copyright (c) 2026 IETF Trust and the persons identified as the
+            document authors. All rights reserved.<a href="#section-boilerplate.2-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.2-2">
+            This document is subject to BCP 78 and the IETF Trust's Legal
+            Provisions Relating to IETF Documents
+            (<span><a href="https://trustee.ietf.org/license-info">https://trustee.ietf.org/license-info</a></span>) in effect on the date of
+            publication of this document. Please review these documents
+            carefully, as they describe your rights and restrictions with
+            respect to this document.<a href="#section-boilerplate.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="toc">
+<section id="section-toc.1">
+        <a href="#" onclick="scroll(0,0)" class="toplink">▲</a><h2 id="name-table-of-contents">
+<a href="#name-table-of-contents" class="section-name selfRef">Table of Contents</a>
+        </h2>
+<nav class="toc"><ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1">
+            <p id="section-toc.1-1.1.1"><a href="#section-1" class="auto internal xref">1</a>.  <a href="#name-introduction" class="internal xref">Introduction</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.1">
+                <p id="section-toc.1-1.1.2.1.1" class="keepWithNext"><a href="#section-1.1" class="auto internal xref">1.1</a>.  <a href="#name-scope" class="internal xref">Scope</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.2">
+                <p id="section-toc.1-1.1.2.2.1" class="keepWithNext"><a href="#section-1.2" class="auto internal xref">1.2</a>.  <a href="#name-relation-to-mcp" class="internal xref">Relation to MCP</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.3">
+                <p id="section-toc.1-1.1.2.3.1" class="keepWithNext"><a href="#section-1.3" class="auto internal xref">1.3</a>.  <a href="#name-relation-to-agtp" class="internal xref">Relation to AGTP</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.2">
+            <p id="section-toc.1-1.2.1"><a href="#section-2" class="auto internal xref">2</a>.  <a href="#name-conventions-and-definitions" class="internal xref">Conventions and Definitions</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3">
+            <p id="section-toc.1-1.3.1"><a href="#section-3" class="auto internal xref">3</a>.  <a href="#name-protocol-overview" class="internal xref">Protocol Overview</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4">
+            <p id="section-toc.1-1.4.1"><a href="#section-4" class="auto internal xref">4</a>.  <a href="#name-transport" class="internal xref">Transport</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.1">
+                <p id="section-toc.1-1.4.2.1.1"><a href="#section-4.1" class="auto internal xref">4.1</a>.  <a href="#name-addressing" class="internal xref">Addressing</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5">
+            <p id="section-toc.1-1.5.1"><a href="#section-5" class="auto internal xref">5</a>.  <a href="#name-framing" class="internal xref">Framing</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6">
+            <p id="section-toc.1-1.6.1"><a href="#section-6" class="auto internal xref">6</a>.  <a href="#name-session" class="internal xref">Session</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.1">
+                <p id="section-toc.1-1.6.2.1.1"><a href="#section-6.1" class="auto internal xref">6.1</a>.  <a href="#name-hello" class="internal xref">hello</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.2">
+                <p id="section-toc.1-1.6.2.2.1"><a href="#section-6.2" class="auto internal xref">6.2</a>.  <a href="#name-welcome" class="internal xref">welcome</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.3">
+                <p id="section-toc.1-1.6.2.3.1"><a href="#section-6.3" class="auto internal xref">6.3</a>.  <a href="#name-reject" class="internal xref">reject</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7">
+            <p id="section-toc.1-1.7.1"><a href="#section-7" class="auto internal xref">7</a>.  <a href="#name-requests-and-responses" class="internal xref">Requests and Responses</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.1">
+                <p id="section-toc.1-1.7.2.1.1"><a href="#section-7.1" class="auto internal xref">7.1</a>.  <a href="#name-request" class="internal xref">request</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.2">
+                <p id="section-toc.1-1.7.2.2.1"><a href="#section-7.2" class="auto internal xref">7.2</a>.  <a href="#name-response" class="internal xref">response</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.3">
+                <p id="section-toc.1-1.7.2.3.1"><a href="#section-7.3" class="auto internal xref">7.3</a>.  <a href="#name-concurrency" class="internal xref">Concurrency</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.4">
+                <p id="section-toc.1-1.7.2.4.1"><a href="#section-7.4" class="auto internal xref">7.4</a>.  <a href="#name-idle-sessions" class="internal xref">Idle sessions</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.5">
+                <p id="section-toc.1-1.7.2.5.1"><a href="#section-7.5" class="auto internal xref">7.5</a>.  <a href="#name-session-errors" class="internal xref">Session errors</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.6">
+                <p id="section-toc.1-1.7.2.6.1"><a href="#section-7.6" class="auto internal xref">7.6</a>.  <a href="#name-idempotency" class="internal xref">Idempotency</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.7">
+                <p id="section-toc.1-1.7.2.7.1"><a href="#section-7.7" class="auto internal xref">7.7</a>.  <a href="#name-confirmation-before-writes" class="internal xref">Confirmation before writes</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8">
+            <p id="section-toc.1-1.8.1"><a href="#section-8" class="auto internal xref">8</a>.  <a href="#name-intents" class="internal xref">Intents</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.1">
+                <p id="section-toc.1-1.8.2.1.1"><a href="#section-8.1" class="auto internal xref">8.1</a>.  <a href="#name-discover" class="internal xref">DISCOVER</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2">
+                <p id="section-toc.1-1.8.2.2.1"><a href="#section-8.2" class="auto internal xref">8.2</a>.  <a href="#name-availability" class="internal xref">AVAILABILITY</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.3">
+                <p id="section-toc.1-1.8.2.3.1"><a href="#section-8.3" class="auto internal xref">8.3</a>.  <a href="#name-book" class="internal xref">BOOK</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.4">
+                <p id="section-toc.1-1.8.2.4.1"><a href="#section-8.4" class="auto internal xref">8.4</a>.  <a href="#name-amend" class="internal xref">AMEND</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.5">
+                <p id="section-toc.1-1.8.2.5.1"><a href="#section-8.5" class="auto internal xref">8.5</a>.  <a href="#name-cancel" class="internal xref">CANCEL</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.6">
+                <p id="section-toc.1-1.8.2.6.1"><a href="#section-8.6" class="auto internal xref">8.6</a>.  <a href="#name-recall" class="internal xref">RECALL</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.7">
+                <p id="section-toc.1-1.8.2.7.1"><a href="#section-8.7" class="auto internal xref">8.7</a>.  <a href="#name-ping" class="internal xref">PING</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9">
+            <p id="section-toc.1-1.9.1"><a href="#section-9" class="auto internal xref">9</a>.  <a href="#name-status-codes" class="internal xref">Status Codes</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10">
+            <p id="section-toc.1-1.10.1"><a href="#section-10" class="auto internal xref">10</a>. <a href="#name-events" class="internal xref">Events</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11">
+            <p id="section-toc.1-1.11.1"><a href="#section-11" class="auto internal xref">11</a>. <a href="#name-versioning-and-extensibilit" class="internal xref">Versioning and Extensibility</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12">
+            <p id="section-toc.1-1.12.1"><a href="#section-12" class="auto internal xref">12</a>. <a href="#name-security-considerations" class="internal xref">Security Considerations</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13">
+            <p id="section-toc.1-1.13.1"><a href="#section-13" class="auto internal xref">13</a>. <a href="#name-privacy-considerations" class="internal xref">Privacy Considerations</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14">
+            <p id="section-toc.1-1.14.1"><a href="#section-14" class="auto internal xref">14</a>. <a href="#name-iana-considerations" class="internal xref">IANA Considerations</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.15">
+            <p id="section-toc.1-1.15.1"><a href="#section-15" class="auto internal xref">15</a>. <a href="#name-references" class="internal xref">References</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.15.2.1">
+                <p id="section-toc.1-1.15.2.1.1"><a href="#section-15.1" class="auto internal xref">15.1</a>.  <a href="#name-normative-references" class="internal xref">Normative References</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.15.2.2">
+                <p id="section-toc.1-1.15.2.2.1"><a href="#section-15.2" class="auto internal xref">15.2</a>.  <a href="#name-informative-references" class="internal xref">Informative References</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.16">
+            <p id="section-toc.1-1.16.1"><a href="#appendix-A" class="auto internal xref">Appendix A</a>.  <a href="#name-the-mcp-bridge" class="internal xref">The MCP Bridge</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.17">
+            <p id="section-toc.1-1.17.1"><a href="#appendix-B" class="auto internal xref">Appendix B</a>.  <a href="#name-example-session" class="internal xref">Example Session</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18">
+            <p id="section-toc.1-1.18.1"><a href="#appendix-C" class="auto internal xref">Appendix C</a>.  <a href="#name-json-schemas" class="internal xref">JSON Schemas</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.1">
+                <p id="section-toc.1-1.18.2.1.1"><a href="#appendix-C.1" class="auto internal xref">C.1</a>.  <a href="#name-discover-params" class="internal xref">DISCOVER params</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.2">
+                <p id="section-toc.1-1.18.2.2.1"><a href="#appendix-C.2" class="auto internal xref">C.2</a>.  <a href="#name-discover-result" class="internal xref">DISCOVER result</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.3">
+                <p id="section-toc.1-1.18.2.3.1"><a href="#appendix-C.3" class="auto internal xref">C.3</a>.  <a href="#name-availability-params" class="internal xref">AVAILABILITY params</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.4">
+                <p id="section-toc.1-1.18.2.4.1"><a href="#appendix-C.4" class="auto internal xref">C.4</a>.  <a href="#name-availability-result" class="internal xref">AVAILABILITY result</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.5">
+                <p id="section-toc.1-1.18.2.5.1"><a href="#appendix-C.5" class="auto internal xref">C.5</a>.  <a href="#name-book-params" class="internal xref">BOOK params</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.6">
+                <p id="section-toc.1-1.18.2.6.1"><a href="#appendix-C.6" class="auto internal xref">C.6</a>.  <a href="#name-book-amend-and-cancel-resul" class="internal xref">BOOK, AMEND and CANCEL result</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.7">
+                <p id="section-toc.1-1.18.2.7.1"><a href="#appendix-C.7" class="auto internal xref">C.7</a>.  <a href="#name-amend-params" class="internal xref">AMEND params</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.8">
+                <p id="section-toc.1-1.18.2.8.1"><a href="#appendix-C.8" class="auto internal xref">C.8</a>.  <a href="#name-cancel-params" class="internal xref">CANCEL params</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.9">
+                <p id="section-toc.1-1.18.2.9.1"><a href="#appendix-C.9" class="auto internal xref">C.9</a>.  <a href="#name-recall-params" class="internal xref">RECALL params</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.10">
+                <p id="section-toc.1-1.18.2.10.1"><a href="#appendix-C.10" class="auto internal xref">C.10</a>. <a href="#name-recall-result" class="internal xref">RECALL result</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.11">
+                <p id="section-toc.1-1.18.2.11.1"><a href="#appendix-C.11" class="auto internal xref">C.11</a>. <a href="#name-ping-params-and-result" class="internal xref">PING params and result</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.19">
+            <p id="section-toc.1-1.19.1"><a href="#appendix-D" class="auto internal xref"></a><a href="#name-acknowledgments" class="internal xref">Acknowledgments</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.20">
+            <p id="section-toc.1-1.20.1"><a href="#appendix-E" class="auto internal xref"></a><a href="#name-authors-address" class="internal xref">Author's Address</a></p>
+</li>
+        </ul>
+</nav>
+</section>
+</div>
+<div id="introduction">
+<section id="section-1">
+      <h2 id="name-introduction">
+<a href="#section-1" class="section-number selfRef">1. </a><a href="#name-introduction" class="section-name selfRef">Introduction</a>
+      </h2>
+<p id="section-1-1">Software agents increasingly act for people: they search for a restaurant,
+check a table and book it. When that traffic uses HTTP, a merchant cannot
+tell it apart from a browser, so it cannot identify the calling agent,
+route agent traffic separately, or apply rules meant for agents.<a href="#section-1-1" class="pilcrow">¶</a></p>
+<p id="section-1-2">MATP gives that traffic its own channel. Every frame says which agent is
+talking (established once per session), what it intends to do, and to which
+merchant. The protocol is deliberately small: it covers what a network of
+merchant agents needs to take bookings, and nothing else.<a href="#section-1-2" class="pilcrow">¶</a></p>
+<div id="scope">
+<section id="section-1.1">
+        <h3 id="name-scope">
+<a href="#section-1.1" class="section-number selfRef">1.1. </a><a href="#name-scope" class="section-name selfRef">Scope</a>
+        </h3>
+<p id="section-1.1-1">This version covers the guest side of booking with restaurants: discovery,
+availability, booking, amending, cancelling and recalling a guest's
+bookings. Merchant-side operations (listing a day's bookings, blocking a
+slot, changing a policy) are out of scope: they stay on the merchant's own
+platform.<a href="#section-1.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="relation-to-mcp">
+<section id="section-1.2">
+        <h3 id="name-relation-to-mcp">
+<a href="#section-1.2" class="section-number selfRef">1.2. </a><a href="#name-relation-to-mcp" class="section-name selfRef">Relation to MCP</a>
+        </h3>
+<p id="section-1.2-1">Assistants such as Claude connect to remote tools through MCP <span>[<a href="#MCP" class="cite xref">MCP</a>]</span>. An
+MCP server can act as a bridge: each of its tools maps to one MATP intent
+(<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>). Any other agent can speak MATP directly.<a href="#section-1.2-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="relation-to-agtp">
+<section id="section-1.3">
+        <h3 id="name-relation-to-agtp">
+<a href="#section-1.3" class="section-number selfRef">1.3. </a><a href="#name-relation-to-agtp" class="section-name selfRef">Relation to AGTP</a>
+        </h3>
+<p id="section-1.3-1">The idea of an application protocol reserved for agent traffic, with agent
+identity and intent-named methods, comes from the AGTP Internet-Draft
+<span>[<a href="#I-D.hood-independent-agtp" class="cite xref">I-D.hood-independent-agtp</a>]</span>. MATP is independent from it: it does not
+implement AGTP, it uses a different transport framing and method set, and
+it is limited to the booking use case.<a href="#section-1.3-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="conventions-and-definitions">
+<section id="section-2">
+      <h2 id="name-conventions-and-definitions">
+<a href="#section-2" class="section-number selfRef">2. </a><a href="#name-conventions-and-definitions" class="section-name selfRef">Conventions and Definitions</a>
+      </h2>
+<p id="section-2-1">The key words "<span class="bcp14">MUST</span>", "<span class="bcp14">MUST NOT</span>", "<span class="bcp14">REQUIRED</span>", "<span class="bcp14">SHALL</span>", "<span class="bcp14">SHALL NOT</span>", "<span class="bcp14">SHOULD</span>", "<span class="bcp14">SHOULD NOT</span>", "<span class="bcp14">RECOMMENDED</span>", "<span class="bcp14">NOT RECOMMENDED</span>",
+"<span class="bcp14">MAY</span>", and "<span class="bcp14">OPTIONAL</span>" in this document are to be interpreted as
+described in BCP 14 <span>[<a href="#RFC2119" class="cite xref">RFC2119</a>]</span> <span>[<a href="#RFC8174" class="cite xref">RFC8174</a>]</span> when, and only when, they
+appear in all capitals, as shown here.<a href="#section-2-1" class="pilcrow">¶</a></p>
+<p id="section-2-2">This document uses the Augmented Backus-Naur Form (ABNF) notation of
+<span>[<a href="#RFC5234" class="cite xref">RFC5234</a>]</span>. JSON terminology ("object", "member", "string") is that of
+<span>[<a href="#RFC8259" class="cite xref">RFC8259</a>]</span>.<a href="#section-2-2" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-2-3">
+        <dt id="section-2-3.1">Node:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.2">
+          <p id="section-2-3.2.1">A MATP server. It serves the merchant agents of one backend.<a href="#section-2-3.2.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.3">Merchant agent:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.4">
+          <p id="section-2-3.4.1">One merchant's booking logic and data, served by a node and addressed by
+the merchant's slug.<a href="#section-2-3.4.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.5">Caller:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.6">
+          <p id="section-2-3.6.1">An agent that opens a session with a node: a user's assistant, a
+merchant's agent, or a bridge acting for one of them.<a href="#section-2-3.6.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.7">Session:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.8">
+          <p id="section-2-3.8.1">One transport connection between a caller and a node, from the caller's
+<code>hello</code> to the connection's close.<a href="#section-2-3.8.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.9">Frame:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.10">
+          <p id="section-2-3.10.1">One JSON object followed by a line feed (<a href="#framing" class="auto internal xref">Section 5</a>).<a href="#section-2-3.10.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.11">Intent:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.12">
+          <p id="section-2-3.12.1">What a request asks the node to do, for example <code>BOOK</code>.<a href="#section-2-3.12.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.13">Slug:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.14">
+          <p id="section-2-3.14.1">The stable identifier of a merchant on a node: 3 to 61 characters among
+lowercase ASCII letters, digits and "-".<a href="#section-2-3.14.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.15">Guest:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.16">
+          <p id="section-2-3.16.1">The person a booking is for, identified in this version by the name the
+caller gives (see <a href="#privacy" class="auto internal xref">Section 13</a>).<a href="#section-2-3.16.1" class="pilcrow">¶</a></p>
+</dd>
+      <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="protocol-overview">
+<section id="section-3">
+      <h2 id="name-protocol-overview">
+<a href="#section-3" class="section-number selfRef">3. </a><a href="#name-protocol-overview" class="section-name selfRef">Protocol Overview</a>
+      </h2>
+<p id="section-3-1">A caller opens a TCP connection to a node and sends <code>hello</code>, naming itself.
+The node answers <code>welcome</code>, which opens the session, or <code>reject</code>, which
+closes it. The caller then sends requests. Each request carries an <code>id</code>, an
+intent, the addressed merchant when the intent needs one, and parameters.
+The node answers each request with exactly one response carrying the same
+<code>id</code>. Several requests may be in flight at once, and responses may arrive
+in any order.<a href="#section-3-1" class="pilcrow">¶</a></p>
+<span id="name-matp-deployment-with-an-mcp"></span><figure id="figure-1">
+        <div class="alignLeft art-ascii-art art-text artwork" id="section-3-2.1">
+<pre>
+  user's        +-------------+   MCP over HTTPS   +-------------+
+  assistant ---&gt;| MCP client  |-------------------&gt;| MCP gateway |
+                +-------------+                    |  (bridge)   |
+                                                   +------+------+
+                                                          | MATP
+  other agent ------------------- MATP --------------+    | TCP 4710
+                                                     v    v
+                                                   +-------------+
+                                                   |  MATP node  |
+                                                   +------+------+
+                                                          |
+                                         merchant agents (one per slug)
+</pre>
+</div>
+<figcaption><a href="#figure-1" class="selfRef">Figure 1</a>:
+<a href="#name-matp-deployment-with-an-mcp" class="selfRef">MATP deployment with an MCP bridge</a>
+        </figcaption></figure>
+<span id="name-a-session-with-two-requests"></span><figure id="figure-2">
+        <div class="alignLeft art-ascii-art art-text artwork" id="section-3-3.1">
+<pre>
+  Caller                                        Node
+    |  hello {agent, token, matp: "0.1"}         |
+    |-------------------------------------------&gt;|
+    |  welcome {node, intents, session}          |
+    |&lt;-------------------------------------------|
+    |  request {id: "r-1", intent: AVAILABILITY} |
+    |-------------------------------------------&gt;|
+    |  request {id: "r-2", intent: DISCOVER}     |
+    |-------------------------------------------&gt;|
+    |  response {id: "r-2", status: 200}         |
+    |&lt;-------------------------------------------|
+    |  response {id: "r-1", status: 200}         |
+    |&lt;-------------------------------------------|
+</pre>
+</div>
+<figcaption><a href="#figure-2" class="selfRef">Figure 2</a>:
+<a href="#name-a-session-with-two-requests" class="selfRef">A session with two requests answered out of order</a>
+        </figcaption></figure>
+</section>
+</div>
+<div id="transport">
+<section id="section-4">
+      <h2 id="name-transport">
+<a href="#section-4" class="section-number selfRef">4. </a><a href="#name-transport" class="section-name selfRef">Transport</a>
+      </h2>
+<p id="section-4-1">MATP runs over TCP <span>[<a href="#RFC9293" class="cite xref">RFC9293</a>]</span>. A node listens on a configured port. This
+document uses port 4710 for its examples and its reference implementation;
+that port is not registered for MATP (<a href="#iana" class="auto internal xref">Section 14</a>), so a caller <span class="bcp14">MUST</span> be able to
+use another port.<a href="#section-4-1" class="pilcrow">¶</a></p>
+<p id="section-4-2">On the loopback interface, a session <span class="bcp14">MAY</span> use plain TCP. On any other path,
+the caller and the node <span class="bcp14">MUST</span> use TLS 1.3 <span>[<a href="#RFC9846" class="cite xref">RFC9846</a>]</span> or a later version,
+and the caller <span class="bcp14">MUST</span> authenticate the node's certificate against the host
+name it connected to. TLS is set up before the first frame.<a href="#section-4-2" class="pilcrow">¶</a></p>
+<p id="section-4-3">Either side <span class="bcp14">MAY</span> close the connection at any time. Closing the connection
+ends the session. A request in flight when the session ends has no
+response, and the caller <span class="bcp14">MUST NOT</span> assume it was or was not carried out
+(see <a href="#idempotency" class="auto internal xref">Section 7.6</a> for retrying writes safely).<a href="#section-4-3" class="pilcrow">¶</a></p>
+<div id="addressing">
+<section id="section-4.1">
+        <h3 id="name-addressing">
+<a href="#section-4.1" class="section-number selfRef">4.1. </a><a href="#name-addressing" class="section-name selfRef">Addressing</a>
+        </h3>
+<p id="section-4.1-1">A merchant agent is named by a URI <span>[<a href="#RFC3986" class="cite xref">RFC3986</a>]</span> of the form:<a href="#section-4.1-1" class="pilcrow">¶</a></p>
+<div class="lang-abnf sourcecode" id="section-4.1-2">
+<pre>
+matp-URI = "matp://" host [ ":" port ] "/" slug
+slug     = 3*61( %x61-7A / DIGIT / "-" )   ; a-z, 0-9, "-"
+</pre><a href="#section-4.1-2" class="pilcrow">¶</a>
+</div>
+<p id="section-4.1-3">where <code>host</code> and <code>port</code> are those of <span>[<a href="#RFC3986" class="cite xref">RFC3986</a>]</span>. When <code>port</code> is absent, it
+is 4710. For example, <code>matp://node.example/le-petit-zinc</code> names the merchant
+agent <code>le-petit-zinc</code> on the node at <code>node.example</code>. The slug is not sent in
+the handshake: a session reaches every merchant agent of a node, and each
+request names its merchant (<a href="#requests" class="auto internal xref">Section 7</a>).<a href="#section-4.1-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="framing">
+<section id="section-5">
+      <h2 id="name-framing">
+<a href="#section-5" class="section-number selfRef">5. </a><a href="#name-framing" class="section-name selfRef">Framing</a>
+      </h2>
+<p id="section-5-1">Every message is a frame: one JSON object <span>[<a href="#RFC8259" class="cite xref">RFC8259</a>]</span>, encoded in UTF-8
+<span>[<a href="#RFC3629" class="cite xref">RFC3629</a>]</span>, followed by one line feed (%x0A).<a href="#section-5-1" class="pilcrow">¶</a></p>
+<div class="lang-abnf sourcecode" id="section-5-2">
+<pre>
+frame = object LF
+LF    = %x0A
+</pre><a href="#section-5-2" class="pilcrow">¶</a>
+</div>
+<p id="section-5-3">The rule <code>object</code>, and the rules it uses, are those of <span>[<a href="#RFC8259" class="cite xref">RFC8259</a>]</span>,
+Sections 2 to 7, with one change: inside a frame, the rule <code>ws</code> is<a href="#section-5-3" class="pilcrow">¶</a></p>
+<div class="lang-abnf sourcecode" id="section-5-4">
+<pre>
+ws = *( %x20 / %x09 )   ; space or tab, never LF or CR
+</pre><a href="#section-5-4" class="pilcrow">¶</a>
+</div>
+<p id="section-5-5">so that a frame never contains a line feed before its end. A line feed
+inside a string is escaped as <code>\n</code>, as JSON requires.<a href="#section-5-5" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-5-6.1">
+          <p id="section-5-6.1.1">A frame, without its final LF, <span class="bcp14">MUST NOT</span> exceed 65536 octets. A node that
+has read 65536 octets of a frame without finding its LF <span class="bcp14">MUST</span> send an
+<code>error</code> frame with status 413 (<a href="#error-frames" class="auto internal xref">Section 7.5</a>) and close the session,
+without parsing the frame.<a href="#section-5-6.1.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-5-6.2">
+          <p id="section-5-6.2.1">The object <span class="bcp14">MUST</span> have a member <code>type</code> whose value is a string. The types
+defined in this version are <code>hello</code>, <code>welcome</code>, <code>reject</code>, <code>request</code>,
+<code>response</code> and <code>error</code>. The type <code>event</code> is reserved (<a href="#events" class="auto internal xref">Section 10</a>).<a href="#section-5-6.2.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-5-6.3">
+          <p id="section-5-6.3.1">A sender <span class="bcp14">MUST NOT</span> generate an object with two members of the same name.
+A receiver <span class="bcp14">MAY</span> treat such a frame as invalid.<a href="#section-5-6.3.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-5-6.4">
+          <p id="section-5-6.4.1">A receiver <span class="bcp14">MUST</span> ignore members of a frame that this document does not
+define for its type (<a href="#versioning" class="auto internal xref">Section 11</a>). This rule applies to the frame
+object itself, not to <code>params</code> (<a href="#requests" class="auto internal xref">Section 7</a>).<a href="#section-5-6.4.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-5-6.5">
+          <p id="section-5-6.5.1">An empty line (an LF alone) is not a frame. A node <span class="bcp14">MUST</span> ignore it.<a href="#section-5-6.5.1" class="pilcrow">¶</a></p>
+</li>
+      </ul>
+</section>
+</div>
+<div id="session">
+<section id="section-6">
+      <h2 id="name-session">
+<a href="#section-6" class="section-number selfRef">6. </a><a href="#name-session" class="section-name selfRef">Session</a>
+      </h2>
+<p id="section-6-1">The caller speaks first. Its first frame <span class="bcp14">MUST</span> be a <code>hello</code>. Until the node
+has sent <code>welcome</code>, the caller <span class="bcp14">MUST NOT</span> send any other frame, and a node
+that receives one <span class="bcp14">MUST</span> answer <code>reject</code> with status 400 and close the
+session.<a href="#section-6-1" class="pilcrow">¶</a></p>
+<div id="hello">
+<section id="section-6.1">
+        <h3 id="name-hello">
+<a href="#section-6.1" class="section-number selfRef">6.1. </a><a href="#name-hello" class="section-name selfRef">hello</a>
+        </h3>
+<span id="name-members-of-hello"></span><table class="center" id="table-1">
+          <caption>
+<a href="#table-1" class="selfRef">Table 1</a>:
+<a href="#name-members-of-hello" class="selfRef">Members of hello</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Member</th>
+              <th class="text-left" rowspan="1" colspan="1">Type</th>
+              <th class="text-left" rowspan="1" colspan="1">Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>type</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>"hello"</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>matp</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">version string (<a href="#versioning" class="auto internal xref">Section 11</a>)</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>agent</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">object, below</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>token</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">string</td>
+              <td class="text-left" rowspan="1" colspan="1">see below</td>
+            </tr>
+          </tbody>
+        </table>
+<span id="name-members-of-helloagent"></span><table class="center" id="table-2">
+          <caption>
+<a href="#table-2" class="selfRef">Table 2</a>:
+<a href="#name-members-of-helloagent" class="selfRef">Members of hello.agent</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Member of agent</th>
+              <th class="text-left" rowspan="1" colspan="1">Type</th>
+              <th class="text-left" rowspan="1" colspan="1">Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>id</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">string, 1 to 256 characters</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>name</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">string</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">OPTIONAL</span>, for display and logs</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>kind</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>"user-agent"</code> or <code>"merchant-agent"</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>operator</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">string</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">OPTIONAL</span>, who runs the agent</td>
+            </tr>
+          </tbody>
+        </table>
+<ul class="normal">
+<li class="normal" id="section-6.1-3.1">
+            <p id="section-6.1-3.1.1"><code>agent.id</code> names the calling agent. The node treats it as an opaque
+string and attributes every request of the session to it. This document
+uses identifiers of the form <code>urn:matp:agent:&lt;name&gt;</code>; <code>matp</code> is not a
+registered URN namespace <span>[<a href="#RFC8141" class="cite xref">RFC8141</a>]</span>, so these identifiers are only
+meaningful between parties that agreed on them.<a href="#section-6.1-3.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-6.1-3.2">
+            <p id="section-6.1-3.2.1"><code>agent.kind</code> is <code>user-agent</code> when the caller acts for a guest, and
+<code>merchant-agent</code> when it acts for a business.<a href="#section-6.1-3.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-6.1-3.3">
+            <p id="section-6.1-3.3.1"><code>token</code> is the caller's credential on this node, issued out of band. A
+node <span class="bcp14">MUST</span> refuse a <code>hello</code> from a non-loopback peer that has no <code>token</code>.
+A node <span class="bcp14">MAY</span> accept a <code>hello</code> without <code>token</code> on the loopback interface.<a href="#section-6.1-3.3.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+<p id="section-6.1-4">The node <span class="bcp14">MUST</span> answer a <code>hello</code> with exactly one <code>welcome</code> or <code>reject</code>.<a href="#section-6.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="welcome">
+<section id="section-6.2">
+        <h3 id="name-welcome">
+<a href="#section-6.2" class="section-number selfRef">6.2. </a><a href="#name-welcome" class="section-name selfRef">welcome</a>
+        </h3>
+<span id="name-members-of-welcome"></span><table class="center" id="table-3">
+          <caption>
+<a href="#table-3" class="selfRef">Table 3</a>:
+<a href="#name-members-of-welcome" class="selfRef">Members of welcome</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Member</th>
+              <th class="text-left" rowspan="1" colspan="1">Type</th>
+              <th class="text-left" rowspan="1" colspan="1">Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>type</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>"welcome"</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>matp</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">the version the node will use for this session</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>node</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">object with <code>id</code> (string, <span class="bcp14">REQUIRED</span>) and <code>name</code> (string, <span class="bcp14">OPTIONAL</span>)</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>intents</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">array of intent names the node serves</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>session</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">string, the node's identifier for this session</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+          </tbody>
+        </table>
+<p id="section-6.2-2">A caller <span class="bcp14">MUST NOT</span> send a request whose intent is not in <code>intents</code>. A node
+that receives one <span class="bcp14">MUST</span> answer it with status 400.<a href="#section-6.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="reject">
+<section id="section-6.3">
+        <h3 id="name-reject">
+<a href="#section-6.3" class="section-number selfRef">6.3. </a><a href="#name-reject" class="section-name selfRef">reject</a>
+        </h3>
+<span id="name-members-of-reject"></span><table class="center" id="table-4">
+          <caption>
+<a href="#table-4" class="selfRef">Table 4</a>:
+<a href="#name-members-of-reject" class="selfRef">Members of reject</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Member</th>
+              <th class="text-left" rowspan="1" colspan="1">Type</th>
+              <th class="text-left" rowspan="1" colspan="1">Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>type</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>"reject"</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>status</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">400, 401 or 426</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>message</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">string, for humans</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>matp</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">the version the node speaks</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">OPTIONAL</span>
+</td>
+            </tr>
+          </tbody>
+        </table>
+<ul class="normal">
+<li class="normal" id="section-6.3-2.1">
+            <p id="section-6.3-2.1.1">401: the agent is unknown to the node, the token is missing where it is
+required, or the token does not match the agent.<a href="#section-6.3-2.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-6.3-2.2">
+            <p id="section-6.3-2.2.1">426: the node does not speak the major version in <code>hello.matp</code>
+(<a href="#versioning" class="auto internal xref">Section 11</a>). The node <span class="bcp14">SHOULD</span> include <code>matp</code>.<a href="#section-6.3-2.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-6.3-2.3">
+            <p id="section-6.3-2.3.1">400: the first frame was not a valid <code>hello</code>.<a href="#section-6.3-2.3.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+<p id="section-6.3-3">After sending <code>reject</code>, the node <span class="bcp14">MUST</span> close the connection.<a href="#section-6.3-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="requests">
+<section id="section-7">
+      <h2 id="name-requests-and-responses">
+<a href="#section-7" class="section-number selfRef">7. </a><a href="#name-requests-and-responses" class="section-name selfRef">Requests and Responses</a>
+      </h2>
+<div id="request">
+<section id="section-7.1">
+        <h3 id="name-request">
+<a href="#section-7.1" class="section-number selfRef">7.1. </a><a href="#name-request" class="section-name selfRef">request</a>
+        </h3>
+<span id="name-members-of-request"></span><table class="center" id="table-5">
+          <caption>
+<a href="#table-5" class="selfRef">Table 5</a>:
+<a href="#name-members-of-request" class="selfRef">Members of request</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Member</th>
+              <th class="text-left" rowspan="1" colspan="1">Type</th>
+              <th class="text-left" rowspan="1" colspan="1">Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>type</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>"request"</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>id</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">string, 1 to 64 characters</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>intent</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">intent name (<a href="#intents" class="auto internal xref">Section 8</a>)</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>merchant</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">slug</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span> for AVAILABILITY, BOOK, AMEND and CANCEL; absent otherwise</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>params</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">object</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span> (<code>{}</code> when the intent takes none)</td>
+            </tr>
+          </tbody>
+        </table>
+<ul class="normal">
+<li class="normal" id="section-7.1-2.1">
+            <p id="section-7.1-2.1.1">The caller chooses <code>id</code>. It <span class="bcp14">MUST</span> be unique among the requests of the
+session that have not been answered yet. A node that receives a request
+whose <code>id</code> is already in flight <span class="bcp14">MUST</span> send an <code>error</code> frame with status
+400 and <span class="bcp14">MUST NOT</span> carry out the request.<a href="#section-7.1-2.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.1-2.2">
+            <p id="section-7.1-2.2.1"><code>params</code> <span class="bcp14">MUST</span> validate against the intent's params schema
+(<a href="#json-schemas" class="auto internal xref">Appendix C</a>). Unlike frame members, unknown members of <code>params</code> are
+invalid: a node <span class="bcp14">MUST</span> answer status 400 with code <code>invalid_input</code>.<a href="#section-7.1-2.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.1-2.3">
+            <p id="section-7.1-2.3.1">A request for an intent that needs <code>merchant</code> and lacks it, or for an
+intent that takes none and has it, <span class="bcp14">MUST</span> be answered with status 400.<a href="#section-7.1-2.3.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+</section>
+</div>
+<div id="response">
+<section id="section-7.2">
+        <h3 id="name-response">
+<a href="#section-7.2" class="section-number selfRef">7.2. </a><a href="#name-response" class="section-name selfRef">response</a>
+        </h3>
+<span id="name-members-of-response"></span><table class="center" id="table-6">
+          <caption>
+<a href="#table-6" class="selfRef">Table 6</a>:
+<a href="#name-members-of-response" class="selfRef">Members of response</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Member</th>
+              <th class="text-left" rowspan="1" colspan="1">Type</th>
+              <th class="text-left" rowspan="1" colspan="1">Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>type</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>"response"</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>id</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">the request's <code>id</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>status</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">status code (<a href="#status-codes" class="auto internal xref">Section 9</a>)</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>result</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">object</td>
+              <td class="text-left" rowspan="1" colspan="1">present if and only if <code>status</code> is 200</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>error</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">object, below</td>
+              <td class="text-left" rowspan="1" colspan="1">present if and only if <code>status</code> is not 200</td>
+            </tr>
+          </tbody>
+        </table>
+<span id="name-members-of-responseerror"></span><table class="center" id="table-7">
+          <caption>
+<a href="#table-7" class="selfRef">Table 7</a>:
+<a href="#name-members-of-responseerror" class="selfRef">Members of response.error</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Member of error</th>
+              <th class="text-left" rowspan="1" colspan="1">Type</th>
+              <th class="text-left" rowspan="1" colspan="1">Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>code</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">error code (<a href="#status-codes" class="auto internal xref">Section 9</a>)</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>message</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">string, for the guest or the caller</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>fallback_url</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">absolute URI</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span> for <code>party_too_large</code> and <code>agent_unavailable</code>; absent otherwise</td>
+            </tr>
+          </tbody>
+        </table>
+<ul class="normal">
+<li class="normal" id="section-7.2-3.1">
+            <p id="section-7.2-3.1.1">A node <span class="bcp14">MUST</span> send exactly one response to each request it accepted, unless
+the session ends first.<a href="#section-7.2-3.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.2-3.2">
+            <p id="section-7.2-3.2.1"><code>result</code> <span class="bcp14">MUST</span> validate against the intent's result schema
+(<a href="#json-schemas" class="auto internal xref">Appendix C</a>).<a href="#section-7.2-3.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.2-3.3">
+            <p id="section-7.2-3.3.1"><code>fallback_url</code> is the merchant's own booking page. A caller <span class="bcp14">SHOULD</span> give
+it to the guest, so that the guest can still book when the merchant
+agent cannot serve the request.<a href="#section-7.2-3.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.2-3.4">
+            <p id="section-7.2-3.4.1"><code>message</code> <span class="bcp14">MUST NOT</span> contain stack traces or internal identifiers
+(<a href="#security" class="auto internal xref">Section 12</a>).<a href="#section-7.2-3.4.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+</section>
+</div>
+<div id="concurrency">
+<section id="section-7.3">
+        <h3 id="name-concurrency">
+<a href="#section-7.3" class="section-number selfRef">7.3. </a><a href="#name-concurrency" class="section-name selfRef">Concurrency</a>
+        </h3>
+<p id="section-7.3-1">A caller <span class="bcp14">MAY</span> send a request before earlier ones are answered. A node <span class="bcp14">MAY</span>
+carry out the requests of one session concurrently, and <span class="bcp14">MAY</span> answer them in
+any order. A caller <span class="bcp14">MUST</span> match responses to requests by <code>id</code> only.<a href="#section-7.3-1" class="pilcrow">¶</a></p>
+<p id="section-7.3-2">A node <span class="bcp14">MUST</span> accept at least 32 requests in flight per session. A node <span class="bcp14">MAY</span>
+answer a request beyond its limit with status 400 and code
+<code>invalid_input</code>, without carrying it out.<a href="#section-7.3-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="idle-sessions">
+<section id="section-7.4">
+        <h3 id="name-idle-sessions">
+<a href="#section-7.4" class="section-number selfRef">7.4. </a><a href="#name-idle-sessions" class="section-name selfRef">Idle sessions</a>
+        </h3>
+<p id="section-7.4-1">A node <span class="bcp14">SHOULD</span> close a session that has received no frame for 60 seconds,
+and <span class="bcp14">MUST NOT</span> close it for idleness sooner. A caller that wants to keep a
+session open sends <code>PING</code> (<a href="#ping" class="auto internal xref">Section 8.7</a>).<a href="#section-7.4-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="error-frames">
+<section id="section-7.5">
+        <h3 id="name-session-errors">
+<a href="#section-7.5" class="section-number selfRef">7.5. </a><a href="#name-session-errors" class="section-name selfRef">Session errors</a>
+        </h3>
+<p id="section-7.5-1">An <code>error</code> frame reports a problem that no response can carry because no
+request <code>id</code> can be attributed: the frame is not JSON, has no valid <code>type</code>
+or <code>id</code>, is too large, or reuses an <code>id</code> in flight.<a href="#section-7.5-1" class="pilcrow">¶</a></p>
+<span id="name-members-of-error"></span><table class="center" id="table-8">
+          <caption>
+<a href="#table-8" class="selfRef">Table 8</a>:
+<a href="#name-members-of-error" class="selfRef">Members of error</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Member</th>
+              <th class="text-left" rowspan="1" colspan="1">Type</th>
+              <th class="text-left" rowspan="1" colspan="1">Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>type</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>"error"</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>status</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">400 or 413</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>message</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">string</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span class="bcp14">REQUIRED</span>
+</td>
+            </tr>
+          </tbody>
+        </table>
+<p id="section-7.5-3">After an <code>error</code> frame with status 413, the node closes the session. After
+one with status 400, the session stays open. A node that receives a frame
+of an unknown <code>type</code> <span class="bcp14">MUST</span> send an <code>error</code> frame with status 400. A caller
+that receives a frame of an unknown <code>type</code> <span class="bcp14">MUST</span> ignore it, so that later
+versions can add frames sent by the node (<a href="#events" class="auto internal xref">Section 10</a>).<a href="#section-7.5-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="idempotency">
+<section id="section-7.6">
+        <h3 id="name-idempotency">
+<a href="#section-7.6" class="section-number selfRef">7.6. </a><a href="#name-idempotency" class="section-name selfRef">Idempotency</a>
+        </h3>
+<p id="section-7.6-1">A write sent again after a lost session must not book twice.<a href="#section-7.6-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-7.6-2.1">
+            <p id="section-7.6-2.1.1">BOOK and AMEND carry <code>params.idempotency_key</code>, chosen by the caller. A
+caller retrying a write <span class="bcp14">MUST</span> reuse the key of the first attempt, with the
+same params, and <span class="bcp14">SHOULD</span> use a fresh unpredictable key for every new write.<a href="#section-7.6-2.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.6-2.2">
+            <p id="section-7.6-2.2.1">For BOOK, the key is scoped to the merchant. A node that receives a BOOK
+with a key already used at that merchant, and the same <code>starts_at</code>,
+<code>party_size</code> and guest, <span class="bcp14">MUST</span> return status 200 with the reservation the
+first request created, and <span class="bcp14">MUST NOT</span> create another. If the params differ,
+it <span class="bcp14">MUST</span> answer status 400 with code <code>invalid_input</code>.<a href="#section-7.6-2.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.6-2.3">
+            <p id="section-7.6-2.3.1">An AMEND sent again with the same params <span class="bcp14">MUST</span> leave the booking as the
+first one left it, and return it.<a href="#section-7.6-2.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.6-2.4">
+            <p id="section-7.6-2.4.1">CANCEL is idempotent without a key: cancelling a booking already
+cancelled by the guest returns it again, with status 200.<a href="#section-7.6-2.4.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+</section>
+</div>
+<div id="confirmation-before-writes">
+<section id="section-7.7">
+        <h3 id="name-confirmation-before-writes">
+<a href="#section-7.7" class="section-number selfRef">7.7. </a><a href="#name-confirmation-before-writes" class="section-name selfRef">Confirmation before writes</a>
+        </h3>
+<p id="section-7.7-1">BOOK, AMEND and CANCEL change a guest's plans. A caller acting for a guest
+<span class="bcp14">MUST</span> obtain the guest's explicit confirmation of the merchant, time, party
+size and name before sending any of them. A node cannot verify this; it is
+a requirement on callers, and a bridge enforces it through what it tells
+the assistant (<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>).<a href="#section-7.7-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="intents">
+<section id="section-8">
+      <h2 id="name-intents">
+<a href="#section-8" class="section-number selfRef">8. </a><a href="#name-intents" class="section-name selfRef">Intents</a>
+      </h2>
+<p id="section-8-1">Times are RFC 3339 <span>[<a href="#RFC3339" class="cite xref">RFC3339</a>]</span> <code>date-time</code> values with an explicit offset.
+<code>date</code> is an RFC 3339 <code>full-date</code> and <code>time</code> is <code>HH:MM</code> (24-hour clock),
+both in the merchant's local time zone. The params and result of each
+intent are defined by the JSON Schemas of <a href="#json-schemas" class="auto internal xref">Appendix C</a>; this section
+states their meaning and errors.<a href="#section-8-1" class="pilcrow">¶</a></p>
+<span id="name-matp-01-intents"></span><table class="center" id="table-9">
+        <caption>
+<a href="#table-9" class="selfRef">Table 9</a>:
+<a href="#name-matp-01-intents" class="selfRef">MATP 0.1 intents</a>
+        </caption>
+<thead>
+          <tr>
+            <th class="text-left" rowspan="1" colspan="1">Intent</th>
+            <th class="text-left" rowspan="1" colspan="1">merchant</th>
+            <th class="text-left" rowspan="1" colspan="1">Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">DISCOVER</td>
+            <td class="text-left" rowspan="1" colspan="1">absent</td>
+            <td class="text-left" rowspan="1" colspan="1">Find merchants matching a query and preferences</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">AVAILABILITY</td>
+            <td class="text-left" rowspan="1" colspan="1">required</td>
+            <td class="text-left" rowspan="1" colspan="1">Up to 3 start times with a free table</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">BOOK</td>
+            <td class="text-left" rowspan="1" colspan="1">required</td>
+            <td class="text-left" rowspan="1" colspan="1">Create a booking</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">AMEND</td>
+            <td class="text-left" rowspan="1" colspan="1">required</td>
+            <td class="text-left" rowspan="1" colspan="1">Move a booking or change its party size</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">CANCEL</td>
+            <td class="text-left" rowspan="1" colspan="1">required</td>
+            <td class="text-left" rowspan="1" colspan="1">Cancel a booking as the guest</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">RECALL</td>
+            <td class="text-left" rowspan="1" colspan="1">absent</td>
+            <td class="text-left" rowspan="1" colspan="1">A guest's upcoming bookings and notices</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">PING</td>
+            <td class="text-left" rowspan="1" colspan="1">absent</td>
+            <td class="text-left" rowspan="1" colspan="1">Liveness check, keeps the session open</td>
+          </tr>
+        </tbody>
+      </table>
+<div id="discover">
+<section id="section-8.1">
+        <h3 id="name-discover">
+<a href="#section-8.1" class="section-number selfRef">8.1. </a><a href="#name-discover" class="section-name selfRef">DISCOVER</a>
+        </h3>
+<p id="section-8.1-1">Params: <code>query</code> (string), and optionally <code>near</code> (string), <code>date</code>, and
+<code>filters</code> with <code>tags</code> (array of strings) and <code>max_price</code>: one to four
+EURO SIGN characters (U+20AC), from "€" (cheapest) to "€€€€".<a href="#section-8.1-1" class="pilcrow">¶</a></p>
+<p id="section-8.1-2">Result: <code>merchants</code>, the live merchants matching the query and all
+filters, each with <code>slug</code>, <code>name</code>, <code>city</code>, <code>tags</code>, <code>price_level</code> and
+<code>website</code>. When filters exclude every merchant, <code>suggestions</code> lists which
+filter to drop (<code>drop</code>) and how many merchants would then match
+(<code>matches</code>). <code>ignored_filters</code> lists the tags the node does not know.<a href="#section-8.1-2" class="pilcrow">¶</a></p>
+<p id="section-8.1-3">A caller <span class="bcp14">MUST</span> send the guest's preferences as <code>filters</code>. A node <span class="bcp14">MUST NOT</span>
+store them beyond the request.<a href="#section-8.1-3" class="pilcrow">¶</a></p>
+<p id="section-8.1-4">Errors: 400.<a href="#section-8.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="availability">
+<section id="section-8.2">
+        <h3 id="name-availability">
+<a href="#section-8.2" class="section-number selfRef">8.2. </a><a href="#name-availability" class="section-name selfRef">AVAILABILITY</a>
+        </h3>
+<p id="section-8.2-1">Params: <code>date</code>, <code>party_size</code> (integer, at least 1), and optionally <code>time</code>.<a href="#section-8.2-1" class="pilcrow">¶</a></p>
+<p id="section-8.2-2">Result: <code>slots</code>, at most 3, each with <code>starts_at</code> and <code>table_label</code>. When
+<code>time</code> is given, the node returns the start times closest to it (the
+earlier one at equal distance); otherwise, the earliest ones. Start times
+already past are never returned. The result is sorted by <code>starts_at</code>. An empty <code>slots</code> array means nothing is
+free that day for that party.<a href="#section-8.2-2" class="pilcrow">¶</a></p>
+<p id="section-8.2-3">Errors: 400, 404, 413, 503.<a href="#section-8.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="book">
+<section id="section-8.3">
+        <h3 id="name-book">
+<a href="#section-8.3" class="section-number selfRef">8.3. </a><a href="#name-book" class="section-name selfRef">BOOK</a>
+        </h3>
+<p id="section-8.3-1">Params: <code>starts_at</code>, <code>party_size</code>, <code>guest_name</code> (non-empty string),
+<code>idempotency_key</code> (non-empty string).<a href="#section-8.3-1" class="pilcrow">¶</a></p>
+<p id="section-8.3-2">Result: <code>reservation</code>, with <code>id</code> (the merchant's reference, for example
+"R-001"), <code>merchant</code>, <code>starts_at</code>, <code>party_size</code>, <code>table_label</code>, <code>status</code>
+("confirmed"), <code>guest_name</code> and <code>via</code>. The node records how the booking was
+made: in the reference implementation, <code>via</code> is "claude" for a
+<code>user-agent</code> caller and "merchant" for a <code>merchant-agent</code> caller.<a href="#section-8.3-2" class="pilcrow">¶</a></p>
+<p id="section-8.3-3"><code>starts_at</code> <span class="bcp14">MUST</span> be a start time the merchant offers; AVAILABILITY returns
+such times. Errors: 400, 404, 409, 413, 503.<a href="#section-8.3-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="amend">
+<section id="section-8.4">
+        <h3 id="name-amend">
+<a href="#section-8.4" class="section-number selfRef">8.4. </a><a href="#name-amend" class="section-name selfRef">AMEND</a>
+        </h3>
+<p id="section-8.4-1">Params: <code>reservation_id</code>, <code>guest_name</code>, <code>idempotency_key</code>, and at least one
+of <code>starts_at</code> and <code>party_size</code>.<a href="#section-8.4-1" class="pilcrow">¶</a></p>
+<p id="section-8.4-2">The booking <span class="bcp14">MUST</span> be confirmed and <span class="bcp14">MUST</span> belong to <code>guest_name</code>; otherwise
+the node answers 404, without saying which check failed. Result:
+<code>reservation</code>, as amended.<a href="#section-8.4-2" class="pilcrow">¶</a></p>
+<p id="section-8.4-3">Errors: 400, 404, 409, 413, 503.<a href="#section-8.4-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="cancel">
+<section id="section-8.5">
+        <h3 id="name-cancel">
+<a href="#section-8.5" class="section-number selfRef">8.5. </a><a href="#name-cancel" class="section-name selfRef">CANCEL</a>
+        </h3>
+<p id="section-8.5-1">Params: <code>reservation_id</code>, <code>guest_name</code>. The same ownership rule as AMEND
+applies. Result: <code>reservation</code>, with <code>status</code> "cancelled".<a href="#section-8.5-1" class="pilcrow">¶</a></p>
+<p id="section-8.5-2">Errors: 400, 404, 503.<a href="#section-8.5-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="recall">
+<section id="section-8.6">
+        <h3 id="name-recall">
+<a href="#section-8.6" class="section-number selfRef">8.6. </a><a href="#name-recall" class="section-name selfRef">RECALL</a>
+        </h3>
+<p id="section-8.6-1">Params: <code>guest_name</code>.<a href="#section-8.6-1" class="pilcrow">¶</a></p>
+<p id="section-8.6-2">Result: <code>reservations</code>, the guest's upcoming confirmed bookings at every
+live merchant of the node, and <code>notices</code>, messages for the guest (for
+example, that a merchant cancelled a booking). A notice is returned once:
+the node <span class="bcp14">MUST NOT</span> return it again in a later RECALL.<a href="#section-8.6-2" class="pilcrow">¶</a></p>
+<p id="section-8.6-3">Errors: 400, 503.<a href="#section-8.6-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="ping">
+<section id="section-8.7">
+        <h3 id="name-ping">
+<a href="#section-8.7" class="section-number selfRef">8.7. </a><a href="#name-ping" class="section-name selfRef">PING</a>
+        </h3>
+<p id="section-8.7-1">Params: <code>{}</code>. Result: <code>pong</code> (true) and <code>server_time</code>, the node's clock.<a href="#section-8.7-1" class="pilcrow">¶</a></p>
+<p id="section-8.7-2">Errors: none defined.<a href="#section-8.7-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="status-codes">
+<section id="section-9">
+      <h2 id="name-status-codes">
+<a href="#section-9" class="section-number selfRef">9. </a><a href="#name-status-codes" class="section-name selfRef">Status Codes</a>
+      </h2>
+<span id="name-matp-01-status-codes"></span><table class="center" id="table-10">
+        <caption>
+<a href="#table-10" class="selfRef">Table 10</a>:
+<a href="#name-matp-01-status-codes" class="selfRef">MATP 0.1 status codes</a>
+        </caption>
+<thead>
+          <tr>
+            <th class="text-left" rowspan="1" colspan="1">Status</th>
+            <th class="text-left" rowspan="1" colspan="1">error.code</th>
+            <th class="text-left" rowspan="1" colspan="1">Meaning</th>
+            <th class="text-left" rowspan="1" colspan="1">fallback_url</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">200</td>
+            <td class="text-left" rowspan="1" colspan="1">none</td>
+            <td class="text-left" rowspan="1" colspan="1">Success</td>
+            <td class="text-left" rowspan="1" colspan="1">no</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">400</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>invalid_input</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">Invalid params, unknown intent, missing or unexpected <code>merchant</code>, too many requests in flight</td>
+            <td class="text-left" rowspan="1" colspan="1">no</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">401</td>
+            <td class="text-left" rowspan="1" colspan="1">none</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>hello</code> refused (in <code>reject</code> only)</td>
+            <td class="text-left" rowspan="1" colspan="1">no</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">404</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>not_found</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">Unknown merchant, merchant not yet live, unknown booking, or a booking that is not the guest's</td>
+            <td class="text-left" rowspan="1" colspan="1">no</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">409</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>slot_unavailable</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">The time is taken, blocked, in the past, or not one the merchant offers</td>
+            <td class="text-left" rowspan="1" colspan="1">no</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">413</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>party_too_large</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">The party is above the merchant's online limit, or no table fits it</td>
+            <td class="text-left" rowspan="1" colspan="1">yes</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">426</td>
+            <td class="text-left" rowspan="1" colspan="1">none</td>
+            <td class="text-left" rowspan="1" colspan="1">Unsupported major version (in <code>reject</code> only)</td>
+            <td class="text-left" rowspan="1" colspan="1">no</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">503</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>agent_unavailable</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">The merchant agent is down, failed, or timed out</td>
+            <td class="text-left" rowspan="1" colspan="1">yes</td>
+          </tr>
+        </tbody>
+      </table>
+<p id="section-9-2">The <code>status</code> values 400 and 413 also appear in <code>error</code> frames
+(<a href="#error-frames" class="auto internal xref">Section 7.5</a>), which carry no <code>error.code</code>; there, 413 means a frame
+above the size limit.<a href="#section-9-2" class="pilcrow">¶</a></p>
+<p id="section-9-3">A node <span class="bcp14">MUST</span> answer 503 to AVAILABILITY, BOOK, AMEND and CANCEL when the
+merchant is marked as down, without consulting the merchant agent. A
+caller that gets 413 or 503 <span class="bcp14">MUST NOT</span> retry the same request to the same
+merchant in a loop; it <span class="bcp14">SHOULD</span> offer the guest the <code>fallback_url</code>.<a href="#section-9-3" class="pilcrow">¶</a></p>
+<p id="section-9-4">A caller that receives a status it does not know <span class="bcp14">MUST</span> handle it as the
+class of its first digit: 2 as success, 4 as a caller error, 5 as a node
+error.<a href="#section-9-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="events">
+<section id="section-10">
+      <h2 id="name-events">
+<a href="#section-10" class="section-number selfRef">10. </a><a href="#name-events" class="section-name selfRef">Events</a>
+      </h2>
+<p id="section-10-1">Frames of type <code>event</code>, sent by the node without a request, are reserved
+for a later version. One intended use is to tell a guest's agent that a
+merchant cancelled a booking; in this version, that reaches the guest as a
+notice returned by RECALL. A 0.1 caller ignores them (<a href="#error-frames" class="auto internal xref">Section 7.5</a>).<a href="#section-10-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="versioning">
+<section id="section-11">
+      <h2 id="name-versioning-and-extensibilit">
+<a href="#section-11" class="section-number selfRef">11. </a><a href="#name-versioning-and-extensibilit" class="section-name selfRef">Versioning and Extensibility</a>
+      </h2>
+<p id="section-11-1">A version is written <code>major.minor</code>:<a href="#section-11-1" class="pilcrow">¶</a></p>
+<div class="lang-abnf sourcecode" id="section-11-2">
+<pre>
+version = 1*DIGIT "." 1*DIGIT
+</pre><a href="#section-11-2" class="pilcrow">¶</a>
+</div>
+<p id="section-11-3">This document defines version 0.1. In <code>hello</code>, the caller sends the
+highest version it speaks. If the node speaks the same major version, it
+answers <code>welcome</code> with the highest minor version both speak, and both
+sides use that version for the session. Otherwise it answers <code>reject</code> with
+status 426.<a href="#section-11-3" class="pilcrow">¶</a></p>
+<p id="section-11-4">Within a major version, a later minor version <span class="bcp14">MAY</span> add intents, optional
+frame members, optional params, result members and status codes. It <span class="bcp14">MUST NOT</span> change the meaning of what an earlier minor version defined. Because
+unknown <code>params</code> members are invalid (<a href="#requests" class="auto internal xref">Section 7</a>), a caller <span class="bcp14">MUST NOT</span> send
+params that the session's version does not define. A caller <span class="bcp14">MUST</span> ignore
+result members it does not know.<a href="#section-11-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="security">
+<section id="section-12">
+      <h2 id="name-security-considerations">
+<a href="#section-12" class="section-number selfRef">12. </a><a href="#name-security-considerations" class="section-name selfRef">Security Considerations</a>
+      </h2>
+<span class="break"></span><dl class="dlParallel" id="section-12-1">
+        <dt id="section-12-1.1">Agent identity and tokens:</dt>
+        <dd style="margin-left: 1.5em" id="section-12-1.2">
+          <p id="section-12-1.2.1">The node attributes every request to the <code>agent.id</code> of its session. That
+attribution is only as good as the token check: a node <span class="bcp14">MUST</span> bind each
+token to one <code>agent.id</code> and refuse a <code>hello</code> whose token does not match.
+A node <span class="bcp14">SHOULD</span> compare tokens in constant time. Tokens <span class="bcp14">MUST NOT</span> be sent
+outside TLS except on the loopback interface, and <span class="bcp14">SHOULD</span> be long random
+strings that a node can revoke individually.<a href="#section-12-1.2.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-12-1.3">Transport:</dt>
+        <dd style="margin-left: 1.5em" id="section-12-1.4">
+          <p id="section-12-1.4.1">Without TLS, anyone on the path reads guest names, bookings and tokens,
+and can change them. <a href="#transport" class="auto internal xref">Section 4</a> therefore requires TLS 1.3 off the
+loopback interface. A node bound to the loopback interface is reachable
+by every local process: deployments on shared hosts <span class="bcp14">SHOULD</span> still require
+tokens.<a href="#section-12-1.4.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-12-1.5">Limits and denial of service:</dt>
+        <dd style="margin-left: 1.5em" id="section-12-1.6">
+          <p id="section-12-1.6.1">The frame size limit, the limit on requests in flight and the idle
+timeout bound what one session costs a node. A node <span class="bcp14">SHOULD</span> also limit
+sessions per peer and per agent. A node <span class="bcp14">MUST</span> stop reading a frame at the
+size limit instead of buffering it.<a href="#section-12-1.6.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-12-1.7">Writes without confirmation:</dt>
+        <dd style="margin-left: 1.5em" id="section-12-1.8">
+          <p id="section-12-1.8.1">A misbehaving caller can book, amend or cancel without asking the guest.
+The node cannot detect it. Idempotency keys prevent duplicate bookings
+on retries, not unwanted ones.<a href="#section-12-1.8.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-12-1.9">Guest identity:</dt>
+        <dd style="margin-left: 1.5em" id="section-12-1.10">
+          <p id="section-12-1.10.1">In this version, a booking belongs to whoever gives its guest name and
+reference. Any authenticated caller that knows both can amend or cancel
+it, and RECALL returns the bookings of any name. This is acceptable only
+in an experiment with trusted callers. A deployment beyond that needs
+guest authentication, which a later version would define.<a href="#section-12-1.10.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-12-1.11">Error messages:</dt>
+        <dd style="margin-left: 1.5em" id="section-12-1.12">
+          <p id="section-12-1.12.1"><code>error.message</code> reaches people. A node <span class="bcp14">MUST NOT</span> put stack traces,
+internal names or data of other guests in it.<a href="#section-12-1.12.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-12-1.13">Fallback URLs:</dt>
+        <dd style="margin-left: 1.5em" id="section-12-1.14">
+          <p id="section-12-1.14.1">A caller passes <code>fallback_url</code> to a person. A caller <span class="bcp14">SHOULD</span> only offer
+<code>https</code> URLs, and a node <span class="bcp14">SHOULD</span> only send URLs on the merchant's own
+website.<a href="#section-12-1.14.1" class="pilcrow">¶</a></p>
+</dd>
+      <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="privacy">
+<section id="section-13">
+      <h2 id="name-privacy-considerations">
+<a href="#section-13" class="section-number selfRef">13. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy Considerations</a>
+      </h2>
+<span class="break"></span><dl class="dlParallel" id="section-13-1">
+        <dt id="section-13-1.1">Guest names:</dt>
+        <dd style="margin-left: 1.5em" id="section-13-1.2">
+          <p id="section-13-1.2.1">Guest names and party sizes are personal data. A node <span class="bcp14">SHOULD NOT</span> write
+guest names to logs at a level enabled in production. The reference
+implementation logs, for each request, the agent id, intent, merchant,
+status and latency, and nothing that names the guest.<a href="#section-13-1.2.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-13-1.3">Preferences:</dt>
+        <dd style="margin-left: 1.5em" id="section-13-1.4">
+          <p id="section-13-1.4.1">DISCOVER filters can reveal diet or religion (<code>vegan</code>, <code>halal</code>,
+<code>kosher</code>). A node <span class="bcp14">MUST NOT</span> store them beyond the request or link them to
+a guest.<a href="#section-13-1.4.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-13-1.5">Recall:</dt>
+        <dd style="margin-left: 1.5em" id="section-13-1.6">
+          <p id="section-13-1.6.1">As <a href="#security" class="auto internal xref">Section 12</a> says, RECALL returns the bookings of any name it is
+given. Callers <span class="bcp14">SHOULD</span> only send the name of the guest they act for.<a href="#section-13-1.6.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-13-1.7">Agent identity:</dt>
+        <dd style="margin-left: 1.5em" id="section-13-1.8">
+          <p id="section-13-1.8.1"><code>agent.id</code> identifies software, not a person. A caller <span class="bcp14">SHOULD NOT</span> put
+personal data in it.<a href="#section-13-1.8.1" class="pilcrow">¶</a></p>
+</dd>
+      <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="iana">
+<section id="section-14">
+      <h2 id="name-iana-considerations">
+<a href="#section-14" class="section-number selfRef">14. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA Considerations</a>
+      </h2>
+<p id="section-14-1">This document has no IANA actions. The values below are used by this
+experiment without registration.<a href="#section-14-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-14-2">
+        <dt id="section-14-2.1">Port:</dt>
+        <dd style="margin-left: 1.5em" id="section-14-2.2">
+          <p id="section-14-2.2.1">The reference implementation listens on TCP port 4710. That port is
+unassigned in the IANA Service Name and Transport Protocol Port Number
+Registry; this document does not request it. Registration would follow
+the procedures of <span>[<a href="#RFC6335" class="cite xref">RFC6335</a>]</span>.<a href="#section-14-2.2.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-14-2.3">URI scheme:</dt>
+        <dd style="margin-left: 1.5em" id="section-14-2.4">
+          <p id="section-14-2.4.1">The <code>matp</code> scheme of <a href="#transport" class="auto internal xref">Section 4</a> is not registered. A later version
+would request provisional registration under <span>[<a href="#RFC7595" class="cite xref">RFC7595</a>]</span> with this
+template:<a href="#section-14-2.4.1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-14-2.4.2.1">
+              <p id="section-14-2.4.2.1.1">Scheme name: matp<a href="#section-14-2.4.2.1.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-14-2.4.2.2">
+              <p id="section-14-2.4.2.2.1">Status: Provisional<a href="#section-14-2.4.2.2.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-14-2.4.2.3">
+              <p id="section-14-2.4.2.3.1">Applications/protocols that use this scheme name: the Merchant Agent
+Transfer Protocol (this document)<a href="#section-14-2.4.2.3.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-14-2.4.2.4">
+              <p id="section-14-2.4.2.4.1">Contact: the authors of this document<a href="#section-14-2.4.2.4.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-14-2.4.2.5">
+              <p id="section-14-2.4.2.5.1">Change controller: the authors of this document<a href="#section-14-2.4.2.5.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-14-2.4.2.6">
+              <p id="section-14-2.4.2.6.1">References: this document<a href="#section-14-2.4.2.6.1" class="pilcrow">¶</a></p>
+</li>
+          </ul>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-14-2.5">URN namespace:</dt>
+        <dd style="margin-left: 1.5em" id="section-14-2.6">
+          <p id="section-14-2.6.1">The <code>urn:matp:</code> identifiers used in examples are not a registered URN
+namespace (<span>[<a href="#RFC8141" class="cite xref">RFC8141</a>]</span>).<a href="#section-14-2.6.1" class="pilcrow">¶</a></p>
+</dd>
+      <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="sec-combined-references">
+<section id="section-15">
+      <h2 id="name-references">
+<a href="#section-15" class="section-number selfRef">15. </a><a href="#name-references" class="section-name selfRef">References</a>
+      </h2>
+<div id="sec-normative-references">
+<section id="section-15.1">
+        <h3 id="name-normative-references">
+<a href="#section-15.1" class="section-number selfRef">15.1. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
+        </h3>
+<dl class="references">
+<dt id="RFC2119">[RFC2119]</dt>
+        <dd>
+<span class="refAuthor">Bradner, S.</span>, <span class="refTitle">"Key words for use in RFCs to Indicate Requirement Levels"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 2119</span>, <span class="seriesInfo">DOI 10.17487/RFC2119</span>, <time datetime="1997-03" class="refDate">March 1997</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc2119">https://www.rfc-editor.org/rfc/rfc2119</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC3339">[RFC3339]</dt>
+        <dd>
+<span class="refAuthor">Klyne, G.</span> and <span class="refAuthor">C. Newman</span>, <span class="refTitle">"Date and Time on the Internet: Timestamps"</span>, <span class="seriesInfo">RFC 3339</span>, <span class="seriesInfo">DOI 10.17487/RFC3339</span>, <time datetime="2002-07" class="refDate">July 2002</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc3339">https://www.rfc-editor.org/rfc/rfc3339</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC3629">[RFC3629]</dt>
+        <dd>
+<span class="refAuthor">Yergeau, F.</span>, <span class="refTitle">"UTF-8, a transformation format of ISO 10646"</span>, <span class="seriesInfo">STD 63</span>, <span class="seriesInfo">RFC 3629</span>, <span class="seriesInfo">DOI 10.17487/RFC3629</span>, <time datetime="2003-11" class="refDate">November 2003</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc3629">https://www.rfc-editor.org/rfc/rfc3629</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC3986">[RFC3986]</dt>
+        <dd>
+<span class="refAuthor">Berners-Lee, T.</span>, <span class="refAuthor">Fielding, R.</span>, and <span class="refAuthor">L. Masinter</span>, <span class="refTitle">"Uniform Resource Identifier (URI): Generic Syntax"</span>, <span class="seriesInfo">STD 66</span>, <span class="seriesInfo">RFC 3986</span>, <span class="seriesInfo">DOI 10.17487/RFC3986</span>, <time datetime="2005-01" class="refDate">January 2005</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc3986">https://www.rfc-editor.org/rfc/rfc3986</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC5234">[RFC5234]</dt>
+        <dd>
+<span class="refAuthor">Crocker, D., Ed.</span> and <span class="refAuthor">P. Overell</span>, <span class="refTitle">"Augmented BNF for Syntax Specifications: ABNF"</span>, <span class="seriesInfo">STD 68</span>, <span class="seriesInfo">RFC 5234</span>, <span class="seriesInfo">DOI 10.17487/RFC5234</span>, <time datetime="2008-01" class="refDate">January 2008</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc5234">https://www.rfc-editor.org/rfc/rfc5234</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8174">[RFC8174]</dt>
+        <dd>
+<span class="refAuthor">Leiba, B.</span>, <span class="refTitle">"Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 8174</span>, <span class="seriesInfo">DOI 10.17487/RFC8174</span>, <time datetime="2017-05" class="refDate">May 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8174">https://www.rfc-editor.org/rfc/rfc8174</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8259">[RFC8259]</dt>
+        <dd>
+<span class="refAuthor">Bray, T., Ed.</span>, <span class="refTitle">"The JavaScript Object Notation (JSON) Data Interchange Format"</span>, <span class="seriesInfo">STD 90</span>, <span class="seriesInfo">RFC 8259</span>, <span class="seriesInfo">DOI 10.17487/RFC8259</span>, <time datetime="2017-12" class="refDate">December 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8259">https://www.rfc-editor.org/rfc/rfc8259</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9293">[RFC9293]</dt>
+        <dd>
+<span class="refAuthor">Eddy, W., Ed.</span>, <span class="refTitle">"Transmission Control Protocol (TCP)"</span>, <span class="seriesInfo">STD 7</span>, <span class="seriesInfo">RFC 9293</span>, <span class="seriesInfo">DOI 10.17487/RFC9293</span>, <time datetime="2022-08" class="refDate">August 2022</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9293">https://www.rfc-editor.org/rfc/rfc9293</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9846">[RFC9846]</dt>
+      <dd>
+<span class="refAuthor">Rescorla, E.</span>, <span class="refTitle">"The Transport Layer Security (TLS) Protocol Version 1.3"</span>, <span class="seriesInfo">RFC 9846</span>, <span class="seriesInfo">DOI 10.17487/RFC9846</span>, <time datetime="2026-07" class="refDate">July 2026</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9846">https://www.rfc-editor.org/rfc/rfc9846</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="sec-informative-references">
+<section id="section-15.2">
+        <h3 id="name-informative-references">
+<a href="#section-15.2" class="section-number selfRef">15.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
+        </h3>
+<dl class="references">
+<dt id="I-D.bhutton-json-schema">[I-D.bhutton-json-schema]</dt>
+        <dd>
+<span class="refAuthor">Wright, A.</span>, <span class="refAuthor">Andrews, H. H.</span>, <span class="refAuthor">Hutton, B.</span>, and <span class="refAuthor">G. Dennis</span>, <span class="refTitle">"JSON Schema: A Media Type for Describing JSON Documents"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-bhutton-json-schema-01</span>, <time datetime="2022-06-10" class="refDate">10 June 2022</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-bhutton-json-schema-01">https://datatracker.ietf.org/doc/html/draft-bhutton-json-schema-01</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.hood-independent-agtp">[I-D.hood-independent-agtp]</dt>
+        <dd>
+<span class="refAuthor">Hood, C.</span>, <span class="refTitle">"Agent Transfer Protocol (AGTP)"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-hood-independent-agtp-10</span>, <time datetime="2026-10-30" class="refDate">30 October 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-hood-independent-agtp-10">https://datatracker.ietf.org/doc/html/draft-hood-independent-agtp-10</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="MATP-SCHEMAS">[MATP-SCHEMAS]</dt>
+        <dd>
+<span class="refAuthor">Merchant Agents (BaselHack 2026)</span>, <span class="refTitle">"MATP JSON Schemas (generated from the reference implementation)"</span>, <time datetime="2026-10-31" class="refDate">31 October 2026</time>, <span>&lt;<a href="https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas">https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="MCP">[MCP]</dt>
+        <dd>
+<span class="refAuthor">Model Context Protocol</span>, <span class="refTitle">"Model Context Protocol Specification"</span>, <span>&lt;<a href="https://modelcontextprotocol.io/specification">https://modelcontextprotocol.io/specification</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC6335">[RFC6335]</dt>
+        <dd>
+<span class="refAuthor">Cotton, M.</span>, <span class="refAuthor">Eggert, L.</span>, <span class="refAuthor">Touch, J.</span>, <span class="refAuthor">Westerlund, M.</span>, and <span class="refAuthor">S. Cheshire</span>, <span class="refTitle">"Internet Assigned Numbers Authority (IANA) Procedures for the Management of the Service Name and Transport Protocol Port Number Registry"</span>, <span class="seriesInfo">BCP 165</span>, <span class="seriesInfo">RFC 6335</span>, <span class="seriesInfo">DOI 10.17487/RFC6335</span>, <time datetime="2011-08" class="refDate">August 2011</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc6335">https://www.rfc-editor.org/rfc/rfc6335</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC7595">[RFC7595]</dt>
+        <dd>
+<span class="refAuthor">Thaler, D., Ed.</span>, <span class="refAuthor">Hansen, T.</span>, and <span class="refAuthor">T. Hardie</span>, <span class="refTitle">"Guidelines and Registration Procedures for URI Schemes"</span>, <span class="seriesInfo">BCP 35</span>, <span class="seriesInfo">RFC 7595</span>, <span class="seriesInfo">DOI 10.17487/RFC7595</span>, <time datetime="2015-06" class="refDate">June 2015</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc7595">https://www.rfc-editor.org/rfc/rfc7595</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8141">[RFC8141]</dt>
+      <dd>
+<span class="refAuthor">Saint-Andre, P.</span> and <span class="refAuthor">J. Klensin</span>, <span class="refTitle">"Uniform Resource Names (URNs)"</span>, <span class="seriesInfo">RFC 8141</span>, <span class="seriesInfo">DOI 10.17487/RFC8141</span>, <time datetime="2017-04" class="refDate">April 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8141">https://www.rfc-editor.org/rfc/rfc8141</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+</div>
+</section>
+</div>
+<div id="mcp-bridge">
+<section id="appendix-A">
+      <h2 id="name-the-mcp-bridge">
+<a href="#appendix-A" class="section-number selfRef">Appendix A. </a><a href="#name-the-mcp-bridge" class="section-name selfRef">The MCP Bridge</a>
+      </h2>
+<p id="appendix-A-1">An MCP server can let an assistant that only speaks MCP use a MATP node.
+The reference bridge opens one session with <code>agent.id</code>
+        <code>urn:matp:agent:claude-gateway</code> and <code>agent.kind</code> <code>user-agent</code>, and maps its
+tools to intents:<a href="#appendix-A-1" class="pilcrow">¶</a></p>
+<span id="name-mcp-tools-and-matp-intents"></span><table class="center" id="table-11">
+        <caption>
+<a href="#table-11" class="selfRef">Table 11</a>:
+<a href="#name-mcp-tools-and-matp-intents" class="selfRef">MCP tools and MATP intents</a>
+        </caption>
+<thead>
+          <tr>
+            <th class="text-left" rowspan="1" colspan="1">MCP tool</th>
+            <th class="text-left" rowspan="1" colspan="1">MATP intent</th>
+            <th class="text-left" rowspan="1" colspan="1">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>search_merchants</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">DISCOVER</td>
+            <td class="text-left" rowspan="1" colspan="1"> </td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>get_availability</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">AVAILABILITY</td>
+            <td class="text-left" rowspan="1" colspan="1">the tool's <code>merchant</code> becomes the request's <code>merchant</code>
+</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>create_reservation</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">BOOK</td>
+            <td class="text-left" rowspan="1" colspan="1">idem</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>update_reservation</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">AMEND</td>
+            <td class="text-left" rowspan="1" colspan="1">idem</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>cancel_reservation</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">CANCEL</td>
+            <td class="text-left" rowspan="1" colspan="1">the tool returns <code>{"status": "cancelled"}</code>
+</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">
+              <code>get_my_reservations</code>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">RECALL</td>
+            <td class="text-left" rowspan="1" colspan="1"> </td>
+          </tr>
+        </tbody>
+      </table>
+<ul class="normal">
+<li class="normal" id="appendix-A-3.1">
+          <p id="appendix-A-3.1.1">The tool descriptions tell the assistant to confirm with the guest before
+<code>create_reservation</code>, <code>update_reservation</code> and <code>cancel_reservation</code>,
+which is how the bridge meets the confirmation requirement of
+<a href="#requests" class="auto internal xref">Section 7</a>.<a href="#appendix-A-3.1.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="appendix-A-3.2">
+          <p id="appendix-A-3.2.1">The bridge answers each tool call within 2 seconds, including the round
+trip to the node. A timeout, a lost session or a 503 becomes an
+<code>agent_unavailable</code> tool error with the merchant's <code>fallback_url</code>.<a href="#appendix-A-3.2.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="appendix-A-3.3">
+          <p id="appendix-A-3.3.1">A status and its <code>error</code> object become the tool error <code>{"error": code,
+"message": ..., "fallback_url": ...}</code>.<a href="#appendix-A-3.3.1" class="pilcrow">¶</a></p>
+</li>
+      </ul>
+</section>
+</div>
+<div id="example-session">
+<section id="appendix-B">
+      <h2 id="name-example-session">
+<a href="#appendix-B" class="section-number selfRef">Appendix B. </a><a href="#name-example-session" class="section-name selfRef">Example Session</a>
+      </h2>
+<p id="appendix-B-1">The caller is the MCP bridge. Lines starting with "C:" go from the
+caller to the node, and lines starting with "N:" from the node to the
+caller.
+Long frames are wrapped here for readability: on the wire, each is one
+line.<a href="#appendix-B-1" class="pilcrow">¶</a></p>
+<span id="name-opening-the-session-discove"></span><figure id="figure-3">
+        <div class="alignLeft art-text artwork" id="appendix-B-2.1">
+<pre>
+C: {"type": "hello", "matp": "0.1",
+    "agent": {"id": "urn:matp:agent:claude-gateway",
+              "name": "Claude via the merchant-agents gateway",
+              "kind": "user-agent", "operator": "merchant-agents"},
+    "token": "q7Lr..."}
+N: {"type": "welcome", "matp": "0.1",
+    "node": {"id": "urn:matp:node:merchant-agents",
+             "name": "Merchant Agents"},
+    "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
+                "RECALL", "PING"],
+    "session": "s-2f6c"}
+C: {"type": "request", "id": "r-1", "intent": "DISCOVER",
+    "params": {"query": "bistro", "filters": {"tags": ["vegetarian"],
+               "max_price": "€€"}}}
+N: {"type": "response", "id": "r-1", "status": 200,
+    "result": {"merchants": [{"slug": "le-petit-zinc",
+      "name": "Le Petit Zinc", "city": "Mulhouse",
+      "tags": ["vegetarian", "terrace"], "price_level": "€€",
+      "website": "https://le-petit-zinc.example/"}],
+      "suggestions": [], "ignored_filters": []}}
+C: {"type": "request", "id": "r-2", "intent": "AVAILABILITY",
+    "merchant": "le-petit-zinc",
+    "params": {"date": "2026-11-02", "time": "20:00", "party_size": 4}}
+N: {"type": "response", "id": "r-2", "status": 200,
+    "result": {"slots": [
+      {"starts_at": "2026-11-02T19:30:00+01:00", "table_label": "T5"},
+      {"starts_at": "2026-11-02T20:00:00+01:00", "table_label": "T5"},
+      {"starts_at": "2026-11-02T20:30:00+01:00", "table_label": "T5"}]}}
+</pre>
+</div>
+<figcaption><a href="#figure-3" class="selfRef">Figure 3</a>:
+<a href="#name-opening-the-session-discove" class="selfRef">Opening the session, discovery and availability</a>
+        </figcaption></figure>
+<p id="appendix-B-3">The caller then books, and checks a larger party while the booking is in
+flight: the second answer arrives first.<a href="#appendix-B-3" class="pilcrow">¶</a></p>
+<span id="name-two-requests-in-flight-and-"></span><figure id="figure-4">
+        <div class="alignLeft art-text artwork" id="appendix-B-4.1">
+<pre>
+C: {"type": "request", "id": "r-3", "intent": "BOOK",
+    "merchant": "le-petit-zinc",
+    "params": {"starts_at": "2026-11-02T20:00:00+01:00",
+               "party_size": 4, "guest_name": "Ada Martin",
+               "idempotency_key": "b1f0c2d4-3a9e"}}
+C: {"type": "request", "id": "r-4", "intent": "AVAILABILITY",
+    "merchant": "le-petit-zinc",
+    "params": {"date": "2026-11-02", "party_size": 9}}
+N: {"type": "response", "id": "r-4", "status": 413,
+    "error": {"code": "party_too_large",
+      "message":
+        "Le Petit Zinc takes online bookings for up to 6 guests",
+      "fallback_url": "https://le-petit-zinc.example/reservation.html"}}
+N: {"type": "response", "id": "r-3", "status": 200,
+    "result": {"reservation": {"id": "R-001",
+      "merchant": "le-petit-zinc",
+      "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
+      "table_label": "T5", "status": "confirmed",
+      "guest_name": "Ada Martin", "via": "claude"}}}
+C: {"type": "request", "id": "r-5", "intent": "PING", "params": {}}
+N: {"type": "response", "id": "r-5", "status": 200,
+    "result": {"pong": true,
+               "server_time": "2026-10-31T18:02:11+01:00"}}
+</pre>
+</div>
+<figcaption><a href="#figure-4" class="selfRef">Figure 4</a>:
+<a href="#name-two-requests-in-flight-and-" class="selfRef">Two requests in flight, and a ping</a>
+        </figcaption></figure>
+</section>
+</div>
+<div id="json-schemas">
+<section id="appendix-C">
+      <h2 id="name-json-schemas">
+<a href="#appendix-C" class="section-number selfRef">Appendix C. </a><a href="#name-json-schemas" class="section-name selfRef">JSON Schemas</a>
+      </h2>
+<p id="appendix-C-1">These schemas use JSON Schema 2020-12 <span>[<a href="#I-D.bhutton-json-schema" class="cite xref">I-D.bhutton-json-schema</a>]</span>. They are
+generated from the reference implementation's contract models, so this
+appendix and the implementation cannot drift <span>[<a href="#MATP-SCHEMAS" class="cite xref">MATP-SCHEMAS</a>]</span>. In the
+params of AVAILABILITY, BOOK, AMEND and CANCEL, the merchant is not a
+member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class="pilcrow">¶</a></p>
+<div id="discover-params">
+<section id="appendix-C.1">
+        <h3 id="name-discover-params">
+<a href="#appendix-C.1" class="section-number selfRef">C.1. </a><a href="#name-discover-params" class="section-name selfRef">DISCOVER params</a>
+        </h3>
+<div class="breakable lang-json sourcecode" id="appendix-C.1-1">
+<pre>
+{
+  "$comment": "Generated from core.models.SearchMerchantsInput",
+  "$defs": {
+    "SearchFilters": {
+      "additionalProperties": false,
+      "properties": {
+        "max_price": {
+          "anyOf": [
+            {
+              "enum": [
+                "€",
+                "€€",
+                "€€€",
+                "€€€€"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Price"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "title": "SearchFilters",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Date"
+    },
+    "filters": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SearchFilters"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "near": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Near"
+    },
+    "query": {
+      "title": "Query",
+      "type": "string"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "MATP DISCOVER params",
+  "type": "object"
+}
+</pre><a href="#appendix-C.1-1" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="discover-result">
+<section id="appendix-C.2">
+        <h3 id="name-discover-result">
+<a href="#appendix-C.2" class="section-number selfRef">C.2. </a><a href="#name-discover-result" class="section-name selfRef">DISCOVER result</a>
+        </h3>
+<div class="breakable lang-json sourcecode" id="appendix-C.2-1">
+<pre>
+{
+  "$comment": "Generated from core.models.SearchMerchantsOutput",
+  "$defs": {
+    "FilterSuggestion": {
+      "additionalProperties": false,
+      "properties": {
+        "drop": {
+          "title": "Drop",
+          "type": "string"
+        },
+        "matches": {
+          "title": "Matches",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "drop",
+        "matches"
+      ],
+      "title": "FilterSuggestion",
+      "type": "object"
+    },
+    "MerchantSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "City"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "price_level": {
+          "enum": [
+            "€",
+            "€€",
+            "€€€",
+            "€€€€"
+          ],
+          "title": "Price Level",
+          "type": "string"
+        },
+        "slug": {
+          "pattern": "^[a-z0-9-]{3,61}$",
+          "title": "Slug",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "enum": [
+              "gluten-free",
+              "vegetarian",
+              "vegan",
+              "halal",
+              "kosher",
+              "terrace",
+              "kid-friendly"
+            ],
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "website": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Website",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "name",
+        "city",
+        "tags",
+        "price_level",
+        "website"
+      ],
+      "title": "MerchantSummary",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "ignored_filters": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Ignored Filters",
+      "type": "array"
+    },
+    "merchants": {
+      "items": {
+        "$ref": "#/$defs/MerchantSummary"
+      },
+      "title": "Merchants",
+      "type": "array"
+    },
+    "suggestions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FilterSuggestion"
+      },
+      "title": "Suggestions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "merchants"
+  ],
+  "title": "MATP DISCOVER result",
+  "type": "object"
+}
+</pre><a href="#appendix-C.2-1" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="availability-params">
+<section id="appendix-C.3">
+        <h3 id="name-availability-params">
+<a href="#appendix-C.3" class="section-number selfRef">C.3. </a><a href="#name-availability-params" class="section-name selfRef">AVAILABILITY params</a>
+        </h3>
+<div class="lang-json sourcecode" id="appendix-C.3-1">
+<pre>
+{
+  "$comment": "Generated from core.models.GetAvailabilityInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "party_size": {
+      "exclusiveMinimum": 0,
+      "title": "Party Size",
+      "type": "integer"
+    },
+    "time": {
+      "anyOf": [
+        {
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time"
+    }
+  },
+  "required": [
+    "date",
+    "party_size"
+  ],
+  "title": "MATP AVAILABILITY params",
+  "type": "object"
+}
+</pre><a href="#appendix-C.3-1" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="availability-result">
+<section id="appendix-C.4">
+        <h3 id="name-availability-result">
+<a href="#appendix-C.4" class="section-number selfRef">C.4. </a><a href="#name-availability-result" class="section-name selfRef">AVAILABILITY result</a>
+        </h3>
+<div class="lang-json sourcecode" id="appendix-C.4-1">
+<pre>
+{
+  "$comment": "Generated from core.models.GetAvailabilityOutput",
+  "$defs": {
+    "Slot": {
+      "additionalProperties": false,
+      "properties": {
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "table_label": {
+          "title": "Table Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "starts_at",
+        "table_label"
+      ],
+      "title": "Slot",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "slots": {
+      "items": {
+        "$ref": "#/$defs/Slot"
+      },
+      "maxItems": 3,
+      "title": "Slots",
+      "type": "array"
+    }
+  },
+  "required": [
+    "slots"
+  ],
+  "title": "MATP AVAILABILITY result",
+  "type": "object"
+}
+</pre><a href="#appendix-C.4-1" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="book-params">
+<section id="appendix-C.5">
+        <h3 id="name-book-params">
+<a href="#appendix-C.5" class="section-number selfRef">C.5. </a><a href="#name-book-params" class="section-name selfRef">BOOK params</a>
+        </h3>
+<div class="lang-json sourcecode" id="appendix-C.5-1">
+<pre>
+{
+  "$comment": "Generated from core.models.CreateReservationInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "guest_name": {
+      "minLength": 1,
+      "title": "Guest Name",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "party_size": {
+      "exclusiveMinimum": 0,
+      "title": "Party Size",
+      "type": "integer"
+    },
+    "starts_at": {
+      "format": "date-time",
+      "title": "Starts At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "starts_at",
+    "party_size",
+    "guest_name",
+    "idempotency_key"
+  ],
+  "title": "MATP BOOK params",
+  "type": "object"
+}
+</pre><a href="#appendix-C.5-1" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="book-amend-and-cancel-result">
+<section id="appendix-C.6">
+        <h3 id="name-book-amend-and-cancel-resul">
+<a href="#appendix-C.6" class="section-number selfRef">C.6. </a><a href="#name-book-amend-and-cancel-resul" class="section-name selfRef">BOOK, AMEND and CANCEL result</a>
+        </h3>
+<p id="appendix-C.6-1">The three intents return the same <code>reservation</code> object.<a href="#appendix-C.6-1" class="pilcrow">¶</a></p>
+<div class="breakable lang-json sourcecode" id="appendix-C.6-2">
+<pre>
+{
+  "$comment": "Generated from core.models.ReservationOutput",
+  "$defs": {
+    "Reservation": {
+      "additionalProperties": false,
+      "properties": {
+        "guest_name": {
+          "title": "Guest Name",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "merchant": {
+          "pattern": "^[a-z0-9-]{3,61}$",
+          "title": "Merchant",
+          "type": "string"
+        },
+        "party_size": {
+          "exclusiveMinimum": 0,
+          "title": "Party Size",
+          "type": "integer"
+        },
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "confirmed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "table_label": {
+          "title": "Table Label",
+          "type": "string"
+        },
+        "via": {
+          "enum": [
+            "claude",
+            "merchant",
+            "website"
+          ],
+          "title": "Via",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "merchant",
+        "starts_at",
+        "party_size",
+        "table_label",
+        "status",
+        "guest_name",
+        "via"
+      ],
+      "title": "Reservation",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "reservation": {
+      "$ref": "#/$defs/Reservation"
+    }
+  },
+  "required": [
+    "reservation"
+  ],
+  "title": "MATP BOOK result",
+  "type": "object"
+}
+</pre><a href="#appendix-C.6-2" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="amend-params">
+<section id="appendix-C.7">
+        <h3 id="name-amend-params">
+<a href="#appendix-C.7" class="section-number selfRef">C.7. </a><a href="#name-amend-params" class="section-name selfRef">AMEND params</a>
+        </h3>
+<div class="breakable lang-json sourcecode" id="appendix-C.7-1">
+<pre>
+{
+  "$comment": "Generated from core.models.UpdateReservationInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "guest_name": {
+      "minLength": 1,
+      "title": "Guest Name",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "party_size": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Party Size"
+    },
+    "reservation_id": {
+      "minLength": 1,
+      "title": "Reservation Id",
+      "type": "string"
+    },
+    "starts_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Starts At"
+    }
+  },
+  "required": [
+    "reservation_id",
+    "guest_name",
+    "idempotency_key"
+  ],
+  "title": "MATP AMEND params",
+  "type": "object"
+}
+</pre><a href="#appendix-C.7-1" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="cancel-params">
+<section id="appendix-C.8">
+        <h3 id="name-cancel-params">
+<a href="#appendix-C.8" class="section-number selfRef">C.8. </a><a href="#name-cancel-params" class="section-name selfRef">CANCEL params</a>
+        </h3>
+<div class="lang-json sourcecode" id="appendix-C.8-1">
+<pre>
+{
+  "$comment": "Generated from core.models.CancelReservationInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "guest_name": {
+      "minLength": 1,
+      "title": "Guest Name",
+      "type": "string"
+    },
+    "reservation_id": {
+      "minLength": 1,
+      "title": "Reservation Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reservation_id",
+    "guest_name"
+  ],
+  "title": "MATP CANCEL params",
+  "type": "object"
+}
+</pre><a href="#appendix-C.8-1" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="recall-params">
+<section id="appendix-C.9">
+        <h3 id="name-recall-params">
+<a href="#appendix-C.9" class="section-number selfRef">C.9. </a><a href="#name-recall-params" class="section-name selfRef">RECALL params</a>
+        </h3>
+<div class="lang-json sourcecode" id="appendix-C.9-1">
+<pre>
+{
+  "$comment": "Generated from core.models.GetMyReservationsInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "guest_name": {
+      "minLength": 1,
+      "title": "Guest Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "guest_name"
+  ],
+  "title": "MATP RECALL params",
+  "type": "object"
+}
+</pre><a href="#appendix-C.9-1" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="recall-result">
+<section id="appendix-C.10">
+        <h3 id="name-recall-result">
+<a href="#appendix-C.10" class="section-number selfRef">C.10. </a><a href="#name-recall-result" class="section-name selfRef">RECALL result</a>
+        </h3>
+<div class="breakable lang-json sourcecode" id="appendix-C.10-1">
+<pre>
+{
+  "$comment": "Generated from core.models.GetMyReservationsOutput",
+  "$defs": {
+    "Reservation": {
+      "additionalProperties": false,
+      "properties": {
+        "guest_name": {
+          "title": "Guest Name",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "merchant": {
+          "pattern": "^[a-z0-9-]{3,61}$",
+          "title": "Merchant",
+          "type": "string"
+        },
+        "party_size": {
+          "exclusiveMinimum": 0,
+          "title": "Party Size",
+          "type": "integer"
+        },
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "confirmed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "table_label": {
+          "title": "Table Label",
+          "type": "string"
+        },
+        "via": {
+          "enum": [
+            "claude",
+            "merchant",
+            "website"
+          ],
+          "title": "Via",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "merchant",
+        "starts_at",
+        "party_size",
+        "table_label",
+        "status",
+        "guest_name",
+        "via"
+      ],
+      "title": "Reservation",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "notices": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notices",
+      "type": "array"
+    },
+    "reservations": {
+      "items": {
+        "$ref": "#/$defs/Reservation"
+      },
+      "title": "Reservations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "reservations",
+    "notices"
+  ],
+  "title": "MATP RECALL result",
+  "type": "object"
+}
+</pre><a href="#appendix-C.10-1" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="ping-params-and-result">
+<section id="appendix-C.11">
+        <h3 id="name-ping-params-and-result">
+<a href="#appendix-C.11" class="section-number selfRef">C.11. </a><a href="#name-ping-params-and-result" class="section-name selfRef">PING params and result</a>
+        </h3>
+<div class="lang-json sourcecode" id="appendix-C.11-1">
+<pre>
+{
+  "$comment": "Generated from matp_schemas.PingParams",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`PING` takes no params: `{}`.",
+  "properties": {},
+  "title": "MATP PING params",
+  "type": "object"
+}
+</pre><a href="#appendix-C.11-1" class="pilcrow">¶</a>
+</div>
+<div class="lang-json sourcecode" id="appendix-C.11-2">
+<pre>
+{
+  "$comment": "Generated from matp_schemas.PingResult",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "pong": {
+      "const": true,
+      "title": "Pong",
+      "type": "boolean"
+    },
+    "server_time": {
+      "format": "date-time",
+      "title": "Server Time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "pong",
+    "server_time"
+  ],
+  "title": "MATP PING result",
+  "type": "object"
+}
+</pre><a href="#appendix-C.11-2" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+</section>
+</div>
+<div id="acknowledgments">
+<section id="appendix-D">
+      <h2 id="name-acknowledgments">
+<a href="#name-acknowledgments" class="section-name selfRef">Acknowledgments</a>
+      </h2>
+<p id="appendix-D-1">The agent-only protocol idea comes from the AGTP Internet-Draft
+<span>[<a href="#I-D.hood-independent-agtp" class="cite xref">I-D.hood-independent-agtp</a>]</span>.<a href="#appendix-D-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="authors-addresses">
+<section id="appendix-E">
+      <h2 id="name-authors-address">
+<a href="#name-authors-address" class="section-name selfRef">Author's Address</a>
+      </h2>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="org">Merchant Agents (BaselHack 2026)</span></div>
+<div class="url">
+<span>URI:</span>
+<a href="https://github.com/MaxEntz/BaselHack2026" class="url">https://github.com/MaxEntz/BaselHack2026</a>
+</div>
+</address>
+</section>
+</div>
+<script>const toc = document.getElementById("toc");
+toc.querySelector("h2").addEventListener("click", e => {
+  toc.classList.toggle("active");
+});
+toc.querySelector("nav").addEventListener("click", e => {
+  toc.classList.remove("active");
+});
+</script>
+</body>
+</html>
