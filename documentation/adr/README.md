@@ -5,6 +5,7 @@ write a new one and mark the old one `Superseded by ADR-NNNN`.
 
 | ADR | Decision | Status | Date |
 |---|---|---|---|
+| [0013](0013-store-update-idempotency-keys-in-public.md) | Store the idempotency keys of applied updates in `public`, not in each merchant schema | Accepted | 2026-10-31 |
 | [0012](0012-one-mcp-server-for-every-merchant-endpoint.md) | Serve every merchant's own MCP endpoint from one server, routed by the path | Accepted | 2026-10-31 |
 | [0011](0011-our-own-agent-protocol-matp-with-mcp-as-bridge.md) | Define our own agent protocol (MATP) on a dedicated port, with MCP as Claude's bridge | Accepted | 2026-10-31 |
 | [0010](0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md) | Allow only Anthropic's outbound range on the public gateway | Accepted | 2026-10-31 |
