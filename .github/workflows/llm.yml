@@ -21,11 +21,13 @@ jobs:
     defaults:
       run:
         working-directory: code
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    # The key is only given to the two steps that read it, never to checkout, package
+    # installs or the browser download.
     steps:
       - name: Skip without the OPENAI_API_KEY secret
         id: key
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
             echo "::notice title=LLM tests skipped::Add the repository secret OPENAI_API_KEY to run them."
@@ -35,7 +37,7 @@ jobs:
           fi
         working-directory: .
       - if: steps.key.outputs.present == 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: steps.key.outputs.present == 'true'
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no floating major tag)
         with:
@@ -49,4 +51,5 @@ jobs:
       - if: steps.key.outputs.present == 'true'
         run: uv run pytest -m llm
         env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           BUILDER_CACHE: "off"
