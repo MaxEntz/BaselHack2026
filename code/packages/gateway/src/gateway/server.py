@@ -331,7 +331,7 @@ def create_app(
     """Build the ASGI app: Host allowlist from the public URL, bearer token when one is set.
 
     `agent` and `engine` default to the real ones (tests inject theirs): the engine on
-    DATABASE_URL, and the agent in this process or over MATP (`MATP_URL`). What is created here
+    DATABASE_URL, and the agent in this process or over BATP (`BATP_URL`). What is created here
     is released at shutdown.
     """
     db = engine or make_engine(settings.database_url)

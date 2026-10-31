@@ -430,14 +430,14 @@ async def test_a_lost_node_is_not_logged_as_a_crash(caplog: pytest.LogCaptureFix
     assert not caplog.records
 
 
-async def test_the_log_line_has_no_matp_field_without_a_hop(
+async def test_the_log_line_has_no_batp_field_without_a_hop(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.INFO, logger="gateway.tools"):
         await call_agent(ZINC, "get_availability", ok, settings=SETTINGS)
 
     line = json.loads(JsonFormatter().format(caplog.records[-1]))
-    assert "matp_request" not in line
+    assert "batp_request" not in line
 
 
 async def test_call_service_times_out() -> None:

@@ -1,7 +1,7 @@
 """How the protocol reaches a merchant's agent, whichever process it runs in.
 
-`LocalAgentClient` calls the agent in the gateway's process. `MatpAgentClient` makes the gateway a
-bridge: Claude still speaks MCP to it, and it speaks MATP to the node serving the merchant agents
+`LocalAgentClient` calls the agent in the gateway's process. `BatpAgentClient` makes the gateway a
+bridge: Claude still speaks MCP to it, and it speaks BATP to the node serving the merchant agents
 (`documentation/PROTOCOL.md`, §12). Tools only know the `AgentClient` interface.
 """
 
@@ -15,6 +15,8 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import AgentService, PgAgentService
+from batp.client import BatpClient
+from batp.messages import DEFAULT_PORT, AgentIdentity, Intent
 from core.config import Settings
 from core.errors import AgentUnavailable
 from core.models import (
@@ -33,12 +35,10 @@ from core.models import (
     UpdateReservationInput,
 )
 from gateway import discovery
-from gateway.fallback import matp_request
-from matp.client import MatpClient
-from matp.messages import DEFAULT_PORT, AgentIdentity, Intent
+from gateway.fallback import batp_request
 
 GATEWAY_AGENT = AgentIdentity(
-    id="urn:matp:agent:claude-gateway",
+    id="urn:batp:agent:claude-gateway",
     name="Claude via the Sésame gateway",
     kind="user-agent",
     operator="merchant-agents",
@@ -140,10 +140,10 @@ class LocalAgentClient:
         pass
 
 
-class MatpAgentClient:
-    """The same operations over MATP. `params` and `result` are the contracts of `core.models`."""
+class BatpAgentClient:
+    """The same operations over BATP. `params` and `result` are the contracts of `core.models`."""
 
-    def __init__(self, client: MatpClient) -> None:
+    def __init__(self, client: BatpClient) -> None:
         self.client = client
 
     async def _request[M: BaseModel](
@@ -151,13 +151,13 @@ class MatpAgentClient:
     ) -> M:
         """The node's answer. Its errors and a lost session are `AgentError`s already."""
         request_id = f"r-{uuid4().hex[:12]}"
-        matp_request.set(request_id)
+        batp_request.set(request_id)
         wire = params.model_dump(mode="json", exclude={"merchant"}, exclude_none=True)
         response = await self.client.request(intent, merchant, wire, request_id=request_id)
         try:
             return result.model_validate(response)
         except ValidationError as exc:
-            raise AgentUnavailable(f"The MATP node sent an invalid {intent} result") from exc
+            raise AgentUnavailable(f"The BATP node sent an invalid {intent} result") from exc
 
     async def search_merchants(
         self, query: str, near: str | None, day: date | None, filters: SearchFilters | None
@@ -228,19 +228,19 @@ class MatpAgentClient:
         await self.client.close()
 
 
-def parse_matp_url(url: str) -> tuple[str, int]:
-    """`matp://host[:port]` → host and port; a wrong value stops the gateway at startup."""
+def parse_batp_url(url: str) -> tuple[str, int]:
+    """`batp://host[:port]` → host and port; a wrong value stops the gateway at startup."""
     parts = urlsplit(url)
-    if parts.scheme != "matp" or not parts.hostname:
-        raise ValueError(f"MATP_URL must look like matp://host[:port], got {url!r}")
+    if parts.scheme != "batp" or not parts.hostname:
+        raise ValueError(f"BATP_URL must look like batp://host[:port], got {url!r}")
     return parts.hostname, parts.port or DEFAULT_PORT
 
 
 def make_agent_client(settings: Settings, engine: AsyncEngine) -> AgentClient:
-    """Over MATP when `MATP_URL` is set, in this process otherwise."""
-    if not settings.matp_url:
+    """Over BATP when `BATP_URL` is set, in this process otherwise."""
+    if not settings.batp_url:
         service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
         return LocalAgentClient(service, engine)
-    host, port = parse_matp_url(settings.matp_url)
-    token = settings.matp_token.get_secret_value() if settings.matp_token else None
-    return MatpAgentClient(MatpClient(host, port, GATEWAY_AGENT, token))
+    host, port = parse_batp_url(settings.batp_url)
+    token = settings.batp_token.get_secret_value() if settings.batp_token else None
+    return BatpAgentClient(BatpClient(host, port, GATEWAY_AGENT, token))

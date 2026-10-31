@@ -1,10 +1,10 @@
-"""Export the JSON Schema of every MATP intent's `params` and `result` (#63).
+"""Export the JSON Schema of every BATP intent's `params` and `result` (#63).
 
 The Internet-Draft's appendix points to these files, so they come from `core.models` and
 never by hand. Run from `code/`:
 
-    uv run python scripts/matp_schemas.py           # write documentation/rfc/schemas/
-    uv run python scripts/matp_schemas.py --check   # fail if the committed files are stale
+    uv run python scripts/batp_schemas.py           # write documentation/rfc/schemas/
+    uv run python scripts/batp_schemas.py --check   # fail if the committed files are stale
 """
 
 import argparse
@@ -64,15 +64,15 @@ def schemas() -> dict[str, dict[str, Any]]:
             # On the wire, the merchant is the request's `merchant`, not a param.
             params_schema["properties"].pop("merchant")
             params_schema["required"].remove("merchant")
-        out[f"{name}.params.json"] = _document(params_schema, f"MATP {intent} params", params)
+        out[f"{name}.params.json"] = _document(params_schema, f"BATP {intent} params", params)
         out[f"{name}.result.json"] = _document(
-            result.model_json_schema(mode="serialization"), f"MATP {intent} result", result
+            result.model_json_schema(mode="serialization"), f"BATP {intent} result", result
         )
     return out
 
 
 def _document(schema: dict[str, Any], title: str, model: type[BaseModel]) -> dict[str, Any]:
-    source = f"{model.__module__}.{model.__qualname__}".replace("__main__", "matp_schemas")
+    source = f"{model.__module__}.{model.__qualname__}".replace("__main__", "batp_schemas")
     return {"$schema": DIALECT, "$comment": f"Generated from {source}", **schema, "title": title}
 
 
@@ -81,7 +81,7 @@ def _render(schema: dict[str, Any]) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Export the MATP intents' JSON Schemas.")
+    parser = argparse.ArgumentParser(description="Export the BATP intents' JSON Schemas.")
     parser.add_argument("--check", action="store_true", help="fail if the files are stale")
     args = parser.parse_args(argv)
     expected = {name: _render(schema) for name, schema in schemas().items()}
@@ -95,7 +95,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for name in stale + extra:
             print(f"stale: documentation/rfc/schemas/{name}", file=sys.stderr)
         if stale or extra:
-            print("Run: uv run python scripts/matp_schemas.py", file=sys.stderr)
+            print("Run: uv run python scripts/batp_schemas.py", file=sys.stderr)
             return 1
         return 0
     SCHEMAS.mkdir(parents=True, exist_ok=True)

@@ -37,6 +37,6 @@
   "required": [
     "slots"
   ],
-  "title": "MATP AVAILABILITY result",
+  "title": "BATP AVAILABILITY result",
   "type": "object"
 }

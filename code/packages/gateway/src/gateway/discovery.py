@@ -80,7 +80,7 @@ NAME_NOISE = frozenset(
 NEAR_NOISE = frozenset({"near", "nearby", "around", "close", "here", "me", "pres", "ici", "de"})
 
 # Bounds on one search, so a request can't keep the gateway or the node busy (the contracts
-# don't cap them). The gateway's tool and the MATP node share them, so both modes agree (#90).
+# don't cap them). The gateway's tool and the BATP node share them, so both modes agree (#90).
 MAX_QUERY = 500
 MAX_TAGS = 32
 

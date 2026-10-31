@@ -1,4 +1,4 @@
-"""What only exists with the bridge: MCP → MATP → node, and that node dying or freezing (#61)."""
+"""What only exists with the bridge: MCP → BATP → node, and that node dying or freezing (#61)."""
 
 import asyncio
 import json
@@ -15,21 +15,21 @@ import pytest
 from mcp import Client
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from batp.client import BatpClient
 from core.config import Settings
 from core.models import SearchFilters, ToolError
 from gateway.agent_client import GATEWAY_AGENT as GATEWAY_IDENTITY
-from gateway.agent_client import MatpAgentClient, parse_matp_url
+from gateway.agent_client import BatpAgentClient, parse_batp_url
 from gateway.discovery import find_merchant, find_named_merchant
 from gateway.fallback import call_merchant, call_service
-from matp.client import MatpClient
-from tests.e2e.conftest import MatpNode, running_gateway
+from tests.e2e.conftest import BatpNode, running_gateway
 
 pytestmark = pytest.mark.integration
 
 ZINC = "le-petit-zinc"
 ZINC_FALLBACK = "http://localhost:8080/reservation.html"
 TZ = ZoneInfo("Europe/Zurich")
-GATEWAY_AGENT = "urn:matp:agent:claude-gateway"
+GATEWAY_AGENT = "urn:batp:agent:claude-gateway"
 GOOD_TOKEN = "the-gateway-token-long-enough"
 
 
@@ -47,7 +47,7 @@ async def call(client: Client, tool: str, **arguments: Any) -> dict[str, Any]:
 
 
 async def test_a_booking_crosses_the_node_under_the_gateway_s_identity(
-    bridge_base_url: str, matp_node: MatpNode, caplog: pytest.LogCaptureFixture
+    bridge_base_url: str, batp_node: BatpNode, caplog: pytest.LogCaptureFixture
 ) -> None:
     guest = f"Alex {uuid4().hex[:8]}"
     day = datetime.now(TZ).date() + timedelta(days=1)
@@ -68,38 +68,38 @@ async def test_a_booking_crosses_the_node_under_the_gateway_s_identity(
     assert booked["reservation"]["via"] == "claude"
     gateway_line = next(r.__dict__ for r in caplog.records if r.getMessage() == "tool_call")
     assert gateway_line["outcome"] == "ok"
-    node_lines = [json.loads(line) for line in matp_node.logs().splitlines() if '"BOOK"' in line]
+    node_lines = [json.loads(line) for line in batp_node.logs().splitlines() if '"BOOK"' in line]
     assert any(
-        line.get("agent") == GATEWAY_AGENT and line.get("request") == gateway_line["matp_request"]
+        line.get("agent") == GATEWAY_AGENT and line.get("request") == gateway_line["batp_request"]
         for line in node_lines
-    ), matp_node.logs()
-    assert guest not in matp_node.logs()
+    ), batp_node.logs()
+    assert guest not in batp_node.logs()
     assert guest not in caplog.text
 
 
-async def test_every_tool_goes_through_the_node(bridge_base_url: str, matp_node: MatpNode) -> None:
+async def test_every_tool_goes_through_the_node(bridge_base_url: str, batp_node: BatpNode) -> None:
     async with Client(f"{bridge_base_url}/mcp") as client:
         await call(client, "search_merchants", query="restaurant")
         await call(client, "get_my_reservations", guest_name="Nobody")
 
-    logs = matp_node.logs()
+    logs = batp_node.logs()
     assert '"DISCOVER"' in logs
     assert '"RECALL"' in logs
 
 
 async def test_node_down_gives_the_fallback_url_and_coming_back_needs_no_restart(
-    bridge_base_url: str, matp_node: MatpNode
+    bridge_base_url: str, batp_node: BatpNode
 ) -> None:
     async with Client(f"{bridge_base_url}/mcp") as client:
         assert "slots" in await call(client, "get_availability", **availability())
-        matp_node.stop()
+        batp_node.stop()
         try:
             direct = await call(client, "get_availability", **availability())
             named = await call(client, "search_merchants", query="a table at Le Petit Zinc")
             generic = await call(client, "search_merchants", query="restaurant tonight")
             mine = await call(client, "get_my_reservations", guest_name="Nobody")
         finally:
-            matp_node.start()
+            batp_node.start()
         back = await call(client, "get_availability", **availability())
 
     assert direct["error"] == "agent_unavailable"
@@ -113,17 +113,17 @@ async def test_node_down_gives_the_fallback_url_and_coming_back_needs_no_restart
 
 
 async def test_slow_node_times_out_within_the_budget_and_the_session_survives(
-    bridge_base_url: str, matp_node: MatpNode
+    bridge_base_url: str, batp_node: BatpNode
 ) -> None:
     async with Client(f"{bridge_base_url}/mcp") as client:
         assert "slots" in await call(client, "get_availability", **availability())
-        matp_node.freeze()
+        batp_node.freeze()
         try:
             started = time.perf_counter()
             slow = await call(client, "get_availability", **availability())
             elapsed = time.perf_counter() - started
         finally:
-            matp_node.resume()
+            batp_node.resume()
         back = await call(client, "get_availability", **availability())
 
     assert slow["error"] == "agent_unavailable"
@@ -133,11 +133,11 @@ async def test_slow_node_times_out_within_the_budget_and_the_session_survives(
 
 
 async def test_a_burst_of_calls_over_one_session_is_never_invalid_input(
-    matp_node: MatpNode, e2e_engine: AsyncEngine
+    batp_node: BatpNode, e2e_engine: AsyncEngine
 ) -> None:
     # 80 calls on one session, 32 at most in flight on the node: none is refused as invalid (#90).
-    host, port = parse_matp_url(matp_node.url)
-    agent = MatpAgentClient(MatpClient(host, port, GATEWAY_IDENTITY))
+    host, port = parse_batp_url(batp_node.url)
+    agent = BatpAgentClient(BatpClient(host, port, GATEWAY_IDENTITY))
     day = datetime.now(TZ).date() + timedelta(days=1)
     settings = Settings(_env_file=None, database_url="postgresql+psycopg://u:p@h/db")
 
@@ -154,7 +154,7 @@ async def test_a_burst_of_calls_over_one_session_is_never_invalid_input(
     errors = [result for result in results if isinstance(result, ToolError)]
     assert all(error.error == "agent_unavailable" for error in errors), errors
     assert len(errors) < len(results)
-    assert "too many in flight" not in matp_node.logs()
+    assert "too many in flight" not in batp_node.logs()
 
 
 @pytest.mark.parametrize(
@@ -162,11 +162,11 @@ async def test_a_burst_of_calls_over_one_session_is_never_invalid_input(
     [("a table for four tonight, " * 21, None), ("dinner", [f"t{n}" for n in range(33)])],
 )
 async def test_a_search_the_node_refuses_is_invalid_input_not_an_outage(
-    matp_node: MatpNode, e2e_engine: AsyncEngine, query: str, tags: list[str] | None
+    batp_node: BatpNode, e2e_engine: AsyncEngine, query: str, tags: list[str] | None
 ) -> None:
     # Past the gateway's own check: the node answers 400, which must stay a refusal (#90).
-    host, port = parse_matp_url(matp_node.url)
-    agent = MatpAgentClient(MatpClient(host, port, GATEWAY_IDENTITY))
+    host, port = parse_batp_url(batp_node.url)
+    agent = BatpAgentClient(BatpClient(host, port, GATEWAY_IDENTITY))
     filters = SearchFilters(tags=tuple(tags)) if tags else None
     named = partial(find_named_merchant, "Le Petit Zinc", engine=e2e_engine)
     settings = Settings(_env_file=None, database_url="postgresql+psycopg://u:p@h/db")
@@ -189,15 +189,15 @@ async def test_only_the_gateway_s_token_opens_a_session_on_a_secured_node(
     e2e_database_url: str, tmp_path: Path
 ) -> None:
     tokens = json.dumps({GATEWAY_AGENT: GOOD_TOKEN})
-    node = MatpNode(e2e_database_url, tmp_path / "node.log", tokens=tokens)
+    node = BatpNode(e2e_database_url, tmp_path / "node.log", tokens=tokens)
     node.start()
     try:
         for token, works in ((GOOD_TOKEN, True), ("wrong-token-long-enough", False)):
             settings = Settings(
                 _env_file=None,
                 database_url=e2e_database_url,
-                matp_url=node.url,
-                matp_token=token,
+                batp_url=node.url,
+                batp_token=token,
             )
             with running_gateway(settings) as url:
                 async with Client(f"{url}/mcp") as client:

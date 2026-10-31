@@ -4,25 +4,25 @@
 <meta charset="utf-8">
 <meta content="Common,Latin" name="scripts">
 <meta content="initial-scale=1.0" name="viewport">
-<title>Merchant Agent Transfer Protocol (MATP)</title>
+<title>Broad Agent Transfer Protocol (BATP)</title>
 <meta content="Sésame (BaselHack 2026)" name="author">
 <meta content="
-       This document specifies the Merchant Agent Transfer Protocol (MATP), an
+       This document specifies the Broad Agent Transfer Protocol (BATP), an
 application protocol reserved for software agents that book with merchants
-on behalf of people or businesses. A MATP session runs over TCP, starts with
+on behalf of people or businesses. A BATP session runs over TCP, starts with
 a handshake that names the calling agent, and carries newline-delimited JSON
 frames. Each request states an intent (discover merchants, check
 availability, book, amend, cancel, recall bookings, ping) and the merchant it
 addresses. Responses carry numeric status codes and, when the merchant's own
 agent cannot serve the request, a fallback URL to the merchant's website.
-MATP is designed to sit behind a Model Context Protocol (MCP) server, which
+BATP is designed to sit behind a Model Context Protocol (MCP) server, which
 acts as a bridge for assistants that only speak MCP. 
     " name="description">
 <meta content="xml2rfc 3.35.0" name="generator">
 <meta content="agents" name="keyword">
 <meta content="booking" name="keyword">
 <meta content="MCP" name="keyword">
-<meta content="draft-merchant-agents-matp-00" name="ietf.draft">
+<meta content="draft-merchant-agents-batp-00" name="ietf.draft">
 <!-- Generator version information:
   xml2rfc 3.35.0
     Python 3.12.16
@@ -32,13 +32,13 @@ acts as a bridge for assistants that only speak MCP.
     Jinja2 3.1.6
     lxml 6.1.3
     natsort 8.4.0
-    platformdirs 4.14.0
+    platformdirs 4.14.2
     pycountry 26.2.16
     PyYAML 6.0.3
     requests 2.34.2
     wcwidth 0.9.4
 -->
-<link href="draft-merchant-agents-matp-00.xml" rel="alternate" type="application/rfc+xml">
+<link href="draft-merchant-agents-batp-00.xml" rel="alternate" type="application/rfc+xml">
 <link href="#copyright" rel="license">
 <style type="text/css">/*
 
@@ -1233,7 +1233,7 @@ li > p:last-of-type:only-child {
 <table class="ears">
 <thead><tr>
 <td class="left">Internet-Draft</td>
-<td class="center">MATP</td>
+<td class="center">BATP</td>
 <td class="right">October 2026</td>
 </tr></thead>
 <tfoot><tr>
@@ -1248,7 +1248,7 @@ li > p:last-of-type:only-child {
 <dt class="label-workgroup">Workgroup:</dt>
 <dd class="workgroup">Network Working Group</dd>
 <dt class="label-internet-draft">Internet-Draft:</dt>
-<dd class="internet-draft">draft-merchant-agents-matp-00</dd>
+<dd class="internet-draft">draft-merchant-agents-batp-00</dd>
 <dt class="label-published">Published:</dt>
 <dd class="published">
 <time datetime="2026-10-31" class="published">31 October 2026</time>
@@ -1265,18 +1265,18 @@ li > p:last-of-type:only-child {
 </dd>
 </dl>
 </div>
-<h1 id="title">Merchant Agent Transfer Protocol (MATP)</h1>
+<h1 id="title">Broad Agent Transfer Protocol (BATP)</h1>
 <section id="section-abstract">
       <h2 id="abstract"><a href="#abstract" class="selfRef">Abstract</a></h2>
-<p id="section-abstract-1">This document specifies the Merchant Agent Transfer Protocol (MATP), an
+<p id="section-abstract-1">This document specifies the Broad Agent Transfer Protocol (BATP), an
 application protocol reserved for software agents that book with merchants
-on behalf of people or businesses. A MATP session runs over TCP, starts with
+on behalf of people or businesses. A BATP session runs over TCP, starts with
 a handshake that names the calling agent, and carries newline-delimited JSON
 frames. Each request states an intent (discover merchants, check
 availability, book, amend, cancel, recall bookings, ping) and the merchant it
 addresses. Responses carry numeric status codes and, when the merchant's own
 agent cannot serve the request, a fallback URL to the merchant's website.
-MATP is designed to sit behind a Model Context Protocol (MCP) server, which
+BATP is designed to sit behind a Model Context Protocol (MCP) server, which
 acts as a bridge for assistants that only speak MCP.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
 </section>
 <div id="status-of-memo">
@@ -1513,7 +1513,7 @@ acts as a bridge for assistants that only speak MCP.<a href="#section-abstract-1
 check a table and book it. When that traffic uses HTTP, a merchant cannot
 tell it apart from a browser, so it cannot identify the calling agent,
 route agent traffic separately, or apply rules meant for agents.<a href="#section-1-1" class="pilcrow">¶</a></p>
-<p id="section-1-2">MATP gives that traffic its own channel. Every frame says which agent is
+<p id="section-1-2">BATP gives that traffic its own channel. Every frame says which agent is
 talking (established once per session), what it intends to do, and to which
 merchant. The protocol is deliberately small: it covers what a network of
 merchant agents needs to take bookings, and nothing else.<a href="#section-1-2" class="pilcrow">¶</a></p>
@@ -1535,8 +1535,8 @@ platform.<a href="#section-1.1-1" class="pilcrow">¶</a></p>
 <a href="#section-1.2" class="section-number selfRef">1.2. </a><a href="#name-relation-to-mcp" class="section-name selfRef">Relation to MCP</a>
         </h3>
 <p id="section-1.2-1">Assistants such as Claude connect to remote tools through MCP <span>[<a href="#MCP" class="cite xref">MCP</a>]</span>. An
-MCP server can act as a bridge: each of its tools maps to one MATP intent
-(<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>). Any other agent can speak MATP directly.<a href="#section-1.2-1" class="pilcrow">¶</a></p>
+MCP server can act as a bridge: each of its tools maps to one BATP intent
+(<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>). Any other agent can speak BATP directly.<a href="#section-1.2-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="relation-to-agtp">
@@ -1546,7 +1546,7 @@ MCP server can act as a bridge: each of its tools maps to one MATP intent
         </h3>
 <p id="section-1.3-1">The idea of an application protocol reserved for agent traffic, with agent
 identity and intent-named methods, comes from the AGTP Internet-Draft
-<span>[<a href="#I-D.hood-independent-agtp" class="cite xref">I-D.hood-independent-agtp</a>]</span>. MATP is independent from it: it does not
+<span>[<a href="#I-D.hood-independent-agtp" class="cite xref">I-D.hood-independent-agtp</a>]</span>. BATP is independent from it: it does not
 implement AGTP, it uses a different transport framing and method set, and
 it is limited to the booking use case.<a href="#section-1.3-1" class="pilcrow">¶</a></p>
 </section>
@@ -1568,7 +1568,7 @@ appear in all capitals, as shown here.<a href="#section-2-1" class="pilcrow">¶<
 <span class="break"></span><dl class="dlParallel" id="section-2-3">
         <dt id="section-2-3.1">Node:</dt>
         <dd style="margin-left: 1.5em" id="section-2-3.2">
-          <p id="section-2-3.2.1">A MATP server. It serves the merchant agents of one backend.<a href="#section-2-3.2.1" class="pilcrow">¶</a></p>
+          <p id="section-2-3.2.1">A BATP server. It serves the merchant agents of one backend.<a href="#section-2-3.2.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 <dt id="section-2-3.3">Merchant agent:</dt>
@@ -1626,31 +1626,31 @@ intent, the addressed merchant when the intent needs one, and parameters.
 The node answers each request with exactly one response carrying the same
 <code>id</code>. Several requests may be in flight at once, and responses may arrive
 in any order.<a href="#section-3-1" class="pilcrow">¶</a></p>
-<span id="name-matp-deployment-with-an-mcp"></span><figure id="figure-1">
+<span id="name-batp-deployment-with-an-mcp"></span><figure id="figure-1">
         <div class="alignLeft art-ascii-art art-text artwork" id="section-3-2.1">
 <pre>
   user's        +-------------+   MCP over HTTPS   +-------------+
   assistant ---&gt;| MCP client  |-------------------&gt;| MCP gateway |
                 +-------------+                    |  (bridge)   |
                                                    +------+------+
-                                                          | MATP
-  other agent ------------------- MATP --------------+    | TCP 4710
+                                                          | BATP
+  other agent ------------------- BATP --------------+    | TCP 4710
                                                      v    v
                                                    +-------------+
-                                                   |  MATP node  |
+                                                   |  BATP node  |
                                                    +------+------+
                                                           |
                                          merchant agents (one per slug)
 </pre>
 </div>
 <figcaption><a href="#figure-1" class="selfRef">Figure 1</a>:
-<a href="#name-matp-deployment-with-an-mcp" class="selfRef">MATP deployment with an MCP bridge</a>
+<a href="#name-batp-deployment-with-an-mcp" class="selfRef">BATP deployment with an MCP bridge</a>
         </figcaption></figure>
 <span id="name-a-session-with-two-requests"></span><figure id="figure-2">
         <div class="alignLeft art-ascii-art art-text artwork" id="section-3-3.1">
 <pre>
   Caller                                        Node
-    |  hello {agent, token, matp: "0.1"}         |
+    |  hello {agent, token, batp: "0.1"}         |
     |-------------------------------------------&gt;|
     |  welcome {node, intents, session}          |
     |&lt;-------------------------------------------|
@@ -1674,9 +1674,9 @@ in any order.<a href="#section-3-1" class="pilcrow">¶</a></p>
       <h2 id="name-transport">
 <a href="#section-4" class="section-number selfRef">4. </a><a href="#name-transport" class="section-name selfRef">Transport</a>
       </h2>
-<p id="section-4-1">MATP runs over TCP <span>[<a href="#RFC9293" class="cite xref">RFC9293</a>]</span>. A node listens on a configured port. This
+<p id="section-4-1">BATP runs over TCP <span>[<a href="#RFC9293" class="cite xref">RFC9293</a>]</span>. A node listens on a configured port. This
 document uses port 4710 for its examples and its reference implementation;
-that port is not registered for MATP (<a href="#iana" class="auto internal xref">Section 14</a>), so a caller <span class="bcp14">MUST</span> be able to
+that port is not registered for BATP (<a href="#iana" class="auto internal xref">Section 14</a>), so a caller <span class="bcp14">MUST</span> be able to
 use another port.<a href="#section-4-1" class="pilcrow">¶</a></p>
 <p id="section-4-2">On the loopback interface, a session <span class="bcp14">MAY</span> use plain TCP. On any other path,
 the caller and the node <span class="bcp14">MUST</span> use TLS 1.3 <span>[<a href="#RFC9846" class="cite xref">RFC9846</a>]</span> or a later version,
@@ -1694,12 +1694,12 @@ response, and the caller <span class="bcp14">MUST NOT</span> assume it was or wa
 <p id="section-4.1-1">A merchant agent is named by a URI <span>[<a href="#RFC3986" class="cite xref">RFC3986</a>]</span> of the form:<a href="#section-4.1-1" class="pilcrow">¶</a></p>
 <div class="lang-abnf sourcecode" id="section-4.1-2">
 <pre>
-matp-URI = "matp://" host [ ":" port ] "/" slug
+batp-URI = "batp://" host [ ":" port ] "/" slug
 slug     = 3*61( %x61-7A / DIGIT / "-" )   ; a-z, 0-9, "-"
 </pre><a href="#section-4.1-2" class="pilcrow">¶</a>
 </div>
 <p id="section-4.1-3">where <code>host</code> and <code>port</code> are those of <span>[<a href="#RFC3986" class="cite xref">RFC3986</a>]</span>. When <code>port</code> is absent, it
-is 4710. For example, <code>matp://node.example/le-petit-zinc</code> names the merchant
+is 4710. For example, <code>batp://node.example/le-petit-zinc</code> names the merchant
 agent <code>le-petit-zinc</code> on the node at <code>node.example</code>. The slug is not sent in
 the handshake: a session reaches every merchant agent of a node, and each
 request names its merchant (<a href="#requests" class="auto internal xref">Section 7</a>).<a href="#section-4.1-3" class="pilcrow">¶</a></p>
@@ -1796,7 +1796,7 @@ session.<a href="#section-6-1" class="pilcrow">¶</a></p>
             </tr>
             <tr>
               <td class="text-left" rowspan="1" colspan="1">
-                <code>matp</code>
+                <code>batp</code>
 </td>
               <td class="text-left" rowspan="1" colspan="1">version string (<a href="#versioning" class="auto internal xref">Section 11</a>)</td>
               <td class="text-left" rowspan="1" colspan="1">
@@ -1876,7 +1876,7 @@ session.<a href="#section-6-1" class="pilcrow">¶</a></p>
 <li class="normal" id="section-6.1-3.1">
             <p id="section-6.1-3.1.1"><code>agent.id</code> names the calling agent. The node treats it as an opaque
 string and attributes every request of the session to it. This document
-uses identifiers of the form <code>urn:matp:agent:&lt;name&gt;</code>; <code>matp</code> is not a
+uses identifiers of the form <code>urn:batp:agent:&lt;name&gt;</code>; <code>batp</code> is not a
 registered URN namespace <span>[<a href="#RFC8141" class="cite xref">RFC8141</a>]</span>, so these identifiers are only
 meaningful between parties that agreed on them.<a href="#section-6.1-3.1.1" class="pilcrow">¶</a></p>
 </li>
@@ -1924,7 +1924,7 @@ A node <span class="bcp14">MAY</span> accept a <code>hello</code> without <code>
             </tr>
             <tr>
               <td class="text-left" rowspan="1" colspan="1">
-                <code>matp</code>
+                <code>batp</code>
 </td>
               <td class="text-left" rowspan="1" colspan="1">the version the node will use for this session</td>
               <td class="text-left" rowspan="1" colspan="1">
@@ -2013,7 +2013,7 @@ that receives one <span class="bcp14">MUST</span> answer it with status 400.<a h
             </tr>
             <tr>
               <td class="text-left" rowspan="1" colspan="1">
-                <code>matp</code>
+                <code>batp</code>
 </td>
               <td class="text-left" rowspan="1" colspan="1">the version the node speaks</td>
               <td class="text-left" rowspan="1" colspan="1">
@@ -2028,8 +2028,8 @@ that receives one <span class="bcp14">MUST</span> answer it with status 400.<a h
 required, or the token does not match the agent.<a href="#section-6.3-2.1.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-6.3-2.2">
-            <p id="section-6.3-2.2.1">426: the node does not speak the major version in <code>hello.matp</code>
-(<a href="#versioning" class="auto internal xref">Section 11</a>). The node <span class="bcp14">SHOULD</span> include <code>matp</code>.<a href="#section-6.3-2.2.1" class="pilcrow">¶</a></p>
+            <p id="section-6.3-2.2.1">426: the node does not speak the major version in <code>hello.batp</code>
+(<a href="#versioning" class="auto internal xref">Section 11</a>). The node <span class="bcp14">SHOULD</span> include <code>batp</code>.<a href="#section-6.3-2.2.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-6.3-2.3">
             <p id="section-6.3-2.3.1">400: the first frame was not a valid <code>hello</code>.<a href="#section-6.3-2.3.1" class="pilcrow">¶</a></p>
@@ -2398,10 +2398,10 @@ the assistant (<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>).
 both in the merchant's local time zone. The params and result of each
 intent are defined by the JSON Schemas of <a href="#json-schemas" class="auto internal xref">Appendix C</a>; this section
 states their meaning and errors.<a href="#section-8-1" class="pilcrow">¶</a></p>
-<span id="name-matp-01-intents"></span><table class="center" id="table-9">
+<span id="name-batp-01-intents"></span><table class="center" id="table-9">
         <caption>
 <a href="#table-9" class="selfRef">Table 9</a>:
-<a href="#name-matp-01-intents" class="selfRef">MATP 0.1 intents</a>
+<a href="#name-batp-01-intents" class="selfRef">BATP 0.1 intents</a>
         </caption>
 <thead>
           <tr>
@@ -2491,7 +2491,7 @@ free that day for that party.<a href="#section-8.2-2" class="pilcrow">¶</a></p>
 "R-001"), <code>merchant</code>, <code>starts_at</code>, <code>party_size</code>, <code>table_label</code>, <code>status</code>
 ("confirmed"), <code>guest_name</code> and <code>via</code>.<a href="#section-8.3-2" class="pilcrow">¶</a></p>
 <p id="section-8.3-3"><code>via</code> is the booking channel, as the merchant sees it. Version 0.1 defines
-"claude", "merchant" and "website"; "website" is never set by MATP. A node
+"claude", "merchant" and "website"; "website" is never set by BATP. A node
 <span class="bcp14">MUST</span> record "merchant" when the caller's <code>agent.kind</code> is <code>merchant-agent</code>,
 and "claude" when it is <code>user-agent</code>, whatever assistant the caller is. So
 in this version, <code>via</code> is only accurate for callers behind the reference
@@ -2556,10 +2556,10 @@ those 24 hours, and a caller <span class="bcp14">MAY</span> send a RECALL again.
       <h2 id="name-status-codes">
 <a href="#section-9" class="section-number selfRef">9. </a><a href="#name-status-codes" class="section-name selfRef">Status Codes</a>
       </h2>
-<span id="name-matp-01-status-codes"></span><table class="center" id="table-10">
+<span id="name-batp-01-status-codes"></span><table class="center" id="table-10">
         <caption>
 <a href="#table-10" class="selfRef">Table 10</a>:
-<a href="#name-matp-01-status-codes" class="selfRef">MATP 0.1 status codes</a>
+<a href="#name-batp-01-status-codes" class="selfRef">BATP 0.1 status codes</a>
         </caption>
 <thead>
           <tr>
@@ -2816,18 +2816,18 @@ the procedures of <span>[<a href="#RFC6335" class="cite xref">RFC6335</a>]</span
         <dd class="break"></dd>
 <dt id="section-14-2.3">URI scheme:</dt>
         <dd style="margin-left: 1.5em" id="section-14-2.4">
-          <p id="section-14-2.4.1">The <code>matp</code> scheme of <a href="#transport" class="auto internal xref">Section 4</a> is not registered. A later version
+          <p id="section-14-2.4.1">The <code>batp</code> scheme of <a href="#transport" class="auto internal xref">Section 4</a> is not registered. A later version
 would request provisional registration under <span>[<a href="#RFC7595" class="cite xref">RFC7595</a>]</span> with this
 template:<a href="#section-14-2.4.1" class="pilcrow">¶</a></p>
 <ul class="normal">
 <li class="normal" id="section-14-2.4.2.1">
-              <p id="section-14-2.4.2.1.1">Scheme name: matp<a href="#section-14-2.4.2.1.1" class="pilcrow">¶</a></p>
+              <p id="section-14-2.4.2.1.1">Scheme name: batp<a href="#section-14-2.4.2.1.1" class="pilcrow">¶</a></p>
 </li>
             <li class="normal" id="section-14-2.4.2.2">
               <p id="section-14-2.4.2.2.1">Status: Provisional<a href="#section-14-2.4.2.2.1" class="pilcrow">¶</a></p>
 </li>
             <li class="normal" id="section-14-2.4.2.3">
-              <p id="section-14-2.4.2.3.1">Applications/protocols that use this scheme name: the Merchant Agent
+              <p id="section-14-2.4.2.3.1">Applications/protocols that use this scheme name: the Broad Agent
 Transfer Protocol (this document)<a href="#section-14-2.4.2.3.1" class="pilcrow">¶</a></p>
 </li>
             <li class="normal" id="section-14-2.4.2.4">
@@ -2844,7 +2844,7 @@ Transfer Protocol (this document)<a href="#section-14-2.4.2.3.1" class="pilcrow"
         <dd class="break"></dd>
 <dt id="section-14-2.5">URN namespace:</dt>
         <dd style="margin-left: 1.5em" id="section-14-2.6">
-          <p id="section-14-2.6.1">The <code>urn:matp:</code> identifiers used in examples are not a registered URN
+          <p id="section-14-2.6.1">The <code>urn:batp:</code> identifiers used in examples are not a registered URN
 namespace (<span>[<a href="#RFC8141" class="cite xref">RFC8141</a>]</span>).<a href="#section-14-2.6.1" class="pilcrow">¶</a></p>
 </dd>
       <dd class="break"></dd>
@@ -2907,6 +2907,10 @@ namespace (<span>[<a href="#RFC8141" class="cite xref">RFC8141</a>]</span>).<a h
 <a href="#section-15.2" class="section-number selfRef">15.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
         </h3>
 <dl class="references">
+<dt id="BATP-SCHEMAS">[BATP-SCHEMAS]</dt>
+        <dd>
+<span class="refAuthor">Sésame (BaselHack 2026)</span>, <span class="refTitle">"BATP JSON Schemas (generated from the reference implementation)"</span>, <time datetime="2026-10-31" class="refDate">31 October 2026</time>, <span>&lt;<a href="https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas">https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas</a>&gt;</span>. </dd>
+<dd class="break"></dd>
 <dt id="I-D.bhutton-json-schema">[I-D.bhutton-json-schema]</dt>
         <dd>
 <span class="refAuthor">Wright, A.</span>, <span class="refAuthor">Andrews, H. H.</span>, <span class="refAuthor">Hutton, B.</span>, and <span class="refAuthor">G. Dennis</span>, <span class="refTitle">"JSON Schema: A Media Type for Describing JSON Documents"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-bhutton-json-schema-01</span>, <time datetime="2022-06-10" class="refDate">10 June 2022</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-bhutton-json-schema-01">https://datatracker.ietf.org/doc/html/draft-bhutton-json-schema-01</a>&gt;</span>. </dd>
@@ -2914,10 +2918,6 @@ namespace (<span>[<a href="#RFC8141" class="cite xref">RFC8141</a>]</span>).<a h
 <dt id="I-D.hood-independent-agtp">[I-D.hood-independent-agtp]</dt>
         <dd>
 <span class="refAuthor">Hood, C.</span>, <span class="refTitle">"Agent Transfer Protocol (AGTP)"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-hood-independent-agtp-10</span>, <time datetime="2026-10-30" class="refDate">30 October 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-hood-independent-agtp-10">https://datatracker.ietf.org/doc/html/draft-hood-independent-agtp-10</a>&gt;</span>. </dd>
-<dd class="break"></dd>
-<dt id="MATP-SCHEMAS">[MATP-SCHEMAS]</dt>
-        <dd>
-<span class="refAuthor">Sésame (BaselHack 2026)</span>, <span class="refTitle">"MATP JSON Schemas (generated from the reference implementation)"</span>, <time datetime="2026-10-31" class="refDate">31 October 2026</time>, <span>&lt;<a href="https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas">https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas</a>&gt;</span>. </dd>
 <dd class="break"></dd>
 <dt id="MCP">[MCP]</dt>
         <dd>
@@ -2945,19 +2945,19 @@ namespace (<span>[<a href="#RFC8141" class="cite xref">RFC8141</a>]</span>).<a h
       <h2 id="name-the-mcp-bridge">
 <a href="#appendix-A" class="section-number selfRef">Appendix A. </a><a href="#name-the-mcp-bridge" class="section-name selfRef">The MCP Bridge</a>
       </h2>
-<p id="appendix-A-1">An MCP server can let an assistant that only speaks MCP use a MATP node.
+<p id="appendix-A-1">An MCP server can let an assistant that only speaks MCP use a BATP node.
 The reference bridge opens one session with <code>agent.id</code>
-        <code>urn:matp:agent:claude-gateway</code> and <code>agent.kind</code> <code>user-agent</code>, and maps its
+        <code>urn:batp:agent:claude-gateway</code> and <code>agent.kind</code> <code>user-agent</code>, and maps its
 tools to intents:<a href="#appendix-A-1" class="pilcrow">¶</a></p>
-<span id="name-mcp-tools-and-matp-intents"></span><table class="center" id="table-11">
+<span id="name-mcp-tools-and-batp-intents"></span><table class="center" id="table-11">
         <caption>
 <a href="#table-11" class="selfRef">Table 11</a>:
-<a href="#name-mcp-tools-and-matp-intents" class="selfRef">MCP tools and MATP intents</a>
+<a href="#name-mcp-tools-and-batp-intents" class="selfRef">MCP tools and BATP intents</a>
         </caption>
 <thead>
           <tr>
             <th class="text-left" rowspan="1" colspan="1">MCP tool</th>
-            <th class="text-left" rowspan="1" colspan="1">MATP intent</th>
+            <th class="text-left" rowspan="1" colspan="1">BATP intent</th>
             <th class="text-left" rowspan="1" colspan="1">Notes</th>
           </tr>
         </thead>
@@ -3042,13 +3042,13 @@ line.<a href="#appendix-B-1" class="pilcrow">¶</a></p>
 <span id="name-opening-the-session-discove"></span><figure id="figure-3">
         <div class="alignLeft art-text artwork" id="appendix-B-2.1">
 <pre>
-C: {"type": "hello", "matp": "0.1",
-    "agent": {"id": "urn:matp:agent:claude-gateway",
+C: {"type": "hello", "batp": "0.1",
+    "agent": {"id": "urn:batp:agent:claude-gateway",
               "name": "Claude via the S\u00e9same gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
-N: {"type": "welcome", "matp": "0.1",
-    "node": {"id": "urn:matp:node:merchant-agents",
+N: {"type": "welcome", "batp": "0.1",
+    "node": {"id": "urn:batp:node:merchant-agents",
              "name": "S\u00e9same"},
     "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
                 "RECALL", "PING"],
@@ -3117,7 +3117,7 @@ N: {"type": "response", "id": "r-5", "status": 200,
       </h2>
 <p id="appendix-C-1">These schemas use JSON Schema 2020-12 <span>[<a href="#I-D.bhutton-json-schema" class="cite xref">I-D.bhutton-json-schema</a>]</span>. They are
 generated from the reference implementation's contract models, so this
-appendix and the implementation cannot drift <span>[<a href="#MATP-SCHEMAS" class="cite xref">MATP-SCHEMAS</a>]</span>. In the
+appendix and the implementation cannot drift <span>[<a href="#BATP-SCHEMAS" class="cite xref">BATP-SCHEMAS</a>]</span>. In the
 params of AVAILABILITY, BOOK, AMEND and CANCEL, the merchant is not a
 member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class="pilcrow">¶</a></p>
 <div id="discover-params">
@@ -3211,7 +3211,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
   "required": [
     "query"
   ],
-  "title": "MATP DISCOVER params",
+  "title": "BATP DISCOVER params",
   "type": "object"
 }
 </pre><a href="#appendix-C.1-1" class="pilcrow">¶</a>
@@ -3346,7 +3346,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
   "required": [
     "merchants"
   ],
-  "title": "MATP DISCOVER result",
+  "title": "BATP DISCOVER result",
   "type": "object"
 }
 </pre><a href="#appendix-C.2-1" class="pilcrow">¶</a>
@@ -3393,7 +3393,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
     "date",
     "party_size"
   ],
-  "title": "MATP AVAILABILITY params",
+  "title": "BATP AVAILABILITY params",
   "type": "object"
 }
 </pre><a href="#appendix-C.3-1" class="pilcrow">¶</a>
@@ -3446,7 +3446,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
   "required": [
     "slots"
   ],
-  "title": "MATP AVAILABILITY result",
+  "title": "BATP AVAILABILITY result",
   "type": "object"
 }
 </pre><a href="#appendix-C.4-1" class="pilcrow">¶</a>
@@ -3494,7 +3494,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
     "guest_name",
     "idempotency_key"
   ],
-  "title": "MATP BOOK params",
+  "title": "BATP BOOK params",
   "type": "object"
 }
 </pre><a href="#appendix-C.5-1" class="pilcrow">¶</a>
@@ -3584,7 +3584,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
   "required": [
     "reservation"
   ],
-  "title": "MATP BOOK result",
+  "title": "BATP BOOK result",
   "type": "object"
 }
 </pre><a href="#appendix-C.6-2" class="pilcrow">¶</a>
@@ -3653,7 +3653,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
     "guest_name",
     "idempotency_key"
   ],
-  "title": "MATP AMEND params",
+  "title": "BATP AMEND params",
   "type": "object"
 }
 </pre><a href="#appendix-C.7-1" class="pilcrow">¶</a>
@@ -3689,7 +3689,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
     "reservation_id",
     "guest_name"
   ],
-  "title": "MATP CANCEL params",
+  "title": "BATP CANCEL params",
   "type": "object"
 }
 </pre><a href="#appendix-C.8-1" class="pilcrow">¶</a>
@@ -3718,7 +3718,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
   "required": [
     "guest_name"
   ],
-  "title": "MATP RECALL params",
+  "title": "BATP RECALL params",
   "type": "object"
 }
 </pre><a href="#appendix-C.9-1" class="pilcrow">¶</a>
@@ -3819,7 +3819,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
     "reservations",
     "notices"
   ],
-  "title": "MATP RECALL result",
+  "title": "BATP RECALL result",
   "type": "object"
 }
 </pre><a href="#appendix-C.10-1" class="pilcrow">¶</a>
@@ -3834,11 +3834,11 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
 <div class="lang-json sourcecode" id="appendix-C.11-1">
 <pre>
 {
-  "$comment": "Generated from matp_schemas.PingParams",
+  "$comment": "Generated from batp_schemas.PingParams",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "`PING` takes no params: `{}`.",
   "properties": {},
-  "title": "MATP PING params",
+  "title": "BATP PING params",
   "type": "object"
 }
 </pre><a href="#appendix-C.11-1" class="pilcrow">¶</a>
@@ -3846,7 +3846,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
 <div class="lang-json sourcecode" id="appendix-C.11-2">
 <pre>
 {
-  "$comment": "Generated from matp_schemas.PingResult",
+  "$comment": "Generated from batp_schemas.PingResult",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "pong": {
@@ -3864,7 +3864,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
     "pong",
     "server_time"
   ],
-  "title": "MATP PING result",
+  "title": "BATP PING result",
   "type": "object"
 }
 </pre><a href="#appendix-C.11-2" class="pilcrow">¶</a>

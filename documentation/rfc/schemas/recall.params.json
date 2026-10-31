@@ -13,6 +13,6 @@
   "required": [
     "guest_name"
   ],
-  "title": "MATP RECALL params",
+  "title": "BATP RECALL params",
   "type": "object"
 }

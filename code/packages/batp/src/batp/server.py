@@ -1,4 +1,4 @@
-"""A MATP node: sessions, multiplexed requests and limits (PROTOCOL.md §3, §5, §6, §10).
+"""A BATP node: sessions, multiplexed requests and limits (PROTOCOL.md §3, §5, §6, §10).
 
 The node knows nothing about restaurants: it authenticates callers and hands each request to
 `handle`, which returns the intent's `result` or raises an `AgentError` (or `Refused`, to add
@@ -15,9 +15,8 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from core.errors import AgentError
-from matp.codec import MAX_FRAME, FrameError, FrameTooLarge, encode, read_frame
-from matp.messages import (
+from batp.codec import MAX_FRAME, FrameError, FrameTooLarge, encode, read_frame
+from batp.messages import (
     ADDRESSED,
     ALL_INTENTS,
     IN_FLIGHT_LIMIT,
@@ -34,9 +33,10 @@ from matp.messages import (
     Welcome,
     compatible,
 )
-from matp.status import TOO_MANY_REQUESTS, Refused, error_body, status_for
+from batp.status import TOO_MANY_REQUESTS, Refused, error_body, status_for
+from core.errors import AgentError
 
-log = logging.getLogger("matp.node")
+log = logging.getLogger("batp.node")
 
 Handler = Callable[[AgentIdentity, Request], Awaitable[dict[str, Any]]]
 # The addressed merchant's own booking page, for a 503 the node itself sends (§8); None if unknown.
@@ -173,8 +173,8 @@ class NodeServer:
         except ValidationError:
             await reject(400, "Invalid hello")
             return None
-        if not compatible(hello.matp):
-            await reject(426, f"This node speaks MATP {PROTOCOL_VERSION}", hello.agent.id)
+        if not compatible(hello.batp):
+            await reject(426, f"This node speaks BATP {PROTOCOL_VERSION}", hello.agent.id)
             return None
         if not self.authenticate(hello):
             await reject(401, "Unknown agent or token", hello.agent.id)
@@ -270,7 +270,7 @@ class NodeServer:
         except ConnectionError:
             return
         log.info(
-            "matp request",
+            "batp request",
             extra={
                 "agent": agent.id,
                 "session": session,

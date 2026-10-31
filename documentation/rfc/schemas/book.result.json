@@ -73,6 +73,6 @@
   "required": [
     "reservation"
   ],
-  "title": "MATP BOOK result",
+  "title": "BATP BOOK result",
   "type": "object"
 }

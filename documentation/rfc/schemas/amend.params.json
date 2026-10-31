@@ -53,6 +53,6 @@
     "guest_name",
     "idempotency_key"
   ],
-  "title": "MATP AMEND params",
+  "title": "BATP AMEND params",
   "type": "object"
 }

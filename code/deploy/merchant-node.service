@@ -1,14 +1,14 @@
 [Unit]
-Description=Sésame MATP node
+Description=Sésame BATP node
 After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
 User=gateway
 WorkingDirectory=/opt/merchant-agents/code
-# Settings come from /opt/merchant-agents/code/.env (DATABASE_URL, MATP_TOKENS), read from the working directory.
+# Settings come from /opt/merchant-agents/code/.env (DATABASE_URL, BATP_TOKENS), read from the working directory.
 # Loopback only: the gateway on the same host is the node's only client (issue #62).
-Environment=MATP_HOST=127.0.0.1 MATP_PORT=4710
+Environment=BATP_HOST=127.0.0.1 BATP_PORT=4710
 ExecStart=/opt/merchant-agents/code/.venv/bin/python -m merchant_node
 Restart=on-failure
 RestartSec=2

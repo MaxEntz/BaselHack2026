@@ -1,7 +1,7 @@
 [project]
-name = "matp"
+name = "batp"
 version = "0.1.0"
-description = "MATP, the Merchant Agent Transfer Protocol: messages, framing, client and server."
+description = "BATP, the Broad Agent Transfer Protocol: messages, framing, client and server."
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "core",

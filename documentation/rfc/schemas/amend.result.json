@@ -73,6 +73,6 @@
   "required": [
     "reservation"
   ],
-  "title": "MATP AMEND result",
+  "title": "BATP AMEND result",
   "type": "object"
 }

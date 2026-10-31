@@ -22,12 +22,12 @@ must not overlap. Booking timestamps require an explicit offset, such as
 blank on tool inputs. Once stripped, no `NonEmptyStr` field holds a control character
 (Unicode category `Cc`: NUL, which Postgres can't store, tab, newline…); spaces, non-breaking
 ones included, and letters of any script are kept. On the guest side they are `GuestText`, at
-most 200 characters (a longer key overflows the unique index, a longer name a MATP frame). A
+most 200 characters (a longer key overflows the unique index, a longer name a BATP frame). A
 guest's day (`get_availability.date`) and booking time (`starts_at` of a creation or an
 update, also on the platform's public booking API) lie between 2000-01-01 and 2099-12-31
 (`BookingDay`, `BookingTime`), so no date arithmetic can overflow; outside, the answer is
 `invalid_input`. These bounds are fixed: the models never read the clock, and the service
-refuses the past with its own. They hold at the boundaries (gateway tools, MATP node, platform
+refuses the past with its own. They hold at the boundaries (gateway tools, BATP node, platform
 API); the service trusts inputs that went through them. A guest can no longer move, resize or
 cancel a booking once it has started (`slot_unavailable`); after that it is the merchant's
 (#79). `update_reservation` needs `starts_at` or `party_size`, and its `idempotency_key` is
@@ -91,7 +91,7 @@ text content is the plain JSON object.
 - Arguments outside the tool's schema are rejected before the tool runs and answer
   `invalid_input` (`gateway.fallback.RejectedArguments`).
 - `search_merchants` takes a `query` of at most 500 characters (in its schema) and at most 32
-  `filters.tags`, the bounds of the MATP node's `DISCOVER`; beyond them it answers
+  `filters.tags`, the bounds of the BATP node's `DISCOVER`; beyond them it answers
   `invalid_input` in both modes (#90).
 - A query *names* a merchant when it holds every distinctive word of its name: not an article
   or connector (EN/FR/DE), a tag spelling, a generic word ("restaurant", "brasserie", "petit")
@@ -118,13 +118,13 @@ text content is the plain JSON object.
 - Each call logs one JSON line: `{"event": "tool_call", "tool", "merchant", "latency_ms",
   "outcome"}`, where `outcome` is `ok` or the error code. Guest names never appear at INFO.
 
-With `MATP_URL` set, the gateway is a bridge (`documentation/PROTOCOL.md`, §12): `MatpAgentClient`
-sends each tool to the node as a MATP request, and the 2 s budget includes that hop. A lost node,
+With `BATP_URL` set, the gateway is a bridge (`documentation/PROTOCOL.md`, §12): `BatpAgentClient`
+sends each tool to the node as a BATP request, and the 2 s budget includes that hop. A lost node,
 an overloaded one (`429`) or an invalid result is `agent_unavailable`; a refusal from the node
 keeps its own code (#90). The gateway still reads the registry itself, for the
 `down` status and the fallback URL, so that a dead node still gives the link. For the same reason,
 when `DISCOVER` fails and the query names a merchant, `search_merchants` answers with its link.
-The log line then also has `matp_request`, the id of the request sent to the node.
+The log line then also has `batp_request`, the id of the request sent to the node.
 
 `GET /health` (outside MCP, no token): `200` or `503`, with `{"status", "database"}`. It doesn't
 check the node.
@@ -225,7 +225,7 @@ uv sync --locked
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy --strict packages/core packages/agent packages/gateway packages/matp packages/merchant_node
+uv run mypy --strict packages/core packages/agent packages/gateway packages/batp packages/merchant_node
 npm --prefix web ci
 npm --prefix web run check:contracts
 ```

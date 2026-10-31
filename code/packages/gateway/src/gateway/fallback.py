@@ -22,8 +22,8 @@ from gateway.discovery import RegistryEntry
 
 log = logging.getLogger("gateway.tools")
 
-# Id of the MATP request behind the current tool call, to match this log line with the node's.
-matp_request: ContextVar[str | None] = ContextVar("matp_request", default=None)
+# Id of the BATP request behind the current tool call, to match this log line with the node's.
+batp_request: ContextVar[str | None] = ContextVar("batp_request", default=None)
 
 # A timeout can hit after the COMMIT: these calls may have succeeded although Claude sees an error.
 WRITE_TOOLS = frozenset({"create_reservation", "update_reservation", "cancel_reservation"})
@@ -44,7 +44,7 @@ def deadline_in(settings: Settings) -> float:
 
 def log_call(tool: str, merchant: str | None, started: float, result: object) -> None:
     """The structured line of one tool call; `outcome` is `ok` or the error code."""
-    hop = matp_request.get()
+    hop = batp_request.get()
     log.info(
         "tool_call",
         extra={
@@ -52,7 +52,7 @@ def log_call(tool: str, merchant: str | None, started: float, result: object) ->
             "merchant": merchant,
             "latency_ms": round((time.perf_counter() - started) * 1000),
             "outcome": result.error if isinstance(result, ToolError) else "ok",
-            **({"matp_request": hop} if hop else {}),
+            **({"batp_request": hop} if hop else {}),
         },
     )
 

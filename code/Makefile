@@ -21,7 +21,7 @@ migrate:
 gateway: ## MCP server -> http://localhost:8001/mcp
 	uv run python -m gateway
 
-node: ## MATP node (our agent protocol) -> matp://127.0.0.1:4710
+node: ## BATP node (our agent protocol) -> batp://127.0.0.1:4710
 	uv run python -m merchant_node
 
 platform: ## Platform API -> http://localhost:8002
@@ -45,10 +45,11 @@ tunnel: ## Expose a local gateway through ngrok (the team URL is served by `make
 	@test -n "$(GATEWAY_PUBLIC_URL)" || (echo "GATEWAY_PUBLIC_URL is empty: see documentation/runbooks/connector.md" >&2; exit 1)
 	ngrok http --url="$(GATEWAY_PUBLIC_URL)" 8001
 
-deploy: ## Ship the MATP node and the gateway to the team server -> https://191-96-88-152.sslip.io/mcp
+deploy: ## Ship the BATP node and the gateway to the team server -> https://191-96-88-152.sslip.io/mcp
 	rsync -rlptz --delete --exclude .venv --exclude .env --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .hypothesis --exclude '.coverage*' --exclude htmlcov --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
+		sed -i -E "s/^MATP_/BATP_/; s/urn:matp:/urn:batp:/g; s,matp://,batp://,g" .env && \
 		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node -q && \
 		.venv/bin/alembic upgrade head && \
 		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service /etc/systemd/system/ && \
@@ -87,18 +88,18 @@ test:
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy packages/core packages/agent packages/gateway packages/matp packages/merchant_node
+	uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node
 
 fmt:
 	uv run ruff check --fix .
 	uv run ruff format .
 
 RFC_DIR := ../documentation/rfc
-RFC := draft-merchant-agents-matp-00
+RFC := draft-merchant-agents-batp-00
 XML2RFC := uvx --from xml2rfc==3.35.0 xml2rfc --quiet
 
-rfc: ## MATP Internet-Draft: schemas, .xml, .txt, .html, then idnits (needs Docker and npx)
-	uv run python scripts/matp_schemas.py
+rfc: ## BATP Internet-Draft: schemas, .xml, .txt, .html, then idnits (needs Docker and npx)
+	uv run python scripts/batp_schemas.py
 	docker run --rm -v "$(abspath $(RFC_DIR))":/rfc -w /rfc ruby:3.3-slim sh -c '\
 		gem install --no-document --quiet kramdown-rfc -v 1.7.43 >/dev/null && \
 		kramdown-rfc --v3 $(RFC).md > $(RFC).v2.xml'

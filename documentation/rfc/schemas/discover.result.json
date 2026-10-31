@@ -119,6 +119,6 @@
   "required": [
     "merchants"
   ],
-  "title": "MATP DISCOVER result",
+  "title": "BATP DISCOVER result",
   "type": "object"
 }

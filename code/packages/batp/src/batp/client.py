@@ -1,4 +1,4 @@
-"""A MATP client: one session, many requests in flight (PROTOCOL.md §5, §6).
+"""A BATP client: one session, many requests in flight (PROTOCOL.md §5, §6).
 
 The session opens on the first request and reopens on the next request after the node closed
 it. At most `IN_FLIGHT_LIMIT` requests it still waits on are in flight; the others wait for a
@@ -19,9 +19,8 @@ from typing import Any, Self
 
 from pydantic import ValidationError
 
-from core.errors import AgentUnavailable
-from matp.codec import MAX_FRAME, FrameError, encode, read_frame
-from matp.messages import (
+from batp.codec import MAX_FRAME, FrameError, encode, read_frame
+from batp.messages import (
     IN_FLIGHT_LIMIT,
     PROTOCOL_VERSION,
     AgentIdentity,
@@ -32,13 +31,14 @@ from matp.messages import (
     Response,
     Welcome,
 )
-from matp.status import raise_for
+from batp.status import raise_for
+from core.errors import AgentUnavailable
 
-log = logging.getLogger("matp.client")
+log = logging.getLogger("batp.client")
 
-UNREACHABLE = "The MATP node is unreachable"
-CLOSED = "The MATP session was closed before the answer"
-UNREADABLE = "The MATP node sent an answer this client can't read"
+UNREACHABLE = "The BATP node is unreachable"
+CLOSED = "The BATP session was closed before the answer"
+UNREADABLE = "The BATP node sent an answer this client can't read"
 # RECALL marks notices delivered, but returns them again for a day: resending it loses none (#91).
 SAFE_TO_RESEND: frozenset[Intent] = frozenset({"PING", "DISCOVER", "AVAILABILITY", "RECALL"})
 
@@ -47,7 +47,7 @@ class SessionLost(AgentUnavailable):
     """The connection failed under a request, as opposed to an answer from the node."""
 
 
-class MatpRejected(AgentUnavailable):
+class BatpRejected(AgentUnavailable):
     """The node refused the session (`reject`): wrong token, unsupported version, …"""
 
     def __init__(self, status: int, message: str) -> None:
@@ -55,7 +55,7 @@ class MatpRejected(AgentUnavailable):
         self.status = status
 
 
-class MatpClient:
+class BatpClient:
     def __init__(
         self,
         host: str,
@@ -163,7 +163,7 @@ class MatpClient:
         except (OSError, TimeoutError):
             raise SessionLost(UNREACHABLE) from None
         try:
-            hello = Hello(matp=PROTOCOL_VERSION, agent=self.agent, token=self.token)
+            hello = Hello(batp=PROTOCOL_VERSION, agent=self.agent, token=self.token)
             writer.write(encode(hello))
             await writer.drain()
             frame = await asyncio.wait_for(read_frame(reader), self.connect_timeout)
@@ -175,13 +175,13 @@ class MatpClient:
             try:
                 reject = Reject.model_validate(frame)
             except ValidationError:
-                raise AgentUnavailable("The MATP node rejected the session") from None
-            raise MatpRejected(reject.status, reject.message)
+                raise AgentUnavailable("The BATP node rejected the session") from None
+            raise BatpRejected(reject.status, reject.message)
         try:
             self.welcome = Welcome.model_validate(frame)
         except ValidationError:
             writer.close()
-            raise AgentUnavailable("The MATP node answered hello with something else") from None
+            raise AgentUnavailable("The BATP node answered hello with something else") from None
         self._writer = writer
         self._reader_task = asyncio.create_task(self._read_responses(reader, writer))
 
@@ -194,7 +194,7 @@ class MatpClient:
                     # Says which request of ours the node couldn't read; without this line, the
                     # only symptom would be that request timing out (#93).
                     log.warning(
-                        "matp error frame",
+                        "batp error frame",
                         extra={"status": frame.get("status"), "detail": frame.get("message")},
                     )
                 if frame.get("type") != "response":

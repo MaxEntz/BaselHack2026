@@ -1,5 +1,6 @@
-"""Business errors ↔ MATP status codes (PROTOCOL.md §8, AGENTS.md §8.4)."""
+"""Business errors ↔ BATP status codes (PROTOCOL.md §8, AGENTS.md §8.4)."""
 
+from batp.messages import ErrorBody, Response
 from core.errors import (
     AgentError,
     AgentUnavailable,
@@ -8,7 +9,6 @@ from core.errors import (
     PartyTooLarge,
     SlotUnavailable,
 )
-from matp.messages import ErrorBody, Response
 
 TOO_MANY_REQUESTS = 429
 STATUS_BY_CODE = {
@@ -58,4 +58,4 @@ def raise_for(response: Response) -> None:
     error = ERROR_BY_CODE.get(body.code) if body and body.code else None
     if body is not None and error is not None:
         raise error(body.message)
-    raise AgentUnavailable(body.message if body else f"MATP status {response.status}")
+    raise AgentUnavailable(body.message if body else f"BATP status {response.status}")

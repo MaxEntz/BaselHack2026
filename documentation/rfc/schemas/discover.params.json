@@ -82,6 +82,6 @@
   "required": [
     "query"
   ],
-  "title": "MATP DISCOVER params",
+  "title": "BATP DISCOVER params",
   "type": "object"
 }
