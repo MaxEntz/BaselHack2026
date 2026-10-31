@@ -100,3 +100,16 @@ async def test_find_named_down_merchant(engine: AsyncEngine, token: str) -> None
     assert await named(f"shared{token}") is None
     assert await named("restaurant tonight") is None
     assert await named("") is None
+
+
+async def test_a_generic_word_of_a_down_merchants_name_does_not_name_it(
+    engine: AsyncEngine, token: str
+) -> None:
+    down = registry_row(f"{token}-petit", f"Le Petit Zinc{token}", status="down")
+    async with engine.begin() as conn:
+        await conn.execute(insert(merchants_t), [down])
+
+    named = await find_named_down_merchant(f"Le Petit Zinc{token}", engine=engine)
+
+    assert named is not None
+    assert await find_named_down_merchant("un petit restaurant végétarien", engine=engine) is None

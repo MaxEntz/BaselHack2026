@@ -60,6 +60,9 @@ LIGATURES = str.maketrans({"œ": "oe", "æ": "ae", "ø": "o", "ł": "l", "đ": "
 QUERY_NOISE = frozenset(
     {"restaurant", "restaurants", "resto", "table", "tables", "tonight", "today", "tomorrow"}
     | {"dinner", "lunch", "book", "booking", "reservation", "reserve", "soir", "diner", "midi"}
+    # Common in names, but they don't identify one: "un petit restaurant" names no merchant.
+    | {"petit", "petite", "petits", "maison", "chez", "bistro", "bistrot", "brasserie", "cafe"}
+    | {"cuisine", "little", "house", "kitchen"}
 )
 # `near` words that name no city: "near me" or "ici" means no city filter.
 NEAR_NOISE = frozenset({"near", "nearby", "around", "close", "here", "me", "pres", "ici", "de"})
