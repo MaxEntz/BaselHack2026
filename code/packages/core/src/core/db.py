@@ -66,13 +66,23 @@ async def merchant_conn(engine: AsyncEngine, slug: str) -> AsyncIterator[AsyncCo
         yield await conn.execution_options(schema_translate_map=translate)
 
 
+# Who writes in a transaction, for the live events (#134): `notify_reservation()` passes it on
+# (migration 0005), and the listener sends the merchant only its guests' changes.
+ACTOR_SETTING = "sesame.actor"
+
+
+async def as_merchant(conn: AsyncConnection) -> None:
+    """Mark the transaction's reservation writes as the merchant's own (transaction-local)."""
+    await conn.execute(select(func.set_config(ACTOR_SETTING, "merchant", True)))
+
+
 def _one_of(name: str, values: tuple[str, ...]) -> CheckConstraint:
     """`name IN (...)` from the contract's Literal values (code constants, never input)."""
     allowed = ", ".join(f"'{value}'" for value in values)
     return CheckConstraint(f"{name} IN ({allowed})")
 
 
-# public: managed by Alembic (migrations 0001-0004), declared here to query it.
+# public: managed by Alembic (migrations 0001-0005), declared here to query it.
 
 public_metadata = MetaData(schema="public")
 

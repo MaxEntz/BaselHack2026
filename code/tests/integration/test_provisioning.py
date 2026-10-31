@@ -182,6 +182,7 @@ async def test_provisioned_schema_notifies_new_reservations(
             "id": "R-001",
             "status": "confirmed",
             "via": "claude",
+            "actor": None,  # outside merchant operations (#134)
         }
     ]
 
