@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import demo_booking
+import demo_management
 import demo_reset
 import pytest
 import seed
@@ -164,7 +166,7 @@ async def test_tonight_bookings_skip_past_times_and_never_book_twice(agent: Fake
 
     booked = sorted(agent.reservations.values(), key=lambda r: r.starts_at)
     assert [(r.starts_at.isoformat(), r.party_size, r.via) for r in booked] == [
-        ("2026-10-31T19:30:00+01:00", 4, "merchant"),
+        ("2026-10-31T19:30:00+01:00", 4, "website"),
         ("2026-10-31T20:00:00+01:00", 6, "website"),
         ("2026-10-31T21:00:00+01:00", 3, "merchant"),
     ]
@@ -189,6 +191,30 @@ def test_bookings_share_the_provisioning_engine(
 
     assert agent.engines == [registry.engine]
     assert registry.engine.disposed
+
+
+def test_management_data_goes_in_after_the_merchants_on_their_engine(
+    registry: FakeRegistry, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[tuple[object, list[str]]] = []
+
+    async def seed_management(engine: object, today: object) -> str:
+        calls.append((engine, list(registry.statuses)))
+        if len(calls) > 1:
+            raise NotFound("la-graine-verte isn't in the registry: seed it too (`--all`)")
+        return "management data: …"
+
+    monkeypatch.setattr(demo_management, "seed_management", seed_management)
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost:5432/db")
+    get_settings.cache_clear()
+    try:
+        assert seed.main(demo_reset.DEMO_MODE) == 0
+        assert calls == [(registry.engine, ["la-graine-verte", "maison-albane"])]
+        assert "la-graine-verte: management data" in capsys.readouterr().out
+        assert seed.main(["--with-management"]) == 1
+        assert "not_found" in capsys.readouterr().err
+    finally:
+        get_settings.cache_clear()
 
 
 @pytest.mark.parametrize(
@@ -240,3 +266,25 @@ def test_outage_switch(registry: FakeRegistry, capsys: pytest.CaptureFixture[str
 
     assert set_status.main(["chez-mimi", "down"]) == 1
     assert "not_found" in capsys.readouterr().err
+
+
+def test_the_live_booking_key_is_stable_and_short() -> None:
+    """`GuestText` caps the key at 200 characters, and a guest name may take all 200 (#79)."""
+    starts_at = datetime(2026, 10, 31, 20, 0, tzinfo=ZURICH)
+    longest = ["--merchant", "m" * 61, "--guest", "K" * 200]
+    key = demo_booking.idempotency_key(demo_booking.parser().parse_args(longest), starts_at)
+
+    assert key == demo_booking.idempotency_key(demo_booking.parser().parse_args(longest), starts_at)
+    assert len(key) <= 200
+    other = demo_booking.parser().parse_args([*longest, "--key", "2"])
+    assert demo_booking.idempotency_key(other, starts_at) != key
+
+
+def test_the_live_booking_needs_no_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("GATEWAY_TOKEN", "s3cret")
+
+    settings = demo_booking.GatewaySettings(_env_file=None)
+
+    assert settings.gateway_token is not None
+    assert settings.gateway_token.get_secret_value() == "s3cret"

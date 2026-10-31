@@ -424,3 +424,9 @@
     box-shadow: 0 0 0 6px var(--tone-bg), var(--shadow);
   }
 }
+
+/* Where a fact of the review card was read (#136). */
+.fact-source {
+  color: var(--muted);
+  font-size: 0.85em;
+}

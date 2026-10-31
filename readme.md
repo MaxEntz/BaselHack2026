@@ -4,7 +4,7 @@
 
 > Let Claude book with any merchant, straight from their website.
 
-A restaurant owner gives us their website and describes how they work. We generate their booking agent. Anyone can then book a table by asking Claude, through a single MCP server that applies their preferences and sends them back to the restaurant's own site whenever the agent can't help. The owner runs everything by chatting with our platform, onboarding included, and sees bookings made through Claude appear live.
+A restaurant owner gives us their website and describes how they work. We generate their booking agent. Anyone can then book a table by asking Claude, through a single MCP server that applies their preferences and sends them back to the restaurant's own site whenever the agent can't help. The owner runs it by chatting with our platform, onboarding included, and sees bookings made through Claude appear live. A management site is being added next to the chat ([#127](https://github.com/MaxEntz/BaselHack2026/issues/127)).
 
 Built at BaselHack 2026. Issue [#26](https://github.com/MaxEntz/BaselHack2026/issues/26) tracks the plan.
 

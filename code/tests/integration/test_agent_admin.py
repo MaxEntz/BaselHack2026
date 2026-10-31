@@ -15,7 +15,7 @@ from agent.service import PgAgentService
 from core.db import guest_notices_t, merchant_conn, merchants_t, policy_t, tables_t
 from core.db import reservations_t as reservations
 from core.errors import InvalidInput, NotFound, PartyTooLarge
-from core.models import AdminReservationRow, Reservation, Service, TableSpec
+from core.models import AdminReservationRow, GuestRow, Reservation, Service, TableSpec
 
 pytestmark = pytest.mark.integration
 
@@ -37,10 +37,15 @@ def service(engine: AsyncEngine) -> PgAgentService:
 
 
 async def book(
-    service: PgAgentService, slug: str, hhmm: str, party_size: int = 2, guest: str = GUEST
+    service: PgAgentService,
+    slug: str,
+    hhmm: str,
+    party_size: int = 2,
+    guest: str = GUEST,
+    day: date = DAY,
 ) -> Reservation:
     return await service.create_reservation(
-        slug, at(hhmm), party_size, guest, str(uuid4()), via="claude"
+        slug, at(hhmm, day), party_size, guest, str(uuid4()), via="claude"
     )
 
 
@@ -188,6 +193,54 @@ async def test_get_stats_counts_only_that_day(
     stats = await service.get_stats(slug, DAY)
 
     assert (stats.bookings, stats.guests, stats.blocked) == (0, 0, ())
+
+
+# list_guests
+
+
+async def test_list_guests_one_row_per_guest_ignoring_case_and_accents(
+    service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    first = await book(service, slug, "19:00", party_size=4, guest="Lena Becker")
+    await book(service, slug, "21:00", guest="LÉNA  becker")
+    await book(service, slug, "20:00", guest="Ada Lovelace")
+
+    guests = await service.list_guests(slug)
+
+    assert [(g.guest_name, g.bookings) for g in guests] == [
+        ("Ada Lovelace", 1),
+        ("Lena Becker", 2),
+    ]
+    assert guests[1] == GuestRow(
+        guest_name="Lena Becker",
+        reservation_id=first.id,
+        date=DAY,
+        time="19:00",
+        party_size=4,
+        bookings=2,
+        via="claude",
+    )
+    assert [g.guest_name for g in await service.list_guests(slug, "  lena BECK")] == ["Lena Becker"]
+    assert await service.list_guests(slug, "Nobody") == []
+
+
+async def test_list_guests_only_counts_live_bookings_ahead_in_the_next_7_days(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    await insert_booking(
+        engine, slug, NOW - timedelta(minutes=30), id="R-900", guest_name="Started"
+    )
+    cancelled = await book(service, slug, "19:00", guest="Cancelled")
+    await service.cancel_reservation(slug, cancelled.id, by="merchant")
+    last_day = NOW.date() + timedelta(days=6)
+    await book(service, slug, "21:00", guest="Sixth Day", day=last_day)
+    await book(service, slug, "19:00", guest="Seventh Day", day=last_day + timedelta(days=1))
+
+    guests = await service.list_guests(slug)
+
+    assert [(g.guest_name, g.date) for g in guests] == [("Sixth Day", last_day)]
 
 
 # block_slot / unblock_slot
@@ -418,13 +471,14 @@ async def test_merchant_cancellation_of_an_unknown_booking(
     [
         lambda s: s.list_reservations("no-such-merchant", DAY),
         lambda s: s.get_stats("no-such-merchant", DAY),
+        lambda s: s.list_guests("no-such-merchant"),
         lambda s: s.block_slot("no-such-merchant", at("19:00")),
         lambda s: s.unblock_slot("no-such-merchant", at("19:00")),
         lambda s: s.update_policy("no-such-merchant", max_party_size=4),
         lambda s: s.update_tables("no-such-merchant", [TableSpec(label="T1", seats=2)]),
         lambda s: s.cancel_reservation("no-such-merchant", "R-001", by="merchant"),
     ],
-    ids=["list", "stats", "block", "unblock", "policy", "tables", "cancel"],
+    ids=["list", "stats", "guests", "block", "unblock", "policy", "tables", "cancel"],
 )
 async def test_unknown_merchant_is_not_found(
     service: PgAgentService, call: Callable[[PgAgentService], Awaitable[object]]

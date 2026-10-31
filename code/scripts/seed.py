@@ -5,9 +5,11 @@ Run from `code/`; the options combine:
     uv run python scripts/seed.py --all                     # the 3 merchants, live
     uv run python scripts/seed.py --except le-petit-zinc    # demo mode: onboarding builds it live
     uv run python scripts/seed.py --with-bookings           # tonight's bookings at Le Petit Zinc
+    uv run python scripts/seed.py --with-management         # La Graine Verte's management data
 
 A merchant already in the registry keeps its data and is set live again. Bookings use fixed
-idempotency keys: seeding twice on the same day books nothing twice.
+idempotency keys: seeding twice on the same day books nothing twice. The management data (#131,
+`scripts/demo_management.py`) goes in once, dated from the day of the seed.
 """
 
 import argparse
@@ -19,6 +21,7 @@ from datetime import datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import demo_management
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -46,7 +49,9 @@ class Booking:
 # for 4 tonight at 8pm", and the 21:00 booking survives "Block 21:00 tonight".
 TONIGHT = (
     Booking("19:00", 2, "Camille Muller", "website"),
-    Booking("19:30", 4, "Thomas Schmitt", "merchant"),
+    # Guests' bookings first: "Cancel R-001" (§9) leaves the guest a notice, which a booking
+    # the merchant entered itself doesn't (#134), even when the seed runs after 19:00.
+    Booking("19:30", 4, "Thomas Schmitt", "website"),
     Booking("20:00", 6, "Famille Keller", "website"),
     Booking("21:00", 3, "Léa Meyer", "merchant"),
 )
@@ -70,6 +75,11 @@ def parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--with-bookings", action="store_true", help=f"tonight's bookings at {BOOKINGS_AT}"
+    )
+    parser.add_argument(
+        "--with-management",
+        action="store_true",
+        help=f"{demo_management.MERCHANT}'s bookings, as the management site's mockup shows them",
     )
     return parser
 
@@ -124,9 +134,14 @@ async def run(args: argparse.Namespace) -> int:
     try:
         for slug in selected(args):
             await seed_merchant(engine, load_profile(slug))
-        if not args.with_bookings:
+        if not (args.with_bookings or args.with_management):
             return 0
         now = datetime.now(ZoneInfo(get_settings().merchant_tz))
+        if args.with_management:
+            done = await demo_management.seed_management(engine, now.date())
+            print(f"{demo_management.MERCHANT}: {done}")
+        if not args.with_bookings:
+            return 0
         return 1 if await seed_bookings(engine, now) else 0
     finally:
         await engine.dispose()
@@ -141,8 +156,10 @@ def database_error(error: DBAPIError) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
-    if not (args.all or args.excluded or args.with_bookings):
-        parser().error("nothing to do: pass --all, --except SLUG or --with-bookings")
+    if not (args.all or args.excluded or args.with_bookings or args.with_management):
+        parser().error(
+            "nothing to do: pass --all, --except SLUG, --with-bookings or --with-management"
+        )
     try:
         return asyncio.run(run(args))
     except AgentError as error:

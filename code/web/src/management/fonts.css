@@ -1,0 +1,17 @@
+/* Self-hosted, SIL OFL (licences next to the files). "Fraunces Soft" is a local alias for
+   Fraunces Italic (opsz 9-144, wght 100-900, SOFT 0-100); there is no upright Fraunces and no
+   italic Karla, so .mg sets font-synthesis: none. Both files are the mockup's own subset. */
+@font-face {
+  font-family: "Fraunces Soft";
+  src: url("./fonts/fraunces-soft-italic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Karla";
+  src: url("./fonts/karla.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}

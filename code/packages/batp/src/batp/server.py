@@ -42,6 +42,9 @@ Handler = Callable[[AgentIdentity, Request], Awaitable[dict[str, Any]]]
 # The addressed merchant's own booking page, for a 503 the node itself sends (§8); None if unknown.
 FallbackUrl = Callable[[Request], Awaitable[str | None]]
 Authenticate = Callable[[Hello], bool]
+# Told about each answered request, after the answer went out: a request log, for example.
+# Never awaited by the answer, so it can neither delay it nor fail it.
+Recorder = Callable[[AgentIdentity, Request, Response], Awaitable[None]]
 Send = Callable[[BaseModel], Awaitable[None]]
 
 FAILED = "The merchant agent failed; try again later"
@@ -49,6 +52,8 @@ TOO_SLOW = "The merchant agent took too long; try again later"
 TOO_LARGE = "The answer is too large to send"
 # How long a 503 waits for the merchant's fallback URL before going without it.
 FALLBACK_TIMEOUT = 1.0
+# How long a recorder may take, and how long `stop()` waits for the ones still running.
+RECORD_TIMEOUT = 5.0
 
 
 class NodeServer:
@@ -67,6 +72,7 @@ class NodeServer:
         max_sessions: int = 64,
         max_malformed: int = 10,
         fallback_url: FallbackUrl | None = None,
+        record: Recorder | None = None,
     ) -> None:
         self.node = node
         self.handle = handle
@@ -80,8 +86,11 @@ class NodeServer:
         self.max_sessions = max_sessions
         self.max_malformed = max_malformed
         self.fallback_url = fallback_url
+        self.record = record
         self._server: asyncio.Server | None = None
         self._writers: set[asyncio.StreamWriter] = set()
+        # Running recorders: kept so they aren't garbage-collected, awaited a little by stop().
+        self._records: set[asyncio.Task[None]] = set()
 
     @property
     def port(self) -> int:
@@ -111,6 +120,8 @@ class NodeServer:
             writer.close()
         await self._server.wait_closed()
         self._server = None
+        if self._records:
+            await asyncio.wait(self._records, timeout=RECORD_TIMEOUT)
 
     async def _session(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         lock = asyncio.Lock()
@@ -268,7 +279,10 @@ class NodeServer:
             response = _unavailable(request.id, TOO_LARGE, await self._fallback(request))
             await send(response)
         except ConnectionError:
+            # Carried out all the same (a booking may exist): still recorded.
+            self._record(agent, request, response)
             return
+        self._record(agent, request, response)
         log.info(
             "batp request",
             extra={
@@ -301,6 +315,27 @@ class NodeServer:
         except Exception:
             log.exception("request failed", extra={"agent": agent.id, "intent": request.intent})
             return _unavailable(request.id, FAILED, await self._fallback(request))
+
+    def _record(self, agent: AgentIdentity, request: Request, response: Response) -> None:
+        """Hand the answered request to the recorder, in its own task."""
+        if self.record is None:
+            return
+        task = asyncio.create_task(self._run_recorder(self.record, agent, request, response))
+        self._records.add(task)
+        task.add_done_callback(self._records.discard)
+
+    async def _run_recorder(
+        self, record: Recorder, agent: AgentIdentity, request: Request, response: Response
+    ) -> None:
+        try:
+            async with asyncio.timeout(RECORD_TIMEOUT):
+                await record(agent, request, response)
+        except Exception:
+            log.warning(
+                "request not recorded",
+                extra={"agent": agent.id, "request": request.id, "intent": request.intent},
+                exc_info=True,
+            )
 
     async def _fallback(self, request: Request) -> str | None:
         """The merchant's booking page for a 503 (§8): best effort, never a second failure."""

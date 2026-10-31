@@ -1,0 +1,135 @@
+/* La Graine Verte, in the look of its management site (#148). From
+   documentation/design/poc-v10/la-graine-verte-public.html: the rules down to the footer are the
+   mockup's, so the page matches it at 1440 px; focus, other widths and anchors are added below.
+   Self-hosted fonts, SIL OFL (licences in fonts/). "Fraunces Soft" is a local name for
+   Fraunces Italic (opsz 9-144, wght 100-900, SOFT 0-100), as in code/web. */
+
+@font-face { font-family: "Fraunces Soft"; src: url("fonts/fraunces-soft-italic.woff2") format("woff2"); font-weight: 100 900; font-style: italic; font-display: swap; }
+@font-face { font-family: "Karla"; src: url("fonts/karla.woff2") format("woff2"); font-weight: 200 800; font-style: normal; font-display: swap; }
+html { scroll-behavior: auto; scroll-padding-top: 85px; }
+body { margin: 0; background: #edebe2; }
+
+.pub { --bg: #edebe2; --cream: #f8f6ef; --olive: #727f55; --olive-band: #6c744d; --olive-foot: #758257; --ink: #4f5b39;
+  --brick: #935046; --brick-deep: #7a4138; --brick-soft: #a25d52; --on: #f4f2ea;
+  --display: "Fraunces Soft", Georgia, serif; --body: "Karla", "Helvetica Neue", Arial, sans-serif;
+  --leather: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.32' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .2 -.04'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23n)'/%3E%3C/svg%3E");
+  --stroke-brick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 36' preserveAspectRatio='none'%3E%3Cpath fill='%23935046' d='M2 22C70 11 170 5 297 6c3 0 3 3 0 3C200 11 120 16 42 26 20 29 0 27 2 22Z'/%3E%3Cpath fill='%23935046' d='M92 29c38-7 76-11 112-14 3 0 3 3 0 4-34 4-72 10-110 15-4 0-6-3-2-5Z'/%3E%3C/svg%3E");
+  --stroke-stone: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 36' preserveAspectRatio='none'%3E%3Cpath fill='%23bbb6a6' d='M2 22C70 11 170 5 297 6c3 0 3 3 0 3C200 11 120 16 42 26 20 29 0 27 2 22Z'/%3E%3Cpath fill='%23bbb6a6' d='M92 29c38-7 76-11 112-14 3 0 3 3 0 4-34 4-72 10-110 15-4 0-6-3-2-5Z'/%3E%3C/svg%3E");
+  background: var(--bg); color: var(--ink); font: 400 20px/1.4 var(--body); text-align: left; }
+.pub *, .pub *::before, .pub *::after { box-sizing: border-box; }
+.pub h1, .pub h2, .pub p { margin: 0; padding: 0; }
+.pub a { color: inherit; }
+.pub-d { font-family: var(--display); font-style: italic; font-weight: 900; font-variation-settings: "SOFT" 55, "opsz" 144; letter-spacing: -.005em; }
+
+.pub-hd { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 24px; min-height: 85px; padding-inline: 80px; background: var(--bg); }
+.pub-brand { font-size: 34px; line-height: 1; color: var(--olive); text-decoration: none; white-space: nowrap; }
+.pub-nav { display: flex; margin-left: auto; }
+.pub-nav a { padding: 0 13px; border-right: 1px solid var(--brick); font-size: 18px; line-height: 23px; text-decoration: none; white-space: nowrap; }
+.pub-nav a:last-child { border-right: 0; }
+.pub-pill { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 24px; border-radius: 30px; background: var(--brick); color: var(--on) !important; font-weight: 600; font-size: 20px; line-height: 1; text-decoration: none; white-space: nowrap; box-shadow: 0 0 4px rgb(0 0 0 / .16); }
+
+.pub-hero { position: relative; padding: 8px 80px 56px; text-align: center; }
+.pub-doodle { position: absolute; fill: none; stroke: var(--olive); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: .75; pointer-events: none; }
+.pub-giant { font-size: 150px; line-height: .98; color: var(--olive); }
+.pub-giant span { position: relative; display: inline-block; }
+.pub-giant span::after { content: ""; position: absolute; left: 4%; right: -2%; bottom: -.1em; height: .22em; background: var(--stroke-brick) center / 100% 100% no-repeat; }
+.pub-lead { max-width: 760px; margin: 34px auto 0 !important; font-size: 21px; }
+.pub-tags { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 22px 0 0; padding: 0; list-style: none; }
+.pub-tags li { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 16px; border: 1px solid var(--olive); border-radius: 30px; font-size: 16px; font-weight: 500; }
+
+.pub-carte { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 56px; padding: 40px 80px 150px; }
+.pub-carte-l { display: grid; align-content: start; justify-items: start; gap: 28px; padding-top: 56px; }
+.pub-h { font-size: 56px; line-height: 1; color: var(--olive); }
+.pub-under { position: relative; display: inline-block; }
+.pub-under::after { content: ""; position: absolute; left: -10px; right: -34px; bottom: -.32em; height: .42em; background: var(--stroke-brick) center / 100% 100% no-repeat; }
+.pub-band .pub-h { color: var(--on); }
+.pub-band .pub-under::after { background-image: var(--stroke-stone); }
+.pub-carte-r { position: relative; min-height: 600px; }
+.pub-dishes { margin: 0; padding: 0; list-style: none; }
+.pub-leaf { position: absolute; left: -4%; top: -6%; width: 108%; height: 112%; fill: var(--cream); }
+.pub-dish { position: absolute; width: 300px; aspect-ratio: 1 / .94; display: grid; align-content: center; justify-items: start; gap: 2px; padding: 8% 10%; color: var(--on); filter: drop-shadow(0 6px 10px rgb(0 0 0 / .14)); }
+.pub-dish > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: var(--fill); }
+.pub-dish > * { position: relative; }
+.pub-dish i { font-size: 70px; line-height: 1; }
+.pub-dish b { font-weight: 700; font-size: 22px; line-height: 1.15; }
+.pub-dish.d1 { left: 6%; top: 0; --fill: var(--brick); }
+.pub-dish.d2 { left: 50%; top: 40px; --fill: var(--olive); z-index: 1; }
+.pub-dish.d3 { left: 2%; top: 300px; --fill: var(--brick-deep); }
+.pub-dish.d4 { left: 46%; top: 338px; --fill: var(--brick); z-index: 1; }
+
+.pub-band { position: relative; color: var(--on); padding-inline: 80px; }
+.pub-band.pub-olive { background: var(--olive-band) var(--leather); padding-block: 140px 190px; }
+.pub-band.pub-brick { background: var(--brick); padding-block: 120px 130px; overflow: hidden; }
+.pub-wave { position: absolute; left: 0; width: 100%; fill: var(--bg); display: block; pointer-events: none; }
+.pub-wave.top { top: -1px; height: 100px; }
+.pub-wave.bot { bottom: -1px; height: 130px; }
+.pub-two { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; }
+.pub-two > div { display: grid; align-content: start; gap: 30px; }
+.pub-svc { display: grid; gap: 6px; }
+.pub-svc small { font-size: 20px; }
+.pub-svc i { font-size: 56px; line-height: 1.05; }
+.pub-book { position: relative; display: grid; justify-items: center; gap: 22px; text-align: center; }
+.pub-phone { display: inline-block; font-size: 112px; line-height: 1; color: var(--on) !important; text-decoration: none; }
+.pub-rules { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+.pub-ft { display: flex; justify-content: space-between; align-items: end; gap: 40px; padding: 44px 80px 28px; background: var(--olive-foot) var(--leather); color: var(--on); font-size: 16px; }
+.pub-ft .pub-brand { color: var(--on); font-size: 44px; }
+.pub-ft p { max-width: 560px; text-align: right; }
+
+/* Not in the mockup: a focus ring on every link, in a colour that shows on its background. */
+.pub a:focus-visible { outline: 3px solid var(--brick); outline-offset: 4px; border-radius: 4px; }
+.pub a.pub-pill:focus-visible { outline-color: var(--ink); border-radius: 30px; }
+.pub-band a:focus-visible, .pub-ft a:focus-visible { outline-color: var(--on); }
+
+/* The dishes are placed for a 734 px column (1440 px): below that, they scale with it. */
+@media (min-width: 901px) and (max-width: 1439px) {
+  .pub-carte-r { container-type: inline-size; min-height: 0; }
+  .pub-dishes { height: 81.7cqi; } /* on a child: a container's own cqi measure its parent */
+  .pub-dish { width: 40.8cqi; }
+  .pub-dish i { font-size: 9.53cqi; }
+  .pub-dish b { font-size: 3cqi; }
+  .pub-dish.d2 { top: 5.45cqi; }
+  .pub-dish.d3 { top: 40.85cqi; }
+  .pub-dish.d4 { top: 46.05cqi; }
+}
+
+@media (max-width: 1100px) {
+  .pub-hd, .pub-hero, .pub-carte, .pub-band, .pub-ft { padding-inline: 40px; }
+  .pub-giant { font-size: 112px; }
+  .pub-carte { gap: 32px; }
+}
+
+@media (max-width: 900px) {
+  html { scroll-padding-top: 0; }
+  .pub { font-size: 18px; }
+  /* Not sticky: wrapped on two or three rows, it would hide the page. */
+  .pub-hd { position: static; flex-wrap: wrap; justify-content: space-between; gap: 6px 8px; min-height: 0; padding: 12px 16px; }
+  .pub-brand { font-size: 24px; }
+  .pub-nav { order: 3; width: 100%; margin-left: 0; justify-content: center; }
+  .pub-nav a { padding: 4px 12px; font-size: 16px; }
+  .pub-pill { min-height: 44px; padding: 8px 14px; font-size: 15px; }
+  .pub-hero { padding: 24px 16px 40px; }
+  .pub-doodle { display: none; }
+  .pub-giant { font-size: clamp(40px, 12vw, 96px); }
+  .pub-lead { margin-top: 24px !important; font-size: 18px; }
+  .pub-carte { grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 24px 16px 96px; overflow-x: clip; }
+  .pub-carte-l { padding-top: 0; gap: 20px; }
+  .pub-h { font-size: 44px; }
+  .pub-carte-r { max-width: 640px; min-height: 0; }
+  .pub-dishes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .pub-leaf { left: -4%; top: -8%; width: 108%; height: 116%; }
+  .pub-dish, .pub-dish.d1, .pub-dish.d2, .pub-dish.d3, .pub-dish.d4 { position: relative; left: auto; top: auto; width: auto; padding: 14% 12%; }
+  .pub-dish i { font-size: 40px; }
+  .pub-dish b { font-size: 16px; }
+  .pub-band { padding-inline: 16px; }
+  .pub-band.pub-olive { padding-block: 96px 130px; }
+  .pub-band.pub-brick { padding-block: 72px 80px; }
+  .pub-wave.top { height: 56px; }
+  .pub-wave.bot { height: 72px; }
+  .pub-two { grid-template-columns: minmax(0, 1fr); gap: 56px; }
+  .pub-svc i { font-size: 40px; }
+  .pub-phone { font-size: clamp(44px, 13vw, 80px); }
+  .pub-ft { flex-direction: column; align-items: start; gap: 16px; padding: 32px 16px 24px; }
+  .pub-ft .pub-brand { font-size: 36px; }
+  .pub-ft p { text-align: left; }
+}

@@ -2,7 +2,7 @@
 
 from typing import ClassVar
 
-from core.models import ErrorCode
+from core.models import ErrorCode, Problem
 
 
 class AgentError(Exception):
@@ -30,3 +30,11 @@ class InvalidInput(AgentError):
 
 class AgentUnavailable(AgentError):
     code: ClassVar[ErrorCode] = "agent_unavailable"
+
+
+class FormProblem(InvalidInput):
+    """A management form broke a rule the web words itself (#133): `422` with `problem`."""
+
+    def __init__(self, message: str, problem: Problem) -> None:
+        super().__init__(message)
+        self.problem = problem
