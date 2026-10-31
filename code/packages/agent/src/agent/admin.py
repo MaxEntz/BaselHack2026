@@ -22,9 +22,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from agent.guests import guest_key
+from agent.requests import describe
 from core import forms
 from core.availability import bookable_starts, is_bookable_start
 from core.db import (
+    agent_requests_t,
     blocked_slots_t,
     guest_notices_t,
     merchants_t,
@@ -35,6 +37,7 @@ from core.db import (
 from core.errors import InvalidInput, NotFound
 from core.models import (
     AdminReservationRow,
+    AgentRequest,
     FloorPlan,
     GuestRow,
     MerchantCancelOutcome,
@@ -47,6 +50,9 @@ from core.models import (
 
 # Any row shape (SQLAlchemy 2.1 rows are variadic generics).
 _Row = Row[*tuple[Any, ...]]
+
+# What the Agent page shows of a day (`AgentRequests`).
+MAX_AGENT_REQUESTS = 10
 
 # Bounds for merchant input, well inside Postgres `integer`: a typo never reaches the DB.
 MAX_SEATS = forms.MAX_SEATS
@@ -194,6 +200,55 @@ async def set_status(conn: AsyncConnection, slug: str, status: Literal["live", "
     )
     if result.rowcount == 0:
         raise InvalidInput("This agent isn't published yet: publish it first")
+
+
+async def list_agent_requests(
+    conn: AsyncConnection,
+    slug: str,
+    day: date,
+    tz: ZoneInfo,
+    *,
+    refused: bool,
+    max_party_size: int,
+) -> list[AgentRequest]:
+    """The latest requests other agents sent on the merchant's local `day`, newest first,
+    worded for the Agent page; `refused` keeps the ones answered with a status >= 400."""
+    start, end = _day_bounds(day, tz)
+    t = agent_requests_t
+    query = (
+        select(t)
+        .where(t.c.merchant_slug == slug, t.c.at >= start, t.c.at < end)
+        .order_by(t.c.at.desc(), t.c.id.desc())
+        .limit(MAX_AGENT_REQUESTS)
+    )
+    if refused:
+        query = query.where(t.c.status >= 400)
+    found = []
+    for row in await conn.execute(query):
+        title, text = describe(
+            row.agent_name,
+            row.intent,
+            row.status,
+            row.request,
+            row.response,
+            max_party_size=max_party_size,
+            tz=tz,
+        )
+        found.append(
+            AgentRequest(
+                id=row.id,
+                at=row.at.astimezone(tz),
+                agent_name=row.agent_name,
+                intent=row.intent,
+                status=row.status,
+                refused=row.status >= 400,
+                title=title,
+                text=text,
+                request=row.request,
+                response=row.response,
+            )
+        )
+    return found
 
 
 async def _update_profile(conn: AsyncConnection, slug: str, changes: dict[str, Any]) -> None:

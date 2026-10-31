@@ -45,9 +45,9 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
     ("PUT", "/settings", SETTINGS, "#133"),
     ("GET", "/blocked", None, "#133"),
     ("PUT", "/blocked?date=2026-11-01", {"times": ["13:00"]}, "#133"),
-    ("POST", "/agent/pause", None, "#146"),
-    ("POST", "/agent/resume", None, "#146"),
-    ("GET", "/agent/requests?date=2026-10-31&refused=true", None, "#146"),
+    ("POST", "/agent/pause", None, None),
+    ("POST", "/agent/resume", None, None),
+    ("GET", "/agent/requests?date=2026-10-31&refused=true", None, None),
 ]
 NOT_BUILT = [route for route in ROUTES if route[3]]
 

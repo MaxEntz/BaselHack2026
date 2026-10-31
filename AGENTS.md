@@ -128,7 +128,7 @@ One Postgres schema per merchant ([ADR-0001](documentation/adr/0001-one-postgres
 
 | Where | Tables |
 |---|---|
-| `public` (Alembic, migrations `0001`–`0003`) | `merchants` (registry: slug, name, website, fallback_url, city, tags, price_level, `status` `building`/`live`/`down`, default `building`, `profile` jsonb), `guest_notices`, `reservation_changes` (applied update keys, [ADR-0013](documentation/adr/0013-store-update-idempotency-keys-in-public.md)), `agent_requests` (the BATP node's request log, 7 days, #146), function `notify_reservation()` |
+| `public` (Alembic, migrations `0001`–`0004`) | `merchants` (registry: slug, name, website, fallback_url, city, tags, price_level, `status` `building`/`live`/`down`, default `building`, `profile` jsonb), `guest_notices`, `reservation_changes` (applied update keys, [ADR-0013](documentation/adr/0013-store-update-idempotency-keys-in-public.md)), `agent_requests` (the BATP node's request log, frames as text, 7 days, #146), function `notify_reservation()` |
 | `m_<slug>`, one per merchant | `tables`, `policy` (one row), `blocked_slots`, `reservations` (`EXCLUDE USING gist (table_id WITH =, during WITH &&) WHERE status = 'confirmed'`; `during` never empty; `via` `claude`/`merchant`/`website`), triggers `reservations_notify` (sends `schema`, `op`, `id`, `status`, `via`) and `reservations_skip_noop` |
 
 Rules for DB code:
@@ -339,6 +339,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | Contract freeze for the management site (#129): its routes answer `501` until their issues land, behind a fail-closed owner check; days and times are the merchant's local `YYYY-MM-DD` / `HH:MM`, today is the server's (`MerchantOverview.now`), blocked times are set per day as `HH:MM`; form bodies are structural and `core.forms` answers a `problem` (code, service indices, table, guest); `ManagementError` has its own codes (`not_signed_in`, `other_merchant`, `not_built_yet`); BATP frames are stored and served as JSON strings; the web's mock reads the demo fixture of #131 and applies the server's rules | Pages and backend can be built in parallel against one shape; the web never computes an offset (#83) or its own today; validating types answer a generic 422, so the form messages couldn't know which rule and row failed; `ErrorCode` stays the §8.4 list the tools' schemas show; frames shown as sent, never re-serialized; a mock more lenient than the server would hide the rules the real site enforces |
 | 2026-10-31 | The BATP node records each answered request to a published merchant, with both frames, in `public.agent_requests` (7 days), after the answer, on its own small pool, at most 100 waiting; `AgentService.set_status` pauses or resumes a published agent | #146 |
 | 2026-10-31 | `same_guest` also ignores accents and moves to `agent/guests.py` with `guest_key`, which the Guests page groups by; Claude-side updates, cancellations and `get_my_reservations` follow | #144 |
+| 2026-10-31 | Agent page routes: pause and resume through `AgentService.set_status`; `GET /agent/requests` reads the merchant's local day, newest first, 10 at most, worded by `agent.requests.describe` (413 quotes the limit now); frames stored as `text` (migration `0004`), so they're served as sent | #146 |
 
 ## 15. Out of scope (POC)
 

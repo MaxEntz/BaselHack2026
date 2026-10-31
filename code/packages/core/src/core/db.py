@@ -132,8 +132,9 @@ agent_requests_t = Table(
     Column("agent_name", Text, nullable=False),
     Column("intent", Text, nullable=False),
     Column("status", Integer, nullable=False),
-    Column("request", JSONB, nullable=False),
-    Column("response", JSONB, nullable=False),
+    # The frames as the text that was on the wire, never re-serialized (migration 0004).
+    Column("request", Text, nullable=False),
+    Column("response", Text, nullable=False),
 )
 
 # Merchant schema: created by provisioning (`merchant_metadata.create_all` on a translated
