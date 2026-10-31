@@ -1,6 +1,6 @@
 # Sésame: pitch deck
 
-Open [`sesame-pitch-v6.html`](sesame-pitch-v6.html) in a browser. It is one self-contained file that works offline. Keys: arrows to move, `F` for fullscreen, `N` for the speaker notes, Cmd+P for a PDF.
+Open [`sesame-pitch-v6.html`](sesame-pitch-v6.html) in a browser. It is one self-contained file that works offline, apart from the demo recording beside it. Keys: arrows to move, `F` for fullscreen, `N` for the speaker notes, Cmd+P for a PDF.
 
 ## Slides
 
@@ -17,7 +17,9 @@ Open [`sesame-pitch-v6.html`](sesame-pitch-v6.html) in a browser. It is one self
 
 ## Demo recording
 
-The recording is not in the repository. Save it as `sesame-demo.mp4` next to the deck, or drop it on the frame of slide 6, in which case it is gone after a reload. It plays on arrival, and a click or space pauses it, so use the right arrow to leave that slide.
+[`sesame-demo.mp4`](sesame-demo.mp4) sits next to the deck: 45 seconds, 2880×1620, no sound. Slide 6 plays it on arrival, and a click or space pauses it, so use the right arrow to leave that slide. To show another recording, replace the file, or drop one on the frame of slide 6, in which case it is gone after a reload.
+
+The deck rounds the video's corners in its CSS, and the file itself is square. Played outside the deck, it shows small black corners at the bottom, from the window it was recorded in.
 
 ## Speaker notes
 
@@ -28,6 +30,7 @@ Each note opens with the team's script in French, followed by the English versio
 - **Slide 2:** "2035s" is the wording the team chose. The standard form for a decade would be "2030s".
 - **Slide 3:** it draws the model. Today Claude goes through the gateway over HTTPS, the other agents are not connected, and only restaurants exist.
 - **Slide 4:** Sésame does not generate a control site yet. `code/web` is a chat, and a management site with ordinary pages goes beyond the chat-only rule of AGENTS.md §1, which the team still has to agree on.
+- **Slide 6:** the recording shows the v10 mockups, not `code/web`: the merchant's chat and the management site run from a fixed script, and #127 tracks building them. Its public site is La Graine Verte restyled, while `code/sites` still has the green one (#148). Its chat with Claude is a replay and says so on screen: the three times it offers came from the real connector on 31 October 2026, but the window is not Claude.ai.
 - **Slide 7:** the cost claim comes from [Taalas](https://taalas.com/the-path-to-ubiquitous-ai/) alone, and the slide says so.
 
 ## Transitions
