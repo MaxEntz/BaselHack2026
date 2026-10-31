@@ -1,0 +1,8 @@
+{
+  "$comment": "Generated from matp_schemas.PingParams",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`PING` takes no params: `{}`.",
+  "properties": {},
+  "title": "MATP PING params",
+  "type": "object"
+}

@@ -1,0 +1,36 @@
+{
+  "$comment": "Generated from core.models.GetAvailabilityInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "party_size": {
+      "exclusiveMinimum": 0,
+      "title": "Party Size",
+      "type": "integer"
+    },
+    "time": {
+      "anyOf": [
+        {
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time"
+    }
+  },
+  "required": [
+    "date",
+    "party_size"
+  ],
+  "title": "MATP AVAILABILITY params",
+  "type": "object"
+}

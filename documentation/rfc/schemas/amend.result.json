@@ -1,0 +1,78 @@
+{
+  "$comment": "Generated from core.models.ReservationOutput",
+  "$defs": {
+    "Reservation": {
+      "additionalProperties": false,
+      "properties": {
+        "guest_name": {
+          "title": "Guest Name",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "merchant": {
+          "pattern": "^[a-z0-9-]{3,61}$",
+          "title": "Merchant",
+          "type": "string"
+        },
+        "party_size": {
+          "exclusiveMinimum": 0,
+          "title": "Party Size",
+          "type": "integer"
+        },
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "confirmed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "table_label": {
+          "title": "Table Label",
+          "type": "string"
+        },
+        "via": {
+          "enum": [
+            "claude",
+            "merchant",
+            "website"
+          ],
+          "title": "Via",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "merchant",
+        "starts_at",
+        "party_size",
+        "table_label",
+        "status",
+        "guest_name",
+        "via"
+      ],
+      "title": "Reservation",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "reservation": {
+      "$ref": "#/$defs/Reservation"
+    }
+  },
+  "required": [
+    "reservation"
+  ],
+  "title": "MATP AMEND result",
+  "type": "object"
+}
