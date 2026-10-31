@@ -38,7 +38,7 @@ make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 ```
 
-Test markers: `integration` (needs Docker), `llm` (calls the Anthropic API, skipped when `ANTHROPIC_API_KEY` is empty).
+Test markers: `integration` (needs Docker), `llm` (calls the OpenAI API, skipped when `OPENAI_API_KEY` is empty).
 
 ## Layout
 

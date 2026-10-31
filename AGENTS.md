@@ -14,6 +14,7 @@ This file is the single source of truth for this repository. Read it fully befor
 - **`templates/restaurant.json` lives in `agent`** (provisioning consumes it), not in `builder`.
 - **Merchant schema name** = `m_` + slug with `-` replaced by `_`; slugs are ≤ 61 characters (Postgres identifiers are limited to 63 bytes).
 - **Tool contract changes vs §8**: `update_reservation` and `cancel_reservation` also take `guest_name` (checked against the booking); `search_merchants` also returns `suggestions` and `ignored_filters`; admin tool `update_tables` added; table `public.guest_notices` added to the §7.2 SQL.
+- **Backend LLM calls use OpenAI**, not Anthropic: the builder's `extract` step and the platform assistant use the OpenAI Python SDK (Responses API), with `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-6.1-terra`). Read "OpenAI API" wherever §3, §4, §5, §8.3, §10 and §11 say "Claude API", "Anthropic SDK" or `ANTHROPIC_*`. Claude stays the **user-side** client (Claude.ai connects to the gateway).
 - Work is tracked in GitHub issues (milestones M0–M4, Demo); the tracking issue #26 lists every issue and these corrections.
 
 ---
@@ -368,6 +369,7 @@ Env (`.env.example`): `DATABASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `M
 | 2026-10-31 | Code in `code/`, `platform` → `merchant_platform`, MCP SDK v2 (`MCPServer`) | BaselHack template; stdlib name clash; FastMCP removed in v2 (§0) |
 | 2026-10-31 | Claude API for every LLM call (OpenAI not used) | One SDK; a multi-provider layer costs time for no demo gain |
 | 2026-10-31 | `AGENTS.md` is the shared instruction file, `CLAUDE.md` imports it | Team uses both Claude Code and opencode |
+| 2026-10-31 | OpenAI API for every backend LLM call (replaces the "Claude API" row above) | The team's API key is an OpenAI one; still one SDK. Spike #4 validated strict function calling for the extraction |
 
 ## 15. Out of scope (POC)
 
