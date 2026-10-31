@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = "==3.12.*"
 
 [manifest]
@@ -8,7 +8,9 @@ members = [
     "builder",
     "core",
     "gateway",
+    "matp",
     "merchant-agents",
+    "merchant-node",
     "merchant-platform",
 ]
 
@@ -637,6 +639,21 @@ wheels = [
 ]
 
 [[package]]
+name = "matp"
+version = "0.1.0"
+source = { editable = "packages/matp" }
+dependencies = [
+    { name = "core" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "core", editable = "packages/core" },
+    { name = "pydantic", specifier = ">=2.14" },
+]
+
+[[package]]
 name = "mcp"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -683,6 +700,8 @@ dependencies = [
     { name = "builder" },
     { name = "core" },
     { name = "gateway" },
+    { name = "matp" },
+    { name = "merchant-node" },
     { name = "merchant-platform" },
 ]
 
@@ -704,6 +723,8 @@ requires-dist = [
     { name = "builder", editable = "packages/builder" },
     { name = "core", editable = "packages/core" },
     { name = "gateway", editable = "packages/gateway" },
+    { name = "matp", editable = "packages/matp" },
+    { name = "merchant-node", editable = "packages/merchant_node" },
     { name = "merchant-platform", editable = "packages/merchant_platform" },
 ]
 
@@ -717,6 +738,25 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1" },
     { name = "ruff", specifier = ">=0.17" },
     { name = "testcontainers", extras = ["postgres"], specifier = ">=4" },
+]
+
+[[package]]
+name = "merchant-node"
+version = "0.1.0"
+source = { editable = "packages/merchant_node" }
+dependencies = [
+    { name = "agent" },
+    { name = "core" },
+    { name = "gateway" },
+    { name = "matp" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent", editable = "packages/agent" },
+    { name = "core", editable = "packages/core" },
+    { name = "gateway", editable = "packages/gateway" },
+    { name = "matp", editable = "packages/matp" },
 ]
 
 [[package]]

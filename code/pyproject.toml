@@ -9,6 +9,8 @@ dependencies = [
     "gateway",
     "builder",
     "merchant-platform",
+    "matp",
+    "merchant-node",
 ]
 
 [dependency-groups]
@@ -31,6 +33,8 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 core = { workspace = true }
+matp = { workspace = true }
+merchant-node = { workspace = true }
 agent = { workspace = true }
 gateway = { workspace = true }
 builder = { workspace = true }
@@ -49,7 +53,7 @@ select = ["E", "W", "F", "I", "UP", "B", "SIM", "ASYNC", "RUF"]
 "migrations/versions/*" = ["F401"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["core", "agent", "gateway", "builder", "merchant_platform"]
+known-first-party = ["core", "agent", "gateway", "builder", "merchant_platform", "matp", "merchant_node"]
 
 [tool.mypy]
 python_version = "3.12"
