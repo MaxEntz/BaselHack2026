@@ -46,7 +46,7 @@ test.describe("at 1440 px", () => {
     await expect(page.getByText("What went into your profile")).toBeVisible({ timeout: 20_000 });
     await expect(page.locator(".st-status")).toHaveText("Hidden from guests");
     await expect(page.getByText("Building La Graine Verte")).toBeVisible();
-    await expect(page.getByText("Found 7 details.")).toBeVisible();
+    await expect(page.getByText("Found 8 details.")).toBeVisible();
     await expect(page.getByText("Waiting for you.")).toBeVisible();
     await expect(page.getByText("I read your page. Tap a line")).toBeVisible();
     await expect(page.getByText("Check these")).toBeVisible();

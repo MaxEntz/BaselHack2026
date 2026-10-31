@@ -133,6 +133,31 @@ class Location(_Model):
     lng: float | None = None
 
 
+Hex = Annotated[str, StringConstraints(pattern=r"^#[0-9a-f]{6}$")]
+# The fonts the management site bundles (code/web), else the closest generic family (#149).
+DisplayFont = Literal["Fraunces Soft", "serif", "sans"]
+BodyFont = Literal["Karla", "serif", "sans"]
+
+
+class Look(_Model):
+    """The merchant site's colours and shapes, read from its homepage's computed styles by code,
+    never by the LLM (#149, ADR-0003). The management site's tokens come from it (#150)."""
+
+    bg: Hex  # the page
+    surface: Hex  # cards
+    line: Hex  # borders
+    ink: Hex  # text
+    muted: Hex  # secondary text
+    accent: Hex
+    accent_2: Hex
+    on_accent: Hex  # text on either accent
+    display_font: DisplayFont
+    body_font: BodyFont
+    corners: Literal["organic", "rounded", "square"]
+    radius_px: Annotated[int, Field(ge=0, le=32)]  # cards and buttons; `rounded` uses it (#150)
+    texture: Literal["leather", "none"]
+
+
 class MerchantProfile(_Model):
     slug: Slug
     name: NonEmptyStr
@@ -147,6 +172,8 @@ class MerchantProfile(_Model):
     price_level: PriceLevel
     cancellation_policy: str | None = None
     fallback_url: HttpUrl
+    # Profiles stored before #149 have none: the management site then uses the default look.
+    look: Look | None = None
 
 
 class Slot(_Model):
@@ -337,7 +364,14 @@ class PublishAgentInput(_Model):
 
 
 FactKey = Literal[
-    "name", "hours", "tags", "max_party_size", "cancellation_policy", "price_level", "booking_page"
+    "name",
+    "hours",
+    "tags",
+    "max_party_size",
+    "cancellation_policy",
+    "price_level",
+    "booking_page",
+    "look",
 ]
 
 
@@ -473,6 +507,8 @@ class MerchantOverview(_Model):
     management_url: str  # https://<web host>/manage/<slug>
     owner_name: str | None  # what the owner asked to be called; None until known
     demo: bool  # built from one of the demo sites (code/sites/)
+    # The site's look (#149) for the management site's tokens (#150); None: the default look.
+    look: Look | None = None
 
 
 class ManagedReservation(_Model):

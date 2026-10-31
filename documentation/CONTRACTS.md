@@ -55,6 +55,7 @@ A contract change needs a dedicated PR and a message to the team, with Python an
 - Never a stack trace in a response.
 
 ### Builder schema
+- `MerchantProfile.look` (#149) is never part of the model's schema: `builder.look.read_look` fills it from the homepage's computed styles (`Page.look`, sampled by `crawl._LOOK`, colours and numbers only). Profiles stored before it have `look: null`, which means the default look (#150). Its review-card line is the `look` fact ("Olive, brick and cream. Soft italic titles. Organic shapes.").
 - `MerchantProfile.model_json_schema()` is the source of the builder tool's `parameters`. Tests resolve its `$defs`/`$ref` against `code/tests/fixtures/le-petit-zinc.json`.
 - OpenAI strict mode rejects `format: uri` and properties missing from `required`: pass the schema through `builder.llm.strict_schema()` (`code/packages/builder/src/builder/llm.py`). `code/scripts/spike_extract.py` keeps its own copy for the [#4](https://github.com/MaxEntz/BaselHack2026/issues/4) spike only.
 - `BuildAgentInput.website` takes any HTTP(S) URL, `localhost` included. The crawler refuses private addresses unless `CRAWL_ALLOW_PRIVATE=1`, and link-local ones (169.254.169.254) always, checking every request and redirect hop after DNS resolution.
@@ -205,7 +206,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 
 | Route | Body | Answer | Issue |
 |---|---|---|---|
-| `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo` | #132 |
+| `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo`, `look` (the site's, #149; null: the default look) | #132 |
 | `POST /publish` | | `MerchantOverview`, now `live`: publishes the agent a build left `building`. A paused (`down`) agent is refused with `invalid_input` | #136 |
 | `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
 | `GET /reservations?date=` | | `ReservationDay`: the day's services, every start of its grid, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |

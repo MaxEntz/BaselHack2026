@@ -171,7 +171,7 @@ async def test_a_build_stops_before_publishing_and_publish_puts_it_live(
     assert str(output.profile.website) == site
     assert str(output.profile.fallback_url) == f"{site}reservation.html"
     assert {tool.name for tool in output.tools} >= {"get_availability", "create_reservation"}
-    assert [fact.key for fact in output.facts][-1] == "booking_page"
+    assert [fact.key for fact in output.facts][-2:] == ["booking_page", "look"]
     saved = tmp_path / "generated" / f"{output.profile.slug}.json"
     assert json.loads(saved.read_text())["slug"] == output.profile.slug
 

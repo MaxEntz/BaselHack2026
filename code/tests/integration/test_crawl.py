@@ -1,5 +1,6 @@
 """The crawler (#21) in a real Chromium, against the demo site (#16) and small local sites."""
 
+import json
 import logging
 import time
 from collections.abc import Callable, Iterator
@@ -14,6 +15,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from builder.crawl import CrawlResult, crawl
+from builder.look import read_look
 from core.config import get_settings
 from core.errors import InvalidInput
 from core.models import StepEvent
@@ -369,3 +371,93 @@ async def test_a_slow_page_is_skipped_within_the_page_timeout(
     assert time.monotonic() - started < 3
     assert paths(result) == ["/"]
     assert logged(caplog, "crawl_page_skipped") == [f"{site.url}menu.html"]
+
+
+# The homepage's look (#149): read from computed styles, the demo sites to the issue's values.
+
+SITES = Path(__file__).parents[2] / "sites"
+
+
+@pytest.mark.parametrize(
+    ("site", "expected"),
+    [
+        (
+            "la-graine-verte",
+            {
+                "bg": "#edebe2",
+                "surface": "#f8f6ef",
+                "line": "#d5d2c3",
+                "ink": "#47522f",
+                "muted": "#5f6a45",
+                "accent": "#727f55",
+                "accent_2": "#935046",
+                "on_accent": "#f4f2ea",
+                "display_font": "Fraunces Soft",
+                "body_font": "Karla",
+                "corners": "organic",
+                "texture": "leather",
+            },
+        ),
+        (
+            "le-petit-zinc",
+            {
+                "bg": "#f7f2e8",
+                "surface": "#fffaf0",
+                "ink": "#2a2320",
+                "accent": "#8f2d2a",
+                "display_font": "serif",
+                "corners": "rounded",
+                "radius_px": 10,
+            },
+        ),
+        (
+            "maison-albane",
+            {
+                "bg": "#151413",
+                "ink": "#efe9df",
+                "accent": "#c8a96a",
+                "display_font": "serif",
+                "corners": "square",
+            },
+        ),
+    ],
+)
+async def test_a_demo_sites_look_is_read_from_its_homepage(
+    serve: Callable[[Path], Site], site: str, expected: dict[str, Any]
+) -> None:
+    result = await crawl(serve(SITES / site).url, Steps(), allow_private=True)
+
+    look, _ = read_look(result.pages[0].look)
+    assert {key: getattr(look, key) for key in expected} == expected
+    assert all(page.look is None for page in result.pages[1:])
+    # The demo fixtures store the same look: the seeded merchants have it too.
+    stored = json.loads((Path(__file__).parents[1] / "fixtures" / f"{site}.json").read_text())
+    assert stored["look"] == look.model_dump(mode="json")
+
+
+async def test_the_crawler_never_loads_images_media_or_fonts(
+    serve: Callable[[Path], Site], tmp_path: Path
+) -> None:
+    # Rule #21: only text and its styles are read; CSS is needed for the look (#149).
+    (tmp_path / "style.css").write_text(
+        '@font-face { font-family: "Brand"; src: url("brand.woff2"); }\n'
+        'body { background: #123456; color: #fafafa; font-family: "Brand", serif; }\n'
+        ".hero { background-image: url('hero.jpg'); height: 200px; }\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "index.html").write_text(
+        "<!doctype html><html><head><meta charset=utf-8><title>Chez Test</title>"
+        '<link rel="stylesheet" href="style.css"></head><body>'
+        '<h1>Chez Test</h1><div class="hero"></div><img src="logo.png" alt="">'
+        '<video src="clip.mp4" autoplay muted></video><p>Ouvert le soir.</p></body></html>',
+        encoding="utf-8",
+    )
+    site = serve(tmp_path)
+
+    result = await crawl(site.url, Steps(), allow_private=True)
+
+    requested = set(site.requests)
+    assert {"/", "/style.css"} <= requested
+    assert requested.isdisjoint({"/brand.woff2", "/hero.jpg", "/logo.png", "/clip.mp4"})
+    look, _ = read_look(result.pages[0].look)
+    assert (look.bg, look.ink) == ("#123456", "#fafafa")

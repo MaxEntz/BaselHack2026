@@ -129,7 +129,22 @@
         ],
         "price_level": "€",
         "cancellation_policy": "Free cancellation up to 1 hour before the booking.",
-        "fallback_url": "http://localhost:8081/#reserver"
+        "fallback_url": "http://localhost:8081/#reserver",
+        "look": {
+          "bg": "#edebe2",
+          "surface": "#f8f6ef",
+          "line": "#d5d2c3",
+          "ink": "#47522f",
+          "muted": "#5f6a45",
+          "accent": "#727f55",
+          "accent_2": "#935046",
+          "on_accent": "#f4f2ea",
+          "display_font": "Fraunces Soft",
+          "body_font": "Karla",
+          "corners": "organic",
+          "radius_px": 30,
+          "texture": "leather"
+        }
       },
       "status": "building",
       "assumptions": [],
@@ -180,6 +195,13 @@
           "key": "booking_page",
           "label": "Booking page",
           "value": "/#reserver, used as the fallback",
+          "source": "/",
+          "quote": null
+        },
+        {
+          "key": "look",
+          "label": "Look",
+          "value": "Olive, brick and cream. Soft italic titles. Organic shapes.",
           "source": "/",
           "quote": null
         }
