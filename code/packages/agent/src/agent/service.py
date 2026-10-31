@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.sql import Executable
 
 from agent import admin
+from agent.guests import same_guest
 from core.availability import (
     BusyInterval,
     TableRow,
@@ -47,6 +48,7 @@ from core.db import (
 from core.errors import InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import (
     AdminReservationRow,
+    GuestRow,
     MerchantCancelOutcome,
     Policy,
     Reservation,
@@ -133,6 +135,8 @@ class AgentService(Protocol):
 
     async def get_stats(self, slug: str, day: date) -> Stats: ...
 
+    async def list_guests(self, slug: str, query: str = "") -> list[GuestRow]: ...
+
     async def block_slot(self, slug: str, starts_at: datetime) -> None: ...
 
     async def unblock_slot(self, slug: str, starts_at: datetime) -> None: ...
@@ -149,20 +153,6 @@ class AgentService(Protocol):
     async def set_status(self, slug: str, status: AgentStatus) -> None:
         """Pause (`down`) or resume (`live`) the merchant's agent (#146)."""
         ...
-
-
-def same_guest(given: str, booked: str) -> bool:
-    """Guest names match ignoring case and spacing: Claude may not repeat them verbatim.
-
-    The only definition of a guest: bookings, changes and lookups all use it (#77). Spacing is
-    any Unicode whitespace (a non-breaking space too), and case is `casefold` ("Weiß" is
-    "weiss"), which SQL's `lower` and `\\s` don't match.
-    """
-    return _normalize(given) == _normalize(booked)
-
-
-def _normalize(name: str) -> str:
-    return " ".join(name.split()).casefold()
 
 
 def candidate_tables(
@@ -607,6 +597,11 @@ class PgAgentService:
         async with merchant_conn(self.engine, slug) as conn:
             await self._load(conn, slug, merchant_side=True)
             return await admin.get_stats(conn, day, self.tz)
+
+    async def list_guests(self, slug: str, query: str = "") -> list[GuestRow]:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            return await admin.list_guests(conn, query, self.clock(), self.tz)
 
     async def block_slot(self, slug: str, starts_at: datetime) -> None:
         async with merchant_conn(self.engine, slug) as conn:
