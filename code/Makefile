@@ -72,19 +72,26 @@ deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web ap
 		chown root:gateway .env && chmod 640 .env && \
 		chown -R root:sesame ../platform && chmod 750 ../platform && chmod 640 ../platform/.env && \
 		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node --package merchant-platform --package builder -q && \
+		{ ( umask 077 && .venv/bin/python scripts/caddy_env.py > ../caddy.env.new ) || { rm -f ../caddy.env.new; exit 1; }; } && \
+		{ cmp -s deploy/Caddyfile /etc/caddy/Caddyfile || caddy validate --adapter caddyfile --config deploy/Caddyfile; } && \
+		caddy_changed=0 && \
+		if cmp -s ../caddy.env.new ../caddy.env; then rm ../caddy.env.new; else mv ../caddy.env.new ../caddy.env && caddy_changed=1; fi && \
+		if ! cmp -s deploy/caddy-merchant-agents.conf /etc/systemd/system/caddy.service.d/merchant-agents.conf; then \
+			install -D -m 644 deploy/caddy-merchant-agents.conf /etc/systemd/system/caddy.service.d/merchant-agents.conf && \
+			systemctl daemon-reload && caddy_changed=1; \
+		fi && \
+		if ! cmp -s deploy/Caddyfile /etc/caddy/Caddyfile; then \
+			install -m 644 deploy/Caddyfile /etc/caddy/Caddyfile && caddy_changed=1; \
+		fi && \
+		if [ $$caddy_changed = 1 ]; then systemctl restart caddy; fi && \
+		systemctl enable --now --quiet caddy && \
 		PLAYWRIGHT_BROWSERS_PATH=/opt/merchant-agents/ms-playwright .venv/bin/playwright install chromium && \
 		install -d -o sesame -g sesame .cache && \
 		.venv/bin/alembic upgrade head && \
 		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service deploy/merchant-platform.service /etc/systemd/system/ && \
 		systemctl daemon-reload && \
 		systemctl enable --quiet merchant-node merchant-gateway merchant-platform && \
-		systemctl restart merchant-node merchant-gateway merchant-platform && \
-		if ! cmp -s deploy/Caddyfile /etc/caddy/Caddyfile; then \
-			caddy validate --adapter caddyfile --config deploy/Caddyfile && \
-			install -m 644 deploy/Caddyfile /etc/caddy/Caddyfile && \
-			systemctl restart caddy; \
-		fi && \
-		systemctl enable --now --quiet caddy'
+		systemctl restart merchant-node merchant-gateway merchant-platform'
 
 .PHONY: bookings demo-booking outage restore
 

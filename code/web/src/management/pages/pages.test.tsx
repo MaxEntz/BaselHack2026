@@ -5,6 +5,7 @@ import fixture from "../../../../tests/fixtures/demo/la-graine-verte-management.
 import { createMockManagementClient } from "../../mocks/managementClient.ts";
 import { routes } from "../../router.tsx";
 import type { ManagementFixture } from "../../types.ts";
+import { announceChange } from "../changes.ts";
 import { ClientContext } from "../data.ts";
 
 const SLUG = "la-graine-verte";
@@ -28,6 +29,12 @@ const field = (label: string) => screen.findByLabelText<HTMLInputElement>(new Re
 const type = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } });
 const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
 const alert = () => screen.findByRole("alert");
+// A change made elsewhere, as the assistant's tools make it: saved, then announced.
+const elsewhere = (change: () => Promise<unknown>) =>
+  act(async () => {
+    await change();
+    announceChange(SLUG);
+  });
 
 describe("Opening hours", () => {
   it("shows the last table while typing, and Discard restores the saved hours", async () => {
@@ -66,6 +73,13 @@ describe("Opening hours", () => {
     );
     expect(screen.queryByText("Unsaved changes")).toBeNull();
     expect((await client.hours(SLUG)).services[1]).toEqual({ start: "18:00", end: "21:30" });
+  });
+
+  it("shows a time blocked elsewhere", async () => {
+    const { client } = open("hours");
+    await screen.findByRole("button", { name: "Sun 1 Nov, 13:00, open it again" });
+    await elsewhere(() => client.setBlocked(SLUG, "2026-11-01", ["13:00", "20:00"]));
+    expect(await screen.findByRole("button", { name: "Sun 1 Nov, 20:00, open it again" })).toBeTruthy();
   });
 
   it("opens a blocked time again", async () => {
@@ -128,6 +142,18 @@ describe("Guests", () => {
     expect(await screen.findByText("Nobody by that name.")).toBeTruthy();
   });
 
+  it("opens a guest's next booking in place", async () => {
+    const { router } = open("guests");
+    fireEvent.click(await screen.findByRole("button", { name: "Lena Becker" }));
+
+    const box = within(await screen.findByRole("dialog"));
+    expect(box.getByRole("heading", { name: "Lena Becker" })).toBeTruthy();
+    expect(box.getByText("Thursday 5 November, 19:30 to 21:30")).toBeTruthy();
+    expect(await box.findByLabelText("Move to another time")).toBeTruthy();
+    expect(router.state.location.pathname).toBe(`/manage/${SLUG}/guests`);
+    expect(router.state.location.search).toBe("");
+  });
+
   it("shows a guest an agent just booked", async () => {
     open("guests", 10);
     expect(await screen.findByRole("cell", { name: "Kim Weber" })).toBeTruthy();
@@ -171,19 +197,47 @@ describe("Floor plan", () => {
     expect((await at()).textContent).toBe("The room at 12:30");
   });
 
-  it("opens a booked table's booking, or a new booking at a free one", async () => {
+  it("opens a booked table's booking in place, without a move once it has started", async () => {
     const { router } = open("floor");
     await at();
 
     fireEvent.click(table("T1"));
-    expect(router.state.location.pathname).toBe(`/manage/${SLUG}/reservations`);
-    expect(router.state.location.search).toBe("?date=2026-10-31&booking=R-009");
+    const box = within(await screen.findByRole("dialog"));
+    expect(box.getByRole("heading", { name: "Sara Muller" })).toBeTruthy();
+    expect(box.getByText("Saturday 31 October, 18:30 to 20:30")).toBeTruthy();
+    expect(box.queryByLabelText("Move to another time")).toBeNull();
+    expect(router.state.location.pathname).toBe(`/manage/${SLUG}/floor`);
+    expect(router.state.location.search).toBe("");
 
-    await act(() => router.navigate(`/manage/${SLUG}/floor`));
-    await at();
+    click("Close");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "20:30" }));
-    fireEvent.click(table("T4"));
-    expect(router.state.location.search).toBe("?date=2026-10-31&new=20:30&guests=2");
+    fireEvent.click(table("T2"));
+    const later = within(await screen.findByRole("dialog"));
+    expect(later.getByRole("heading", { name: "Ines Schmitt" })).toBeTruthy();
+    expect(later.getByLabelText("Move to another time")).toBeTruthy();
+  });
+
+  it("opens a new booking at a free table, and shows it in the room once added", async () => {
+    const { router } = open("floor");
+    await at();
+    click("Next day");
+    expect(await screen.findByText("Sunday 1 November")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "20:30" }));
+    expect(table("T8").getAttribute("aria-label")).toBe("Table T8, 4 seats, free");
+    fireEvent.click(table("T8"));
+
+    const box = within(await screen.findByRole("dialog", { name: "A new booking" }));
+    expect(box.getByText("Sunday 1 November")).toBeTruthy();
+    await waitFor(() => expect(box.getByLabelText<HTMLSelectElement>("Time").value).toBe("20:30"));
+    // At most 2 guests by default, whatever the table's seats.
+    expect(box.getByLabelText<HTMLInputElement>("Guests").value).toBe("2");
+    expect(router.state.location.pathname).toBe(`/manage/${SLUG}/floor`);
+
+    type(box.getByLabelText("Guest's name"), "Ana Roth");
+    fireEvent.click(box.getByRole("button", { name: "Add the booking" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await screen.findByRole("button", { name: /^Table T\d+, Ana Roth, 2 guests$/ })).toBeTruthy();
   });
 
   it("says when the time has passed", async () => {
@@ -235,6 +289,30 @@ describe("Booking rules", () => {
 
     expect(await screen.findByText(/Groups up to 3\.$/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "What Claude reads about you" })).toBeTruthy();
+  });
+
+  it("follows a change made elsewhere, but never over unsaved changes", async () => {
+    const { client } = open("rules");
+    const largest = await field("Largest group");
+    const { fallback_url, cancellation_policy = null } = await client.rules(SLUG);
+    const save = (max_party_size: number) => () =>
+      client.saveRules(SLUG, { max_party_size, fallback_url, cancellation_policy });
+
+    await elsewhere(save(6));
+    await waitFor(() => expect(largest.value).toBe("6"));
+
+    const policy = await field("Cancellation policy");
+    type(policy, "Call us.");
+    await elsewhere(save(3));
+    // The page holds: a read would have answered by now.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(largest.value).toBe("6");
+    expect(policy.value).toBe("Call us.");
+    expect(screen.getByText(/Groups up to 6\.$/)).toBeTruthy();
+
+    click("Discard");
+    await waitFor(() => expect(largest.value).toBe("3"));
+    expect(await screen.findByText(/Groups up to 3\.$/)).toBeTruthy();
   });
 
   it.each([
