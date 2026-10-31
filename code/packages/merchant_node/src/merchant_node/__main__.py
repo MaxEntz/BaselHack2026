@@ -74,8 +74,12 @@ def main() -> None:
         sys.exit("; ".join(problems))
     engine = make_engine(settings.database_url)
     service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
+    agents = MerchantAgents(engine, service)
     server = NodeServer(
-        node=NODE, handle=MerchantAgents(engine, service), authenticate=token_check(settings)
+        node=NODE,
+        handle=agents,
+        authenticate=token_check(settings),
+        fallback_url=agents.fallback_url,
     )
     asyncio.run(server.serve(settings.matp_host, settings.matp_port, tls=tls_context(settings)))
 

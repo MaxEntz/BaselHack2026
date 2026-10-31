@@ -18,11 +18,13 @@ from pydantic import BaseModel, ValidationError
 from core.errors import AgentError
 from matp.codec import MAX_FRAME, FrameError, FrameTooLarge, encode, read_frame
 from matp.messages import (
+    ADDRESSED,
     ALL_INTENTS,
     IN_FLIGHT_LIMIT,
     PROTOCOL_VERSION,
     AgentIdentity,
     ErrorBody,
+    ErrorFrame,
     Hello,
     Intent,
     NodeIdentity,
@@ -37,12 +39,16 @@ from matp.status import TOO_MANY_REQUESTS, Refused, error_body, status_for
 log = logging.getLogger("matp.node")
 
 Handler = Callable[[AgentIdentity, Request], Awaitable[dict[str, Any]]]
+# The addressed merchant's own booking page, for a 503 the node itself sends (§8); None if unknown.
+FallbackUrl = Callable[[Request], Awaitable[str | None]]
 Authenticate = Callable[[Hello], bool]
 Send = Callable[[BaseModel], Awaitable[None]]
 
 FAILED = "The merchant agent failed; try again later"
 TOO_SLOW = "The merchant agent took too long; try again later"
 TOO_LARGE = "The answer is too large to send"
+# How long a 503 waits for the merchant's fallback URL before going without it.
+FALLBACK_TIMEOUT = 1.0
 
 
 class NodeServer:
@@ -60,6 +66,7 @@ class NodeServer:
         max_in_flight: int = IN_FLIGHT_LIMIT,
         max_sessions: int = 64,
         max_malformed: int = 10,
+        fallback_url: FallbackUrl | None = None,
     ) -> None:
         self.node = node
         self.handle = handle
@@ -72,6 +79,7 @@ class NodeServer:
         self.max_in_flight = max_in_flight
         self.max_sessions = max_sessions
         self.max_malformed = max_malformed
+        self.fallback_url = fallback_url
         self._server: asyncio.Server | None = None
         self._writers: set[asyncio.StreamWriter] = set()
 
@@ -186,8 +194,10 @@ class NodeServer:
         tasks: set[asyncio.Task[None]],
     ) -> None:
         malformed = 0
+        # The ids of the requests not answered yet: one of them can't be reused (§6).
+        in_flight: set[str] = set()
         while True:
-            if malformed > self.max_malformed:
+            if malformed >= self.max_malformed:
                 log.warning(
                     "session closed: too many malformed frames", extra={"agent": caller[0].id}
                 )
@@ -199,31 +209,38 @@ class NodeServer:
                     continue  # not idle: answers are still on their way
                 return
             except FrameTooLarge:
-                await send(
-                    Response(id=None, status=413, error=ErrorBody(message="Frame too large"))
-                )
+                await send(ErrorFrame(status=413, message="Frame too large"))
                 return
             except FrameError:
                 malformed += 1
-                await send(_invalid(None, "Malformed frame"))
+                await send(ErrorFrame(status=400, message="Malformed frame: not JSON"))
                 continue
             if frame is None:
                 return
             raw_id = frame.get("id")
             known_id = raw_id if isinstance(raw_id, str) and 0 < len(raw_id) <= 64 else None
-            try:
-                if frame.get("type") != "request":
-                    raise ValueError("not a request")
-                request = Request.model_validate(frame)
-            except (ValueError, ValidationError):
+            if frame.get("type") != "request" or known_id is None:
+                # No request id to answer: a session-level error frame (§6).
                 malformed += 1
-                await send(
-                    _invalid(known_id, "Invalid request: check type, id, intent and merchant")
-                )
+                await send(ErrorFrame(status=400, message="Not a request with a valid id"))
+                continue
+            if known_id in in_flight:
+                # Not carried out: two answers with one id couldn't be told apart (§6).
+                await send(ErrorFrame(status=400, message=f"Request {known_id} is in flight"))
+                continue
+            try:
+                request = Request.model_validate(frame)
+            except ValidationError:
+                malformed += 1
+                await send(_invalid(known_id, "Invalid request: check intent, merchant and params"))
                 continue
             malformed = 0
             if request.intent not in self.intents:
                 await send(_invalid(request.id, f"{request.intent} is not served by this node"))
+                continue
+            if (request.intent in ADDRESSED) != (request.merchant is not None):
+                needs = "needs a merchant" if request.intent in ADDRESSED else "takes no merchant"
+                await send(_invalid(request.id, f"{request.intent} {needs}"))
                 continue
             if len(tasks) >= self.max_in_flight:
                 # Not carried out; the caller may send it again after an earlier answer (§6).
@@ -235,7 +252,9 @@ class NodeServer:
                 continue
             task = asyncio.create_task(self._answer(caller, request, send))
             tasks.add(task)
+            in_flight.add(request.id)
             task.add_done_callback(tasks.discard)
+            task.add_done_callback(_forget(in_flight, request.id))
 
     async def _answer(
         self, caller: tuple[AgentIdentity, str], request: Request, send: Send
@@ -246,7 +265,7 @@ class NodeServer:
         try:
             await send(response)
         except FrameTooLarge:
-            response = _unavailable(request.id, TOO_LARGE)
+            response = _unavailable(request.id, TOO_LARGE, await self._fallback(request))
             await send(response)
         except ConnectionError:
             return
@@ -278,10 +297,26 @@ class NodeServer:
             return Response(id=request.id, status=status_for(error), error=error_body(error))
         except TimeoutError:
             log.warning("request timed out", extra={"agent": agent.id, "intent": request.intent})
-            return _unavailable(request.id, TOO_SLOW)
+            return _unavailable(request.id, TOO_SLOW, await self._fallback(request))
         except Exception:
             log.exception("request failed", extra={"agent": agent.id, "intent": request.intent})
-            return _unavailable(request.id, FAILED)
+            return _unavailable(request.id, FAILED, await self._fallback(request))
+
+    async def _fallback(self, request: Request) -> str | None:
+        """The merchant's booking page for a 503 (§8): best effort, never a second failure."""
+        if self.fallback_url is None or request.merchant is None:
+            return None
+        try:
+            async with asyncio.timeout(FALLBACK_TIMEOUT):
+                return await self.fallback_url(request)
+        except Exception:
+            log.warning("no fallback url", extra={"merchant": request.merchant}, exc_info=True)
+            return None
+
+
+def _forget(ids: set[str], request_id: str) -> Callable[[asyncio.Task[None]], None]:
+    """A done callback that frees the request's id for reuse once it is answered."""
+    return lambda _: ids.discard(request_id)
 
 
 def _invalid(request_id: str | None, message: str) -> Response:
@@ -295,7 +330,6 @@ def _too_many(request_id: str) -> Response:
     return Response(id=request_id, status=TOO_MANY_REQUESTS, error=error)
 
 
-def _unavailable(request_id: str, message: str) -> Response:
-    return Response(
-        id=request_id, status=503, error=ErrorBody(code="agent_unavailable", message=message)
-    )
+def _unavailable(request_id: str, message: str, fallback_url: str | None = None) -> Response:
+    error = ErrorBody(code="agent_unavailable", message=message, fallback_url=fallback_url)
+    return Response(id=request_id, status=503, error=error)
