@@ -18,6 +18,14 @@ import {
   useToast,
 } from "./ui/index.ts";
 
+import graineVerte from "../../../tests/fixtures/la-graine-verte.json" with { type: "json" };
+import maisonAlbane from "../../../tests/fixtures/maison-albane.json" with { type: "json" };
+import petitZinc from "../../../tests/fixtures/le-petit-zinc.json" with { type: "json" };
+import type { Look } from "../types.ts";
+import "./look.css";
+import { cornersOf, lookStyle } from "./look.ts";
+import "./pages.css";
+
 const ICON_NAMES: IconName[] = ["left", "right", "x", "search", "bell", "up", "expand", "shrink"];
 
 // Every management primitive and its states (/?gallery), for comparison with
@@ -77,7 +85,11 @@ export function PrimitivesGallery() {
         <Section title="Blob">
           <div className="pills">
             {[0, 1, 2, 3, 4].map((index) => (
-              <span key={index} className="mg-gallery-blob" style={index % 2 ? { ["--fill" as string]: "var(--brick)" } : undefined}>
+              <span
+                key={index}
+                className="mg-gallery-blob"
+                style={index % 2 ? { ["--fill" as string]: "var(--brick)" } : undefined}
+              >
                 <Blob index={index} />
                 <b className="dsp">{19 + index}:00</b>
               </span>
@@ -101,7 +113,12 @@ export function PrimitivesGallery() {
         <Section title="Field">
           <div className="mg-gallery-grid">
             <Field label="Restaurant name" defaultValue="La Graine Verte" data-primitive="field" />
-            <Field label="Largest group" hint="Bigger groups get your website's link." type="number" defaultValue={4} />
+            <Field
+              label="Largest group"
+              hint="Bigger groups get your website's link."
+              type="number"
+              defaultValue={4}
+            />
             <Field label="Read only" defaultValue="la-graine-verte" readOnly />
             <div className="checks">
               <Checkbox label="Vegan" defaultChecked data-primitive="checkbox" />
@@ -115,7 +132,66 @@ export function PrimitivesGallery() {
         <Section title="SaveBar">
           <SaveBarDemo />
         </Section>
+        <Section title="Looks">
+          <div className="mg-gallery-looks">
+            {LOOKS.map(([name, look]) => (
+              <LookPreview key={name} name={name} look={look} />
+            ))}
+          </div>
+        </Section>
       </ToastProvider>
+    </div>
+  );
+}
+
+// The three demo restaurants' looks (#149), as their fixtures store them (#150).
+const LOOKS: [string, Look][] = [
+  ["La Graine Verte", graineVerte.look as Look],
+  ["Le Petit Zinc", petitZinc.look as Look],
+  ["Maison Albane", maisonAlbane.look as Look],
+];
+
+/** A slice of the management site in one merchant's look. */
+function LookPreview({ name, look }: { name: string; look: Look }) {
+  return (
+    <div className="mg mg-look" data-corners={cornersOf(look)} style={lookStyle(look)} data-look={name}>
+      <h3 className="dsp">
+        <Under>{name}</Under>
+      </h3>
+      <p className="mg-look-muted">Tonight, 6 bookings and 17 guests.</p>
+      <div className="pills">
+        <Pill primary>New booking</Pill>
+        <Pill>Block a time</Pill>
+        <Tag>Agent</Tag>
+      </div>
+      <Box tone="olive">
+        <b className="dsp">The room at 19:30</b>
+        <div className="floor">
+          <span className="tb busy">
+            <Blob index={0} />
+            <span>
+              <b>T1</b>
+              <small>Muller, 2</small>
+            </span>
+          </span>
+          <span className="tb s4 soon">
+            <Blob index={1} />
+            <span>
+              <b>T7</b>
+              <small>4 seats</small>
+            </span>
+          </span>
+        </div>
+      </Box>
+      <Box tone="brick">Through your agent</Box>
+      <Field
+        label="Largest group"
+        hint="Larger groups go to your booking page."
+        type="number"
+        defaultValue={4}
+      />
+      <p className="err">Your restaurant needs a name.</p>
+      <Doodle className="mg-gallery-doodle" />
     </div>
   );
 }
@@ -148,17 +224,17 @@ function DialogAndToast() {
       >
         Toast with an action
       </Pill>
-        <Dialog open={open} onClose={() => setOpen(false)} title="R-014, Ada Martin">
-          <p>Saturday 31 October, 20:00, 4 guests, table T5.</p>
-          <div className="dlg-foot">
-            <Pill small onClick={() => setOpen(false)}>
-              Keep it
-            </Pill>
-            <Pill small primary onClick={() => setOpen(false)}>
-              Cancel the booking
-            </Pill>
-          </div>
-        </Dialog>
+      <Dialog open={open} onClose={() => setOpen(false)} title="R-014, Ada Martin">
+        <p>Saturday 31 October, 20:00, 4 guests, table T5.</p>
+        <div className="dlg-foot">
+          <Pill small onClick={() => setOpen(false)}>
+            Keep it
+          </Pill>
+          <Pill small primary onClick={() => setOpen(false)}>
+            Cancel the booking
+          </Pill>
+        </div>
+      </Dialog>
     </div>
   );
 }
