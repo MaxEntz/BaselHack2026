@@ -132,7 +132,7 @@ One Postgres schema per merchant ([ADR-0001](documentation/adr/0001-one-postgres
 
 | Where | Tables |
 |---|---|
-| `public` (Alembic, migrations `0001`–`0003`) | `merchants` (registry: slug, name, website, fallback_url, city, tags, price_level, `status` `building`/`live`/`down`, default `building`, `profile` jsonb), `guest_notices`, `reservation_changes` (applied update keys, [ADR-0013](documentation/adr/0013-store-update-idempotency-keys-in-public.md)), `agent_requests` (the BATP node's request log, 7 days, #146), function `notify_reservation()` |
+| `public` (Alembic, migrations `0001`–`0007`) | `merchants` (registry: slug, name, website, fallback_url, city, tags, price_level, `status` `building`/`live`/`down`, default `building`, `profile` jsonb), `guest_notices`, `reservation_changes` (applied update keys, [ADR-0013](documentation/adr/0013-store-update-idempotency-keys-in-public.md)), `agent_requests` (the BATP node's request log, frames as text, 7 days, #146), `merchant_owners` (#132), `merchant_activity` (#135), function `notify_reservation()` |
 | `m_<slug>`, one per merchant | `tables`, `policy` (one row), `blocked_slots`, `reservations` (`EXCLUDE USING gist (table_id WITH =, during WITH &&) WHERE status = 'confirmed'`; `during` never empty; `via` `claude`/`merchant`/`website`), triggers `reservations_notify` (sends `schema`, `op`, `id`, `status`, `via`) and `reservations_skip_noop` |
 
 Rules for DB code:
@@ -352,6 +352,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | Home's data (#135): `public.merchant_activity` (migration `0006`) keeps each change's `details` (guest, party, start; times; the form) rather than its text, and the line is worded when read; the dashboard is one query per block; the table writes of `service.py` moved to `agent/writes.py` | Text worded at write time says "today" the next day too (#129 contract); a dashboard must open in under 300 ms whatever the history (about 20 ms on the demo data); `service.py` had reached the 800-line limit |
 | 2026-10-31 | Merchants get a management site next to the chat: pages and forms are a second path to the same `AgentService` operations; the agent site has no interface; the v10 mockups in `documentation/design/poc-v10/` are the reference | [ADR-0015](documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #128 |
 | 2026-10-31 | La Graine Verte's demo site is the public mockup rebuilt as static files: same text and `#reserver`, Fraunces and Karla self-hosted (SIL OFL), identical to the mockup at 1440 px, stacked below 900 px; contrast pairs left to #153 | #148 |
+| 2026-10-31 | Agent page routes: pause and resume through `AgentService.set_status`; `GET /agent/requests` reads the merchant's local day, newest first, 10 at most, worded by `agent.requests.describe` (413 quotes the limit now); frames stored as `text` (migration `0007`), so they're served as sent | #146 |
 
 ## 15. Out of scope (POC)
 

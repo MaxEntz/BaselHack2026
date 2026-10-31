@@ -116,13 +116,20 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 - `block_slot` / `unblock_slot` refuse an offset that isn't `Europe/Zurich`'s at that instant, with an `invalid_input` naming the local time to send.
 - `cancel_by_merchant` returns `notified` (guest notice stored), `ended` (booking over, no notice), `own_booking` (the merchant made it, no notice; from #134), `guest_cancelled` or `already_cancelled` (nothing changed); `core.models.MerchantCancelOutcome`. The card never says a notice was sent when none was stored ([#82](https://github.com/MaxEntz/BaselHack2026/issues/82)).
 - `update_tables` refuses to remove a table that bookings refer to.
-- `AgentService.set_status(slug, "down" | "live")` pauses or resumes a published agent ([#146](https://github.com/MaxEntz/BaselHack2026/issues/146)): `down` sends Claude and other agents to the booking page, while the website keeps booking. A `building` merchant is `invalid_input` (only `deploy` publishes), an unknown one `not_found`. Not an admin tool yet: the Agent page's routes come with #129.
+- `AgentService.set_status(slug, "down" | "live")` pauses or resumes a published agent ([#146](https://github.com/MaxEntz/BaselHack2026/issues/146)): `down` sends Claude and other agents to the booking page, while the website keeps booking. A `building` merchant is `invalid_input` (only `deploy` publishes), an unknown one `not_found`. The Agent page calls it through `POST /agent/pause` and `/agent/resume`; not an admin tool of the assistant.
 
 ## BATP node request log
 
-- One row per answered request addressed to a published merchant (`live` or `down`) in `public.agent_requests` (migration `0003`, [#146](https://github.com/MaxEntz/BaselHack2026/issues/146)): the caller's `agent_name`, the intent, the status and both frames as on the wire. `HELLO`, and so the caller's token, is never stored.
+- One row per answered request addressed to a published merchant (`live` or `down`) in `public.agent_requests` (migrations `0003`, `0007`, [#146](https://github.com/MaxEntz/BaselHack2026/issues/146)): the caller's `agent_name`, the intent, the status and both frames as `text`, never re-serialized: the response exactly as sent, the request as the node read it (compact, unknown fields left out). `HELLO`, and so the caller's token, is never stored.
 - Written after the answer, in its own task (`NodeServer(record=…)`), through the log's own engine (at most 2 connections, apart from the handlers'); a record is dropped with a warning when 100 are already waiting. The log never delays or fails an answer, not even another request's.
 - Rows older than 7 days are purged as new ones arrive. Rows hold guest names: only the merchant's own session may read them.
+- `AgentService.list_agent_requests(slug, day, refused=)` reads them for `GET /agent/requests`: the merchant's local day, newest first, at most 10. `agent.requests.describe` words each row from its frames:
+  - `AVAILABILITY` 200: "{agent} checked {time} for {n} guests" / "{day}. Your agent offered the closest free times." ("free times" without a time);
+  - `BOOK` 200: "{guest} booked through {agent}" / "{day}, {time}, {n} guests, table {T}."; `AMEND` 200: "{guest} changed their booking through {agent}"; `CANCEL` 200: "{guest} cancelled through {agent}";
+  - 413: "A group of {n} was sent to your booking page" / "Your limit is {max}, so the guest got your link instead." (the limit now; "No table fits them" when the group is within it);
+  - 409: "{guest} asked for a time that had just gone" / "{agent} offered them another one." (`CANCEL`: "tried to cancel a booking that had started");
+  - 404, 503 and 400 have their own sentences; anything else is "{agent}: {intent}, answered {status}".
+  - `{day}` is the mockup's short day, "Sat 31 Oct", in English whatever the server's locale. The demo fixture's rows are worded exactly as the server words them (`test_agent_requests_wording.py`), and `export_management_fixture.py` words them with `describe`, not the mockup.
 
 ## Platform HTTP API
 

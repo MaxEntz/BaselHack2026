@@ -30,6 +30,8 @@ from zoneinfo import ZoneInfo
 import demo_management
 from playwright.async_api import async_playwright
 
+from agent.requests import describe
+
 MOCKUP = (
     Path(__file__).resolve().parents[2]
     / "documentation"
@@ -203,6 +205,18 @@ def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -
         response = log["res"]
         if response.get("error", {}).get("fallback_url"):
             response = {**response, "error": {**response["error"], "fallback_url": fallback}}
+        request, answer = frame(log["req"]), frame(response)
+        # Worded by the server, not the mockup: the mock serves what the real Agent page says
+        # (#146; the mockup's "offered her" guesses a guest's gender the node can't know).
+        title, text = describe(
+            "Claude",
+            log["intent"],
+            log["status"],
+            request,
+            answer,
+            max_party_size=kept["rules"]["max_party_size"],
+            tz=tz,
+        )
         agent_requests.append(
             {
                 "id": int(log["key"].removeprefix("r-")),
@@ -211,10 +225,10 @@ def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -
                 "intent": log["intent"],
                 "status": log["status"],
                 "refused": log["status"] >= 400,
-                "title": log["title"],
-                "text": log["text"],
-                "request": frame(log["req"]),
-                "response": frame(response),
+                "title": title,
+                "text": text,
+                "request": request,
+                "response": answer,
             }
         )
 
