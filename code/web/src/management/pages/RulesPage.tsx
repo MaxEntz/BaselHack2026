@@ -16,10 +16,10 @@ const draftOf = (rules: Rules): RulesDraft => ({
   policy: rules.cancellation_policy ?? "",
 });
 
-export function RulesPage({ slug }: { slug: string }) {
+export function RulesPage({ slug, version }: { slug: string; version: number }) {
   const client = useClient();
   const load = useCallback((signal: AbortSignal) => client.rules(slug, signal), [client, slug]);
-  const { data, error, update } = useLoad(load);
+  const { data, error, update } = useLoad(load, version);
 
   return (
     <>
