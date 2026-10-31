@@ -1,0 +1,16 @@
+{
+  "vertical": "restaurant",
+  "defaults": {
+    "slot_length_min": 120,
+    "max_party_size": 8,
+    "services": [{ "start": "19:00", "end": "22:00" }],
+    "price_level": "€€"
+  },
+  "default_tables_rule": "4-seat tables first, then 2-seat tables for the remainder, plus one 6-seat table when seats >= 30",
+  "tools": [
+    { "name": "get_availability", "description": "Check free tables at {name} ({city}). Services: {services}. Groups up to {max_party_size}." },
+    { "name": "create_reservation", "description": "Book a table at {name}. Always confirm with the guest first." },
+    { "name": "update_reservation", "description": "Move or resize a booking at {name}." },
+    { "name": "cancel_reservation", "description": "Cancel a booking at {name}. Policy: {cancellation_policy}." }
+  ]
+}

@@ -1,0 +1,18 @@
+[project]
+name = "merchant-platform"
+version = "0.1.0"
+description = "Merchant platform API and assistant."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "core",
+    "agent",
+    "builder",
+    "fastapi>=0.162",
+    "uvicorn>=0.54",
+    "sse-starlette>=3.6",
+    "anthropic>=2.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.14"]
+build-backend = "uv_build"

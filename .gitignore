@@ -1,1 +1,25 @@
 CLAUDE.local.md
+
+# Secrets: copy code/.env.example to code/.env
+.env
+code/.env.*
+!code/.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node and builds
+node_modules/
+dist/
+
+# Builder cache (crawl and extraction results)
+code/.cache/
+
+.DS_Store

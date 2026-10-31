@@ -1,0 +1,15 @@
+[project]
+name = "builder"
+version = "0.1.0"
+description = "Website + description -> validated MerchantProfile."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "core",
+    "agent",
+    "playwright>=1.64",
+    "anthropic>=2.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.14"]
+build-backend = "uv_build"
