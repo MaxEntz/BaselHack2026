@@ -8,7 +8,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -127,6 +127,7 @@ async def test_a_booking_reaches_the_merchants_subscribers_within_2_s(
     event = await next_event(queue)
     assert event.kind == "new_booking"
     assert event.via == "claude"
+    assert event.date == date(2026, 10, 31)
     assert event.reservation.model_dump() == {
         "id": reservation_id,
         "time": "20:00",
@@ -164,6 +165,31 @@ async def test_website_bookings_updates_and_cancellations(
         )
     cancelled = await next_event(queue)
     assert (cancelled.kind, cancelled.reservation.status) == ("cancelled", "cancelled")
+
+
+async def test_a_booking_for_another_day_carries_its_date(
+    engine: AsyncEngine, merchants: tuple[str, str], listener: LiveListener, bus: LiveBus
+) -> None:
+    slug = merchants[0]
+    queue = bus.subscribe(slug)
+
+    await book(engine, slug, at=EIGHT_PM + timedelta(days=7))
+
+    event = await next_event(queue)
+    assert (event.date, event.reservation.time) == (date(2026, 11, 7), "20:00")
+
+
+async def test_a_booking_just_after_midnight_utc_keeps_the_merchants_day(
+    engine: AsyncEngine, merchants: tuple[str, str], listener: LiveListener, bus: LiveBus
+) -> None:
+    slug = merchants[0]
+    queue = bus.subscribe(slug)
+
+    # 00:30 in Zurich is still the previous day in UTC.
+    await book(engine, slug, at=datetime(2026, 11, 1, 0, 30, tzinfo=TZ))
+
+    event = await next_event(queue)
+    assert (event.date, event.reservation.time) == (date(2026, 11, 1), "00:30")
 
 
 async def test_merchants_only_receive_their_own_events(
