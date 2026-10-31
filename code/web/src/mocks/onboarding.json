@@ -65,7 +65,7 @@
       "profile": {
         "slug": "la-graine-verte",
         "name": "La Graine Verte",
-        "website": "https://lagraineverte.example/",
+        "website": "http://localhost:8081/",
         "vertical": "restaurant",
         "location": {
           "city": "Mulhouse",
@@ -129,7 +129,7 @@
         ],
         "price_level": "€",
         "cancellation_policy": "Free cancellation up to 1 hour before the booking.",
-        "fallback_url": "https://lagraineverte.example/#reserver"
+        "fallback_url": "http://localhost:8081/#reserver"
       },
       "status": "building",
       "assumptions": [],
