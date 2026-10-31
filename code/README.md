@@ -6,7 +6,7 @@ Spec: [`AGENTS.md`](../AGENTS.md) (also loaded by Claude Code through `CLAUDE.md
 
 - [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 itself if needed)
 - Docker (Postgres 16, and testcontainers for the integration tests)
-- Node.js ≥ 22.12 (Vite)
+- Node.js ≥ 22.18 (Vite, and `npm test`, which runs `.ts` files as is). This is the one place the minimum is stated; `web/package.json` `engines` matches it
 - Linux only, once: `uv run playwright install --with-deps chromium` (installs Chromium's system packages, needs sudo rights)
 
 ## First run
@@ -52,9 +52,19 @@ Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_pr
 | `make bookings` | Tonight's bookings at Le Petit Zinc (19:00–21:00, via website and merchant), e.g. after its live onboarding; times already past are skipped |
 | `make outage` / `make restore` | Sets `SLUG` (default `le-petit-zinc`) `down` / `live`: Claude gets the fallback URL while it is down |
 
+## Team server and tools
+
+| Command | What |
+|---|---|
+| `make deploy` | Ships the BATP node and the gateway to the team server, applies the migrations, installs the systemd units, and updates Caddy when `deploy/Caddyfile` changed (`documentation/runbooks/connector.md`) |
+| `make tunnel` | Exposes a local gateway on `GATEWAY_PUBLIC_URL` through ngrok, when the team server can't be used |
+| `make rfc` | Rebuilds the BATP Internet-Draft in `documentation/rfc/`: JSON schemas, `.xml`, `.txt`, `.html`, then idnits (needs Docker and `npx`) |
+
 ## Checks
 
 ```bash
+make test                         # uv run pytest
+make lint                         # ruff check, ruff format --check, mypy (the `ruff`/`mypy` line below)
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
 uv run pytest tests/e2e           # §9 user scenarios through a real MCP client
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
@@ -74,13 +84,18 @@ Shared tool and SSE contracts, fixtures and checks: [CONTRACTS.md](../documentat
 packages/
 ├── core/               models, DB access, availability rules, errors, settings
 ├── agent/              AgentService + provisioning (templates/restaurant.json)
-├── gateway/            public MCP server: discovery, preference filters, fallback
+├── gateway/            public MCP server: discovery, preference filters, fallback, BATP bridge
+├── batp/               BATP library: messages, framing, status codes, client, generic node
+├── merchant_node/      the BATP node that serves this backend's merchant agents
 ├── builder/            crawl (Playwright) + extraction (OpenAI API) -> MerchantProfile
 └── merchant_platform/  FastAPI /chat + /events, platform assistant
 web/                    merchant chat UI (Vite + React + TS)
 sites/                  demo restaurant websites: le-petit-zinc (crawl target), 2 one-page sites
 migrations/             Alembic (public schema only; merchant schemas come from provisioning)
-scripts/                seed, demo reset, outage switch
+scripts/                seed.py, demo_reset.py, set_status.py (outage switch),
+                        crawl_site.py, bench_extract.py (+ bench_sites/), batp_schemas.py (make rfc),
+                        spike_extract.py (+ spike_samples/, the #4 spike)
+deploy/                 systemd units and Caddyfile for make deploy
 tests/{unit,integration,e2e,fixtures}/
 ```
 
