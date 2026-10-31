@@ -138,7 +138,7 @@ describe("Floor plan", () => {
   it("shows the room at the latest start of the service under way", async () => {
     open("floor");
     expect((await at()).textContent).toBe("The room at 19:30");
-    expect(screen.getByText("3 of 9 tables, 10 guests seated")).toBeTruthy();
+    expect(screen.getByText("3 of 9 tables, 9 guests seated")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Dinner, 18:30–21:30" }).getAttribute("aria-pressed")).toBe(
       "true",
     );
@@ -174,7 +174,7 @@ describe("Floor plan", () => {
 
     fireEvent.click(table("T1"));
     expect(router.state.location.pathname).toBe(`/manage/${SLUG}/reservations`);
-    expect(router.state.location.search).toBe("?date=2026-10-31&booking=R-003");
+    expect(router.state.location.search).toBe("?date=2026-10-31&booking=R-009");
 
     await act(() => router.navigate(`/manage/${SLUG}/floor`));
     await at();
@@ -217,7 +217,7 @@ describe("Floor plan", () => {
 
     click("Remove T1");
     click("Save");
-    expect((await alert()).textContent).toBe("T1 has to stay, because Paul Schmitt's booking refers to it.");
+    expect((await alert()).textContent).toBe("T1 has to stay, because Max Girard's booking refers to it.");
   });
 });
 
