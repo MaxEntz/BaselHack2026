@@ -81,7 +81,10 @@ describe("Opening hours", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Block a time" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/^Saturday 31 October\. Agents stop offering/)).toBeTruthy();
-    expect(within(dialog).getByRole("group", { name: "Lunch" })).toBeTruthy();
+    // At the demo's 19:40, lunch and 19:30 have passed: the server would ignore them.
+    expect(within(dialog).queryByRole("group", { name: "Lunch" })).toBeTruthy();
+    expect(within(dialog).queryByLabelText("19:30")).toBeNull();
+    expect(within(dialog).queryByLabelText("12:00")).toBeNull();
 
     fireEvent.click(within(dialog).getByLabelText("20:00"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));

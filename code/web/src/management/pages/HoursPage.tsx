@@ -11,7 +11,7 @@ import { Pill, SaveBar, useToast } from "../ui/index.ts";
 import { useSavedForm } from "../useSavedForm.tsx";
 import { PageTitle } from "./PageTitle.tsx";
 
-type HoursData = { hours: Hours; blocked: BlockedTime[]; today: string };
+type HoursData = { hours: Hours; blocked: BlockedTime[]; today: string; clock: string };
 
 export function HoursPage({ slug }: { slug: string }) {
   const client = useClient();
@@ -22,8 +22,8 @@ export function HoursPage({ slug }: { slug: string }) {
         client.blocked(slug, signal),
         client.merchant(slug, signal),
       ]);
-      // The merchant's today is the platform's, never the browser's.
-      return { hours, blocked, today: merchant.now.slice(0, 10) };
+      // The merchant's today and time are the platform's, never the browser's.
+      return { hours, blocked, today: merchant.now.slice(0, 10), clock: merchant.now.slice(11, 16) };
     },
     [client, slug],
   );
@@ -47,6 +47,7 @@ export function HoursPage({ slug }: { slug: string }) {
           <BlockedTimes
             slug={slug}
             today={data.today}
+            clock={data.clock}
             services={data.hours.services}
             blocked={data.blocked}
             onChange={(blocked) => update((loaded) => ({ ...loaded, blocked }))}
@@ -129,12 +130,14 @@ function ServicesForm({
 function BlockedTimes({
   slug,
   today,
+  clock,
   services,
   blocked,
   onChange,
 }: {
   slug: string;
   today: string;
+  clock: string;
   services: Service[];
   blocked: BlockedTime[];
   onChange: (blocked: BlockedTime[]) => void;
@@ -182,6 +185,7 @@ function BlockedTimes({
         date={today}
         services={services}
         blocked={timesOn(today)}
+        after={clock}
         open={blocking}
         onClose={() => setBlocking(false)}
         onSaved={(answer) => onChange(answer.blocked)}
