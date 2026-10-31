@@ -13,6 +13,7 @@ import { HoursPage } from "./pages/HoursPage.tsx";
 import { HomePage } from "./pages/home/HomePage.tsx";
 import { guests, throughAgent } from "./pages/home/format.ts";
 import { PageTitle } from "./pages/PageTitle.tsx";
+import { ReservationsPage } from "./pages/reservations/ReservationsPage.tsx";
 import { RulesPage } from "./pages/RulesPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { type PageId, PAGES, bookingPath, isPage, nameFromSlug, pagePath, pageTitle } from "./pages.ts";
@@ -24,12 +25,13 @@ import { useAssistantOpen } from "./shell/useAssistantOpen.ts";
 import "./shell/shell.css";
 import { ToastProvider, useToast } from "./ui/index.ts";
 
-// The pages built so far; the others come with their issues (#139, #140).
+// The pages built so far; the others come with their issues (#140).
 const VIEWS: Partial<Record<PageId, ComponentType<{ slug: string; version: number }>>> = {
   agent: AgentPage,
   guests: GuestsPage,
   floor: FloorPage,
   hours: HoursPage,
+  reservations: ReservationsPage,
   rules: RulesPage,
   settings: SettingsPage,
 };
