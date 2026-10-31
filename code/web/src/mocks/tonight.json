@@ -1,0 +1,32 @@
+[
+  { "type": "tool_start", "tool": "list_reservations", "label": "Checking tonight's bookings…" },
+  { "type": "text", "delta": "You have 2 bookings for 6 guests tonight." },
+  {
+    "type": "card",
+    "kind": "reservations",
+    "data": {
+      "date": "2026-10-31",
+      "reservations": [
+        {
+          "id": "R-001",
+          "time": "19:00",
+          "guest_name": "Alex Martin",
+          "party_size": 2,
+          "table_label": "T1",
+          "via": "website",
+          "status": "confirmed"
+        },
+        {
+          "id": "R-002",
+          "time": "20:00",
+          "guest_name": "Sam Dupont",
+          "party_size": 4,
+          "table_label": "T5",
+          "via": "claude",
+          "status": "confirmed"
+        }
+      ]
+    }
+  },
+  { "type": "done" }
+]

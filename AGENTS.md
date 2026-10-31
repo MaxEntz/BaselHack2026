@@ -368,6 +368,11 @@ Env (`.env.example`): `DATABASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `M
 | 2026-10-31 | Code in `code/`, `platform` → `merchant_platform`, MCP SDK v2 (`MCPServer`) | BaselHack template; stdlib name clash; FastMCP removed in v2 (§0) |
 | 2026-10-31 | Claude API for every LLM call (OpenAI not used) | One SDK; a multi-provider layer costs time for no demo gain |
 | 2026-10-31 | `AGENTS.md` is the shared instruction file, `CLAUDE.md` imports it | Team uses both Claude Code and opencode |
+| 2026-10-31 | Freeze `core/models.py`, the `AgentService` protocol and `web/src/types.ts` in #2; later contract changes need a dedicated PR and team announcement | Unblock parallel backend and frontend work |
+| 2026-10-31 | Require `guest_name` on guest updates and cancellations | A reservation reference alone is not guest identity |
+| 2026-10-31 | Discovery returns `suggestions` and `ignored_filters`; search tags accept unknown strings | Let Claude explain unsupported filters and propose relaxing preferences |
+| 2026-10-31 | `BuildAgentOutput` includes `assumptions`, `tools` and `mcp_url`; admin tools include `UpdateTablesInput` | Populate the profile card and allow table-plan corrections during onboarding |
+| 2026-10-31 | Optional profile/location fields default to `None`; card JSON includes nulls; `HHMM` validates real 24-hour clock values | Keep Python/TS outputs aligned and reject impossible times at the boundary |
 
 ## 15. Out of scope (POC)
 

@@ -1,0 +1,62 @@
+[
+  { "type": "text", "delta": "I'll build the booking agent for Le Petit Zinc." },
+  { "type": "tool_start", "tool": "build_agent", "label": "Building your agent…" },
+  { "type": "step", "step": "crawl", "status": "running" },
+  { "type": "step", "step": "crawl", "status": "done", "detail": "Read the homepage, menu, hours, contact and booking pages.", "duration_ms": 820 },
+  { "type": "step", "step": "extract", "status": "running" },
+  { "type": "step", "step": "extract", "status": "done", "detail": "Combined the website with your table plan and group limit.", "duration_ms": 1400 },
+  { "type": "step", "step": "validate", "status": "running" },
+  { "type": "step", "step": "validate", "status": "done", "duration_ms": 4 },
+  { "type": "step", "step": "provision", "status": "running" },
+  { "type": "step", "step": "provision", "status": "done", "detail": "Created 12 tables with 44 seats.", "duration_ms": 110 },
+  { "type": "step", "step": "deploy", "status": "running" },
+  { "type": "step", "step": "deploy", "status": "done", "detail": "Your agent is live.", "duration_ms": 12 },
+  {
+    "type": "card",
+    "kind": "profile",
+    "data": {
+      "profile": {
+        "slug": "le-petit-zinc",
+        "name": "Le Petit Zinc",
+        "website": "http://localhost:8080/",
+        "vertical": "restaurant",
+        "location": { "city": "Mulhouse", "lat": null, "lng": null },
+        "seats": 44,
+        "services": [
+          { "start": "12:00", "end": "14:00" },
+          { "start": "19:00", "end": "22:00" }
+        ],
+        "max_party_size": 6,
+        "tables": [
+          { "label": "T1", "seats": 2 },
+          { "label": "T2", "seats": 2 },
+          { "label": "T3", "seats": 2 },
+          { "label": "T4", "seats": 2 },
+          { "label": "T5", "seats": 4 },
+          { "label": "T6", "seats": 4 },
+          { "label": "T7", "seats": 4 },
+          { "label": "T8", "seats": 4 },
+          { "label": "T9", "seats": 4 },
+          { "label": "T10", "seats": 4 },
+          { "label": "T11", "seats": 6 },
+          { "label": "T12", "seats": 6 }
+        ],
+        "tags": ["vegetarian", "gluten-free", "terrace", "kid-friendly"],
+        "price_level": "€€",
+        "cancellation_policy": null,
+        "fallback_url": "http://localhost:8080/reservation.html"
+      },
+      "status": "live",
+      "assumptions": ["Bookings last 120 minutes by default."],
+      "tools": [
+        { "name": "get_availability", "description": "Check free tables at Le Petit Zinc in Mulhouse for groups up to 6." },
+        { "name": "create_reservation", "description": "Book a table at Le Petit Zinc. Confirm with the guest first." },
+        { "name": "update_reservation", "description": "Move or resize a booking at Le Petit Zinc. Confirm with the guest first." },
+        { "name": "cancel_reservation", "description": "Cancel a booking at Le Petit Zinc. Confirm with the guest first." }
+      ],
+      "mcp_url": "http://localhost:8001/mcp"
+    }
+  },
+  { "type": "text", "delta": "Your agent is ready. Bookings last 120 minutes by default." },
+  { "type": "done" }
+]

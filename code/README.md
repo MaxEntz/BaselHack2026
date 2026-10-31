@@ -39,6 +39,8 @@ npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 
 Test markers: `integration` (needs Docker), `llm` (calls the Anthropic API, skipped when `ANTHROPIC_API_KEY` is empty).
 
+Shared tool and SSE contracts, fixtures and checks: [CONTRACTS.md](../documentation/CONTRACTS.md).
+
 ## Layout
 
 ```

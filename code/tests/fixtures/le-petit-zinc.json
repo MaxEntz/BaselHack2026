@@ -1,0 +1,31 @@
+{
+  "slug": "le-petit-zinc",
+  "name": "Le Petit Zinc",
+  "website": "http://localhost:8080/",
+  "vertical": "restaurant",
+  "location": { "city": "Mulhouse", "lat": null, "lng": null },
+  "seats": 44,
+  "services": [
+    { "start": "12:00", "end": "14:00" },
+    { "start": "19:00", "end": "22:00" }
+  ],
+  "max_party_size": 6,
+  "tables": [
+    { "label": "T1", "seats": 2 },
+    { "label": "T2", "seats": 2 },
+    { "label": "T3", "seats": 2 },
+    { "label": "T4", "seats": 2 },
+    { "label": "T5", "seats": 4 },
+    { "label": "T6", "seats": 4 },
+    { "label": "T7", "seats": 4 },
+    { "label": "T8", "seats": 4 },
+    { "label": "T9", "seats": 4 },
+    { "label": "T10", "seats": 4 },
+    { "label": "T11", "seats": 6 },
+    { "label": "T12", "seats": 6 }
+  ],
+  "tags": ["vegetarian", "gluten-free", "terrace", "kid-friendly"],
+  "price_level": "€€",
+  "cancellation_policy": null,
+  "fallback_url": "http://localhost:8080/reservation.html"
+}
