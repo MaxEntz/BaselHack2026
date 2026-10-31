@@ -196,8 +196,8 @@ data: {"type":"done"}
 
 The management site's routes sit under `/merchants/{slug}` (`merchant_platform/management.py`).
 Their shapes are frozen here and in `web/src/types.ts`, so that pages are built against the
-mock while the backend lands: until then, each route answers `501` `not_built_yet` naming its
-issue, after checking its input (a form that breaks a rule already answers its `problem`).
+mock while the backend lands: a route not built yet answers `501` `not_built_yet` naming its
+issue, after checking its input. Every route of the table is built now (#133 was the last).
 
 Every route depends on `auth.owner_of_path`, so none can ship open: `401` `not_signed_in` without
 the merchant's owner, `403` `other_merchant` for another merchant, before the body is read. Until
@@ -282,6 +282,26 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 - `POST /reservations/{id}/cancel` answers `outcome`. A guest notice is stored only for a booking a guest made (through an agent or the website): one the merchant entered itself is `own_booking`, no notice.
 - `GET /slots`: the day's starts that haven't passed, each with the table `pick_table` would give (none when the party exceeds `max_party_size` or no table is free) and `blocked`. With `ignore` (a move), the table the move would give: its own first among equals, and no party limit for the booking's own party. `until` is computed in UTC, so it is right on clock-change nights.
 
+**The restaurant's forms (#133, `agent/admin.py`)**
+- Each save runs in one `merchant_conn` transaction and keeps the registry's columns and
+  `profile` in step with the merchant's rows, so the gateway's discovery, the fallback link and
+  the tool descriptions on `/m/<slug>/mcp` follow at the next call, with no restart.
+- `GET /hours` lists services by start; `PUT /hours` is `update_policy(services=…)`.
+- `GET /tables` answers the plan in the order it was last saved. `PUT /tables` is
+  `update_tables`: tables are matched by label (a rename is a removal plus an addition). It refuses
+  to remove a table a booking refers to (`table_in_use`, upcoming or past) or to shrink one below an
+  upcoming booking's party (`table_too_small`, `seats` = the party), naming the first such booking's
+  guest.
+- `PUT /rules` saves `max_party_size`, `fallback_url` and `cancellation_policy` together. The
+  booking page must stay on the merchant's website: same host (`www.` aside) and same port, else
+  `booking_page_off_site`. `slot_length_min` stays read-only. A stored policy reads as one
+  paragraph of at most 500 characters (`agent.provisioning.one_line`).
+- `PUT /settings` saves name, city, price and tags (duplicates dropped); the website stays.
+- `PUT /blocked?date=` sets the day's blocked starts. Every time must be one of the day's starts
+  (`invalid_input` otherwise, nothing changed); blocked starts that are no longer sent are reopened.
+  It writes one activity line: the times it blocked, else the ones it reopened. `GET /blocked` and
+  its answer list the blocked starts that haven't passed.
+
 **Dashboard**
 - The dashboard is for the merchant's today by the server's clock, which it answers as `date`;
   a `?date=` other than that day is `invalid_input`. `MerchantOverview.now` gives the same clock,
@@ -308,7 +328,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
   - new bookings, from an agent, the website, the assistant or the management site;
   - guests' and the merchant's moves and cancellations;
   - blocked and reopened times;
-  - saved hours, rules and floor plan;
+  - saved hours, rules, floor plan and settings;
   - pausing and resuming.
   A change that fails, or changes nothing, writes none: a time already blocked, a pause of a paused agent, an identical save, a move to the same time, a replayed key. A guest's own update or cancellation is the agent's (`source: claude`), since the website only books; saving hours and the party limit together writes one line each. Lines are dated by the service's clock.
 - A line keeps its `details` (guest, party, start; the times; the form saved), not its words, so `text` is worded when read. A line without them reads as its reference: one bad row never takes Home down. `make seed` loads the mockup's 12 lines with their details.
@@ -322,7 +342,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
     followed by `/manage/<slug>`);
   - `owner_name` is what the owner asked to be called, or `null` until known;
   - `demo` says the merchant was built from one of the demo sites in `code/sites/`.
-- `Rules.tools` is `generated_tools(described_profile(profile))`: what an AI agent reads, so the
+- `Rules.tools` is `agent.provisioning.described_tools(profile)`: what an AI agent reads, so the
   cancellation policy reads "see the restaurant's own website".
 - `AgentRequest.request` and `.response` are the BATP frames as sent, JSON strings; never a
   `HELLO` or its token. `refused` is `status >= 400`.
