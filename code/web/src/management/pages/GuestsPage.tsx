@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
+import { Link } from "react-router";
 import { useClient, useLoad } from "../data.ts";
 import { dayShort } from "../dates.ts";
-import { PAGES } from "../pages.ts";
+import { PAGES, bookingPath } from "../pages.ts";
 import { Source } from "../ui/index.ts";
 import { PageTitle } from "./PageTitle.tsx";
 
@@ -55,9 +56,10 @@ export function GuestsPage({ slug, version }: { slug: string; version: number })
                 <tbody>
                   {data.guests.map((guest) => (
                     <tr key={guest.reservation_id}>
-                      {/* A button opening the booking once its dialog exists (#139). */}
                       <td>
-                        <b>{guest.guest_name}</b>
+                        <Link className="guest" to={bookingPath(slug, guest.date, guest.reservation_id)}>
+                          {guest.guest_name}
+                        </Link>
                       </td>
                       <td>
                         {dayShort(guest.date)}, {guest.time}
