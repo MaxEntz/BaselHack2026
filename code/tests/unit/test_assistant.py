@@ -487,7 +487,7 @@ async def test_operations_cards() -> None:
         ("R-001", "R-001 cancelled. The guest will be notified."),
         ("R-002", "R-002 is in the past: cancelled, no notice sent."),
         ("R-003", "R-003 was already cancelled by the guest."),
-        ("R-004", "R-004 was already cancelled."),
+        ("R-004", "R-004 was already cancelled: no new notice sent."),
     ],
 )
 async def test_a_merchant_cancellation_card_says_what_was_done(
@@ -496,7 +496,8 @@ async def test_a_merchant_cancellation_card_says_what_was_done(
     llm = ScriptedLLM(
         ([], [call("cancel_reservation", reservation_id=reservation_id)]), (["Done."], [])
     )
-    harness = Harness(llm, agent=FakeAgent())
+    agent = FakeAgent()
+    harness = Harness(llm, agent=agent)
     harness.provisioned.add(SLUG)
     session = onboarded()
 
@@ -504,6 +505,7 @@ async def test_a_merchant_cancellation_card_says_what_was_done(
 
     cards = [event for event in events if event["type"] == "card"]
     assert [card["data"]["text"] for card in cards] == [text]
+    assert agent.cancelled == [reservation_id]
     tool_message = next(m for m in session.messages if m["role"] == "tool")
     assert json.loads(tool_message["content"])["text"] == text  # what the model relays
 

@@ -63,7 +63,7 @@ CANCELLED: dict[MerchantCancelOutcome, str] = {
     "notified": "{id} cancelled. The guest will be notified.",
     "ended": "{id} is in the past: cancelled, no notice sent.",
     "guest_cancelled": "{id} was already cancelled by the guest.",
-    "already_cancelled": "{id} was already cancelled.",
+    "already_cancelled": "{id} was already cancelled: no new notice sent.",
 }
 
 

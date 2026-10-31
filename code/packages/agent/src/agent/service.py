@@ -640,7 +640,7 @@ class PgAgentService:
             )
         log.info(
             "reservation cancelled by merchant",
-            extra={"merchant": slug, "reservation": row.id, "outcome": outcome},
+            extra={"merchant": slug, "reservation": row.id, "cancel_outcome": outcome},
         )
         return MerchantCancellation(reservation=self._from_row(slug, row), outcome=outcome)
 

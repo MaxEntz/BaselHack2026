@@ -69,7 +69,7 @@ Guest updates and cancellations require `guest_name`; merchant cancellation uses
 `by="merchant"` on the service, which is why the admin tool input has no `by`. The admin
 tool calls `AgentService.cancel_by_merchant`, which also says what was done (#82):
 `notified` (cancelled, guest notice stored), `ended` (cancelled, no notice: the booking is
-over), `guest_cancelled` or `already_cancelled` (nothing changed). The confirmation card
+over), `guest_cancelled` or `already_cancelled` (nothing changed, no new notice). The confirmation card
 words each case, so the merchant is never told a notice was sent when none was stored.
 The protocol's overloads make `by="guest"` without a `guest_name` a type error.
 

@@ -570,6 +570,31 @@ async def test_a_merchant_cancellation_says_what_it_did(
     ] == [1, 0, 0]
 
 
+@pytest.mark.parametrize(
+    ("start", "outcome", "notices"),
+    [
+        (NOW - timedelta(hours=1), "notified", 1),  # started, not over: the guest may still care
+        (NOW - timedelta(hours=2), "ended", 0),  # over exactly now
+    ],
+)
+async def test_a_booking_is_over_once_its_slot_ends(
+    service: PgAgentService,
+    engine: AsyncEngine,
+    make_merchant: MerchantFactory,
+    start: datetime,
+    outcome: str,
+    notices: int,
+) -> None:
+    slug = await make_merchant()
+    guest = f"Guest {uuid4().hex[:6]}"
+    await insert_booking(engine, slug, start, id="R-800", guest_name=guest)
+
+    cancelled = await service.cancel_by_merchant(slug, "R-800")
+
+    assert cancelled.outcome == outcome
+    assert await notices_for(engine, guest) == notices
+
+
 async def test_the_merchant_can_fix_its_agent_before_it_goes_live(
     service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
 ) -> None:
