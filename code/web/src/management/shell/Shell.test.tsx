@@ -201,10 +201,12 @@ describe("live bookings", () => {
   });
 
   it("appear on Home without a reload", async () => {
-    // Home reads tonight first, then the live booking arrives: on a slow runner, 10 ms let it
-    // land in the first read, where nothing is new.
-    at(`/manage/${SLUG}`, mock(400));
-    await screen.findByRole("button", { name: /Sara Muller/ });
+    // Home's first read must land before the booking does: a row already in the first read
+    // is not fresh (only ids that appear since the previous read are).
+    at(`/manage/${SLUG}`, mock(800));
+    await screen.findByText("17 guests, 6 bookings");
+    expect(screen.queryByRole("button", { name: /Kim Weber/ })).toBeNull();
+
     const row = await screen.findByRole("button", { name: /Kim Weber/ }, { timeout: 3000 });
     expect(row.className).toContain("fresh");
   });

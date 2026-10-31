@@ -138,7 +138,7 @@ function Entry({ entry, addresses, onOpen, onCopy, onRetry }: EntryProps) {
     case "card":
       return (
         <div className="st-msg bot">
-          <ResultCard card={entry.card} />
+          <ResultCard card={entry.card} onOpen={onOpen} />
         </div>
       );
     case "ping":
@@ -299,8 +299,33 @@ function UrlRow({ label, url, copyLabel, onCopy }: UrlRowProps) {
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-function ResultCard({ card }: { card: Extract<FeedEntry, { kind: "card" }>["card"] }) {
+function ResultCard({
+  card,
+  onOpen,
+}: {
+  card: Extract<FeedEntry, { kind: "card" }>["card"];
+  onOpen: (view: View) => void;
+}) {
   switch (card.kind) {
+    case "diff": {
+      const { label, before, after, view } = card.data;
+      return (
+        <div className="st-card">
+          <div className="st-diff">
+            <span>{label}</span>
+            {before && <s>{before}</s>}
+            <b>{after}</b>
+            {view && (
+              <button type="button" className="st-see" onClick={() => onOpen(view)}>
+                See it
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+    case "view":
+      return null;
     case "reservations": {
       const when = describeDate(card.data.date);
       const rows = card.data.reservations

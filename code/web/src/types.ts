@@ -55,6 +55,15 @@ export type Look = {
 
 export type GeneratedTool = { name: string; description: string };
 
+export type StudioView = "agent" | "manage";
+export type DiffCardData = {
+  label: string;
+  before: string | null;
+  after: string;
+  // The pane "See it" opens in Studio.
+  view: StudioView | null;
+};
+
 export type FactKey =
   | "name"
   | "hours"
@@ -138,6 +147,10 @@ export type ChatEvent =
   | { type: "card"; kind: "stats"; data: Stats & { date: string } }
   | { type: "card"; kind: "policy"; data: Policy }
   | { type: "card"; kind: "confirmation"; data: { text: string } }
+  // A change, worded by code (#152): the old value struck through, the new one bold.
+  | { type: "card"; kind: "diff"; data: DiffCardData }
+  // Studio shows that pane of its canvas; the plain chat shows nothing (#152).
+  | { type: "card"; kind: "view"; data: { view: StudioView } }
   | { type: "error"; message: string }
   | { type: "done" };
 

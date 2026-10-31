@@ -9,8 +9,9 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
@@ -19,7 +20,18 @@ from agent.service import AgentService
 from agent.words import short_day
 from builder.build import AlreadyProvisioned
 from builder.llm import ToolCall, ToolSpec
-from core.errors import AgentError, AgentUnavailable, InvalidInput
+from builder.look import (
+    ACCENT_CONTRAST,
+    CORNER_WORDS,
+    DEFAULT_LOOK,
+    FONT_WORDS,
+    contrast,
+    hex_of,
+    readable,
+    rgb_of,
+)
+from builder.look import describe as describe_look
+from core.errors import AgentError, AgentUnavailable, InvalidInput, PartyTooLarge
 from core.models import (
     AdminCancelInput,
     BuildAgentInput,
@@ -27,24 +39,35 @@ from core.models import (
     ChatEvent,
     ConfirmationCard,
     ConfirmationCardData,
+    DiffCard,
+    DiffCardData,
     ErrorCode,
     GetStatsInput,
     ListReservationsInput,
+    Look,
     MerchantCancelOutcome,
     PolicyCard,
     ProfileCard,
     PublishAgentInput,
     ReservationsCard,
     ReservationsCardData,
+    SendTestBookingInput,
+    ShowViewInput,
     SlotInput,
     StatsCard,
     StatsCardData,
     StepEvent,
     ToolStartEvent,
+    TryRequestInput,
+    UpdateLookInput,
     UpdatePolicyInput,
+    UpdateRulesInput,
     UpdateTablesInput,
+    ViewCard,
+    ViewCardData,
 )
 from merchant_platform.accounts import IssuedLink
+from merchant_platform.overview import MerchantRecord
 from merchant_platform.sessions import Session
 
 log = logging.getLogger("merchant_platform.tools")
@@ -58,7 +81,24 @@ BuildAgent = Callable[
 
 NOT_ONBOARDED = "No agent yet: onboard the merchant first with build_agent."
 ALREADY_ONBOARDED = "This merchant already has an agent: use the other tools to change it."
-PUBLISHED = "Your agent is live: Claude users can now book you."
+# Studio's answers (#152), as in the mockup (documentation/design/poc-v10/sesame-studio.html).
+PUBLISHED = (
+    "You're live. Agents get real answers now. The sample bookings are gone, so your list stays "
+    "empty until the first guest books."
+)
+POLICY_SAVED = "Saved. Claude reads this before it cancels for a guest."
+HIDDEN = "Agents get a 404 until you publish. Do that first, and I'll try it for you."
+TEST_HIDDEN = "Agents get a 404 until you publish. Do that first, and I'll send one through."
+TEST_GUEST = "Test booking"
+UNREVIEWED = (
+    "Not yet: show the review card and wait for the merchant to say it's right before publishing."
+)
+LOOK_RESET = "Back to the look from your site."
+NO_SITE_LOOK = "I couldn't read your site's look again, so I kept this one."
+VIEWS = {
+    "agent": "Here's your agent site: what an agent reads and gets back.",
+    "manage": "Here's your management site.",
+}
 NOT_AVAILABLE = "Managing bookings isn't available yet on this platform."
 TOOL_FAILED = "The tool failed unexpectedly."
 SITE_TAKEN = (
@@ -81,6 +121,18 @@ class ToolResult:
     is_error: bool = False
     # The §8.4 code of a failed call, for the log line; the model reads `content`.
     error: ErrorCode | None = None
+
+
+def _merchant_spoke_since_build(session: Session) -> bool:
+    """A session that built its merchant publishes only after a merchant message: the model
+    can't publish in the turn that built, before the review card was read (#152)."""
+    if session.built_at is None:
+        return True
+    return any(m.get("role") == "user" for m in session.messages[session.built_at :])
+
+
+def _diff(label: str, before: str | None, after: str, *, view: Any = None) -> DiffCard:
+    return DiffCard(data=DiffCardData(label=label, before=before, after=after, view=view))
 
 
 def _error(code: ErrorCode, content: str) -> ToolResult:
@@ -119,6 +171,43 @@ TOOLS = (
         "it from now on. Only call it once the merchant said the review card is right.",
         "Publishing your agent…",
         PublishAgentInput,
+    ),
+    _Tool(
+        "update_rules",
+        "Change the cancellation policy guests and their assistants read (an empty one removes "
+        "it). The largest group is update_policy's.",
+        "Saving your rules…",
+        UpdateRulesInput,
+    ),
+    _Tool(
+        "try_request",
+        "Show what an AI agent gets when it asks for a table: the times offered for a party "
+        "size (and optionally a day and time), or the refusal with the booking page.",
+        "Asking your agent…",
+        TryRequestInput,
+    ),
+    _Tool(
+        "send_test_booking",
+        "Book a test table for 2 the way an AI agent would, so the merchant sees it arrive. "
+        "Only once the agent is published, and only when the merchant asks for a test booking.",
+        "Sending a test booking…",
+        SendTestBookingInput,
+    ),
+    _Tool(
+        "update_look",
+        "Change the management site's look: main or second colour (#rrggbb), the headings' "
+        "font (serif, sans or Fraunces Soft) or the corners (organic, rounded, square); or "
+        "`reset` to go back to the look read from the merchant's website. Never the merchant's "
+        "website, and never the agent site, which has no interface.",
+        "Changing your look…",
+        UpdateLookInput,
+    ),
+    _Tool(
+        "show_view",
+        "Show the merchant a pane of Studio: `agent` (what an AI agent reads and gets) or "
+        "`manage` (the management site).",
+        "Opening the view…",
+        ShowViewInput,
     ),
     _Tool(
         "list_reservations",
@@ -179,6 +268,11 @@ CLAIM_SECONDS = 300
 IssueLink = Callable[[str], Awaitable[IssuedLink]]
 # Publishes a merchant a build left waiting, streaming the `deploy` step (#136).
 Publish = Callable[[str, Emit], Awaitable[None]]
+# The registry's row: the merchant's status and stored look (#152).
+FindMerchant = Callable[[str], Awaitable[MerchantRecord | None]]
+# Stores the management site's look; reads the merchant website's own again.
+SaveLook = Callable[[str, Look], Awaitable[None]]
+SiteLook = Callable[[str], Awaitable[Look | None]]
 
 
 class AdminTools:
@@ -194,6 +288,9 @@ class AdminTools:
         owned_merchant: str | None = None,
         issue_link: IssueLink | None = None,
         publish: Publish | None = None,
+        merchant: FindMerchant | None = None,
+        save_look: SaveLook | None = None,
+        site_look: SiteLook | None = None,
     ) -> None:
         """`owned_merchant` (PLATFORM_MERCHANT) is the only existing merchant a session may
         take over by onboarding its website again (development only, §13, §15).
@@ -205,6 +302,9 @@ class AdminTools:
         self._owned_merchant = owned_merchant
         self._issue_link = issue_link
         self._publish = publish
+        self._merchant = merchant
+        self._save_look = save_look
+        self._site_look = site_look
 
     async def run(self, session: Session, call: ToolCall, emit: Emit) -> ToolResult:
         """Runs one call and logs it (§12): tool, merchant, latency, and `ok` or the error code.
@@ -272,8 +372,17 @@ class AdminTools:
         if isinstance(arguments, PublishAgentInput):
             if self._publish is None:
                 raise AgentUnavailable(NOT_AVAILABLE)
+            if not _merchant_spoke_since_build(session):
+                raise InvalidInput(UNREVIEWED)
             await self._publish(slug, emit)
             return self._confirmation(PUBLISHED)
+        if isinstance(arguments, UpdateLookInput):
+            return await self._look(slug, arguments, emit)
+        if isinstance(arguments, ShowViewInput):
+            return Outcome(
+                {"shown_to_merchant": arguments.view, "text": VIEWS[arguments.view]},
+                ViewCard(data=ViewCardData(view=arguments.view)),
+            )
         agent = self._require_agent()
         match name, arguments:
             case "list_reservations", ListReservationsInput(date=day):
@@ -310,6 +419,12 @@ class AdminTools:
                 return self._confirmation(
                     f"Floor plan updated: {len(saved)} tables · {seats} seats."
                 )
+            case "update_rules", UpdateRulesInput():
+                return await self._rules(slug, arguments, agent)
+            case "try_request", TryRequestInput():
+                return await self._try(slug, arguments, agent)
+            case "send_test_booking", SendTestBookingInput():
+                return await self._test_booking(slug, agent)
             case "cancel_reservation", AdminCancelInput(reservation_id=reservation_id):
                 done = await agent.cancel_by_merchant(slug, reservation_id)
                 return self._confirmation(CANCELLED[done.outcome].format(id=done.reservation.id))
@@ -321,6 +436,7 @@ class AdminTools:
         # nobody owns (`make owner-link` then gives it one).
         link = await self._issue_link(output.profile.slug) if self._issue_link else None
         session.merchant_slug = output.profile.slug
+        session.built_at = len(session.messages)
         session.link = link.fingerprint if link else None
         # The building browser may claim its owner cookie once, shortly after (#132).
         session.claimable_until = time.monotonic() + CLAIM_SECONDS if link else None
@@ -333,6 +449,129 @@ class AdminTools:
             {"shown_to_merchant": "profile card", **data},
             ProfileCard(data=output, login_url=link.url if link else None),
         )
+
+    async def _status(self, slug: str) -> str | None:
+        record = await self._merchant(slug) if self._merchant else None
+        return record.status if record else None
+
+    async def _rules(self, slug: str, arguments: UpdateRulesInput, agent: AgentService) -> Outcome:
+        before = await agent.get_rules(slug)
+        policy = " ".join(arguments.cancellation_policy.split()) or None
+        after = await agent.update_rules(
+            slug, before.max_party_size, str(before.fallback_url), policy
+        )
+        return Outcome(
+            {
+                "shown_to_merchant": "change",
+                "text": POLICY_SAVED,
+                **after.model_dump(mode="json", exclude={"tools"}),
+            },
+            _diff("Cancelling", before.cancellation_policy, after.cancellation_policy or "None"),
+        )
+
+    async def _try(self, slug: str, arguments: TryRequestInput, agent: AgentService) -> Outcome:
+        n = arguments.party_size
+        if await self._status(slug) == "building":
+            return self._confirmation(HIDDEN)
+        day = arguments.date or self._today()
+        try:
+            slots = await agent.get_availability(slug, day, n, arguments.time)
+        except PartyTooLarge:
+            return self._confirmation(
+                f"An agent asking for {n} gets a 413 with the link to your booking page, and the "
+                "guest goes there."
+            )
+        if not slots:
+            return self._confirmation(
+                f"An agent asking for {n} on {short_day(day)} gets no time: every table that fits "
+                "is taken or blocked."
+            )
+        times = [self._when_time(slot.starts_at) for slot in slots]
+        listed = times[0] if len(times) == 1 else f"{', '.join(times[:-1])} and {times[-1]}"
+        count = "1 time" if len(times) == 1 else f"{len(times)} times"
+        return self._confirmation(f"An agent asking for {n} gets {count}: {listed}.")
+
+    async def _test_booking(self, slug: str, agent: AgentService) -> Outcome:
+        if await self._status(slug) == "building":
+            return self._confirmation(TEST_HIDDEN)
+        day = self._today()
+        slots = await agent.get_availability(slug, day, 2)
+        if not slots:
+            slots = await agent.get_availability(slug, day + timedelta(days=1), 2)
+        if not slots:
+            return self._confirmation("No table for 2 is free today or tomorrow to try it on.")
+        booked = await agent.create_reservation(
+            slug, slots[0].starts_at, 2, TEST_GUEST, f"studio-test-{uuid4()}", via="claude"
+        )
+        return self._confirmation(
+            f"Sent: {booked.id}, {short_day(slots[0].starts_at.astimezone(self._tz).date())} at "
+            f"{self._when_time(slots[0].starts_at)} for 2, booked as an agent would. It's in your "
+            "bookings: cancel it when you're done."
+        )
+
+    async def _look(self, slug: str, arguments: UpdateLookInput, emit: Emit) -> Outcome:
+        if self._merchant is None or self._save_look is None:
+            raise AgentUnavailable(NOT_AVAILABLE)
+        record = await self._merchant(slug)
+        if record is None:
+            raise AgentUnavailable(NOT_AVAILABLE)
+        current = record.look or DEFAULT_LOOK
+        if arguments.reset:
+            site = await self._site_look(slug) if self._site_look else None
+            if site is None:
+                return self._confirmation(NO_SITE_LOOK)
+            await self._save_look(slug, site)
+            return Outcome(
+                {"shown_to_merchant": "change", "text": LOOK_RESET},
+                _diff("Look", describe_look(current), describe_look(site), view="manage"),
+            )
+        changes: dict[str, Any] = {}
+        texts: list[str] = []
+        cards: list[DiffCard] = []
+        bg = rgb_of(current.bg)
+        for field, label in (("accent", "Main colour"), ("accent_2", "Second colour")):
+            wanted = getattr(arguments, field)
+            if wanted is None:
+                continue
+            used = hex_of(readable(rgb_of(wanted), bg, ACCENT_CONTRAST))
+            changes[field] = used
+            role = "main" if field == "accent" else "second"
+            texts.append(
+                f"{used} is your {role} colour now on the management site."
+                if used == wanted
+                else f"{wanted} is too faint on your background, so I adjusted it to {used}."
+            )
+            cards.append(_diff(label, getattr(current, field), used, view="manage"))
+        if "accent" in changes:
+            accent = rgb_of(changes["accent"])
+            if contrast(rgb_of(current.on_accent), accent) < ACCENT_CONTRAST:
+                white, dark = (255, 255, 255), (17, 17, 17)
+                changes["on_accent"] = hex_of(
+                    white if contrast(white, accent) >= contrast(dark, accent) else dark
+                )
+        if arguments.display_font is not None:
+            changes["display_font"] = arguments.display_font
+            texts.append(f"Your headings use {FONT_WORDS[arguments.display_font].lower()} now.")
+            cards.append(
+                _diff("Headings", current.display_font, arguments.display_font, view="manage")
+            )
+        if arguments.corners is not None:
+            changes["corners"] = arguments.corners
+            texts.append(f"{CORNER_WORDS[arguments.corners]} on the management site now.")
+            cards.append(_diff("Corners", current.corners, arguments.corners, view="manage"))
+        if not changes:
+            raise InvalidInput("Say what to change: a colour, the headings' font or the corners.")
+        updated = current.model_copy(update=changes)
+        await self._save_look(slug, updated)
+        for card in cards[:-1]:
+            await emit(card)
+        return Outcome(
+            {"shown_to_merchant": "change", "text": " ".join(texts), "look": updated.model_dump()},
+            cards[-1],
+        )
+
+    def _when_time(self, at: datetime) -> str:
+        return at.astimezone(self._tz).strftime("%H:%M")
 
     def _require_agent(self) -> AgentService:
         if self._agent is None:

@@ -1006,7 +1006,7 @@ async def test_publish_agent_publishes_the_sessions_merchant() -> None:
 
     assert harness.published == [SLUG]
     assert kinds(events) == ["tool_start", "step", "step", "confirmation", "text"]
-    assert events[3]["data"]["text"] == "Your agent is live: Claude users can now book you."
+    assert events[3]["data"]["text"].startswith("You're live. Agents get real answers now.")
 
 
 async def test_a_publish_outside_the_chat_reaches_the_next_prompt() -> None:
@@ -1073,3 +1073,42 @@ async def test_the_crawled_quotes_never_reach_the_model() -> None:
     assert "6 personnes" not in message["content"]
     [card] = [e for e in events if e.get("kind") == "profile"]
     assert card["data"]["facts"][0]["quote"] == "jusqu'à 6 personnes"
+
+
+async def test_publish_waits_for_a_merchant_message_after_the_build() -> None:
+    # The model can't publish in the turn that built: the review card comes first (#152).
+    llm = ScriptedLLM(
+        ([], [call("build_agent", website="https://zinc.example/", description="")]),
+        ([], [call("publish_agent", call_id="p1")]),
+        (["Check the card first."], []),
+        ([], [call("publish_agent", call_id="p2")]),
+        (["Live."], []),
+    )
+    harness = Harness(llm)
+    session = Session(id="new")
+
+    await harness.turn(session, "Build it")
+    assert harness.published == []
+    assert "Not yet: show the review card" in json.dumps(llm.calls[2]["history"])
+
+    await harness.turn(session, "Looks right, publish it.")
+    assert harness.published == [SLUG]
+
+
+# Studio's requests with a real model (#152): facts, not wording.
+
+
+@pytest.mark.llm
+async def test_live_publish_publishes() -> None:
+    harness, session = await live_turns("Publish my agent.")
+    assert harness.published == [SLUG]
+    assert [name for name, _ in tools_called(session)] == ["publish_agent"]
+
+
+@pytest.mark.llm
+async def test_live_change_my_website_changes_nothing() -> None:
+    harness, session = await live_turns("Change the colours on my website to blue.")
+    called = {name for name, _ in tools_called(session)}
+    # Nothing touches the merchant's site: at most the management site's look.
+    assert called <= {"update_look"}
+    assert harness.published == []

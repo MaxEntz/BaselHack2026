@@ -363,6 +363,44 @@ class PublishAgentInput(_Model):
     """`publish_agent` takes nothing: it publishes the session's merchant (#136)."""
 
 
+# Studio's requests (#152): typed inputs, the code does the rest.
+
+
+class UpdateRulesInput(_Model):
+    """`update_rules`: the cancellation policy guests read; empty removes it. The largest group
+    stays `update_policy`'s, so that one request never has two tools (#152)."""
+
+    cancellation_policy: Annotated[str, StringConstraints(max_length=300)]
+
+
+class TryRequestInput(_Model):
+    """`try_request`: what an agent asking for this party would get."""
+
+    party_size: PositiveInt
+    date: BookingDay | None = None  # the merchant's today when absent
+    time: HHMM | None = None
+
+
+class SendTestBookingInput(_Model):
+    """`send_test_booking` takes nothing: a booking made as an agent would, to try the flow."""
+
+
+class UpdateLookInput(_Model):
+    """`update_look`: the management site's look; `reset` goes back to the site's own."""
+
+    accent: Hex | None = None
+    accent_2: Hex | None = None
+    display_font: DisplayFont | None = None
+    corners: Literal["organic", "rounded", "square"] | None = None
+    reset: bool = False
+
+
+class ShowViewInput(_Model):
+    """`show_view`: which pane of Studio's canvas to show."""
+
+    view: Literal["agent", "manage"]
+
+
 FactKey = Literal[
     "name",
     "hours",
@@ -855,6 +893,33 @@ class ConfirmationCard(_Model):
     data: ConfirmationCardData
 
 
+class DiffCardData(_Model):
+    """A change, as code words it (ADR-0006): the old value struck through, the new one bold."""
+
+    label: str
+    before: str | None
+    after: str
+    view: Literal["agent", "manage"] | None = None  # the pane "See it" opens in Studio
+
+
+class DiffCard(_Model):
+    type: Literal["card"] = "card"
+    kind: Literal["diff"] = "diff"
+    data: DiffCardData
+
+
+class ViewCardData(_Model):
+    view: Literal["agent", "manage"]
+
+
+class ViewCard(_Model):
+    """Studio shows that pane of its canvas; the plain chat shows nothing (#152)."""
+
+    type: Literal["card"] = "card"
+    kind: Literal["view"] = "view"
+    data: ViewCardData
+
+
 class ErrorEvent(_Model):
     type: Literal["error"] = "error"
     message: str
@@ -865,7 +930,13 @@ class DoneEvent(_Model):
 
 
 Card = Annotated[
-    ProfileCard | ReservationsCard | StatsCard | PolicyCard | ConfirmationCard,
+    ProfileCard
+    | ReservationsCard
+    | StatsCard
+    | PolicyCard
+    | ConfirmationCard
+    | DiffCard
+    | ViewCard,
     Field(discriminator="kind"),
 ]
 ChatEvent = Annotated[
