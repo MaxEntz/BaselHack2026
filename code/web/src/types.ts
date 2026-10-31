@@ -36,10 +36,35 @@ export type MerchantProfile = {
 
 export type GeneratedTool = { name: string; description: string };
 
+export type FactKey =
+  | "name"
+  | "hours"
+  | "tags"
+  | "max_party_size"
+  | "cancellation_policy"
+  | "price_level"
+  | "booking_page";
+
+// One line of the review card (#136). `source`: a crawled page's path, "you" for the owner's
+// description, null for a default.
+export type BuildFact = {
+  key: FactKey;
+  label: string;
+  value: string;
+  source: string | null;
+  quote: string | null;
+};
+
+// Something to check before publishing, written by code (#136).
+export type BuildFlag = { title: string; detail: string };
+
 export type BuildAgentOutput = {
   profile: MerchantProfile;
-  status: "live";
+  // Hidden from guests until the owner publishes (#136).
+  status: "building";
   assumptions: string[];
+  facts: BuildFact[];
+  flags: BuildFlag[];
   tools: GeneratedTool[];
   mcp_url: string;
 };
@@ -78,7 +103,8 @@ export type ChatEvent =
   | {
       type: "step";
       step: "crawl" | "extract" | "validate" | "provision" | "deploy";
-      status: "running" | "done" | "error";
+      // `waiting`: `deploy` after a build, until the owner publishes (#136).
+      status: "running" | "done" | "error" | "waiting";
       detail?: string | null;
       duration_ms?: number | null;
     }

@@ -104,7 +104,8 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 
 | Tool | Input (`core.models`) | Result |
 |---|---|---|
-| `build_agent` | `BuildAgentInput`: `website`, `description` | `BuildAgentOutput`: `profile`, `status: "live"`, `assumptions`, `tools`, `mcp_url`; streams the 5 build steps |
+| `build_agent` | `BuildAgentInput`: `website`, `description` | `BuildAgentOutput`: `profile`, `status: "building"`, `assumptions`, `facts` (`BuildFact`: `key`, `label`, `value`, `source` = a crawled page's path, `"you"` or null, `quote`), `flags` (`BuildFlag`: `title`, `detail`), `tools`, `mcp_url`; streams 4 steps, then `deploy` `waiting` ("Waiting for you.") (#136) |
+| `publish_agent` | `PublishAgentInput` (empty) | Confirmation "Your agent is live: Claude users can now book you."; streams `deploy` `running` then `done`. A live agent stays live, a paused (`down`) one is refused (#136) |
 | `list_reservations` | `date` | Rows `{id, time, guest_name, party_size, table_label, via, status}` |
 | `get_stats` | `date` | `{bookings, guests, seats, blocked: [HH:MM]}` |
 | `block_slot` / `unblock_slot` | `starts_at` | Confirmation |
@@ -198,6 +199,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 | Route | Body | Answer | Issue |
 |---|---|---|---|
 | `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo` | #132 |
+| `POST /publish` | | `MerchantOverview`, now `live`: publishes the agent a build left `building`. A paused (`down`) agent is refused with `invalid_input` | #136 |
 | `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
 | `GET /reservations?date=` | | `ReservationDay`: the day's services, every start of its grid, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |
 | `POST /reservations` | `MerchantBookingInput` | `201` + `ManagedReservation`, `via="merchant"` | #134 |

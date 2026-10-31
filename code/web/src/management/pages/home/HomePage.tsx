@@ -10,6 +10,7 @@ import type {
 } from "../../../types.ts";
 import type { ManagementClient } from "../../client.ts";
 import { useClient } from "../../data.ts";
+import { sampleBookings } from "../../samples.ts";
 import { Blob, Box, Pill, Source, Tag, Under } from "../../ui/index.ts";
 import { GuestsCard } from "./GuestsCard.tsx";
 import {
@@ -31,6 +32,7 @@ import "./home.css";
 
 export const NOTHING_TONIGHT = "Nothing booked for tonight yet.";
 export const NO_ACTIVITY = "Nothing has happened yet.";
+export const SAMPLES_NOTE = "Sample bookings: your agent is hidden from guests until you publish it.";
 const TONIGHT_ROWS = 9;
 const ACTIVITY_ROWS = 6;
 
@@ -45,7 +47,13 @@ export type HomeProps = {
   onOpenDay?: (date: string) => void;
 };
 
-type HomeData = { merchant: MerchantOverview; dashboard: Dashboard; day: ReservationDay };
+// `samples`: the merchant isn't published yet, so `day` holds the web's samples (#136).
+type HomeData = {
+  merchant: MerchantOverview;
+  dashboard: Dashboard;
+  day: ReservationDay;
+  samples: boolean;
+};
 
 /** Ids that appeared since the previous read: their rows get the `.fresh` highlight. */
 // Computed while rendering (React's "adjust state on a prop change"), so a new row is
@@ -80,7 +88,11 @@ function useHomeData(slug: string, client: ManagementClient, version: number) {
       ]);
       const day = await client.reservations(slug, dashboard.date, signal);
       if (signal.aborted) return;
-      setData({ merchant, dashboard, day });
+      const samples = merchant.status === "building";
+      const reservations = samples
+        ? sampleBookings(dashboard.date, dashboard.room.service)
+        : day.reservations;
+      setData({ merchant, dashboard, day: { ...day, reservations }, samples });
       setError(null);
     })().catch((reason: unknown) => {
       if (signal.aborted) return;
@@ -162,6 +174,7 @@ export function HomePage({
             date={data.dashboard.date}
             base={base}
             onOpen={openBooking}
+            samples={data.samples}
           />
           <NextDaysCard days={data.dashboard.next_days} onOpen={openDay} />
           <SourcesCard dashboard={data.dashboard} />
@@ -189,23 +202,30 @@ function TonightCard({
   date,
   base,
   onOpen,
+  samples,
 }: {
   bookings: ManagedReservation[];
   fresh: Set<string>;
   date: string;
   base: string;
   onOpen: (id: string, date: string) => void;
+  samples: boolean;
 }) {
   const live = list.filter((b) => b.status === "confirmed");
   const seated = live.reduce((sum, b) => sum + b.party_size, 0);
   return (
     <section className="m s5" aria-labelledby="home-tonight">
       <div className="m-hd">
-        <h2 id="home-tonight">Tonight</h2>
+        <h2 id="home-tonight">{samples ? "Tonight, samples" : "Tonight"}</h2>
         <span className="num">
           {guests(seated)}, {bookings(live.length)}
         </span>
       </div>
+      {samples && (
+        <p className="none" role="note">
+          {SAMPLES_NOTE}
+        </p>
+      )}
       <div className="t-rows">
         {list.length === 0 ? (
           <p className="none">{NOTHING_TONIGHT}</p>
@@ -217,6 +237,8 @@ function TonightCard({
               className={["t-row", b.status === "confirmed" ? "" : "off", fresh.has(b.id) ? "fresh" : ""]
                 .filter(Boolean)
                 .join(" ")}
+              // A sample booking exists on no server: nothing to open.
+              disabled={samples}
               onClick={() => onOpen(b.id, b.date)}
             >
               <span className="t-time">{b.time}</span>
@@ -229,7 +251,7 @@ function TonightCard({
           ))
         )}
       </div>
-      {list.length > 0 && (
+      {list.length > 0 && !samples && (
         <div>
           <Link className="link" to={`${base}/reservations?date=${date}`}>
             See all {bookings(live.length)}

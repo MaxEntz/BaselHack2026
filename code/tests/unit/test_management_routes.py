@@ -47,6 +47,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
     ("POST", "/agent/pause", None, "#146"),
     ("POST", "/agent/resume", None, "#146"),
     ("GET", "/agent/requests?date=2026-10-31&refused=true", None, "#146"),
+    ("POST", "/publish", None, None),
 ]
 NOT_BUILT = [route for route in ROUTES if route[3]]
 
@@ -159,8 +160,9 @@ async def test_a_form_that_breaks_a_rule_names_it(
     assert error.problem.model_dump(mode="json", exclude_defaults=True) == problem
 
 
-async def test_a_built_route_without_an_agent_is_unavailable() -> None:
-    response = await call("GET", "/guests")
+@pytest.mark.parametrize(("method", "path"), [("GET", "/guests"), ("POST", "/publish")])
+async def test_a_built_route_without_an_agent_is_unavailable(method: str, path: str) -> None:
+    response = await call(method, path)
 
     assert response.status_code == 503
     assert ManagementError.model_validate(response.json()).error == "agent_unavailable"

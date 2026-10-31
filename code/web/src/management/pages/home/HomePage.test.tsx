@@ -227,3 +227,26 @@ describe("Home for a merchant with no bookings", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("I can't reach the platform right now.");
   });
 });
+
+describe("Home before the agent is published (#136)", () => {
+  it("shows sample bookings, marked as such, instead of the merchant's", async () => {
+    setClock(DEMO_NOW);
+    const client = mock();
+    const merchant = client.merchant.bind(client);
+    const building: ManagementClient = {
+      ...client,
+      merchant: async (slug, signal) => ({ ...(await merchant(slug, signal)), status: "building" }),
+    };
+    show({ client: building });
+
+    const tonight = await screen.findByRole("region", { name: "Tonight, samples" });
+    expect(within(tonight).getByRole("note").textContent).toContain("until you publish it");
+    const rows = within(tonight).getAllByRole("button");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Alex Martin"),
+      expect.stringContaining("Sam Dupont"),
+      expect.stringContaining("Nora Haas"),
+    ]);
+    expect(rows.every((row) => (row as HTMLButtonElement).disabled)).toBe(true);
+  });
+});

@@ -22,12 +22,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import deprovision
-from builder.build import Builder
+from builder.build import Builder, publish
 from builder.cache import BuildCache
 from builder.crawl import CrawlResult, Page, StepEmitter
 from builder.llm import OpenAIClient
 from core.config import Settings
 from core.models import BuildAgentInput, BuildAgentOutput, StepEvent
+from merchant_platform.accounts import Accounts, IssuedLink, MemoryOwnerStore, Signer, issued
 from merchant_platform.api import create_app
 from merchant_platform.assistant import Assistant, registry_profiles
 from merchant_platform.tools import AdminTools
@@ -88,6 +89,16 @@ async def test_the_assistant_onboards_a_restaurant_in_three_messages(
         generated_dir=tmp_path,
     )
     built: list[BuildAgentInput] = []
+    published: list[str] = []
+    # As on the platform: the build gives its owner a link, which keeps the session (#132).
+    owners = Accounts(MemoryOwnerStore(), Signer(b"k" * 32))
+
+    async def issue_link(slug: str) -> IssuedLink:
+        return issued("http://test", await owners.issue_link_token(slug))
+
+    async def publish_agent(slug: str, emit: Any) -> None:
+        published.append(slug)
+        await publish(slug, emit, engine=engine)
 
     async def build(arguments: BuildAgentInput, emit: StepEmitter) -> BuildAgentOutput:
         built.append(arguments)
@@ -95,13 +106,14 @@ async def test_the_assistant_onboards_a_restaurant_in_three_messages(
 
     assistant = Assistant(
         OpenAIClient(openai, env.openai_model, reasoning_effort=env.openai_reasoning_effort),
-        AdminTools(None, build, TZ, today=date.today),
+        AdminTools(None, build, TZ, today=date.today, issue_link=issue_link, publish=publish_agent),
         registry_profiles(engine),
         TZ,
     )
     app = create_app(
         Settings(_env_file=None, database_url="postgresql+psycopg://unused/db"),  # type: ignore[call-arg]
         assistant=assistant,
+        accounts=owners,
     )
     transport = httpx.ASGITransport(app=app)
     turns: list[list[dict[str, Any]]] = []
@@ -151,8 +163,15 @@ async def test_the_assistant_onboards_a_restaurant_in_three_messages(
         reply = text(third).lower()
         assert any(word in reply for word in ("monday", "table", "assum", "default")), reply
 
+        assert output.status == "building"
+        assert published == [], "published before the merchant checked the card"
+
+        # The merchant confirms the review card: the assistant publishes (#136).
         await say("Yes, that's all correct.")
         assert len(built) == 1, "built a second agent"
+        if not published:
+            await say("Please publish it now.")
+        assert published == [slug]
     finally:
         if slug is not None:
             await deprovision(slug, engine=engine)

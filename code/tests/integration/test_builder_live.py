@@ -81,12 +81,20 @@ async def test_builds_le_petit_zinc_from_its_website(
         assert profile.max_party_size == 6
         assert "closed on" not in assumptions  # "tous les jours" (#73)
         assert str(profile.fallback_url).endswith("/reservation.html")
+        # The build waits for its owner before deploy (#136); facts, not wording.
         assert [s.step for s in steps if s.status == "done"] == [
             "crawl",
             "extract",
             "validate",
             "provision",
-            "deploy",
         ]
+        assert (steps[-1].step, steps[-1].status) == ("deploy", "waiting")
+        assert output.status == "building"
+        facts = {fact.key: fact for fact in output.facts}
+        assert facts["max_party_size"].value.startswith("6")
+        assert facts["booking_page"].value.startswith("/reservation.html")
+        # A quote, when there is one, really is on the page it names (ADR-0003).
+        assert all(f.source is None or f.quote is None or f.source != "you" for f in facts.values())
+        assert any("floor plan" in flag.title for flag in output.flags)
     finally:
         await deprovision(output.profile.slug, engine=engine)

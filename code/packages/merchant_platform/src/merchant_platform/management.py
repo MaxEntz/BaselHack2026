@@ -11,8 +11,10 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Request
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import AgentService
+from builder.build import publish
 from core.config import Settings
 from core.errors import AgentUnavailable, NotFound
 from core.forms import checked_rules, checked_services, checked_settings, checked_tables
@@ -43,6 +45,7 @@ from core.models import (
     SearchText,
     SettingsInput,
     Slug,
+    StepEvent,
 )
 from merchant_platform.accounts import Owner
 from merchant_platform.auth import owner_of_path
@@ -85,6 +88,22 @@ async def overview(
         raise NotFound(f"No merchant {slug!r}.")
     settings: Settings = request.app.state.settings
     return merchant_overview(record, owner.name, settings, datetime.now(UTC))
+
+
+@router.post("/publish")
+async def publish_agent(
+    request: Request, slug: SlugPath, owner: Annotated[Owner, Depends(owner_of_path)]
+) -> MerchantOverview:
+    """Publishes the agent a build left waiting (#136), then answers its addresses."""
+    engine: AsyncEngine | None = request.app.state.engine
+    if engine is None:
+        raise AgentUnavailable("Publishing isn't available on this platform.")
+
+    async def unseen(_: StepEvent) -> None:
+        """The chat shows the steps; this route answers the result."""
+
+    await publish(slug, unseen, engine=engine)
+    return await overview(request, slug, owner)
 
 
 @router.get("/dashboard")

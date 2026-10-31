@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import AgentService
-from builder.build import Builder, gateway_mcp_url
+from builder.build import Builder, gateway_mcp_url, publish
 from builder.cache import BuildCache
 from builder.crawl import StepEmitter
 from builder.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
@@ -68,7 +68,7 @@ yourself.
 ONBOARDING_PROMPT = """\
 Mode: onboarding. The merchant has no agent yet; only build_agent is available.
 1. Greet them and say in one sentence what will happen: you read their website and their \
-description, then publish an agent that Claude users can book through.
+description, build an agent they check, then publish it so that Claude users can book them.
 2. Ask for their website URL.
 3. Ask, in a single message, for a short description of how they work: service hours, number \
 of tables and their sizes, largest group bookable online, dietary options (vegetarian, vegan, \
@@ -78,12 +78,12 @@ URL and a description that sums up their answers.
 """
 
 OPERATIONS_PROMPT = """\
-Mode: operations. The merchant's agent is live.
+Mode: operations. The merchant has an agent; until publish_agent it is hidden from guests.
 - Use the tools for bookings, figures, blocked times, the booking policy and the floor plan.
-- Right after build_agent in this conversation, the profile card is shown: list the \
-assumptions from its result (default values used) and ask the merchant to confirm or correct \
-them. Corrections go through update_policy or update_tables. Then wrap up with: "Your agent \
-is live: Claude users can now book you."
+- Right after build_agent in this conversation, the review card is shown: read out its flags \
+(each bold line and why) and ask the merchant to confirm or correct them. Corrections go \
+through update_policy or update_tables. Once the merchant says it's right, call publish_agent, \
+then wrap up with: "Your agent is live: Claude users can now book you."
 - Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel. \
 If its result says the guest won't be notified, say why in a few words.
 
@@ -298,6 +298,9 @@ def default_assistant(
         assert accounts is not None
         return issued(settings.platform_web_url, await accounts.issue_link_token(slug))
 
+    async def publish_agent(slug: str, emit: Emit) -> None:
+        await publish(slug, emit, engine=engine)
+
     tools = AdminTools(
         agent,
         build,
@@ -305,6 +308,7 @@ def default_assistant(
         today=lambda: datetime.now(tz).date(),
         owned_merchant=settings.platform_merchant,
         issue_link=issue_link if accounts else None,
+        publish=publish_agent,
     )
     return Assistant(
         llm, tools, registry_profiles(engine), tz, default_merchant=settings.platform_merchant
