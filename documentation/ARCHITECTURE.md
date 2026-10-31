@@ -63,9 +63,9 @@ flowchart TB
 >   - the platform API, with the `/chat` and `/events` streams (#15);
 >   - the live-event listener (#18);
 >   - the web chat;
->   - the demo data.
+>   - the demo data;
+>   - the gateway's user tools, discovery and timeout/fallback layer (#11, #12, #13, #14).
 > - **Not built yet:**
->   - the gateway's user tools and its timeout/fallback layer (#11, #13, #14). Its discovery rules are built (#12);
 >   - the `AgentService` implementation (#8, #9);
 >   - the merchant assistant (#17);
 >   - the builder (#21, #22).
@@ -134,14 +134,14 @@ Paths are relative to `code/`.
 | DB layer | `packages/core/src/core/db.py`, `migrations/versions/0001_public_schema.py` | Engine; `schema_for(slug)`; merchant tables declared once, with the exclusion constraint, the notify trigger, and a trigger that skips updates that change nothing (an idempotent replay sends no notification); `merchant_conn` (one transaction, schema translation); registry and guest notices in `public` | No business rules; no migrations for merchant schemas (drop + re-provision) | ✅ #6 |
 | Provisioning | `packages/agent/src/agent/provisioning.py`, `packages/agent/src/agent/templates/restaurant.json` | `MerchantProfile` → merchant schema, floor plan, policy, registry row (all or nothing); `deploy` / `set_status` / `deprovision`; default floor plan; generated tool descriptions | Never calls an LLM, never builds SQL from profile text, never takes bookings | ✅ #7 |
 | Agent service | `packages/agent/src/agent/service.py` (`PgAgentService`) | Bookings (availability, create, update, cancel), merchant operations (list, stats, block, policy, tables), guest notices | Knows nothing of MCP or HTTP; no authentication | 🚧 #8, #9 |
-| Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `discovery.py`, `fallback.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, optional bearer token, the 6 user tools, preference filtering, 2 s timeout and `fallback_url` | Never stores preferences; never exposes admin tools; never returns a stack trace | ✅ `ping` (#3), discovery rules (#12); 🚧 tools #11, #13, #14 |
+| Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `agent_client.py`, `discovery.py`, `fallback.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, optional bearer token, the 6 user tools, preference filtering, 2 s timeout and `fallback_url`, one JSON log line per call, `GET /health` | Never stores preferences; never exposes admin tools; never returns a stack trace | ✅ #3, #11, #12, #13, #14 (Claude.ai validation pending, see the runbook) |
 | Builder | `packages/builder/src/builder/crawl.py`, `extract.py`, `build.py` | Website + description → validated `MerchantProfile` → provision → deploy, streamed as steps; cache for the demo | Never writes SQL or code; never decides a value the schema doesn't allow | 🚧 #21, #22 (extraction validated by the spike, `scripts/spike_extract.py`) |
 | Platform API | `packages/merchant_platform/src/merchant_platform/api.py`, `sessions.py`, `logs.py` | Endpoints: `POST /chat` (SSE stream of `ChatEvent`, one turn at a time per session), `GET /events?merchant=` (SSE `LiveEvent`), `POST /public/{slug}/reservations` (the showcase site's form, CORS-limited), `/health`, dev-only `/dev/reset-session`. Also: in-memory sessions, JSON logs | No business logic: delegates to the assistant and the `AgentService`. Until #8 plugs the service in, the public booking API answers `agent_unavailable` | ✅ #15 |
 | Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py` | OpenAI tool-use loop over the admin tools; onboarding questions | Never formats results itself (cards come from tool results); never reachable by Claude users | 🚧 #17 (placeholder `run_turn` answers "not connected yet") |
 | Live events | `packages/merchant_platform/src/merchant_platform/events.py` | `LiveListener` holds a `LISTEN reservations` connection, reads the booking row for each notification, and turns it into a `LiveEvent` (`new_booking`, `updated`, `cancelled`). `LiveBus` fans it out to that merchant's open `/events` streams | Does not poll the database; does not trust the payload beyond identifiers | ✅ #18 |
 | Web chat | `web/` | Merchant chat: SSE client, one component per card kind, live notifications, mock mode (`VITE_MOCK=1`, `/?gallery`) | No business logic, no forms | ✅ #19, #20 |
 | Demo site | `sites/le-petit-zinc/` | Fictional restaurant site (French): crawl target and fallback URL | — | 🚧 #16 |
-| Demo data | `tests/fixtures/*.json`, `scripts/seed.py`, `demo_reset.py`, `set_status.py` (`make seed`, `demo-reset`, `outage`, `restore`) | 3 fictional Mulhouse restaurants; reset the demo to a known state; outage switch | Refuses to reset a non-local database | ✅ #10 (`seed --with-bookings` needs #8) |
+| Demo data | `tests/fixtures/*.json`, `scripts/seed.py`, `demo_reset.py`, `set_status.py` (`make seed`, `demo-reset`, `outage`, `restore`) | 3 fictional Mulhouse restaurants; reset the demo to a known state; outage switch | Refuses to reset a non-local database | ✅ #10 |
 | Deployment | `deploy/Caddyfile`, `deploy/merchant-gateway.service`, `make deploy` | Gateway on the team server behind Caddy (HTTPS), systemd service | Ships only the gateway (not the web app, the platform or Postgres). Outside `/opt/merchant-agents` it installs the systemd unit, and replaces the Caddyfile and restarts Caddy when it changed, which affects every site on the shared server | ✅ #3 |
 
 ## 5. Stack and justifications
@@ -189,11 +189,11 @@ Breaking one of these is a bug.
 - The gateway and the agent run in the same process (AGENTS.md §13).
 
 **Open question: demo topology (#25).**
-- `make deploy` ships only the gateway to the team server.
+- `make deploy` ships only the gateway to the team server, where Postgres also runs (localhost only).
 - Live events need the gateway (writes) and the platform (`LISTEN`) on the same Postgres.
 - The server's firewall opens only ports 22, 80 and 443 inbound.
 
-So where Postgres, the platform and the web chat run for the demo is still to decide. It could be all on the server behind Caddy, or all on one laptop with the gateway exposed through the tunnel.
+So where the platform and the web chat run for the demo is still to decide. They could run on the server behind Caddy, or on a laptop reaching the server's Postgres through an SSH tunnel.
 
 ## 7. Glossary
 

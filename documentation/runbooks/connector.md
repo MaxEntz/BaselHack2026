@@ -1,6 +1,6 @@
 # Runbook : connecter Claude au gateway MCP
 
-Spike [#3](https://github.com/MaxEntz/BaselHack2026/issues/3). Objectif : dans une conversation Claude, appeler l'outil `ping` de notre serveur.
+Issues [#3](https://github.com/MaxEntz/BaselHack2026/issues/3), [#11](https://github.com/MaxEntz/BaselHack2026/issues/11) et [#14](https://github.com/MaxEntz/BaselHack2026/issues/14). Objectif : dans une conversation Claude, réserver une table avec les 6 outils de notre serveur.
 
 Claude.ai appelle les connecteurs **depuis le cloud d'Anthropic** (`160.79.104.0/21`), pas depuis ton navigateur. `localhost` ne suffit donc pas : il faut une URL HTTPS publique. Cela vaut aussi pour Claude Desktop. Seul Claude Code peut viser `localhost` directement.
 
@@ -10,16 +10,20 @@ Claude.ai appelle les connecteurs **depuis le cloud d'Anthropic** (`160.79.104.0
 
 | Maillon | État | Comment |
 |---|---|---|
-| `ping` en HTTPS sur l'URL publique | ✅ validé | client du SDK depuis l'extérieur, certificat Let's Encrypt valide |
-| URL stable après redémarrage du LXC | ✅ validé | même URL, `ping` OK après reboot |
+| HTTPS sur l'URL publique | ✅ validé | spike #3 : client du SDK depuis l'extérieur, certificat Let's Encrypt valide |
+| URL stable après redémarrage du LXC | ✅ validé | spike #3 : même URL après reboot |
 | `allowed_hosts`, `Origin`, bearer token, redirection `https` | ✅ validé en local | vrai serveur, en-têtes simulés avec curl |
-| Claude Code (plan B), avec et sans token | ✅ validé | appel réel de `ping` en local |
-| Claude.ai | ✅ validé | `ping` appelé depuis une conversation, capture ci-dessous |
+| Claude Code (plan B), token | ✅ validé | spike #3 : appel réel en local, avec et sans token |
+| Claude Code (plan B), scénarios du §9 | ✅ validé | les 6 outils en local, voir « Scénarios utilisateur » |
+| Client MCP (e2e, en CI) | ✅ validé | `tests/e2e/test_gateway_mcp.py`, vrai serveur et vrai Postgres |
+| Serveur déployé, 6 outils | ✅ validé | client du SDK lancé sur le LXC, sur `http://127.0.0.1:8001/mcp` |
+| Claude.ai, connexion | ✅ validé | spike #3 : l'ancien outil `ping` appelé depuis une conversation, capture ci-dessous |
+| Claude.ai, scénarios du §9 | ⏳ à faire | à la main, voir « Scénarios utilisateur » |
 | Appels de Claude.ai acceptés par le serveur | ✅ validé | venus de `160.79.106.x`, en `200`, aucun `Host` ni `Origin` rejeté dans les logs |
 | MCP Inspector | ⏳ pas encore lancé | étape 4 |
 | Tunnel ngrok (étapes 1 à 3) | ⏳ non testé | alternative si le LXC n'est plus disponible |
 
-![Claude.ai appelle ping et affiche pong](img/connector-ping.png)
+![Claude.ai appelle ping et affiche pong (spike #3, outil retiré depuis)](img/connector-ping.png)
 
 ## Déployer une modification sur le LXC
 
@@ -34,7 +38,24 @@ Il faut la clé `~/.ssh/baselhack2026_lxc`. Si elle n'est pas sur la machine, de
 ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
 ```
 
-Sur le serveur, Caddy gère le HTTPS et renvoie vers `127.0.0.1:8001`. Le service `merchant-gateway` tourne sous un utilisateur sans droits. Sa configuration est dans `/opt/merchant-agents/code/.env`, et ses logs avec `journalctl -u merchant-gateway`. `make deploy` ne touche pas à ce `.env` : sur un nouveau serveur, il faut le créer avec `DATABASE_URL`, sans laquelle le service ne démarre pas, et `GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io`, sans laquelle toute requête publique répond `421`.
+Sur le serveur, Caddy gère le HTTPS et renvoie vers `127.0.0.1:8001`. Le service `merchant-gateway` tourne sous un utilisateur sans droits. Sa configuration est dans `/opt/merchant-agents/code/.env`, et ses logs avec `journalctl -u merchant-gateway`. `make deploy` ne touche pas à ce `.env` : sur un nouveau serveur, il faut le créer avec `DATABASE_URL`, sans laquelle le service ne démarre pas, et `GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io`, sans laquelle toute requête publique répond `421`. Sur le serveur, `curl 127.0.0.1:8001/health` indique si le gateway tourne et s'il joint Postgres.
+
+## Postgres sur le LXC
+
+`postgresql-16` tourne sur le LXC, en écoute sur localhost uniquement. `make deploy` applique les migrations, mais ne touche pas aux données. Les commandes `make seed` et `make outage` visent ta base locale. Pour le serveur :
+
+```bash
+ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
+cd /opt/merchant-agents/code
+.venv/bin/python scripts/seed.py --all --with-bookings            # les 3 restaurants, et les réservations du soir
+.venv/bin/python scripts/set_status.py le-petit-zinc down         # panne (puis `live`)
+```
+
+Sur un nouveau serveur, crée la base en UTF-8 : sans locale, Postgres prend `SQL_ASCII`, psycopg renvoie alors des bytes et tout plante avec `cannot use a string pattern on a bytes-like object`.
+
+```sql
+CREATE DATABASE merchant_agents OWNER merchant ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0;
+```
 
 ⚠️ **Le LXC est partagé, il ne sert pas qu'au gateway.** Demande avant de le redémarrer, d'arrêter un service ou de toucher à quoi que ce soit hors de `/opt/merchant-agents`. Si `code/deploy/Caddyfile` a changé, `make deploy` le valide, écrase `/etc/caddy/Caddyfile` et redémarre Caddy : tout autre site doit aussi y être déclaré. Le pare-feu (`/etc/nftables.conf`) n'ouvre que les ports 22, 80 et 443 en entrée, et refuse les nouvelles connexions sortantes vers les réseaux privés.
 
@@ -89,7 +110,6 @@ Un `400` montre que la requête atteint bien le serveur (`401` si `GATEWAY_TOKEN
 
 ```bash
 npx -y @modelcontextprotocol/inspector --cli https://<nom>.ngrok-free.app/mcp --transport http --method tools/list
-npx -y @modelcontextprotocol/inspector --cli https://<nom>.ngrok-free.app/mcp --transport http --method tools/call --tool-name ping
 ```
 
 Sans Node, le client du SDK fait le même test :
@@ -101,7 +121,7 @@ from mcp import Client
 
 async def main():
     async with Client("https://<nom>.ngrok-free.app/mcp") as client:
-        print(await client.call_tool("ping", {}))
+        print(await client.list_tools())
 
 asyncio.run(main())'
 ```
@@ -127,8 +147,8 @@ La présentation de la boîte de dialogue varie selon les organisations.
 **Dans une conversation**
 
 1. Ouvre **+ > Connectors** et active `merchant-agents`.
-2. Demande : « Appelle l'outil ping du connecteur merchant-agents ».
-3. Approuve l'appel si Claude le demande. La réponse doit mentionner `pong` et l'heure du serveur.
+2. Demande : « Table for 4 tonight at 8pm in Mulhouse ».
+3. Approuve les appels si Claude le demande. Il doit proposer des créneaux, puis demander confirmation avant de réserver.
 
 ## Plan B : Claude Code
 
@@ -140,13 +160,32 @@ claude mcp add --transport http merchant-agents http://localhost:8001/mcp
 claude mcp add --transport http merchant-agents http://localhost:8001/mcp --header "Authorization: Bearer <token>"
 ```
 
-Lance `/mcp` dans une session pour vérifier la connexion, puis demande d'appeler `ping`.
+Lance `/mcp` dans une session pour vérifier la connexion, puis déroule les scénarios ci-dessous.
 
 Claude Desktop n'est **pas** un plan B indépendant : son connecteur custom passe lui aussi par le cloud d'Anthropic, donc si le tunnel tombe, il tombe aussi.
 
+## Scénarios utilisateur
+
+Préparer une base connue (en local : `make db`, `make migrate`, `make seed` ; le LXC est déjà prêt) et, dans Claude, ces préférences personnelles : *« I'm vegetarian. My budget is mid-range (max €€). My name is Alex Martin. »*
+
+| Message | Attendu | Plan B (Claude Code) | Claude.ai |
+|---|---|---|---|
+| « Table for 4 tonight at 8pm in Mulhouse » | `filters` passés sans le redire, créneaux proposés, **confirmation demandée**, réservation, récapitulatif | ✅ | ⏳ |
+| « Move it to 9pm » | Confirmation puis `update_reservation` | ✅ | ⏳ |
+| « Cancel my booking » | Confirmation puis `cancel_reservation` | ✅ | ⏳ |
+| « A vegan place with a terrace » | Aucun résultat, Claude propose d'enlever un filtre | ✅ | ⏳ |
+| « Table for 8 at Le Petit Zinc » | Lien de secours donné (`party_too_large`) | ✅ | ⏳ |
+| Panne de Le Petit Zinc (`make outage`, ou `set_status.py` sur le LXC), puis « Table for 2 at Le Petit Zinc » | Lien de secours donné (`agent_unavailable`) ; le retour à `live` rétablit sans redémarrer | ✅ | ⏳ |
+
+Le plan B a tourné le 2026-10-31 avec Claude Code en local (modèle Sonnet) : `get_availability` entre 11 et 60 ms côté serveur, aucun nom de client dans les logs à INFO. Pour Claude.ai, ranger une capture de chaque conversation dans `assets/screenshots/`.
+
+Les liens de secours et les sites des fixtures pointent vers `localhost` (`make sites`) : ils ne s'ouvrent que sur la machine qui sert ces sites, donc celle de la démo.
+
+Pour simuler un agent lent : `CHAOS_DELAY_MS=3000` (et `CHAOS_MERCHANTS=le-petit-zinc` pour ne viser qu'un marchand) déclenche le délai de 2 s, puis le lien de secours.
+
 ## Protéger l'URL publique
 
-`GATEWAY_TOKEN` exige `Authorization: Bearer <token>` sur toutes les requêtes. Vide, le serveur est ouvert à quiconque connaît l'URL.
+`GATEWAY_TOKEN` exige `Authorization: Bearer <token>` sur toutes les requêtes, sauf `/health`. Vide, le serveur est ouvert à quiconque connaît l'URL.
 
 ⚠️ Côté Claude.ai, l'authentification par en-tête est **en bêta, réservée à certaines organisations**. Sans section **Request headers** dans la boîte de dialogue, il n'y a pas accès : si `GATEWAY_TOKEN` est rempli, le connecteur ne pourra pas se connecter.
 
@@ -171,6 +210,7 @@ Sans accès à la bêta, deux options :
 |---|---|---|
 | `421 Invalid Host header` | Domaine du tunnel absent de `allowed_hosts` | Corriger `GATEWAY_PUBLIC_URL`, relancer `make gateway` |
 | `403 Invalid Origin header` | `Origin` envoyé hors de `ALLOWED_ORIGINS` | L'ajouter dans `gateway/server.py`. Le nom refusé est dans les logs du serveur |
+| `agent_unavailable` sans lien, `/health` en `503` | Postgres injoignable : `DATABASE_URL` faux, ou base non migrée | Corriger `.env`, lancer les migrations |
 | `401 Unauthorized` | Token absent, faux, ou sans préfixe `Bearer ` | Corriger l'en-tête, ou vider `GATEWAY_TOKEN` |
 | `make tunnel` : `GATEWAY_PUBLIC_URL is empty` | `.env` absent ou incomplet | Étape 2 |
 | `make gateway` : `database_url Field required` | `.env` absent | Étape 2 |
