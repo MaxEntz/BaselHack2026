@@ -11,6 +11,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from mcp.server import MCPServer
+from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import AwareDatetime, Field, PositiveInt
@@ -20,6 +21,7 @@ from starlette.applications import Starlette
 from starlette.datastructures import Headers
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from core.config import Settings
@@ -40,6 +42,7 @@ from core.models import (
 from gateway import discovery
 from gateway.agent_client import AgentClient, make_agent_client
 from gateway.fallback import RejectedArguments, call_merchant, call_service, unavailable
+from gateway.merchant_server import MERCHANT_PATH, MerchantEndpoint, create_merchant_server
 
 log = logging.getLogger("gateway.server")
 
@@ -312,19 +315,23 @@ def create_app(
     """
     db = engine or make_engine(settings.database_url)
     client = agent or make_agent_client(settings, db)
-    app = create_server(client, db, settings).streamable_http_app(
-        transport_security=TransportSecuritySettings(
-            allowed_hosts=allowed_hosts(settings.gateway_public_url),
-            allowed_origins=ALLOWED_ORIGINS,
-        )
+    security = TransportSecuritySettings(
+        allowed_hosts=allowed_hosts(settings.gateway_public_url),
+        allowed_origins=ALLOWED_ORIGINS,
     )
+    app = create_server(client, db, settings).streamable_http_app(transport_security=security)
+    run_transport = app.router.lifespan_context
+    # Each merchant's own endpoint (#23): a second MCP server, routed by the slug in the path.
+    merchants = create_merchant_server(client, db, settings)
+    merchants.streamable_http_app(transport_security=security)  # creates its session manager
+    endpoint = StreamableHTTPASGIApp(merchants.session_manager)
+    app.router.routes.append(Route(MERCHANT_PATH, MerchantEndpoint(endpoint, db, settings)))
     if settings.gateway_token:
         app.add_middleware(BearerAuth, token=settings.gateway_token.get_secret_value())
-    run_transport = app.router.lifespan_context
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
-        async with run_transport(app):
+        async with run_transport(app), merchants.session_manager.run():
             yield
         if agent is None:
             await client.close()

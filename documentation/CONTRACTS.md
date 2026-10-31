@@ -83,6 +83,28 @@ The log line then also has `matp_request`, the id of the request sent to the nod
 `GET /health` (outside MCP, no token): `200` or `503`, with `{"status", "database"}`. It doesn't
 check the node.
 
+### Each merchant's own endpoint: `/m/<slug>/mcp` (#23)
+
+The same gateway serves each merchant on its own (`gateway/merchant_server.py`, ADR-0012). It has
+4 tools: `get_availability`, `create_reservation`, `update_reservation` and
+`cancel_reservation`. They have the same arguments as the shared tools minus `merchant`, which
+comes from the path, and the same results, errors and log line (`fallback.call_merchant`).
+
+- Each tool description starts with the merchant's sentence from `templates/restaurant.json`
+  (`generated_tools(profile)`), for example "Check free tables at Le Petit Zinc (Mulhouse).
+  Services: 12:00-14:00, 19:00-22:00. Groups up to 6.". It is read from the registry's `profile`
+  at each `tools/list`, so a policy change shows at the next listing. If the profile can't be
+  read, the generic descriptions stay.
+- Tool descriptions read as the connector's instructions, and a profile's free text comes from a
+  website anyone can onboard. So the cancellation policy never goes in ("Policy: see the
+  restaurant's own website"), and the name and city are cut to one line of at most 80 characters,
+  without control characters. Services and party size are validated values.
+- An unknown slug, a slug outside `^[a-z0-9-]{3,61}$` or a `building` merchant: HTTP `404`
+  before MCP. A `down` merchant keeps its endpoint, and its tools answer `agent_unavailable` with
+  the fallback URL. A merchant deployed after startup has its endpoint at once.
+- `search_merchants` and `get_my_reservations` stay on the shared `/mcp`.
+- The profile card derives this URL from `mcp_url`: `/mcp` → `/m/<slug>/mcp`.
+
 ## SSE
 
 `POST /chat` returns one `ChatEvent` stream per merchant message, ending in `done`.

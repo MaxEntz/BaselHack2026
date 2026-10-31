@@ -69,7 +69,8 @@ export function ProfileCard({ data }: { data: BuildAgentOutput }) {
         ))}
       </ul>
 
-      <McpUrl url={mcp_url} />
+      <McpUrl label="MCP URL (all restaurants)" url={mcp_url} />
+      <McpUrl label="This restaurant only" url={merchantMcpUrl(mcp_url, profile.slug)} />
     </section>
   );
 }
@@ -91,7 +92,12 @@ function ExternalLink({ href }: { href: string }) {
   );
 }
 
-function McpUrl({ url }: { url: string }) {
+// The gateway also serves each restaurant on its own: /m/<slug>/mcp next to /mcp (#23).
+function merchantMcpUrl(mcpUrl: string, slug: string): string {
+  return mcpUrl.replace(/\/mcp$/, `/m/${slug}/mcp`);
+}
+
+function McpUrl({ label, url }: { label: string; url: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -106,7 +112,7 @@ function McpUrl({ url }: { url: string }) {
 
   return (
     <div className="mcp-url">
-      <span className="muted">MCP URL</span>
+      <span className="muted">{label}</span>
       <code>{url}</code>
       <button type="button" className="button-secondary" onClick={() => void copy()}>
         {copied ? "Copied ✓" : "Copy"}

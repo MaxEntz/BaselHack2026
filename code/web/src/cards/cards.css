@@ -222,6 +222,12 @@
   user-select: all;
 }
 
+.mcp-url + .mcp-url {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: none;
+}
+
 /* Reservations */
 
 .table-scroll {
