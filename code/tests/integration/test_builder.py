@@ -11,17 +11,17 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.provisioning import deprovision
+from agent.provisioning import SlugTaken, deprovision
 from builder.build import GENERATED_DIR, AlreadyProvisioned, Builder
 from builder.cache import BuildCache
 from builder.crawl import CrawlResult, Page, StepEmitter
 from builder.extract import TOOL_NAME, ExtractionFailed
 from builder.llm import LLMReply, LLMUnavailable, Message, OnText, ToolCall, ToolSpec
 from core.config import Settings
-from core.db import merchants_t
+from core.db import merchants_t, schema_for
 from core.errors import AgentUnavailable
 from core.models import BuildAgentInput, BuildAgentOutput, StepEvent
 from merchant_platform.api import create_app
@@ -349,3 +349,30 @@ async def test_a_building_leftover_does_not_block_its_site(
 
 def test_generated_profiles_stay_out_of_the_source_tree() -> None:
     assert GENERATED_DIR.parts[-3:] == (".cache", "builder", "generated")
+
+
+async def test_a_build_that_loses_the_slug_race_leaves_the_winner_alone(
+    engine: AsyncEngine, tmp_path: Path, slugs: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    site, name = unique_site()
+    winner = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
+    slugs.append(winner.profile.slug)
+
+    # A concurrent build got the slug between `_unique_slug` and `provision`.
+    async def same_slug(self: Builder, base: str) -> str:
+        return base
+
+    monkeypatch.setattr(Builder, "_unique_slug", same_slug)
+    other_site, _ = unique_site()
+    run = Run()
+    with pytest.raises(SlugTaken):
+        await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(other_site, "", run.emit)
+
+    assert [(e.step, e.status) for e in run.events][-1] == ("provision", "error")
+    assert await status_of(engine, winner.profile.slug) == "live"
+    async with engine.connect() as conn:
+        schema = await conn.scalar(
+            text("SELECT count(*) FROM pg_namespace WHERE nspname = :name"),
+            {"name": schema_for(winner.profile.slug)},
+        )
+    assert schema == 1

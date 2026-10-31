@@ -91,21 +91,26 @@ class Builder:
             update={"slug": await self._unique_slug(extracted.profile.slug)}
         )
 
+        # Set as soon as provision commits: only what this build created may be undone. A
+        # failed provision (SlugTaken: a concurrent build got the slug) belongs to someone else.
+        created = live = False
+
         async def provisioned() -> str:
+            nonlocal created
             await provision(profile, engine=self._engine)
+            created = True
             return f"Created {len(profile.tables)} tables with {profile.seats} seats."
 
         async def deployed() -> str:
             await deploy(profile.slug, engine=self._engine)
             return "Your agent is live."
 
-        live = False
         try:
             await self._step("provision", on_event, provisioned)
             await self._step("deploy", on_event, deployed)
             live = True
         finally:
-            if not live:
+            if created and not live:
                 # Stopped between provision and deploy (error, or the merchant left and the
                 # turn was cancelled): never leave a half-built merchant blocking its site.
                 await self._undo(profile.slug)
