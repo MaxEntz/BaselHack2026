@@ -9,8 +9,7 @@ import json
 from datetime import date, datetime, tzinfo
 from typing import Any
 
-WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+from agent.words import short_day
 
 
 def describe(
@@ -38,7 +37,7 @@ def describe(
                 time = _text(params.get("time"))
                 what = time or "free times"
                 title = f"{agent} checked {what}" + (f" for {_guests(party)}" if party else "")
-                text = f"{_date(day)}. " if day else ""
+                text = f"{short_day(day)}. " if day else ""
                 return title, text + "Your agent offered the closest free times."
             case "BOOK":
                 return f"{guest} booked through {agent}", _booking(starts, party, booking)
@@ -85,19 +84,13 @@ def describe(
 def _booking(starts: datetime | None, party: int | None, booking: dict[str, Any]) -> str:
     parts = []
     if starts:
-        parts += [_date(starts.date()), f"{starts:%H:%M}"]
+        parts += [short_day(starts.date()), f"{starts:%H:%M}"]
     if party:
         parts.append(_guests(party))
     table = _text(booking.get("table_label"))
     if table:
         parts.append(f"table {table}")
     return ", ".join(parts) + "." if parts else ""
-
-
-def _date(day: date) -> str:
-    """ "Sat 31 Oct", the mockup's day (`sesame-management.html#agent`), whatever the server's
-    locale."""
-    return f"{WEEKDAYS[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
 
 
 def _guests(n: int) -> str:
