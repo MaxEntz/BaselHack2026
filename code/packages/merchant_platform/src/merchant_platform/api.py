@@ -185,6 +185,10 @@ def create_app(
             # Subscribe inside the generator: its `finally` always pairs the unsubscribe.
             queue = live.subscribe(merchant)
             try:
+                # Bytes right away, not at the first ping: a proxy (Vite's in dev) only sends
+                # the headers with the first body bytes, so `EventSource` stays "connecting"
+                # until then (#87).
+                yield ServerSentEvent(comment="connected")
                 while True:
                     event = await queue.get()
                     yield ServerSentEvent(data=event.model_dump_json(), event=event.type)

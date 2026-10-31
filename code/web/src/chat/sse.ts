@@ -1,8 +1,11 @@
 export type SseFrame = { event: string; data: string };
 
 // Splits a text/event-stream body into frames (event: / data: / blank line).
+// `onChunk` runs for every chunk read, heartbeat comments included: they carry no frame
+// but prove the connection is alive (#87).
 export async function* readSse(
   body: ReadableStream<Uint8Array>,
+  onChunk: () => void = () => {},
 ): AsyncGenerator<SseFrame> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -11,6 +14,7 @@ export async function* readSse(
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
+      onChunk();
       // A trailing "\r" may be the first half of a "\r\n" split across chunks.
       buffer = (buffer + decoder.decode(value, { stream: true })).replace(
         /\r\n|\r(?!$)/g,
