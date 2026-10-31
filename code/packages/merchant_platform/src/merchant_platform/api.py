@@ -13,10 +13,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from agent.service import AgentService
 from core.config import Settings, get_settings
+from core.db import make_engine
 from core.errors import AgentError, AgentUnavailable
 from core.models import (
     ChatEvent,
@@ -29,7 +31,7 @@ from core.models import (
     ToolError,
 )
 from merchant_platform.assistant import RunTurn, run_turn
-from merchant_platform.events import LiveBus
+from merchant_platform.events import LiveBus, LiveListener
 from merchant_platform.logs import configure_logging
 from merchant_platform.sessions import Session, SessionStore
 
@@ -77,23 +79,34 @@ def create_app(
     assistant: RunTurn = run_turn,
     agent: AgentService | None = None,
     bus: LiveBus | None = None,
+    listener: LiveListener | None = None,
+    engine: AsyncEngine | None = None,
     heartbeat_seconds: float = HEARTBEAT_SECONDS,
 ) -> FastAPI:
     """Build the platform API around its collaborators (injected by tests).
 
     `agent` stays `None` until the agent service exists (#8): the public booking API then
-    answers `agent_unavailable`.
+    answers `agent_unavailable`. `listener` feeds `bus` while the app runs; `engine` is
+    disposed at shutdown.
     """
     sessions = SessionStore()
     live = bus or LiveBus()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        yield
-        # Don't leave turns running past shutdown.
-        for session in sessions.all():
-            if session.turn and not session.turn.done():
-                session.turn.cancel()
+        listening = asyncio.create_task(listener.run()) if listener else None
+        try:
+            yield
+        finally:
+            # Don't leave turns or the listener running past shutdown.
+            tasks = [s.turn for s in sessions.all() if s.turn and not s.turn.done()]
+            if listening:
+                tasks.append(listening)
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            if engine:
+                await engine.dispose()
 
     app = FastAPI(title="Merchant Agents platform", lifespan=lifespan)
     app.state.sessions = sessions
@@ -246,7 +259,11 @@ def _since(started: float) -> int:
 @lru_cache
 def _default_app() -> FastAPI:
     configure_logging()
-    return create_app(get_settings())
+    settings = get_settings()
+    engine = make_engine(settings.database_url)
+    bus = LiveBus()
+    listener = LiveListener(settings.database_url, engine, bus, settings.merchant_tz)
+    return create_app(settings, bus=bus, listener=listener, engine=engine)
 
 
 def __getattr__(name: str) -> Any:
