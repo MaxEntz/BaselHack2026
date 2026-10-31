@@ -113,6 +113,11 @@ class LiveListener:
                         await self.handle(notify.payload)
             except psycopg.Error as error:
                 reason = type(error).__name__
+            except Exception:
+                # Keep listening whatever happens: a dead listener means no live events for
+                # the rest of the demo. (CancelledError isn't an Exception: shutdown works.)
+                log.exception("live_listener_crashed")
+                reason = "crash"
             self.listening.clear()
             delay = BACKOFF_SECONDS[min(failures, len(BACKOFF_SECONDS) - 1)]
             failures += 1

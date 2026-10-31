@@ -314,3 +314,33 @@ async def test_a_replayed_update_that_changes_nothing_sends_nothing(
     assert (await next_event(queue)).kind == "cancelled"
     assert (await next_event(queue)).reservation.id == later
     assert queue.empty()
+
+
+async def test_the_listener_survives_an_unexpected_error(
+    engine: AsyncEngine,
+    merchants: tuple[str, str],
+    listener: LiveListener,
+    bus: LiveBus,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slug = merchants[0]
+    queue = bus.subscribe(slug)
+    handle = listener.handle
+    calls = 0
+
+    async def flaky(payload: str) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("bug in a handler")
+        await handle(payload)
+
+    monkeypatch.setattr(listener, "handle", flaky)
+    await book(engine, slug)
+
+    async with asyncio.timeout(5):
+        while listener.listening.is_set():  # noqa: ASYNC110
+            await asyncio.sleep(0.01)
+        await listener.listening.wait()
+    reservation_id = await book(engine, slug, at=EIGHT_PM + timedelta(hours=3))
+    assert (await next_event(queue)).reservation.id == reservation_id
