@@ -64,4 +64,5 @@ asyncio_default_test_loop_scope = "session"
 markers = [
     "integration: needs Docker (testcontainers starts Postgres 16)",
     "llm: calls the OpenAI API; skipped when OPENAI_API_KEY is not set",
+    "browser: runs Playwright's Chromium; skipped when it is not installed",
 ]

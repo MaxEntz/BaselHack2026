@@ -37,7 +37,9 @@ can report them in `ignored_filters`; unknown filter names are rejected, because
 Claude reads the tool's schema.
 
 `BuildAgentInput.website` accepts any HTTP(S) URL, including `localhost` for the
-demo site. The crawler refuses private addresses unless `CRAWL_ALLOW_PRIVATE=1` (#21).
+demo site. The crawler refuses private addresses unless `CRAWL_ALLOW_PRIVATE=1` (#21),
+and link-local ones (the cloud metadata endpoint 169.254.169.254) in every case. It
+checks every browser request, redirect hops included, after DNS resolution.
 
 The service raises `AgentError` subclasses. The gateway converts them to
 `ToolError`, adding a fallback URL for `agent_unavailable` and `party_too_large`.

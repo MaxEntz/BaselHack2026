@@ -38,6 +38,7 @@ Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team 
 
 ```bash
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
+uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
 uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core
 make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp

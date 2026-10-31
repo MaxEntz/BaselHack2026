@@ -276,7 +276,7 @@ Tool descriptions must tell Claude: *confirm with the user before any create/upd
 
 ### 8.3 Builder steps (emitted as events, shown in the merchant chat)
 
-1. `crawl` — Playwright loads the site (homepage + up to 5 same-domain pages matching `menu|carte|hours|horaires|contact|book|reserv`).
+1. `crawl` — Playwright loads the site (homepage + up to 5 same-domain pages whose path or link text matches `menu|carte|karte|hours|horaires|zeiten|contact|kontakt|book|reserv`).
 2. `extract` — OpenAI API fills `MerchantProfile` (forced strict function call with the JSON schema as `parameters`), using crawled text + merchant description. Description wins on conflicts.
 3. `validate` — Pydantic validation; on failure, one retry with the validation errors fed back; then fail with a message to the merchant.
 4. `provision` — create schema `m_<slug>`, tables, policy, registry row.
@@ -392,6 +392,8 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | Gateway stays on MCP SDK v2 (`mcp` 2.3.0), no fallback to v1 | Spike #3: works from Claude.ai, Claude Code and the SDK client (`documentation/runbooks/connector.md`) |
 | 2026-10-31 | `GATEWAY_TOKEN` is optional; public URL = team LXC behind Caddy (`https://191-96-88-152.sslip.io/mcp`), ngrok as documented alternative; gateway binds `127.0.0.1` | Static header auth on Claude.ai connectors is a beta for limited organizations; fixed URL independent of a laptop and of hackathon Wi-Fi; only Caddy reaches the gateway |
 | 2026-10-31 | OpenAI API for every backend LLM call (replaces the "Claude API" row above) | The team's API key is an OpenAI one; still one SDK. Spike #4 validated strict function calling for the extraction |
+| 2026-10-31 | The crawler checks every browser request after DNS resolution and follows redirects itself, hop by hop; it never loads WebSockets, images, fonts or media; link-local addresses (169.254.169.254) stay refused with `CRAWL_ALLOW_PRIVATE=1`; DNS rebinding is not covered | Chromium doesn't route redirect hops, so a public page could otherwise reach the team server's local services; only text is read (#21) |
+| 2026-10-31 | The crawl's link filter (§8.3) also matches German (`karte`, `zeiten`, `kontakt`), accents ignored; crawl failures are `InvalidInput` with the message shown in the `crawl` step | Most Basel restaurant sites are in German (tested on kronenhalle.com); the merchant can fix the address (#21) |
 
 ## 15. Out of scope (POC)
 

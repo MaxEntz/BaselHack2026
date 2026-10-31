@@ -13,14 +13,27 @@ class _LlmEnv(BaseSettings):
     openai_api_key: SecretStr | None = None
 
 
+def _chromium_installed() -> bool:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        return Path(playwright.chromium.executable_path).exists()
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Skip `llm` tests when no OpenAI key is available (env or .env)."""
-    if _LlmEnv().openai_api_key:
-        return
-    skip_llm = pytest.mark.skip(reason="OPENAI_API_KEY not set")
+    """Skip `llm` tests when no OpenAI key is available (env or .env), `browser` tests when
+    Playwright's Chromium is missing."""
+    skips: dict[str, pytest.MarkDecorator] = {}
+    if not _LlmEnv().openai_api_key:
+        skips["llm"] = pytest.mark.skip(reason="OPENAI_API_KEY not set")
+    if any("browser" in item.keywords for item in items) and not _chromium_installed():
+        skips["browser"] = pytest.mark.skip(
+            reason="no Chromium: uv run playwright install chromium"
+        )
     for item in items:
-        if "llm" in item.keywords:
-            item.add_marker(skip_llm)
+        for marker, skip in skips.items():
+            if marker in item.keywords:
+                item.add_marker(skip)
 
 
 @pytest.fixture
