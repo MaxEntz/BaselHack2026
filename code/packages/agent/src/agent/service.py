@@ -21,7 +21,6 @@ from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.sql import Executable
-from sqlalchemy.sql.elements import ColumnElement
 
 from agent import admin
 from core.availability import (
@@ -129,17 +128,17 @@ class AgentService(Protocol):
 
 
 def same_guest(given: str, booked: str) -> bool:
-    """Guest names match ignoring case and spacing: Claude may not repeat them verbatim."""
+    """Guest names match ignoring case and spacing: Claude may not repeat them verbatim.
+
+    The only definition of a guest: bookings, changes and lookups all use it (#77). Spacing is
+    any Unicode whitespace (a non-breaking space too), and case is `casefold` ("Weiß" is
+    "weiss"), which SQL's `lower` and `\\s` don't match.
+    """
     return _normalize(given) == _normalize(booked)
 
 
 def _normalize(name: str) -> str:
     return " ".join(name.split()).casefold()
-
-
-def _normalized_column(column: ColumnElement[str]) -> ColumnElement[str]:
-    """SQL side of `_normalize`, for lookups by guest name."""
-    return func.lower(func.regexp_replace(func.btrim(column), r"\s+", " ", "g"))
 
 
 def candidate_tables(
@@ -454,10 +453,10 @@ class PgAgentService:
         """Upcoming confirmed bookings at every live merchant, and the guest's notices.
 
         A notice is returned from its first lookup until `NOTICE_WINDOW` later, then never
-        again; `delivered_at` keeps the time of that first lookup. A simple loop over merchants
-        is fine for the POC's handful of them.
+        again; `delivered_at` keeps the time of that first lookup. Names are compared in Python
+        with `same_guest` on every upcoming booking and live notice: fine for the POC's handful
+        of merchants and notices (past that, store a normalized key at insert time).
         """
-        name = _normalize(guest_name)
         now = self.clock()
         async with self.engine.connect() as conn:
             slugs = list(
@@ -476,26 +475,36 @@ class PgAgentService:
                     .where(
                         reservations_t.c.status == "confirmed",
                         func.lower(reservations_t.c.during) > now,
-                        _normalized_column(reservations_t.c.guest_name) == name,
                     )
                 )
-                reservations += [self._from_row(slug, row) for row in rows]
+                reservations += [
+                    self._from_row(slug, row)
+                    for row in rows
+                    if same_guest(guest_name, row.guest_name)
+                ]
 
         async with self.engine.begin() as conn:
-            delivered = await conn.execute(
-                update(guest_notices_t)
+            live = await conn.execute(
+                select(
+                    guest_notices_t.c.id, guest_notices_t.c.guest_name, guest_notices_t.c.message
+                )
                 .where(
                     or_(
                         guest_notices_t.c.delivered_at.is_(None),
                         # In UTC: 24 real hours, also across a clock change.
                         guest_notices_t.c.delivered_at > now.astimezone(UTC) - NOTICE_WINDOW,
-                    ),
-                    _normalized_column(guest_notices_t.c.guest_name) == name,
+                    )
                 )
-                .values(delivered_at=func.coalesce(guest_notices_t.c.delivered_at, now))
-                .returning(guest_notices_t.c.id, guest_notices_t.c.message)
+                .order_by(guest_notices_t.c.id)
             )
-            notices = [row.message for row in sorted(delivered, key=lambda row: row.id)]
+            mine = [row for row in live if same_guest(guest_name, row.guest_name)]
+            if mine:
+                await conn.execute(
+                    update(guest_notices_t)
+                    .where(guest_notices_t.c.id.in_([row.id for row in mine]))
+                    .values(delivered_at=func.coalesce(guest_notices_t.c.delivered_at, now))
+                )
+            notices = [row.message for row in mine]
         reservations.sort(key=lambda r: (r.starts_at, r.merchant, r.id))
         return reservations, notices
 

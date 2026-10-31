@@ -188,7 +188,7 @@ Breaking one of these is a bug.
 
 **Assumptions (POC):**
 - One city, with no ranking beyond name order.
-- Guest identity is the `guest_name` Claude passes.
+- Guest identity is the `guest_name` Claude passes, compared everywhere by `same_guest` (case-folded, whitespace collapsed; #77).
 - A single hard-coded merchant session on the platform.
 - The gateway and the agent run in the same process (AGENTS.md §13).
 

@@ -43,6 +43,12 @@ checks every browser request, redirect hops included, after DNS resolution.
 
 The service raises `AgentError` subclasses. The gateway converts them to
 `ToolError`, adding a fallback URL for `agent_unavailable` and `party_too_large`.
+
+A guest is one name, compared by `agent.service.same_guest`: each run of whitespace (as
+`str.split()` defines it) counts as one space, ends are ignored, and case is `str.casefold` ("Anna Weiß" is "anna weiss", a
+non-breaking space is a space). Booking, update, cancel and `get_my_reservations` (bookings and
+notices) all use it, so a name that can book always finds its bookings and notices (#77).
+
 Guest updates and cancellations require `guest_name`; merchant cancellation uses
 `by="merchant"` on the service, which is why the admin tool input has no `by`.
 The protocol's overloads make `by="guest"` without a `guest_name` a type error.

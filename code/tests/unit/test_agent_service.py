@@ -28,6 +28,8 @@ def at(hhmm: str) -> datetime:
         ("Sam Dupont", "Sam Dupont", True),
         ("  sam   DUPONT ", "Sam Dupont", True),
         ("Sam\tDupont", "Sam Dupont", True),
+        ("anna weiss", "Anna Weiß", True),
+        ("Anna Weber", "Anna\u00a0Weber", True),
         ("Sam", "Sam Dupont", False),
         ("Sam Dupond", "Sam Dupont", False),
     ],
