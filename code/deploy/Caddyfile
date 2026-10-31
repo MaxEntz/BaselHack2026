@@ -3,5 +3,13 @@
 }
 
 191-96-88-152.sslip.io {
-	reverse_proxy 127.0.0.1:8001
+	# Only Anthropic's outbound range (Claude.ai's MCP tool calls) reaches the gateway, see ADR-0010.
+	# Reference to recheck if Claude.ai starts getting 403: https://platform.claude.com/docs/en/api/ip-addresses
+	@anthropic remote_ip 160.79.104.0/21
+	handle @anthropic {
+		reverse_proxy 127.0.0.1:8001
+	}
+	handle {
+		respond "Forbidden" 403
+	}
 }
