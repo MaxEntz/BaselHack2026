@@ -1,4 +1,4 @@
-# AGENTS.md — Merchant Agents
+# AGENTS.md — Sésame
 
 > Let Claude book with any merchant, straight from their website.
 
@@ -440,6 +440,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | The web's unit tests run on Node's own test runner (`npm test`: `node --test`, type stripping, `code/web/tests/`, type-checked by `tsconfig.node.json`), in the CI `web` job; a turn that ends with a build step still `running` marks it `error` ("Interrupted") and leaves the pill `live` or empty (#86) | No new dependency for a pure reducer; Vitest can come when components need a DOM. The server undoes a build cut short (`Builder._undo`), so the UI must not keep saying "Building" |
 | 2026-10-31 | The BATP node follows the draft on duplicate ids, `merchant` per intent, malformed-frame count and `error` frames; its own `503` gets the merchant's `fallback_url` through a `NodeServer(fallback_url=…)` callback (`MerchantAgents.fallback_url`), looked up within 1 s and left out if that fails (#93) | Any other agent implementing the draft must get what it says (ADR-0011). The link is BATP's promise (§1), but a registry problem must not turn a 503 into no answer. Only `via` stays listed in PROTOCOL.md §15 |
 | 2026-10-31 | Our agent protocol MATP is renamed **BATP, Broad Agent Transfer Protocol**, wire included: library `batp`, HELLO field `batp`, `urn:batp:`, `batp://`, `BATP_*` settings, draft `draft-merchant-agents-batp-00`; `make deploy` renames the keys in the server's `.env`; accepted ADRs keep "MATP" (#119) | The protocol is open to any agent (ADR-0011), not only merchants'; nothing outside the repo speaks it yet, so the wire can still change ([ADR-0014](documentation/adr/0014-rename-matp-to-batp.md)) |
+| 2026-10-31 | The product is named **Sésame** (wordmark in `assets/logo/`); only display names change, identifiers stay `merchant-agents` / `merchant_agents` (deploy directory, systemd units, database, workspace, MCP server names, BATP URNs and `operator`, the draft's file name) (#105) | Renaming identifiers touches the shared server and every teammate's setup for no visible gain |
 
 ## 15. Out of scope (POC)
 

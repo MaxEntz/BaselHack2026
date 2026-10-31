@@ -51,7 +51,7 @@ INTERRUPTED = "Interrupted before it finished."
 TOO_MANY_STEPS = "I couldn't finish that request. Could you rephrase it or split it up?"
 
 BASE_PROMPT = """\
-You are the assistant of Merchant Agents, a platform that turns a restaurant's website into a \
+You are the assistant of Sésame, a platform that turns a restaurant's website into a \
 booking agent that Claude users can book through. You talk with the restaurant owner.
 
 Rules:

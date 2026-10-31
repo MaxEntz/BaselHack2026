@@ -121,7 +121,7 @@ def create_app(
             if engine:
                 await engine.dispose()
 
-    app = FastAPI(title="Merchant Agents platform", lifespan=lifespan)
+    app = FastAPI(title="Sésame platform", lifespan=lifespan)
     app.state.sessions = sessions
     app.state.bus = live
     app.add_middleware(

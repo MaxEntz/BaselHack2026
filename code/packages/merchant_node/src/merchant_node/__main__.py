@@ -16,7 +16,7 @@ from core.db import make_engine
 from core.logs import json_handler
 from merchant_node.agents import MerchantAgents
 
-NODE = NodeIdentity(id="urn:batp:node:merchant-agents", name="Merchant Agents")
+NODE = NodeIdentity(id="urn:batp:node:merchant-agents", name="Sésame")
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 MIN_TOKEN = 16
 

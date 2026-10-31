@@ -5,7 +5,7 @@
 <meta content="Common,Latin" name="scripts">
 <meta content="initial-scale=1.0" name="viewport">
 <title>Broad Agent Transfer Protocol (BATP)</title>
-<meta content="Merchant Agents (BaselHack 2026)" name="author">
+<meta content="Sésame (BaselHack 2026)" name="author">
 <meta content="
        This document specifies the Broad Agent Transfer Protocol (BATP), an
 application protocol reserved for software agents that book with merchants
@@ -1260,7 +1260,7 @@ li > p:last-of-type:only-child {
 <dt class="label-authors">Author:</dt>
 <dd class="authors">
 <div class="author">
-      <div class="org">Merchant Agents (BaselHack 2026)</div>
+      <div class="org">Sésame (BaselHack 2026)</div>
 </div>
 </dd>
 </dl>
@@ -2909,7 +2909,7 @@ namespace (<span>[<a href="#RFC8141" class="cite xref">RFC8141</a>]</span>).<a h
 <dl class="references">
 <dt id="BATP-SCHEMAS">[BATP-SCHEMAS]</dt>
         <dd>
-<span class="refAuthor">Merchant Agents (BaselHack 2026)</span>, <span class="refTitle">"BATP JSON Schemas (generated from the reference implementation)"</span>, <time datetime="2026-10-31" class="refDate">31 October 2026</time>, <span>&lt;<a href="https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas">https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas</a>&gt;</span>. </dd>
+<span class="refAuthor">Sésame (BaselHack 2026)</span>, <span class="refTitle">"BATP JSON Schemas (generated from the reference implementation)"</span>, <time datetime="2026-10-31" class="refDate">31 October 2026</time>, <span>&lt;<a href="https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas">https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas</a>&gt;</span>. </dd>
 <dd class="break"></dd>
 <dt id="I-D.bhutton-json-schema">[I-D.bhutton-json-schema]</dt>
         <dd>
@@ -3044,12 +3044,12 @@ line.<a href="#appendix-B-1" class="pilcrow">¶</a></p>
 <pre>
 C: {"type": "hello", "batp": "0.1",
     "agent": {"id": "urn:batp:agent:claude-gateway",
-              "name": "Claude via the merchant-agents gateway",
+              "name": "Claude via the S\u00e9same gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
 N: {"type": "welcome", "batp": "0.1",
     "node": {"id": "urn:batp:node:merchant-agents",
-             "name": "Merchant Agents"},
+             "name": "S\u00e9same"},
     "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
                 "RECALL", "PING"],
     "session": "s-2f6c"}
@@ -3888,7 +3888,7 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
 <a href="#name-authors-address" class="section-name selfRef">Author's Address</a>
       </h2>
 <address class="vcard">
-        <div dir="auto" class="left"><span class="org">Merchant Agents (BaselHack 2026)</span></div>
+        <div dir="auto" class="left"><span class="org">Sésame (BaselHack 2026)</span></div>
 <div class="url">
 <span>URI:</span>
 <a href="https://github.com/MaxEntz/BaselHack2026" class="url">https://github.com/MaxEntz/BaselHack2026</a>

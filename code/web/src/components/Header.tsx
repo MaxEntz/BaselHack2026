@@ -16,6 +16,13 @@ export function Header({ merchant, status, liveConnected }: Props) {
   return (
     <header className="header">
       <div className="header-title">
+        <img
+          className="brand"
+          src="/wordmark.png"
+          alt="Sésame"
+          width={649}
+          height={194}
+        />
         <h1>{merchant?.name ?? "New merchant"}</h1>
         {status && (
           <span className={`pill pill-${status}`}>

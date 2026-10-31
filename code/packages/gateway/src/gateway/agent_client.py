@@ -39,7 +39,7 @@ from gateway.fallback import batp_request
 
 GATEWAY_AGENT = AgentIdentity(
     id="urn:batp:agent:claude-gateway",
-    name="Claude via the merchant-agents gateway",
+    name="Claude via the Sésame gateway",
     kind="user-agent",
     operator="merchant-agents",
 )

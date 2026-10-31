@@ -15,7 +15,8 @@ v: 3
 
 author:
   -
-    org: Merchant Agents (BaselHack 2026)
+    org: Sésame (BaselHack 2026)
+    orgascii: Sesame (BaselHack 2026)
     uri: https://github.com/MaxEntz/BaselHack2026
 
 normative:
@@ -45,7 +46,8 @@ informative:
     title: BATP JSON Schemas (generated from the reference implementation)
     target: https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas
     author:
-      - org: Merchant Agents (BaselHack 2026)
+      - org: Sésame (BaselHack 2026)
+        orgascii: Sesame (BaselHack 2026)
     date: 2026-10-31
 
 --- abstract
@@ -737,12 +739,12 @@ line.
 ~~~
 C: {"type": "hello", "batp": "0.1",
     "agent": {"id": "urn:batp:agent:claude-gateway",
-              "name": "Claude via the merchant-agents gateway",
+              "name": "Claude via the S\u00e9same gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
 N: {"type": "welcome", "batp": "0.1",
     "node": {"id": "urn:batp:node:merchant-agents",
-             "name": "Merchant Agents"},
+             "name": "S\u00e9same"},
     "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
                 "RECALL", "PING"],
     "session": "s-2f6c"}

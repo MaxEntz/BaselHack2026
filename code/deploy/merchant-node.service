@@ -1,5 +1,5 @@
 [Unit]
-Description=Merchant Agents BATP node
+Description=Sésame BATP node
 After=network-online.target postgresql.service
 Wants=network-online.target
 

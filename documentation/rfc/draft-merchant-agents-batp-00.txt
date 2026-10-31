@@ -2,7 +2,7 @@
 
 
 
-Network Working Group                   Merchant Agents (BaselHack 2026)
+Network Working Group                            Sésame (BaselHack 2026)
 Internet-Draft                                           31 October 2026
 Intended status: Experimental                                           
 Expires: 4 May 2027
@@ -1142,9 +1142,9 @@ Internet-Draft                    BATP                      October 2026
 15.2.  Informative References
 
    [BATP-SCHEMAS]
-              Merchant Agents (BaselHack 2026), "BATP JSON Schemas
-              (generated from the reference implementation)", 31 October
-              2026, <https://github.com/MaxEntz/BaselHack2026/tree/main/
+              Sésame (BaselHack 2026), "BATP JSON Schemas (generated
+              from the reference implementation)", 31 October 2026,
+              <https://github.com/MaxEntz/BaselHack2026/tree/main/
               documentation/rfc/schemas>.
 
    [I-D.bhutton-json-schema]
@@ -1253,12 +1253,12 @@ Appendix B.  Example Session
 
 C: {"type": "hello", "batp": "0.1",
     "agent": {"id": "urn:batp:agent:claude-gateway",
-              "name": "Claude via the merchant-agents gateway",
+              "name": "Claude via the S\u00e9same gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
 N: {"type": "welcome", "batp": "0.1",
     "node": {"id": "urn:batp:node:merchant-agents",
-             "name": "Merchant Agents"},
+             "name": "S\u00e9same"},
     "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
                 "RECALL", "PING"],
     "session": "s-2f6c"}
@@ -2169,7 +2169,7 @@ Acknowledgments
 
 Author's Address
 
-   Merchant Agents (BaselHack 2026)
+   Sésame (BaselHack 2026)
    URI:   https://github.com/MaxEntz/BaselHack2026
 
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Merchant Agents MCP gateway
+Description=Sésame MCP gateway
 # Wants, not Requires: when the node stops, the gateway stays up and gives the fallback links.
 After=network-online.target merchant-node.service
 Wants=network-online.target merchant-node.service
