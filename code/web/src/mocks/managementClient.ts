@@ -619,12 +619,13 @@ export function createMockManagementClient(
           }
         }),
       );
-      // The server compares the services as stored, in the order last sent.
-      const before = data.hours.services;
+      // Stored by start, as the server does: the same hours in another order are no change.
+      const byStart = saved.toSorted((a, b) => a.start.localeCompare(b.start));
+      const before = services();
       const changed =
-        saved.length !== before.length ||
-        saved.some((s, i) => s.start !== before[i]?.start || s.end !== before[i]?.end);
-      data = { ...data, hours: { services: saved } };
+        byStart.length !== before.length ||
+        byStart.some((s, i) => s.start !== before[i]?.start || s.end !== before[i]?.end);
+      data = { ...data, hours: { services: byStart } };
       withTools();
       if (changed) log("saved", "Opening hours", "merchant");
       return respond({ services: services() });
