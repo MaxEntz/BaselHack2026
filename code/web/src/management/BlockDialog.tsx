@@ -37,13 +37,20 @@ export function BlockDialog({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const times = new FormData(event.currentTarget).getAll("time").map(String).toSorted();
+    const checked = new FormData(event.currentTarget).getAll("time").map(String);
+    let answer: BlockedTimes;
     try {
-      onSaved(await client.setBlocked(slug, date, times));
+      answer = await client.setBlocked(slug, date, checked);
     } catch (failure) {
       setError(errorMessage(failure));
       return;
     }
+    onSaved(answer);
+    // Worded from what the server kept: it ignores a time that has passed meanwhile (#133).
+    const times = answer.blocked
+      .filter((b) => b.date === date)
+      .map((b) => b.time)
+      .toSorted();
     toast(
       times.length ? (
         <>
