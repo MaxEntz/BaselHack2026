@@ -535,6 +535,29 @@ async def test_a_quote_too_short_to_prove_anything_is_no_source(quote: str) -> N
     assert (largest.value, largest.source, largest.quote) == ("4", None, None)
 
 
+async def test_a_short_name_or_tag_found_in_the_page_stays_a_source() -> None:
+    # A name or a tag is a word the page must hold: "Noma" proves more than "4" (#184).
+    noma = CrawlResult(
+        website=SITE,
+        pages=[Page(url=SITE, title="Noma", text="Noma. Vegan menu. Tables of 4.", json_ld=[])],
+    )
+    llm = FakeLLM(
+        sourced(
+            fields={"name": "Noma", "tags": ["vegan"]},
+            name={"page": SITE, "quote": "Noma"},
+            tags={"page": SITE, "quote": "Vegan"},
+            max_party_size={"page": SITE, "quote": "4"},
+        )
+    )
+
+    result = await extract_profile(noma, "", llm)
+
+    facts = {fact.key: (fact.source, fact.quote) for fact in result.facts}
+    assert facts["name"] == ("/", "Noma")
+    assert facts["tags"] == ("/", "Vegan")
+    assert facts["max_party_size"] == (None, None)
+
+
 async def test_the_booking_page_is_the_crawls_finding_without_a_source() -> None:
     result = await extract_profile(CRAWL, "", FakeLLM(draft()))
 

@@ -1103,7 +1103,7 @@
       "status": 409,
       "refused": true,
       "title": "Lena Koch asked for a time that had just gone",
-      "text": "Claude offered her another one.",
+      "text": "Claude offered them another one.",
       "request": "{\"type\":\"request\",\"id\":\"r-24\",\"intent\":\"BOOK\",\"merchant\":\"la-graine-verte\",\"params\":{\"starts_at\":\"2026-10-31T20:30:00+01:00\",\"party_size\":2,\"guest_name\":\"Lena Koch\",\"idempotency_key\":\"k-lena\"}}",
       "response": "{\"type\":\"response\",\"id\":\"r-24\",\"status\":409,\"error\":{\"code\":\"slot_unavailable\",\"message\":\"Slot taken or blocked\"}}"
     },

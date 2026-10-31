@@ -289,6 +289,7 @@ def default_assistant(
         model=settings.openai_model,
         mcp_url=gateway_mcp_url(settings.gateway_public_url),
         cache=BuildCache(settings.builder_cache),
+        tz=tz,
     )
 
     async def build(arguments: BuildAgentInput, emit: StepEmitter) -> BuildAgentOutput:

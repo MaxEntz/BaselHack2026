@@ -232,15 +232,21 @@ async def set_blocked(slug: SlugPath, date: Day, body: BlockedDayInput) -> Block
 
 
 @router.post("/agent/pause")
-async def pause_agent(slug: SlugPath) -> AgentStatusOutput:
-    raise NotBuiltYet("#146")
+async def pause_agent(slug: SlugPath, request: Request) -> AgentStatusOutput:
+    """Guests' agents get the booking page; the website keeps booking."""
+    await _agent(request).set_status(slug, "down")
+    return AgentStatusOutput(status="down")
 
 
 @router.post("/agent/resume")
-async def resume_agent(slug: SlugPath) -> AgentStatusOutput:
-    raise NotBuiltYet("#146")
+async def resume_agent(slug: SlugPath, request: Request) -> AgentStatusOutput:
+    await _agent(request).set_status(slug, "live")
+    return AgentStatusOutput(status="live")
 
 
 @router.get("/agent/requests")
-async def agent_requests(slug: SlugPath, date: Day, refused: bool = False) -> AgentRequests:
-    raise NotBuiltYet("#146")
+async def agent_requests(
+    slug: SlugPath, request: Request, date: Day, refused: bool = False
+) -> AgentRequests:
+    found = await _agent(request).list_agent_requests(slug, date, refused=refused)
+    return AgentRequests(requests=tuple(found))
