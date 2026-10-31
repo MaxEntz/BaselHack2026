@@ -73,6 +73,11 @@ text content is the plain JSON object.
 - `search_merchants` takes a `query` of at most 500 characters (in its schema) and at most 32
   `filters.tags`, the bounds of the MATP node's `DISCOVER`; beyond them it answers
   `invalid_input` in both modes (#90).
+- A query *names* a merchant when it holds every distinctive word of its name: not an article
+  or connector (EN/FR/DE), a tag spelling, a generic word ("restaurant", "brasserie", "petit")
+  or the merchant's city (`gateway.discovery.names`, #89). "The Green Door" needs "green" and
+  "door"; a name made only of such words ("La Terrasse") needs the whole name. `search` then
+  keeps only the merchants named, and the same rule finds a `down` merchant's link.
 - `search_merchants` never lists a `down` merchant (#12). When the query names one and no live
   merchant, it answers `agent_unavailable` with that merchant's `fallback_url`. Otherwise a
   request for that restaurant would silently propose others.
