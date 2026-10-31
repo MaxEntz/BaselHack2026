@@ -1,10 +1,12 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import { useLocation } from "react-router";
+import { useHoldRefresh } from "../live.ts";
 import { Icon } from "./primitives.tsx";
 
 /**
  * Native modal <dialog>. Closes by its x, a click on the backdrop, Esc, and any route change.
- * `onClose` runs once per close, whichever way it happened.
+ * `onClose` runs once per close, whichever way it happened. While open, background changes
+ * wait (#137): the page under it isn't read again.
  */
 export function Dialog({
   open,
@@ -20,6 +22,7 @@ export function Dialog({
   const ref = useRef<HTMLDialogElement>(null);
   const location = useLocation();
   const shownAt = useRef(location.key);
+  useHoldRefresh(open);
 
   useEffect(() => {
     const dialog = ref.current;

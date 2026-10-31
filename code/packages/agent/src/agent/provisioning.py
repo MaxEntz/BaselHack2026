@@ -236,6 +236,9 @@ async def provision(
     tables, and `update_policy` / `update_tables` must update it too (#9).
     """
     schema = schema_for(profile.slug)
+    # By start, as `update_policy` stores them, so the tool descriptions word them alike (#201).
+    services = tuple(sorted(profile.services, key=lambda s: s.start))
+    profile = profile.model_copy(update={"services": services})
     async with _engine(engine) as db, merchant_conn(db, profile.slug) as conn:
         existing = await conn.scalar(
             select(merchants_t.c.id).where(merchants_t.c.slug == profile.slug)

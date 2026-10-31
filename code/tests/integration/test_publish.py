@@ -120,3 +120,20 @@ async def test_the_assistant_hears_of_a_publish_through_the_route(
     before, after = llm.prompts
     assert STATUS_LINES["building"] in before
     assert STATUS_LINES["live"] in after
+
+
+async def test_a_look_changed_in_studio_is_what_the_overview_reads(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    # #152: update_look stores into the registry's profile copy; GET /merchants/{slug} reads it.
+    from builder.look import DEFAULT_LOOK
+    from merchant_platform.overview import look_store
+
+    slug = await make_merchant()
+    look = DEFAULT_LOOK.model_copy(update={"accent": "#2450c8", "corners": "square"})
+
+    await look_store(engine)(slug, look)
+
+    record = await registry_records(engine)(slug)
+    assert record is not None
+    assert record.look == look

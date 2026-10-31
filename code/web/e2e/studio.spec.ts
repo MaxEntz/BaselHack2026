@@ -107,16 +107,17 @@ test.describe("at 1440 px", () => {
 
   test("the canvas slides in with no jump, and nothing pops into the feed", async ({ page }) => {
     await giveAddress(page);
-    // Every frame until the split settles: where the canvas starts, and the chat column's width.
+    // Every frame until the split settles: when, where the canvas starts, and the chat column's width.
     await page.evaluate(() => {
-      const samples: { left: number; chat: number }[] = [];
+      const samples: { at: number; left: number; chat: number }[] = [];
       (window as unknown as { samples: typeof samples }).samples = samples;
       const body = document.querySelector(".st-body")!;
-      const sample = () => {
+      const sample = (at: number) => {
         const canvas = document.querySelector(".st-canvas");
         const chat = document.querySelector(".st-chat");
         if (canvas && chat) {
           samples.push({
+            at,
             left: canvas.getBoundingClientRect().left,
             chat: chat.getBoundingClientRect().width,
           });
@@ -131,16 +132,20 @@ test.describe("at 1440 px", () => {
       .poll(() => page.evaluate(() => (window as unknown as { samples: unknown[] }).samples.length), { timeout: 10_000 })
       .toBeGreaterThanOrEqual(90);
     const samples = await page.evaluate(
-      () => (window as unknown as { samples: { left: number; chat: number }[] }).samples,
+      () => (window as unknown as { samples: { at: number; left: number; chat: number }[] }).samples,
     );
     const lefts = samples.map((sample) => sample.left);
+    const end = 76 + 1440 * 0.4;
     // It starts at the right edge, only moves left, and settles at 76 + 40 % of the width left.
     expect(lefts[0]).toBeGreaterThan(1200);
     for (let i = 1; i < lefts.length; i++) {
       expect(lefts[i]).toBeLessThanOrEqual(lefts[i - 1] + 0.5);
-      expect(lefts[i - 1] - lefts[i]).toBeLessThan(160);
+      // Bounded by time, not by frame: a busy runner drops frames, a jump doesn't take any.
+      const pxPerMs = (lefts[i - 1] - lefts[i]) / (samples[i].at - samples[i - 1].at);
+      expect(pxPerMs).toBeLessThan(160 / 16.7);
     }
-    expect(lefts.at(-1)).toBeCloseTo(76 + 1440 * 0.4, -1);
+    expect(lefts.filter((left) => left < lefts[0] - 1 && left > end + 1).length).toBeGreaterThanOrEqual(5);
+    expect(lefts.at(-1)).toBeCloseTo(end, -1);
     const message = page.locator(".st-msg").last();
     await expect(message).toHaveCSS("animation-name", "st-rise");
   });
