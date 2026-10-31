@@ -17,7 +17,7 @@ from pydantic import BaseModel, ValidationError
 from agent.service import AgentService
 from builder.build import AlreadyProvisioned
 from builder.llm import ToolCall, ToolSpec
-from core.errors import AgentError, AgentUnavailable
+from core.errors import AgentError, AgentUnavailable, InvalidInput
 from core.models import (
     AdminCancelInput,
     BuildAgentInput,
@@ -106,13 +106,15 @@ TOOLS = (
     ),
     _Tool(
         "block_slot",
-        "Stop new bookings starting at one time (ISO 8601 with offset). Existing bookings stay.",
+        "Stop new bookings starting at one time (ISO 8601 with the local UTC offset given in "
+        "your instructions). Existing bookings stay.",
         "Blocking the time slot…",
         SlotInput,
     ),
     _Tool(
         "unblock_slot",
-        "Accept bookings again at a previously blocked time (ISO 8601 with offset).",
+        "Accept bookings again at a previously blocked time (ISO 8601 with the local UTC "
+        "offset given in your instructions).",
         "Opening the time slot…",
         SlotInput,
     ),
@@ -220,9 +222,11 @@ class AdminTools:
                     StatsCard(data=card_data),
                 )
             case "block_slot", SlotInput(starts_at=starts_at):
+                self._check_offset(starts_at)
                 await agent.block_slot(slug, starts_at)
                 return self._confirmation(f"{self._when(starts_at)} blocked: no new bookings.")
             case "unblock_slot", SlotInput(starts_at=starts_at):
+                self._check_offset(starts_at)
                 await agent.unblock_slot(slug, starts_at)
                 return self._confirmation(f"{self._when(starts_at)} open for bookings again.")
             case "update_policy", UpdatePolicyInput(max_party_size=size, services=services):
@@ -257,6 +261,24 @@ class AdminTools:
         return Outcome(
             {"shown_to_merchant": "confirmation", "text": text},
             ConfirmationCard(data=ConfirmationCardData(text=text)),
+        )
+
+    def _check_offset(self, starts_at: datetime) -> None:
+        """Refuse a time whose offset isn't the merchant's at that instant (#83).
+
+        A model sending the summer offset after the switch would otherwise block another hour
+        without failing. A valid instant in another offset (`20:00Z` for 21:00 in winter) is
+        refused too: the tool descriptions ask for the local offset, and the error names the
+        time the model most likely meant.
+        """
+        expected = starts_at.astimezone(self._tz).utcoffset()
+        if starts_at.utcoffset() == expected:
+            return
+        meant = starts_at.replace(tzinfo=self._tz)
+        raise InvalidInput(
+            f"{starts_at.isoformat()} doesn't use the {self._tz} offset, which is "
+            f"UTC{meant:%:z} on {meant:%Y-%m-%d}. For {meant:%H:%M} local time, send "
+            f"{meant.isoformat()}."
         )
 
     def _when(self, starts_at: datetime) -> str:
