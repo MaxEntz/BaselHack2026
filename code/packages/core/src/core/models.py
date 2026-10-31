@@ -396,7 +396,7 @@ class SessionOutput(_Model):
 # web/src/types.ts. Local days and times are the merchant's (`MerchantOverview.timezone`).
 
 # Merchant text typed in a form: no control character (#79), bounded like the free text a tool
-# description may show (gateway.merchant_server.MAX_FREE_TEXT).
+# description may show (agent.provisioning.MAX_FREE_TEXT).
 MAX_SHORT_TEXT = 80
 MAX_POLICY_TEXT = 500
 MAX_TABLE_LABEL = 20

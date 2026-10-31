@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from pydantic import AwareDatetime, BaseModel, ConfigDict, TypeAdapter
 
-from agent.provisioning import generated_tools
+from agent.provisioning import described_tools
 from batp.messages import Request, Response
 from core import models as core_models
 from core.availability import bookable_starts
@@ -33,7 +33,6 @@ from core.models import (
     SessionOutput,
     TableSpec,
 )
-from gateway.merchant_server import described_profile
 
 MOCKS = Path(__file__).parents[2] / "web" / "src" / "mocks"
 CHAT_EVENTS: TypeAdapter[list[ChatEvent]] = TypeAdapter(list[ChatEvent])
@@ -138,7 +137,7 @@ def test_management_fixture_is_la_graine_verte(management: ManagementFixture) ->
     assert management.rules.fallback_url == profile.fallback_url
     assert management.settings.website == management.merchant.website == profile.website
     # What an AI agent reads on /m/<slug>/mcp, as the merchant endpoint words it.
-    assert management.rules.tools == tuple(generated_tools(described_profile(profile)))
+    assert management.rules.tools == tuple(described_tools(profile))
 
 
 def test_management_history_is_the_30_days_ending_today(management: ManagementFixture) -> None:
