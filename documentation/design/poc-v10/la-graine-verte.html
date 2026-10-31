@@ -421,7 +421,7 @@ const dayShort = d => dayFmt(d, { weekday: 'short', day: 'numeric', month: 'shor
 const TODAY = '2026-10-31', NOW = '19:40';
 const DAYS = Array.from({ length: 7 }, (_, i) => addDays(TODAY, i));
 const stamp = (d, t) => `${d}T${t}:00+01:00`;
-const MATP = 'matp://191-96-88-152.sslip.io/la-graine-verte';
+const BATP = 'batp://191-96-88-152.sslip.io/la-graine-verte';
 const MCP = 'https://191-96-88-152.sslip.io/m/la-graine-verte/mcp';
 
 /* ---------- the restaurant: tests/fixtures/la-graine-verte.json ---------- */
@@ -451,7 +451,7 @@ const sum = list => list.reduce((n, b) => n + b.party, 0);
 const nextId = () => `R-${String(++d.seq).padStart(3, '0')}`;
 const VIA = { claude: 'through Claude', merchant: 'by you', website: 'on your website' };
 
-/* ---------- MATP frames (documentation/PROTOCOL.md) ---------- */
+/* ---------- BATP frames (documentation/PROTOCOL.md) ---------- */
 const wireRes = b => ({ id: b.id, merchant: d.slug, starts_at: stamp(b.day, b.time), party_size: b.party, table_label: b.table, status: b.status, guest_name: b.guest, via: b.via });
 function availability(day, time, party) {
   const lim = limit();
@@ -606,7 +606,7 @@ function renderAgent() {
         <p>It has no pages and no design. Other agents connect to the address below and book in JSON, and Claude comes through our bridge. This is what you see of it.</p>
         <div class="status ${d.paused ? 'off' : ''}"><i></i>${d.paused ? 'Paused. Guests get your booking page.' : 'Live, and taking bookings.'}</div>
         <button class="pill out sm" type="button" data-act="pause">${d.paused ? 'Resume the agent' : 'Pause the agent'}</button>
-        <div class="addr"><span>Its address</span><div><code>${MATP}</code><button class="pill out sm" type="button" data-act="copy" data-v="${MATP}">Copy</button></div></div>
+        <div class="addr"><span>Its address</span><div><code>${BATP}</code><button class="pill out sm" type="button" data-act="copy" data-v="${BATP}">Copy</button></div></div>
         <div class="addr"><span>For Claude</span><div><code>${MCP}</code><button class="pill out sm" type="button" data-act="copy" data-v="${MCP}">Copy</button></div></div>
       </div>
       <div class="news">

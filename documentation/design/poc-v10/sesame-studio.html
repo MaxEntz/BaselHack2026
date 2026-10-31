@@ -683,13 +683,13 @@ function publicBoard(s) {
   return `<div class="p-wire b-pad"><div><div class="b-brand" style="margin-bottom:8px">${esc(s.host)}</div><p class="b-mut" style="max-width:30em">This static preview can't open real addresses. The builder would show your homepage here, plus up to 5 pages whose links mention the menu, hours, contact or booking.</p></div></div>`;
 }
 
-/* The agent site has no pages. It is this: frames over MATP (documentation/PROTOCOL.md) and, for Claude, tools over the MCP bridge. */
-const MATP_HOST = '191-96-88-152.sslip.io';
+/* The agent site has no pages. It is this: frames over BATP (documentation/PROTOCOL.md) and, for Claude, tools over the MCP bridge. */
+const BATP_HOST = '191-96-88-152.sslip.io';
 const DATE = '2026-10-31';
-const MATP_INTENTS = ['DISCOVER', 'AVAILABILITY', 'BOOK', 'AMEND', 'CANCEL', 'RECALL', 'PING'];
+const BATP_INTENTS = ['DISCOVER', 'AVAILABILITY', 'BOOK', 'AMEND', 'CANCEL', 'RECALL', 'PING'];
 const stamp = t => `${DATE}T${t}:00+01:00`;
-const HELLO = { type: 'hello', matp: '0.1', agent: { id: 'urn:matp:agent:claude-gateway', name: 'Claude via the merchant-agents gateway', kind: 'user-agent', operator: 'merchant-agents' }, token: '…' };
-const WELCOME = { type: 'welcome', matp: '0.1', node: { id: 'urn:matp:node:merchant-agents', name: 'Merchant Agents' }, intents: MATP_INTENTS, session: 's-1' };
+const HELLO = { type: 'hello', batp: '0.1', agent: { id: 'urn:batp:agent:claude-gateway', name: 'Claude via the Sésame gateway', kind: 'user-agent', operator: 'merchant-agents' }, token: '…' };
+const WELCOME = { type: 'welcome', batp: '0.1', node: { id: 'urn:batp:node:merchant-agents', name: 'Sésame' }, intents: BATP_INTENTS, session: 's-1' };
 const frameReq = (id, intent, params, merchant) => ({ type: 'request', id, intent, ...(merchant ? { merchant } : {}), params });
 const frameRes = (id, body) => ({ type: 'response', id, ...body });
 const notLive = s => ({ status: 404, error: { code: 'not_found', message: `Merchant '${s.slug}' is not live yet` } });
@@ -719,14 +719,14 @@ const exampleAsk = s => {
 function agentBoard(s) {
   const ex = exampleAsk(s);
   return `<div class="w b-pad">
-    <div class="w-top"><code class="w-addr">matp://${MATP_HOST}/${esc(s.slug)}</code><span class="w-live ${s.published ? 'on' : ''}">${s.published ? 'Live' : 'Not live'}</span></div>
+    <div class="w-top"><code class="w-addr">batp://${BATP_HOST}/${esc(s.slug)}</code><span class="w-live ${s.published ? 'on' : ''}">${s.published ? 'Live' : 'Not live'}</span></div>
     <p class="w-note">No pages, no buttons, no design. Agents open a session on port 4710 and exchange one JSON frame per line. This is the whole site.</p>
     ${s.published ? '' : '<p class="w-warn">Right now every agent gets a 404. The first answer below is what they get once you publish.</p>'}
     <section aria-label="Protocol session"><h3>A session with your agent</h3>
       <div class="w-log">${wireLine('out', HELLO)}${wireLine('in', WELCOME)}
         ${wireLine('out', frameReq('r-1', 'AVAILABILITY', { date: DATE, time: ex.time, party_size: ex.party }, s.slug))}${wireLine('in', frameRes('r-1', availability(s, ex.time, ex.party)), 'avail')}
         ${s.log.map((f, i) => wireLine('out', f.out) + wireLine('in', f.in, i === s.log.length - 1 ? 'last' : '')).join('')}</div>
-      <div class="w-send" role="group" aria-label="Send a request"><span>Send</span>${MATP_INTENTS.map(i => `<button type="button" data-send="${i}">${i}</button>`).join('')}</div>
+      <div class="w-send" role="group" aria-label="Send a request"><span>Send</span>${BATP_INTENTS.map(i => `<button type="button" data-send="${i}">${i}</button>`).join('')}</div>
     </section>
     <section aria-label="MCP bridge"><h3>What Claude reads through the MCP bridge</h3>
       <code class="w-bridge">${CONNECTOR}/m/${esc(s.slug)}/mcp</code>
@@ -984,7 +984,7 @@ const statsCard = s => {
   return `<div class="card"><h3>Tonight${s.samples ? ' (samples)' : ''}</h3><div class="nums"><div><b>${l.length}</b><small>${esc(s.words.bookings)}</small></div><div><b>${g}</b><small>${esc(s.words.guests)}</small></div><div><b>${seatsOf(s)}</b><small>seats</small></div></div></div>`;
 };
 const liveCard = s => `<div class="card"><h3>Your addresses</h3>
-  ${[['Agent site, for any agent', `matp://${MATP_HOST}/${s.slug}`], ['Agent site, for Claude', `${CONNECTOR}/m/${s.slug}/mcp`], ['Management site', `https://${s.slug}.sesame.example`]].map(([l, u]) => `<div class="url"><small>${l}</small><code>${esc(u)}</code><button type="button" data-copy="${esc(u)}" aria-label="Copy ${l}">${icon('copy')}</button></div>`).join('')}</div>`;
+  ${[['Agent site, for any agent', `batp://${BATP_HOST}/${s.slug}`], ['Agent site, for Claude', `${CONNECTOR}/m/${s.slug}/mcp`], ['Management site', `https://${s.slug}.sesame.example`]].map(([l, u]) => `<div class="url"><small>${l}</small><code>${esc(u)}</code><button type="button" data-copy="${esc(u)}" aria-label="Copy ${l}">${icon('copy')}</button></div>`).join('')}</div>`;
 
 /* ---------- starting a conversation ---------- */
 function parseAddress(text) {
@@ -1193,7 +1193,7 @@ const INTENTS = [
   [/\b(round(er|ed)?|square|sharp)\b/i, doCorners],
   [/\b(morning|during service|on service|before service|after service|end of (the )?night|at closing)\b/i, doMoment],
   [/\b(show|open|see|go to)\b.*\b(agent|manage|management|public|site|both)\b/i, doShow],
-  [/\b(protocol|matp|mcp|for agents|what (claude|agents) (reads?|sees?)|tools|agent site)\b/i, doExplainAgent],
+  [/\b(protocol|batp|mcp|for agents|what (claude|agents) (reads?|sees?)|tools|agent site)\b/i, doExplainAgent],
   [/\b(change|touch|modify)\b.*\b(web)?site\b/i, () => bot('No. Sésame only reads your public site. It stays as it is, and it\'s where guests land when the agent can\'t help.')],
   [/\bwho can see\b/i, () => bot(S.published ? 'You\'re live, so any agent can reach you.' : 'Only you. Until you publish, agents get a 404 and your restaurant doesn\'t show up in their searches.')],
   [/\b(how busy|stats|how many|covers tonight)\b/i, doStats],
@@ -1373,7 +1373,7 @@ function setMoment(id) {
 }
 function doExplainAgent() {
   view = 'agent'; paint();
-  bot(`Your agent site has no interface. Any agent can connect to <b>matp://${MATP_HOST}/${esc(S.slug)}</b> and ask in JSON. Claude only speaks MCP, so it goes through our bridge, which turns its tool calls into the same requests.`);
+  bot(`Your agent site has no interface. Any agent can connect to <b>batp://${BATP_HOST}/${esc(S.slug)}</b> and ask in JSON. Claude only speaks MCP, so it goes through our bridge, which turns its tool calls into the same requests.`);
 }
 function doShow(text) {
   if (/\bpublic\b/i.test(text)) view = 'public';

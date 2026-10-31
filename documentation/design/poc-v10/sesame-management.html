@@ -462,7 +462,7 @@ const bookingsW = n => `${n} ${n === 1 ? 'booking' : 'bookings'}`;
 const TODAY = '2026-10-31', NOW = '19:40';
 const DAYS = Array.from({ length: 7 }, (_, i) => addDays(TODAY, i));
 const stamp = (day, t) => `${day}T${t}:00+01:00`;
-const MATP = 'matp://191-96-88-152.sslip.io/la-graine-verte';
+const BATP = 'batp://191-96-88-152.sslip.io/la-graine-verte';
 const MCP = 'https://191-96-88-152.sslip.io/m/la-graine-verte/mcp';
 
 /* ---------- the restaurant: tests/fixtures/la-graine-verte.json ---------- */
@@ -497,7 +497,7 @@ function nearestFree(day, party, time) {
   return allStarts().filter(x => !isBlocked(day, x) && pickTable(day, party, x)).sort((a, b) => Math.abs(toMin(a) - toMin(time)) - Math.abs(toMin(b) - toMin(time)))[0];
 }
 
-/* ---------- MATP frames (documentation/PROTOCOL.md) ---------- */
+/* ---------- BATP frames (documentation/PROTOCOL.md) ---------- */
 const wireRes = b => ({ id: b.id, merchant: d.slug, starts_at: stamp(b.day, b.time), party_size: b.party, table_label: b.table, status: b.status, guest_name: b.guest, via: b.via });
 function availability(day, time, party) {
   const lim = limit();
@@ -772,7 +772,7 @@ function pageAgent() {
   return `<div class="ttl"><h1><span class="under">Agent</span></h1><p>Your agent has no pages and no design. Other agents connect to its address and book in JSON, and Claude comes through our bridge.</p></div>
     <section class="ag on-dark">
       <div class="bar-row"><span class="status ${d.paused ? 'off' : ''}"><i></i>${d.paused ? 'Paused. Guests get your booking page.' : 'Live, and taking bookings.'}</span><button class="pill sm right" type="button" data-act="pause">${d.paused ? 'Resume the agent' : 'Pause the agent'}</button></div>
-      <div class="addr"><span>Its address</span><div><code>${MATP}</code><button class="pill sm" type="button" data-act="copy" data-v="${MATP}">Copy</button></div></div>
+      <div class="addr"><span>Its address</span><div><code>${BATP}</code><button class="pill sm" type="button" data-act="copy" data-v="${BATP}">Copy</button></div></div>
       <div class="addr"><span>For Claude</span><div><code>${MCP}</code><button class="pill sm" type="button" data-act="copy" data-v="${MCP}">Copy</button></div></div>
       <div class="m-hd" style="margin-top:8px"><h2 class="dsp">What it did today</h2><div class="pills" role="group" aria-label="Filter"><button class="pill sm" type="button" data-act="logf" data-v="all" aria-pressed="${ui.logF === 'all'}">Everything</button><button class="pill sm" type="button" data-act="logf" data-v="err" aria-pressed="${ui.logF === 'err'}">Refused</button></div></div>
       <div>${items.map(l => `<details class="item ${l.status >= 400 ? 'ref' : ''}"><summary><time>${l.t}</time><b>${esc(l.title)}</b><u>See the request</u><p>${esc(l.text)}</p></summary><pre>→ ${esc(JSON.stringify(l.req))}\n← ${esc(JSON.stringify(l.res))}</pre></details>`).join('')}</div>
@@ -972,7 +972,7 @@ function ask(text) {
     return add(l.slice(0, 8).map(b => `<button type="button" data-act="open" data-id="${b.id}" class="num"><span>${b.time}</span><span>${esc(b.guest)}</span><span>${b.party}, ${esc(b.table)}</span></button>`).join(''), 'res-list');
   }
   if (/\b(hours|opening|open|closing)\b/.test(s)) return bot(`You're open every day: ${d.services.map(v => `${v.name.toLowerCase()} ${v.start}–${v.end}`).join(', ')}. The last table is one hour before closing. You can change this in <a class="link" href="#hours">Opening hours</a>.`);
-  if (/\b(agent|claude|protocol|matp|mcp)\b/.test(s)) return bot(d.paused ? 'Your agent is paused, so guests get your booking page.' : `Your agent is live, with no pages of its own. See what it did today on the <a class="link" href="#agent">Agent</a> page.`);
+  if (/\b(agent|claude|protocol|batp|mcp)\b/.test(s)) return bot(d.paused ? 'Your agent is paused, so guests get your booking page.' : `Your agent is live, with no pages of its own. See what it did today on the <a class="link" href="#agent">Agent</a> page.`);
   if (/\b(floor|room|tables?)\b/.test(s)) return bot(`You have ${d.tables.length} tables and ${seats()} seats. See them on the <a class="link" href="#floor">Floor plan</a>.`);
   if (/\b(hello|hi|hey|help|what can)\b/.test(s)) return bot('I can list bookings, check what\'s free, block or reopen a time, change the largest group or cancel a booking. Try "Bookings for tomorrow", "Table for 4 at 20:00" or "Block 13:00 on Sunday".');
   return bot('A fixed script answers in this preview, so I can\'t act on that. The suggestions below do work.');

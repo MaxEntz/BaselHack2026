@@ -2,8 +2,6 @@
 
 Status: the mockups the Sésame site is built from (#127, [ADR-0015](../../adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). `code/web` and the backend don't do this yet, and the code wins over the mockups on booking rules.
 
-The mockups predate two renames, so they still show `matp://` and, in one frame, "Merchant Agents". The protocol is BATP (`batp://`, ADR-0014) and the product is Sésame.
-
 ## Management site
 
 Open [`sesame-management.html`](sesame-management.html) in a browser. It is the current direction: one file that works offline, with both fonts embedded. It has the structure of a dashboard the user shared (sidebar, overview, assistant on the right) in the look of the page below. Add `#reservations`, `#guests`, `#hours`, `#floor`, `#rules`, `#agent`, `#settings` or `#assistant` to open a page directly.

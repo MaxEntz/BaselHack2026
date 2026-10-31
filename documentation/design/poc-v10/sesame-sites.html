@@ -393,7 +393,7 @@ const word = (d, n) => `${n} ${n === 1 ? d.words[0] : d.words[1]}`;
 const parties = n => `${n} ${n === 1 ? 'party' : 'parties'}`;
 const sumP = list => list.reduce((n, b) => n + b.party, 0);
 
-/* ---------- MATP frames (documentation/PROTOCOL.md) ---------- */
+/* ---------- BATP frames (documentation/PROTOCOL.md) ---------- */
 const frameReq = (id, intent, params, merchant) => ({ type: 'request', id, intent, ...(merchant ? { merchant } : {}), params });
 const frameRes = (id, body) => ({ type: 'response', id, ...body });
 const wireRes = (d, b) => ({ id: b.id, merchant: d.slug, starts_at: stamp(b.day, b.time), party_size: b.party, table_label: b.table, status: b.status, guest_name: b.guest, via: b.via });
@@ -632,7 +632,7 @@ function pageAgent(d) {
   return `<div class="ttl"><h1>Agent</h1><p>Your agent has no pages. Other agents connect to this address and book in JSON, and Claude goes through the MCP bridge. Below is what they get.</p></div>
     <section class="panel">
       <div class="kv"><span>Status</span><div>${d.paused ? `<b style="color:var(--bad)">Paused.</b> Agents get a 503 with the link to your booking page.` : `<b style="color:var(--ok)">Live.</b> Agents can search, book, move and cancel.`}</div><button class="btn" data-act="pause">${d.paused ? 'Resume agent' : 'Pause agent'}</button></div>
-      <div class="kv"><span>Address</span><code>matp://191-96-88-152.sslip.io/${d.slug}</code><button class="btn sm" data-act="copy" data-v="matp://191-96-88-152.sslip.io/${d.slug}">Copy</button></div>
+      <div class="kv"><span>Address</span><code>batp://191-96-88-152.sslip.io/${d.slug}</code><button class="btn sm" data-act="copy" data-v="batp://191-96-88-152.sslip.io/${d.slug}">Copy</button></div>
       <div class="kv"><span>Connector for Claude</span><code>https://191-96-88-152.sslip.io/m/${d.slug}/mcp</code><button class="btn sm" data-act="copy" data-v="https://191-96-88-152.sslip.io/m/${d.slug}/mcp">Copy</button></div>
       <div class="kv"><span>When it can't answer</span><a href="${esc(d.fallback)}" rel="noopener" target="_blank">${esc(d.fallback)}</a><span></span></div>
     </section>
@@ -640,7 +640,7 @@ function pageAgent(d) {
       <section class="panel"><div class="panel-hd"><h2>Requests today</h2><div class="seg" role="group" aria-label="Filter requests"><button data-act="logf" data-v="all" aria-pressed="${ui.logFilter === 'all'}">All</button><button data-act="logf" data-v="err" aria-pressed="${ui.logFilter === 'err'}">Refused</button></div></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Request</th><th>Status</th><th class="opt">Details</th><th class="opt">Took</th></tr></thead><tbody>${logs.map(row).join('')}</tbody></table></div></section>
       <section class="panel"><div class="panel-hd"><h2>${sel ? `<code>${sel.intent}</code> at ${sel.t}` : 'Request'}</h2>${sel ? statusTag(sel.status) : ''}</div>
-        ${sel ? `<div class="frame"><div class="frame-meta num"><span>Claude via the merchant-agents gateway</span><span>${sel.ms} ms</span></div><h3>Request</h3><pre>${esc(JSON.stringify(sel.req, null, 2))}</pre><h3>Response</h3><pre>${esc(JSON.stringify(sel.res, null, 2))}</pre></div>` : ''}</section>
+        ${sel ? `<div class="frame"><div class="frame-meta num"><span>Claude via the Sésame gateway</span><span>${sel.ms} ms</span></div><h3>Request</h3><pre>${esc(JSON.stringify(sel.req, null, 2))}</pre><h3>Response</h3><pre>${esc(JSON.stringify(sel.res, null, 2))}</pre></div>` : ''}</section>
     </div>
     <section class="panel"><div class="panel-hd"><h2>What Claude reads</h2><span class="mut">Updates when you change your settings</span></div><ul class="tools">${toolsOf(d).map(([n, t]) => `<li><code>${n}</code><span>${esc(t)}</span></li>`).join('')}</ul></section>`;
 }
