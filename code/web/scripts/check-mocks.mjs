@@ -14,6 +14,8 @@ const mocks = {
   session: "SessionOutput",
   // The management mock's data (#129, #131).
   "../../../tests/fixtures/demo/la-graine-verte-management": "ManagementFixture",
+  // The assistant's opening conversation (#131, #140).
+  "../../../tests/fixtures/demo/la-graine-verte-assistant": "{ merchant: string; opening: ConversationItem[] }",
 };
 
 try {
@@ -28,7 +30,7 @@ try {
     // JSON imports widen string literals, so check the actual JSON as TS literals.
     await writeFile(
       file,
-      `import type { ChatEvent, LiveEvent, ManagementFixture, SessionOutput } from ${JSON.stringify(types)};\n` +
+      `import type { ChatEvent, ConversationItem, LiveEvent, ManagementFixture, SessionOutput } from ${JSON.stringify(types)};\n` +
         `export default ${data} satisfies ${type};\n`,
     );
     files.push(file);

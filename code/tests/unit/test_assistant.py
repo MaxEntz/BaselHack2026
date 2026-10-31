@@ -940,10 +940,12 @@ async def test_live_sends_a_paused_merchant_to_the_agent_page() -> None:
 
     await harness.turn(session, "Resume my agent, please.")
 
-    assert tools_called(session) == []
+    called = tools_called(session)
     # Markdown left out: the model may write "the **Agent** page".
     reply = session.messages[-1]["content"].lower().replace("*", "").replace("`", "")
-    assert "agent page" in reply or "pause switch" in reply
+    # The link to the page (#140), or the page named in the reply.
+    assert called in ([], [("link_page", {"page": "agent"})])
+    assert called or "agent page" in reply or "pause switch" in reply
 
 
 @pytest.mark.llm
@@ -1112,3 +1114,16 @@ async def test_live_change_my_website_changes_nothing() -> None:
     # Nothing touches the merchant's site: at most the management site's look.
     assert called <= {"update_look"}
     assert harness.published == []
+
+
+def test_the_prompt_knows_the_management_pages() -> None:
+    # #140: the assistant points to the pages, through link_page's card.
+    prompt = system_prompt(NOW, PROFILE)
+    assert "management site, with pages for Reservations" in prompt
+    assert "call link_page" in prompt
+
+
+@pytest.mark.llm
+async def test_live_opening_hours_link_to_their_page() -> None:
+    _, session = await live_turns("What are my opening hours?")
+    assert ("link_page", {"page": "hours"}) in tools_called(session)
