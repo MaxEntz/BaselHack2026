@@ -50,15 +50,14 @@ deploy: ## Ship the BATP node and the gateway to the team server -> https://191-
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
 		sed -i -E "s/^MATP_/BATP_/; s/urn:matp:/urn:batp:/g; s,matp://,batp://,g" .env && \
-		{ grep -qs "^GATEWAY_TOKEN=." .env || { echo "Set GATEWAY_TOKEN in code/.env on the server first (documentation/runbooks/connector.md)" >&2; exit 1; }; } && \
 		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node -q && \
+		{ ( umask 077 && .venv/bin/python scripts/caddy_env.py > ../caddy.env.new ) || { rm -f ../caddy.env.new; exit 1; }; } && \
 		.venv/bin/alembic upgrade head && \
 		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service /etc/systemd/system/ && \
 		systemctl daemon-reload && \
 		systemctl enable --quiet merchant-node merchant-gateway && \
 		systemctl restart merchant-node merchant-gateway && \
 		caddy_changed=0 && \
-		( umask 077 && grep "^GATEWAY_TOKEN=" .env > ../caddy.env.new ) && \
 		if cmp -s ../caddy.env.new ../caddy.env; then rm ../caddy.env.new; else mv ../caddy.env.new ../caddy.env && caddy_changed=1; fi && \
 		if ! cmp -s deploy/caddy-merchant-agents.conf /etc/systemd/system/caddy.service.d/merchant-agents.conf; then \
 			install -D -m 644 deploy/caddy-merchant-agents.conf /etc/systemd/system/caddy.service.d/merchant-agents.conf && \

@@ -42,9 +42,9 @@ What it touches **outside** `/opt/merchant-agents`:
 
 - `/etc/systemd/system/merchant-node.service` and `merchant-gateway.service`.
 - `/etc/caddy/Caddyfile`, only when `code/deploy/Caddyfile` changed: it validates it, overwrites the file and restarts Caddy. **The server is shared**: any other site must also be declared in our Caddyfile.
-- `/etc/systemd/system/caddy.service.d/merchant-agents.conf` (`code/deploy/caddy-merchant-agents.conf`), a drop-in that gives Caddy `GATEWAY_TOKEN` from `/opt/merchant-agents/caddy.env`. `make deploy` writes that file from `code/.env` (`root:root 600`, read by systemd before Caddy drops its privileges) and restarts Caddy when it, the drop-in or the Caddyfile changed.
+- `/etc/systemd/system/caddy.service.d/merchant-agents.conf` (`code/deploy/caddy-merchant-agents.conf`), a drop-in that gives Caddy `GATEWAY_TOKEN` from `/opt/merchant-agents/caddy.env`. `make deploy` writes that file with the token the gateway reads from `code/.env` (`scripts/caddy_env.py`, `root:root 600`, read by systemd before Caddy drops its privileges) and restarts Caddy when it, the drop-in or the Caddyfile changed.
 
-It never touches `/opt/merchant-agents/code/.env`, and refuses to go on without `GATEWAY_TOKEN` in it: Caddy forwards any request with a bearer token, so the gateway must check one. On a new server, create it with:
+It never touches `/opt/merchant-agents/code/.env`, and stops before touching Caddy or the services when the gateway would load no `GATEWAY_TOKEN` from it: Caddy forwards any request with a bearer token, so the gateway must check one. On a new server, create it with these lines (keep `GATEWAY_TOKEN`'s comment on its own line, as here):
 
 ```bash
 DATABASE_URL=postgresql+psycopg://merchant:…@127.0.0.1:5432/merchant_agents   # without it, neither service starts
@@ -52,7 +52,8 @@ GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io   # no /mcp; without it, every
 BATP_TOKENS='{"urn:batp:agent:claude-gateway":"…"}' # node: one token per known agent, 16+ characters
 BATP_URL=batp://127.0.0.1:4710                      # gateway: go through the node
 BATP_TOKEN=…                                        # gateway: its token, the one listed in BATP_TOKENS
-GATEWAY_TOKEN=…                                     # every caller; Caddy adds it for Claude.ai (ADR-0019)
+# every caller; Caddy adds it for Claude.ai (ADR-0019)
+GATEWAY_TOKEN=…
 ```
 
 Generate a token with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`, and restart both services after editing `.env`. On a new server, also create the database in UTF-8, or psycopg returns bytes and everything fails with `cannot use a string pattern on a bytes-like object`:
