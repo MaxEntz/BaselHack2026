@@ -49,7 +49,11 @@ SKIPPED_RESOURCES = frozenset({"image", "media", "font"})
 # Element ids kept per page, in document order: enough for a one-page site's sections.
 MAX_ANCHORS = 200
 
-Refusal = Literal["private", "unreachable"]
+Refusal = Literal["private", "port", "unreachable"]
+# Websites answer on these: any other port is a service, not a site, unless CRAWL_ALLOW_PRIVATE
+# (the demo sites run on :8080-:8082 locally). On the team server, the server's own public
+# address is "global": without this, a build could read what it serves on other ports (#142).
+WEB_PORTS = frozenset({80, 443})
 
 _EXTRACT = """() => ({
   title: document.title,
@@ -113,14 +117,22 @@ class HostGuard:
         host = parts.hostname
         if parts.scheme not in ("http", "https") or not host:
             return "unreachable"
+        try:
+            port = parts.port
+        except ValueError:
+            return "unreachable"
         if host not in self._verdicts:
             self._verdicts[host] = await self._resolve(host)
-        return self._verdicts[host]
+        verdict = self._verdicts[host]
+        # The DNS verdict is per host; the port is checked on every URL.
+        if verdict is None and port is not None and port not in WEB_PORTS:
+            return None if self.allow_private else "port"
+        return verdict
 
     async def allows(self, url: str) -> bool:
-        """Whether `url` may be loaded; a private address is logged."""
+        """Whether `url` may be loaded; a private address or another port is logged."""
         refusal = await self.refusal(url)
-        if refusal == "private":
+        if refusal in ("private", "port"):
             log.warning("crawl_request_refused", extra={"url": url})
         return refusal is None
 
@@ -245,6 +257,10 @@ async def _crawl(
     match await guard.refusal(website):
         case "private":
             raise InvalidInput(f"I can't read {website}: it points to a private network address.")
+        case "port":
+            raise InvalidInput(
+                f"I can't read {website}: websites answer on the usual ports (80 and 443)."
+            )
         case "unreachable":
             raise InvalidInput(f"I couldn't open {website} — is the address right?")
     async with async_playwright() as playwright, await playwright.chromium.launch() as browser:
@@ -261,7 +277,8 @@ async def _crawl(
                 isinstance(error, PlaywrightError) and "ERR_BLOCKED_BY_CLIENT" in error.message
             ):
                 raise InvalidInput(
-                    f"I can't read {website}: it redirects to a private network address."
+                    f"I can't read {website}: it redirects to a private network address "
+                    "or another port."
                 ) from None
             raise InvalidInput(
                 f"I couldn't open {website} ({_reason(error, timeout_s)}) — is the address right?"
@@ -336,7 +353,7 @@ async def _landing(context: BrowserContext, guard: HostGuard, url: str, timeout_
     """
     for _ in range(MAX_REDIRECTS + 1):
         if not await guard.allows(url):
-            raise _Blocked("it redirects to a private network address")
+            raise _Blocked("it redirects to a private network address or another port")
         response = await context.request.get(url, max_redirects=0, timeout=timeout_ms)
         location = response.headers.get("location")
         await response.dispose()

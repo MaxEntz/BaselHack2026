@@ -27,18 +27,22 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
    .venv/bin/playwright install-deps chromium      # apt packages
    ```
 
-2. **The server's `.env`** (`/opt/merchant-agents/code/.env`, never committed). Add:
+2. **The platform's own settings**, in `/opt/merchant-agents/platform/.env` (never committed). The platform runs as its own user, `sesame`, which can't read `code/.env` (the gateway's and the node's settings, with `BATP_TOKENS` and `GATEWAY_TOKEN`). `make deploy` creates the user and sets the permissions (`root:sesame`, `640`):
 
    ```bash
+   mkdir -p /opt/merchant-agents/platform
+   cat > /opt/merchant-agents/platform/.env <<'ENV'
+   DATABASE_URL=…                 # same database as in code/.env
+   OPENAI_API_KEY=…
    GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io
    PLATFORM_PUBLIC_URL=https://sesame.191-96-88-152.sslip.io
    PUBLIC_CORS_ORIGINS=["https://le-petit-zinc.191-96-88-152.sslip.io"]
    PLATFORM_DEV_ROUTES=0
    CRAWL_ALLOW_PRIVATE=0
-   OPENAI_API_KEY=…
+   ENV
    ```
 
-   plus the settings #132 adds (invite code, cookie secret). `make deploy` refuses to go on without `PLATFORM_DEV_ROUTES=0`.
+   plus the settings #132 adds (invite code, cookie secret). `make deploy` refuses to go on without this file and `PLATFORM_DEV_ROUTES=0`.
 
 3. From your machine, with Node installed (`make deploy` builds `web/dist` first):
 
@@ -47,7 +51,7 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
    make deploy
    ```
 
-   On top of the gateway and the node, it now ships `web/dist`, syncs the platform and the builder, installs Chromium under `/opt/merchant-agents/ms-playwright`, gives the service user a writable `.cache`, and installs and restarts `merchant-platform`.
+   On top of the gateway and the node, it now ships `web/dist`, creates the `sesame` user if needed, syncs the platform and the builder, installs Chromium under `/opt/merchant-agents/ms-playwright`, gives `sesame` a writable `.cache`, and installs and restarts `merchant-platform`.
 
 ## Operate it
 
@@ -80,9 +84,9 @@ cd /opt/merchant-agents/code
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `make deploy`: `Set PLATFORM_DEV_ROUTES=0 in the server .env first` | The server's `.env` keeps the dev routes on | Step 2 |
+| `make deploy`: `Create ../platform/.env with PLATFORM_DEV_ROUTES=0 on the server first` | The platform's settings file is missing, or keeps the dev routes on | Step 2 |
 | The `crawl` step fails with "Something went wrong while reading the website" | Chromium's libraries are missing | Step 1, then `journalctl -u merchant-platform` |
-| The crawl says the address points to a private network | `CRAWL_ALLOW_PRIVATE=0` and a site on a private address | Use the demo sites' public hosts, never `localhost` |
-| The booking form switches to "call us" mode | CORS: Le Petit Zinc's host missing from `PUBLIC_CORS_ORIGINS`, or the platform down | Step 2; `systemctl status merchant-platform` |
+| The crawl says the address points to a private network, or that websites answer on ports 80 and 443 | `CRAWL_ALLOW_PRIVATE=0`: no private address, no port other than 80 and 443, so a build can't read the server's own services | Use the demo sites' public hosts, never `localhost` or a port |
+| The booking form switches to "call us" mode | CORS: Le Petit Zinc's host missing from `PUBLIC_CORS_ORIGINS`, or the platform down | Step 2 (`PUBLIC_CORS_ORIGINS` in `platform/.env`); `systemctl status merchant-platform` |
 | Live events stay on "Reconnecting" | `/api/events` buffered | Check `flush_interval -1` in the Caddyfile's `/api/*` block |
 | A seeded merchant's fallback link opens `localhost:8080` | The fixtures still hold local addresses | Build the merchant from its public host instead, or re-seed with the server's addresses (#25) |

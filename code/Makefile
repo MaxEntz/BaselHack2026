@@ -56,10 +56,13 @@ deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web ap
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
 		sed -i -E "s/^MATP_/BATP_/; s/urn:matp:/urn:batp:/g; s,matp://,batp://,g" .env && \
-		{ grep -q "^PLATFORM_DEV_ROUTES=0" .env || { echo "Set PLATFORM_DEV_ROUTES=0 in the server .env first (documentation/runbooks/platform.md)" >&2; exit 1; }; } && \
+		{ grep -qs "^PLATFORM_DEV_ROUTES=0" ../platform/.env || { echo "Create ../platform/.env with PLATFORM_DEV_ROUTES=0 on the server first (documentation/runbooks/platform.md)" >&2; exit 1; }; } && \
+		{ id -u sesame >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin sesame; } && \
+		chown root:gateway .env && chmod 640 .env && \
+		chown -R root:sesame ../platform && chmod 750 ../platform && chmod 640 ../platform/.env && \
 		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node --package merchant-platform --package builder -q && \
 		PLAYWRIGHT_BROWSERS_PATH=/opt/merchant-agents/ms-playwright .venv/bin/playwright install chromium && \
-		install -d -o gateway -g gateway .cache && \
+		install -d -o sesame -g sesame .cache && \
 		.venv/bin/alembic upgrade head && \
 		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service deploy/merchant-platform.service /etc/systemd/system/ && \
 		systemctl daemon-reload && \

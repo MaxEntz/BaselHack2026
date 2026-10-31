@@ -27,11 +27,13 @@ Constraints:
   | `sesame.191-96-88-152.sslip.io` | The web app (`web/dist`, built on the deploying machine, every unknown path → `index.html`); `/api/*` → the platform on `127.0.0.1:8002`, prefix stripped, `flush_interval -1` for SSE |
   | `le-petit-zinc.…`, `la-graine-verte.…`, `maison-albane.…` | The fictional demo websites, each on its own host like a real restaurant's |
 
-- **The platform** runs as the systemd service `merchant-platform` (`uvicorn merchant_platform.api:app`, one worker, `127.0.0.1:8002`), with the gateway's user and hardening, plus a writable `.cache` for the builder (ADR-0007).
+- **The platform** runs as the systemd service `merchant-platform` (`uvicorn merchant_platform.api:app`, one worker, `127.0.0.1:8002`), with the gateway's hardening, plus a writable `.cache` for the builder (ADR-0007).
+- **Its own user and settings.** It runs as the system user `sesame`, not `gateway`, from `/opt/merchant-agents/platform`, whose `.env` (`root:sesame`, `640`) holds only what the platform needs (database, OpenAI key, its own settings). `sesame` can't read `code/.env` (`root:gateway`, `640`), so it never sees `BATP_TOKENS` or `GATEWAY_TOKEN`. Reason: Chromium runs without its sandbox (Playwright's default, and Ubuntu 24.04 restricts the unprivileged user namespaces the sandbox needs), so a crawled page exploiting a renderer bug would run as the platform's user.
+- **The crawler only reads ports 80 and 443** without `CRAWL_ALLOW_PRIVATE` (`builder/crawl.py`, `WEB_PORTS`). The server's own public address is a global address, so the SSRF guard let a build load `http://191.96.88.152:<port>/`, which reaches the server's services over loopback, even those the firewall hides from the internet. Restaurant sites, the demo ones included, are on 80 and 443. The DNS verdict stays cached per host; the port is checked on every URL and every redirect hop.
 - **Chromium** for the crawler is installed by `make deploy` under `/opt/merchant-agents/ms-playwright` (`PLAYWRIGHT_BROWSERS_PATH`). Its system libraries are a one-time `apt` install, outside `/opt`, done only with the team's agreement (`documentation/runbooks/platform.md`).
 - **The management address** is `https://sesame.191-96-88-152.sslip.io/manage/<slug>` (#127 decision 8): the mockup's `<slug>.sesame.example` is invented.
 - **The demo booking form** posts to `https://sesame.<server>/api/public/le-petit-zinc/reservations` when it is served from the server, and to `http://localhost:8002` locally. The server's `PUBLIC_CORS_ORIGINS` allows Le Petit Zinc's host.
-- **Safety before #132:** `make deploy` refuses to go on unless the server's `.env` sets `PLATFORM_DEV_ROUTES=0`. The platform is not deployed before #132 gives it accounts: until then it has no login, calls the OpenAI API and crawls any public address.
+- **Safety before #132:** `make deploy` refuses to go on unless `/opt/merchant-agents/platform/.env` exists and sets `PLATFORM_DEV_ROUTES=0`. Once #132 names its secret, the gate also requires it, so an early merge can't deploy an open platform. The platform is not deployed before #132 gives it accounts: until then it has no login, calls the OpenAI API and crawls any public address.
 
 ## Alternatives considered
 
@@ -54,6 +56,7 @@ It would allow an earlier deploy, but #132 brings the real access rule (a secret
 ## Consequences
 
 - Positive: the whole demo runs from any browser; the seeded or onboarded merchants' fallback links and the crawl reach real HTTPS sites.
+- Negative: Chromium still runs without its sandbox. A renderer exploit on a crawled page gets the `sesame` user, which can read the platform's settings (the database credentials, shared with the gateway, and the OpenAI key) but not the gateway's or the node's tokens.
 - Negative: four more certificates and site blocks in a Caddyfile shared with other sites; `make deploy` now needs Node to build the web app, and restarts the platform on every deploy (in-memory chat sessions are lost).
 - Negative: the seeded fixtures still point to `http://localhost:8080…`. A merchant built from `https://le-petit-zinc.…` gets the right links; seeded ones need new fixtures or a re-seed with the server's addresses (#25).
 - Negative: `sslip.io` is a third-party DNS service (ADR-0009's limit), now for five hosts.

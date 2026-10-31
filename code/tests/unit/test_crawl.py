@@ -4,6 +4,7 @@ import pytest
 
 from builder.crawl import (
     HostGuard,
+    crawl,
     is_refused,
     normalize_text,
     normalize_url,
@@ -12,6 +13,7 @@ from builder.crawl import (
     useful_links,
 )
 from core.errors import InvalidInput
+from core.models import StepEvent
 
 HOME = "https://www.bistrot.example/"
 
@@ -87,6 +89,41 @@ async def test_the_guard_checks_hosts_after_dns_resolution() -> None:
     assert await guard.refusal("http://169.254.169.254/latest/meta-data/") == "private"
     assert await guard.refusal("http://nowhere.invalid/") == "unreachable"
     assert await guard.refusal("ftp://example.com/") == "unreachable"
+
+
+async def test_the_guard_refuses_ports_other_than_80_and_443_without_allow_private() -> None:
+    """On the team server its own public address is global: other ports are its services."""
+    guard = HostGuard(allow_private=False, timeout_s=5)
+
+    assert await guard.refusal("http://1.1.1.1:22/") == "port"
+    assert await guard.refusal("http://1.1.1.1:5432/") == "port"
+    assert await guard.refusal("https://1.1.1.1:4710/") == "port"
+    assert await guard.refusal("https://1.1.1.1:8443/") == "port"
+    assert await guard.refusal("http://1.1.1.1:80/") is None
+    assert await guard.refusal("https://1.1.1.1:443/") is None
+    assert await guard.refusal("https://1.1.1.1/") is None
+    # The DNS verdict is per host; the port is checked on every URL, so it can't be reused.
+    assert await guard.refusal("https://1.1.1.1:9000/") == "port"
+    assert await guard.refusal("http://1.1.1.1:99999/") == "unreachable"
+
+
+async def test_a_website_on_another_port_is_refused_before_any_browser() -> None:
+    steps: list[StepEvent] = []
+
+    async def emit(step: StepEvent) -> None:
+        steps.append(step)
+
+    with pytest.raises(InvalidInput, match="usual ports"):
+        await crawl("https://1.1.1.1:8443/", emit, allow_private=False)
+
+    assert [step.status for step in steps] == ["running", "error"]
+
+
+async def test_the_guard_allows_any_port_in_dev() -> None:
+    guard = HostGuard(allow_private=True, timeout_s=5)
+
+    assert await guard.refusal("http://localhost:8080/") is None
+    assert await guard.refusal("http://1.1.1.1:8081/") is None
 
 
 async def test_the_guard_lets_localhost_through_in_dev_but_not_the_metadata_endpoint() -> None:
