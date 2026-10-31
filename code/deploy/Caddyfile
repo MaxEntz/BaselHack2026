@@ -3,10 +3,22 @@
 }
 
 191-96-88-152.sslip.io {
-	# Only Anthropic's outbound range (Claude.ai's MCP tool calls) reaches the gateway, see ADR-0010.
+	# The gateway always requires GATEWAY_TOKEN (ADR-0019). Claude.ai calls from Anthropic's
+	# outbound range and can't send a header, so Caddy adds the token for that range, replacing
+	# any Authorization it sent. The gateway never trusts an address, so a local process forging
+	# X-Forwarded-For gets nothing. Caddy reads the token from /opt/merchant-agents/caddy.env
+	# (deploy/caddy-merchant-agents.conf), written by make deploy.
 	# Reference to recheck if Claude.ai starts getting 403: https://platform.claude.com/docs/en/api/ip-addresses
 	@anthropic remote_ip 160.79.104.0/21
 	handle @anthropic {
+		reverse_proxy 127.0.0.1:8001 {
+			header_up Authorization "Bearer {env.GATEWAY_TOKEN}"
+		}
+	}
+	# Any other assistant (Codex, OpenCode, Claude Code…) sends the token; the gateway checks it.
+	# Scans without one stop here, before uvicorn.
+	@with_token header Authorization "Bearer *"
+	handle @with_token {
 		reverse_proxy 127.0.0.1:8001
 	}
 	handle {
