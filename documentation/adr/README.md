@@ -5,7 +5,8 @@ write a new one and mark the old one `Superseded by ADR-NNNN`.
 
 | ADR | Decision | Status | Date |
 |---|---|---|---|
-| [0009](0009-serve-the-gateway-from-the-team-server-behind-caddy.md) | Serve the gateway from the team server behind Caddy | Accepted | 2026-10-31 |
+| [0010](0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md) | Allow only Anthropic's outbound range on the public gateway | Accepted | 2026-10-31 |
+| [0009](0009-serve-the-gateway-from-the-team-server-behind-caddy.md) | Serve the gateway from the team server behind Caddy | Accepted (access restriction superseded by 0010) | 2026-10-31 |
 | [0008](0008-deviations-from-the-original-tool-contracts.md) | Deviate from the AGENTS.md §8 tool contracts where they were unsafe or incomplete | Accepted | 2026-10-31 |
 | [0007](0007-builder-cache-for-a-replayable-demo.md) | Cache builder results so the demo can be replayed offline | Accepted (implementation: #22) | 2026-10-31 |
 | [0006](0006-chat-cards-rendered-from-tool-results.md) | Render chat cards from tool results, not from the LLM's text | Accepted | 2026-10-31 |
