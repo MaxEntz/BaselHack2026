@@ -26,6 +26,7 @@ from core.db import (
     merchant_conn,
     merchant_metadata,
     merchant_owners_t,
+    merchant_sites_t,
     merchants_t,
     next_reservation_id,
     reservation_changes_t,
@@ -43,6 +44,7 @@ PUBLIC_TABLES = {
     "agent_requests",
     "merchant_owners",
     "merchant_activity",
+    "merchant_sites",
 }
 MERCHANT_TABLES = {"tables", "policy", "blocked_slots", "reservations"}
 MIGRATED = {
@@ -134,6 +136,7 @@ def test_downgrade_refuses_while_a_merchant_schema_exists(
         agent_requests_t,
         merchant_owners_t,
         merchant_activity_t,
+        merchant_sites_t,
     ],
     ids=lambda t: t.name,
 )
