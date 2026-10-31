@@ -153,6 +153,42 @@ async def test_party_too_large_gives_the_fallback_url(gateway_base_url: str) -> 
     assert result["fallback_url"] == ZINC_FALLBACK
 
 
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        ("get_availability", {"date": "9999-12-31", "party_size": 2}),
+        (
+            "create_reservation",
+            {
+                "starts_at": "0001-01-01T00:00:00+01:00",
+                "party_size": 2,
+                "guest_name": "Ada Lovelace",
+                "idempotency_key": "far-past",
+            },
+        ),
+        (
+            "update_reservation",
+            {
+                "reservation_id": "R-\x00",
+                "guest_name": "Ada Lovelace",
+                "starts_at": "9999-12-31T23:30:00-05:00",
+                "idempotency_key": "far-future",
+            },
+        ),
+        ("cancel_reservation", {"reservation_id": "R-001", "guest_name": "Ada\x00"}),
+    ],
+)
+async def test_inputs_postgres_or_dates_cannot_hold_are_invalid_input(
+    gateway_base_url: str, tool: str, arguments: dict[str, Any]
+) -> None:
+    # The same bounded types as the shared /mcp (#79).
+    async with Client(endpoint(gateway_base_url, ZINC)) as client:
+        result = await call(client, tool, **arguments)
+
+    assert result["error"] == "invalid_input"
+    assert result["fallback_url"] is None
+
+
 async def test_a_down_merchant_keeps_its_endpoint_and_gives_the_fallback_url(
     gateway_base_url: str, e2e_engine: AsyncEngine
 ) -> None:

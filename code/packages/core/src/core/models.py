@@ -1,8 +1,8 @@
 """Shared input and output contracts for gateway and admin tools."""
 
 import unicodedata
-from datetime import UTC, datetime, timedelta
 from datetime import date as Date
+from datetime import datetime
 from itertools import pairwise
 from typing import Annotated, Literal, Self
 
@@ -40,16 +40,21 @@ NonEmptyStr = Annotated[
     AfterValidator(_no_control_characters),
 ]
 
-# The days a guest may book or look up (#79): far enough for any real booking, and close enough
-# that the arithmetic on them (UTC conversion, end of a slot, the next day) can't overflow.
+# A guest's name, key or booking reference (#79): a 3 KB key would overflow the unique index,
+# and a 2 MB name a MATP frame.
+MAX_GUEST_TEXT = 200
+GuestText = Annotated[NonEmptyStr, StringConstraints(max_length=MAX_GUEST_TEXT)]
+
+# The days a guest may book or look up (#79): fixed, so the models never read the clock (the
+# service's own clock refuses the past), and far from the ends of `date`, so the arithmetic on
+# them (UTC conversion, end of a slot, the next day) can't overflow.
 EARLIEST_BOOKING = Date(2000, 1, 1)
-BOOKING_HORIZON = timedelta(days=366)
+LATEST_BOOKING = Date(2099, 12, 31)
 
 
 def _bookable_day(day: Date) -> Date:
-    latest = datetime.now(UTC).date() + BOOKING_HORIZON
-    if not EARLIEST_BOOKING <= day <= latest:
-        raise ValueError(f"must be between {EARLIEST_BOOKING} and {latest}")
+    if not EARLIEST_BOOKING <= day <= LATEST_BOOKING:
+        raise ValueError(f"must be between {EARLIEST_BOOKING} and {LATEST_BOOKING}")
     return day
 
 
@@ -209,17 +214,17 @@ class CreateReservationInput(_Model):
     merchant: Slug
     starts_at: BookingTime
     party_size: PositiveInt
-    guest_name: NonEmptyStr
-    idempotency_key: NonEmptyStr
+    guest_name: GuestText
+    idempotency_key: GuestText
 
 
 class UpdateReservationInput(_Model):
     merchant: Slug
-    reservation_id: NonEmptyStr
-    guest_name: NonEmptyStr
+    reservation_id: GuestText
+    guest_name: GuestText
     starts_at: BookingTime | None = None
     party_size: PositiveInt | None = None
-    idempotency_key: NonEmptyStr
+    idempotency_key: GuestText
 
     @model_validator(mode="after")
     def validate_has_change(self) -> Self:
@@ -230,8 +235,8 @@ class UpdateReservationInput(_Model):
 
 class CancelReservationInput(_Model):
     merchant: Slug
-    reservation_id: NonEmptyStr
-    guest_name: NonEmptyStr
+    reservation_id: GuestText
+    guest_name: GuestText
 
 
 class ReservationOutput(_Model):
@@ -243,7 +248,7 @@ class CancelOutput(_Model):
 
 
 class GetMyReservationsInput(_Model):
-    guest_name: NonEmptyStr
+    guest_name: GuestText
 
 
 class GetMyReservationsOutput(_Model):

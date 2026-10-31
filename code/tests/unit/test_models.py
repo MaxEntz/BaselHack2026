@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any
 
 import pytest
@@ -357,20 +357,34 @@ def test_guest_names_keep_letters_and_non_breaking_spaces(name: str) -> None:
     assert models.GetMyReservationsInput(guest_name=name).guest_name == name
 
 
-@pytest.mark.parametrize("day", ["0001-01-01", "1999-12-31", "9999-12-31"])
+@pytest.mark.parametrize("day", ["0001-01-01", "1999-12-31", "2100-01-01", "9999-12-31"])
 def test_availability_refuses_a_date_outside_the_booking_range(day: str) -> None:
     with pytest.raises(ValidationError, match="between"):
         models.GetAvailabilityInput(merchant="le-petit-zinc", date=day, party_size=2)  # type: ignore[arg-type]
 
 
-def test_availability_takes_a_date_up_to_a_year_ahead() -> None:
-    latest = datetime.now(UTC).date() + models.BOOKING_HORIZON
+@pytest.mark.parametrize("day", [models.EARLIEST_BOOKING, models.LATEST_BOOKING])
+def test_availability_takes_both_ends_of_the_booking_range(day: date) -> None:
+    # Fixed bounds: the models never read the clock, the service's own clock decides the past.
+    models.GetAvailabilityInput(merchant="le-petit-zinc", date=day, party_size=2)
 
-    models.GetAvailabilityInput(merchant="le-petit-zinc", date=latest, party_size=2)
-    with pytest.raises(ValidationError, match="between"):
-        models.GetAvailabilityInput(
-            merchant="le-petit-zinc", date=latest + timedelta(days=1), party_size=2
-        )
+
+@pytest.mark.parametrize(
+    ("model", "fields", "field"),
+    [
+        (models.CreateReservationInput, BOOK, "guest_name"),
+        (models.CreateReservationInput, BOOK, "idempotency_key"),
+        (models.UpdateReservationInput, AMEND, "reservation_id"),
+        (models.GetMyReservationsInput, {"guest_name": "Sam Dupont"}, "guest_name"),
+    ],
+)
+def test_guest_identity_fields_are_at_most_200_characters(
+    model: type[BaseModel], fields: dict[str, object], field: str
+) -> None:
+    # A 3 KB key overflows the unique index; a 2 MB name overflows a MATP frame.
+    model.model_validate(fields | {field: "a" * models.MAX_GUEST_TEXT})
+    with pytest.raises(ValidationError, match="at most 200"):
+        model.model_validate(fields | {field: "a" * (models.MAX_GUEST_TEXT + 1)})
 
 
 @pytest.mark.parametrize(

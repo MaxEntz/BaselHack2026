@@ -502,7 +502,7 @@ async def test_cancel_of_an_unknown_booking(
         await service.cancel_reservation(slug, "R-999", by="guest", guest_name=GUEST)
 
 
-@pytest.mark.parametrize("now", ["20:30", "23:00"])  # started, then over
+@pytest.mark.parametrize("now", ["20:00", "20:30", "23:00"])  # starting, started, over
 async def test_a_guest_can_neither_move_nor_cancel_a_booking_once_it_started(
     engine: AsyncEngine,
     service: PgAgentService,

@@ -348,6 +348,26 @@ async def test_a_search_beyond_the_node_s_bounds_is_invalid_input_in_both_modes(
             "cancel_reservation",
             {"merchant": ZINC, "reservation_id": "R-\x00", "guest_name": "Ada Lovelace"},
         ),
+        (
+            "update_reservation",
+            {
+                "merchant": ZINC,
+                "reservation_id": "R-001",
+                "guest_name": "Ada Lovelace",
+                "starts_at": "9999-12-31T23:30:00-05:00",
+                "idempotency_key": "far-future",
+            },
+        ),
+        (
+            "create_reservation",
+            {
+                "merchant": ZINC,
+                "starts_at": at(day_ahead(), "20:00"),
+                "party_size": 2,
+                "guest_name": "Ada Lovelace",
+                "idempotency_key": "k" * 8000,
+            },
+        ),
     ],
 )
 async def test_inputs_postgres_or_dates_cannot_hold_are_invalid_input_not_an_outage(

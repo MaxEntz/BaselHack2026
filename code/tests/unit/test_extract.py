@@ -108,6 +108,16 @@ async def test_the_llm_fills_a_draft_and_the_code_owns_the_rest() -> None:
     assert llm.calls[0]["instructions"] == INSTRUCTIONS
 
 
+async def test_a_name_split_over_lines_becomes_one_line() -> None:
+    # Copied from a two-line heading: the profile refuses control characters (#79).
+    llm = FakeLLM(draft(name="Le Petit\n  Zinc\t"))
+
+    result = await extract_profile(CRAWL, "", llm)
+
+    assert result.profile.name == "Le Petit Zinc"
+    assert len(llm.calls) == 1
+
+
 async def test_missing_floor_plan_gets_the_default_layout_and_an_assumption() -> None:
     llm = FakeLLM(draft(tables=[], seats=30))
 

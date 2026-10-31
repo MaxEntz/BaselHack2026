@@ -60,6 +60,7 @@ Clock = Callable[[], datetime]
 _Row = Row[*tuple[Any, ...]]
 
 EXCLUSION_VIOLATION = "23P01"
+UNIQUE_VIOLATION = "23505"
 IDEMPOTENCY_CONSTRAINT = "reservations_idempotency_key_key"
 # A notice comes back on every lookup for this long after the first one that returned it, so
 # that an answer lost on its way to the guest doesn't lose the notice (#91).
@@ -204,7 +205,7 @@ async def _attempt(
     except DBAPIError as error:
         if _sqlstate(error) == EXCLUSION_VIOLATION:
             return "taken"
-        if _constraint(error) == IDEMPOTENCY_CONSTRAINT:
+        if _sqlstate(error) == UNIQUE_VIOLATION and _constraint(error) == IDEMPOTENCY_CONSTRAINT:
             return "key_taken"
         raise
     return "done"

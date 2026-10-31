@@ -33,7 +33,7 @@ from core.models import (
     CancelOutput,
     GetAvailabilityOutput,
     GetMyReservationsOutput,
-    NonEmptyStr,
+    GuestText,
     ReservationOutput,
     SearchFilters,
     SearchMerchantsOutput,
@@ -126,7 +126,7 @@ DESTRUCTIVE = ToolAnnotations(
 
 Merchant = Annotated[Slug, Field(description="Restaurant slug returned by search_merchants.")]
 GuestName = Annotated[
-    NonEmptyStr, Field(description="Guest's full name, the same one for the whole booking.")
+    GuestText, Field(description="Guest's full name, the same one for the whole booking.")
 ]
 PartySize = Annotated[PositiveInt, Field(description="Number of guests.")]
 StartsAt = Annotated[
@@ -134,9 +134,9 @@ StartsAt = Annotated[
     Field(description="Start time with its UTC offset, exactly as returned by get_availability."),
 ]
 IdempotencyKey = Annotated[
-    NonEmptyStr, Field(description="UUID you generate; reuse it only to retry the same action.")
+    GuestText, Field(description="UUID you generate; reuse it only to retry the same action.")
 ]
-ReservationId = Annotated[NonEmptyStr, Field(description="Booking reference, e.g. R-001.")]
+ReservationId = Annotated[GuestText, Field(description="Booking reference, e.g. R-001.")]
 
 
 def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -> MCPServer:

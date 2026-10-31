@@ -27,7 +27,7 @@ from core.models import (
     DoneEvent,
     ErrorCode,
     ErrorEvent,
-    NonEmptyStr,
+    GuestText,
     ReservationOutput,
     Slug,
     ToolError,
@@ -71,8 +71,8 @@ class PublicReservationInput(_Body):
 
     starts_at: BookingTime
     party_size: PositiveInt
-    guest_name: NonEmptyStr
-    idempotency_key: NonEmptyStr
+    guest_name: GuestText
+    idempotency_key: GuestText
 
 
 def create_app(
@@ -170,7 +170,8 @@ def create_app(
         if agent is None:
             raise AgentUnavailable("Online booking is not available yet.")
         started = time.perf_counter()
-        outcome = "ok"
+        # `ok` only once booked: a crash or a cancelled request is never logged as `ok` (#79).
+        outcome = "error"
         try:
             reservation = await agent.create_reservation(
                 slug,
@@ -180,11 +181,9 @@ def create_app(
                 body.idempotency_key,
                 via="website",
             )
+            outcome = "ok"
         except AgentError as error:
             outcome = error.code
-            raise
-        except Exception:
-            outcome = "error"  # a crash is never logged as `ok` (#79)
             raise
         finally:
             log.info(
