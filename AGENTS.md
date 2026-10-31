@@ -1,0 +1,387 @@
+# AGENTS.md — Merchant Agents
+
+> Let Claude book with any merchant, straight from their website.
+
+This file is the single source of truth for this repository. Read it fully before writing code. When something is not specified here, follow **§13 Default decisions** instead of asking, and record any new decision in **§14 Decision log**.
+
+`CLAUDE.md` only imports this file (`@AGENTS.md`), so Claude Code and opencode read the same instructions. Edit this file, never `CLAUDE.md`.
+
+## 0. Corrections (take precedence over the sections below)
+
+- **All code lives in `code/`** (BaselHack template: `code/`, `documentation/`, `assets/`). The `merchant-agents/` root of §4 is `code/`; run every command of §10 from `code/`.
+- **Package `platform` is named `merchant_platform`** (`packages/merchant_platform/src/merchant_platform/`): `platform` is a Python stdlib module and shadows it. Run it with `uv run uvicorn merchant_platform.api:app --port 8002`.
+- **MCP Python SDK v2**: `from mcp.server import MCPServer`. `FastMCP` no longer exists in v2; do not copy v1 examples. Behind a tunnel, set `allowed_hosts` or the transport answers 421.
+- **`templates/restaurant.json` lives in `agent`** (provisioning consumes it), not in `builder`.
+- **Merchant schema name** = `m_` + slug with `-` replaced by `_`; slugs are ≤ 61 characters (Postgres identifiers are limited to 63 bytes).
+- **Tool contract changes vs §8**: `update_reservation` and `cancel_reservation` also take `guest_name` (checked against the booking); `search_merchants` also returns `suggestions` and `ignored_filters`; admin tool `update_tables` added; table `public.guest_notices` added to the §7.2 SQL.
+- Work is tracked in GitHub issues (milestones M0–M4, Démo); the tracking issue #26 lists every issue and these corrections.
+
+---
+
+## 1. What we are building
+
+A merchant (first vertical: **restaurants**) brings **their existing website** and a **short description** of how they work. Our AI reads the site, combines it with the description, and **generates a dedicated agent** for that merchant: its own data (tables, time slots, reservations, policies) and its own **MCP tools**.
+
+Two conversational experiences sit on top:
+
+1. **User side, in Claude.** A user asks Claude: *"Table for 4 tonight at 8pm."* Claude calls our **protocol** (one remote MCP server, added once as a connector). The protocol applies the user's **preferences** as filters, finds the merchant, and routes the call to the merchant's agent, which books. **If the agent fails, the protocol returns a fallback URL to the merchant's original website.**
+2. **Merchant side, on our platform.** The merchant manages everything **by chatting with a platform assistant**: onboarding (give the URL, describe the business, the agent gets built), then day-to-day operations (*"What bookings do I have tonight?"*, *"Block 21:00 tonight"*, *"Set max party size to 6"*, *"Cancel R-001"*). New bookings made through Claude show up **live** in the merchant's conversation.
+
+There is **no form-based UI** on either side: everything is a conversation. Structured results (booking card, reservations table, agent profile) are rendered as rich messages inside the chat.
+
+## 2. Glossary
+
+| Term | Meaning |
+|---|---|
+| **Protocol / Gateway** | The public remote MCP server Claude connects to. Discovery, preference filtering, routing, fallback. |
+| **Merchant agent** | The per-merchant booking logic and data. Logically one per merchant; physically one multi-tenant service in the POC (§13). |
+| **Builder** | Pipeline that turns *website + description* into a validated `MerchantProfile`, then provisions the agent. |
+| **Platform assistant** | The LLM assistant merchants chat with on our platform. Uses admin tools on the merchant's agent. |
+| **MerchantProfile** | Validated JSON describing a merchant (§7.1). Single input to provisioning. |
+| **Fallback URL** | Link to the merchant's own booking page, returned whenever the agent can't serve a request. |
+
+## 3. Architecture
+
+```mermaid
+flowchart LR
+  subgraph USER[User side · every request]
+    User -->|1 prompt| Claude
+    Claude -->|2 preferences| Claude
+    Claude <-->|3 MCP: user tools| Gateway[Protocol / Gateway<br/>remote MCP server]
+  end
+
+  subgraph CORE[Our backend]
+    Gateway -->|4 route + filters| Agent[Agent runtime<br/>multi-tenant]
+    Agent <--> DB[(PostgreSQL<br/>schema per merchant)]
+    Platform[Platform API<br/>FastAPI] --> Assistant[Platform assistant<br/>Claude API + admin tools]
+    Assistant --> Agent
+    Assistant --> Builder[Builder<br/>Playwright + Claude API]
+    Builder -->|provision| Agent
+    DB -. LISTEN/NOTIFY .-> Platform
+  end
+
+  subgraph MERCHANT[Merchant side · chat UI]
+    Merchant <-->|chat + SSE events| Platform
+  end
+
+  Gateway -. agent error / timeout .-> Fallback[Merchant's original website]
+```
+
+Request numbering matches the design canvas ("Architecture" page): runtime steps **1–6**, onboarding steps **A–C**.
+
+## 4. Repository layout
+
+```
+merchant-agents/
+├── CLAUDE.md                  ← this file
+├── README.md                  ← how to run, short
+├── docker-compose.yml         ← postgres + services
+├── pyproject.toml             ← uv workspace
+├── .env.example
+├── packages/
+│   ├── core/                  ← shared: models, DB, availability logic, errors
+│   │   └── src/core/
+│   │       ├── models.py          (Pydantic: MerchantProfile, Slot, Reservation, …)
+│   │       ├── db.py              (SQLAlchemy engine, schema-per-merchant helpers)
+│   │       ├── availability.py    (pure functions, no I/O)
+│   │       └── errors.py          (error codes, §8.4)
+│   ├── agent/                 ← agent runtime: booking + admin operations per merchant
+│   │   └── src/agent/
+│   │       ├── service.py         (AgentService: create/update/cancel/list/block/…)
+│   │       └── provisioning.py    (MerchantProfile → schema + rows)
+│   ├── gateway/               ← public remote MCP server (FastMCP, Streamable HTTP)
+│   │   └── src/gateway/
+│   │       ├── server.py          (user tools, §8.1)
+│   │       ├── discovery.py       (search + preference filtering)
+│   │       └── fallback.py        (timeouts, error → fallback_url)
+│   ├── builder/               ← website + description → MerchantProfile
+│   │   └── src/builder/
+│   │       ├── crawl.py           (Playwright)
+│   │       ├── extract.py         (Claude API, structured output)
+│   │       └── templates/restaurant.json
+│   └── platform/              ← merchant platform API + assistant
+│       └── src/platform/
+│           ├── api.py             (FastAPI: /chat, /events SSE)
+│           ├── assistant.py       (Claude API tool-use loop, admin tools §8.2)
+│           └── events.py          (Postgres LISTEN/NOTIFY → SSE)
+├── web/                       ← merchant chat UI (Vite + React + TS)
+├── migrations/                ← Alembic
+└── tests/
+    ├── unit/
+    ├── integration/
+    └── e2e/                   ← scripted demo scenario, §11
+```
+
+## 5. Stack (fixed for the POC)
+
+| Area | Choice | Why | Rejected |
+|---|---|---|---|
+| Language | **Python 3.12**, managed with **uv** | Most mature MCP SDK; Playwright and Anthropic SDK in the same language; fast iteration. | Go/Rust gateway — revisit only if latency/load require it. |
+| MCP | Official **`mcp` SDK (FastMCP)**, **Streamable HTTP** transport | Claude supports remote MCP servers as connectors; no custom client. | Custom REST API re-exposed as tools. |
+| API | **FastAPI** + **Pydantic v2** | Typed schemas shared with MCP tools; native SSE support via streaming responses. | Flask, Django. |
+| DB | **PostgreSQL 16**, **SQLAlchemy 2.0**, **Alembic** | `EXCLUDE` constraint on time ranges makes double booking impossible; `LISTEN/NOTIFY` gives live events for free. | SQLite (no exclusion constraint, weak concurrency). |
+| Crawl | **Playwright** (Chromium) | Handles JS-rendered restaurant sites. | requests + BeautifulSoup (misses JS content). |
+| LLM | **Anthropic Python SDK**, model from env `ANTHROPIC_MODEL` | Structured extraction via tool use; platform assistant via tool-use loop. | — |
+| Live events | Postgres **LISTEN/NOTIFY → SSE** | No extra broker; one-way server→client is all we need. | Redis pub/sub, WebSockets (unneeded complexity). |
+| Front | **Vite + React + TypeScript** | Minimal chat UI with rich message components. | Next.js (SSR not needed). |
+| Tests | **pytest**, **pytest-asyncio**, **testcontainers** (Postgres) | Real Postgres in tests: the exclusion constraint must be tested for real. | Mocked DB. |
+| Lint/format | **ruff** (lint + format), **mypy --strict** on `core` | | |
+
+## 6. Domain rules (restaurant vertical)
+
+- A reservation occupies its table for **120 minutes** (`SLOT_LENGTH_MIN`, configurable per merchant later).
+- Bookable start times: every **30 min** within each service, **last seating = service end − 60 min**.
+- Table assignment: smallest table with `seats >= party_size` that has **no overlapping reservation** and whose start time is **not blocked**.
+- `party_size > max_party_size` → error `party_too_large` + `fallback_url`.
+- Availability search returns up to **3 slots**, closest to the requested time, sorted by time.
+- **Every write initiated from Claude requires explicit user confirmation** in the conversation before `create_reservation` / `update_reservation` / `cancel_reservation` is called. This is enforced by tool descriptions (instructing Claude to confirm) and by the protocol requiring an `idempotency_key`.
+- A merchant cancelling a booking must **notify the guest** (POC: stored notice surfaced on the user's next `get_my_reservations`; see §13).
+- Blocking a slot never removes existing bookings; it only prevents new ones at that start time.
+
+## 7. Data model
+
+### 7.1 MerchantProfile (output of the builder, input of provisioning)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MerchantProfile",
+  "type": "object",
+  "required": ["slug", "name", "website", "vertical", "seats", "services", "max_party_size", "tables", "tags", "price_level", "fallback_url"],
+  "properties": {
+    "slug":            { "type": "string", "pattern": "^[a-z0-9-]{3,63}$" },
+    "name":            { "type": "string" },
+    "website":         { "type": "string", "format": "uri" },
+    "vertical":        { "const": "restaurant" },
+    "location":        { "type": "object", "properties": { "city": { "type": "string" }, "lat": { "type": "number" }, "lng": { "type": "number" } } },
+    "seats":           { "type": "integer", "minimum": 1 },
+    "services":        { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["start", "end"], "properties": { "start": { "type": "string", "pattern": "^\\d{2}:\\d{2}$" }, "end": { "type": "string", "pattern": "^\\d{2}:\\d{2}$" } } } },
+    "max_party_size":  { "type": "integer", "minimum": 1 },
+    "tables":          { "type": "array", "items": { "type": "object", "required": ["label", "seats"], "properties": { "label": { "type": "string" }, "seats": { "type": "integer", "minimum": 1 } } } },
+    "tags":            { "type": "array", "items": { "enum": ["gluten-free", "vegetarian", "vegan", "halal", "kosher", "terrace", "kid-friendly"] } },
+    "price_level":     { "enum": ["€", "€€", "€€€", "€€€€"] },
+    "cancellation_policy": { "type": "string" },
+    "fallback_url":    { "type": "string", "format": "uri" }
+  }
+}
+```
+
+The LLM **only fills this schema**. It never generates code, SQL or tool definitions. Provisioning is deterministic code driven by the profile and `templates/restaurant.json`.
+
+### 7.2 SQL (one schema per merchant, plus a shared `public` registry)
+
+```sql
+-- public schema: registry used by discovery
+CREATE TABLE public.merchants (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug          text UNIQUE NOT NULL,
+  name          text NOT NULL,
+  website       text NOT NULL,
+  fallback_url  text NOT NULL,
+  city          text,
+  tags          text[] NOT NULL DEFAULT '{}',
+  price_level   text NOT NULL,
+  status        text NOT NULL DEFAULT 'live' CHECK (status IN ('building','live','down')),
+  profile       jsonb NOT NULL,          -- the validated MerchantProfile
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- per-merchant schema: m_<slug>
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+CREATE TABLE tables (
+  id     serial PRIMARY KEY,
+  label  text UNIQUE NOT NULL,
+  seats  int  NOT NULL CHECK (seats > 0)
+);
+
+CREATE TABLE policy (
+  id               int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  max_party_size   int NOT NULL,
+  slot_length_min  int NOT NULL DEFAULT 120,
+  services         jsonb NOT NULL          -- [{ "start": "19:00", "end": "22:00" }]
+);
+
+CREATE TABLE blocked_slots (
+  starts_at  timestamptz PRIMARY KEY
+);
+
+CREATE TABLE reservations (
+  id               text PRIMARY KEY,       -- human ref, e.g. R-001
+  table_id         int  NOT NULL REFERENCES tables,
+  guest_name       text NOT NULL,
+  party_size       int  NOT NULL CHECK (party_size > 0),
+  during           tstzrange NOT NULL,
+  via              text NOT NULL CHECK (via IN ('claude','merchant','website')),
+  status           text NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed','cancelled')),
+  cancelled_by     text CHECK (cancelled_by IN ('guest','merchant')),
+  idempotency_key  text UNIQUE,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  EXCLUDE USING gist (table_id WITH =, during WITH &&) WHERE (status = 'confirmed')
+);
+
+-- live events for the merchant platform
+CREATE OR REPLACE FUNCTION notify_reservation() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('reservations', json_build_object(
+    'schema', TG_TABLE_SCHEMA, 'op', TG_OP, 'id', NEW.id, 'status', NEW.status)::text);
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER reservations_notify AFTER INSERT OR UPDATE ON reservations
+FOR EACH ROW EXECUTE FUNCTION notify_reservation();
+```
+
+## 8. Tool contracts
+
+All tool inputs/outputs are Pydantic models in `core/models.py`; JSON shown for readability. Times are ISO 8601 with the merchant's timezone (POC: `Europe/Zurich`).
+
+### 8.1 User tools — exposed by the **gateway** to Claude
+
+| Tool | Input | Output |
+|---|---|---|
+| `search_merchants` | `{ query: str, near?: str, date?: str, filters?: { tags?: str[], max_price?: str } }` | `{ merchants: [{ slug, name, city, tags, price_level }] }` |
+| `get_availability` | `{ merchant: str, date: str, time?: "HH:MM", party_size: int }` | `{ slots: [{ starts_at, table_label }] }` (≤ 3) |
+| `create_reservation` | `{ merchant, starts_at, party_size, guest_name, idempotency_key }` | `{ reservation: { id, starts_at, party_size, table_label, status } }` |
+| `update_reservation` | `{ merchant, reservation_id, starts_at?, party_size?, idempotency_key }` | `{ reservation }` |
+| `cancel_reservation` | `{ merchant, reservation_id }` | `{ status: "cancelled" }` |
+| `get_my_reservations` | `{ guest_name }` | `{ reservations: [...], notices: [str] }` |
+
+Tool descriptions must tell Claude: *confirm with the user before any create/update/cancel; pass the user's dietary/budget preferences as `filters`; if a result contains `fallback_url`, give it to the user.*
+
+### 8.2 Admin tools — used by the **platform assistant** (merchant side, never exposed to Claude users)
+
+| Tool | Input | Output |
+|---|---|---|
+| `build_agent` | `{ website: str, description: str }` | `{ profile: MerchantProfile, status: "live" }` (streams step events) |
+| `list_reservations` | `{ date: str }` | `{ reservations: [{ id, time, guest_name, party_size, table_label, via }] }` |
+| `get_stats` | `{ date: str }` | `{ bookings: int, guests: int, seats: int, blocked: [str] }` |
+| `block_slot` / `unblock_slot` | `{ starts_at }` | `{ ok: true }` |
+| `update_policy` | `{ max_party_size?: int, services?: [...] }` | `{ policy }` |
+| `cancel_reservation` | `{ reservation_id, by: "merchant" }` | `{ status: "cancelled" }` — also creates a guest notice |
+
+### 8.3 Builder steps (emitted as events, shown in the merchant chat)
+
+1. `crawl` — Playwright loads the site (homepage + up to 5 same-domain pages matching `menu|carte|hours|horaires|contact|book|reserv`).
+2. `extract` — Claude API fills `MerchantProfile` (tool-use with the JSON schema as `input_schema`), using crawled text + merchant description. Description wins on conflicts.
+3. `validate` — Pydantic validation; on failure, one retry with the validation errors fed back; then fail with a message to the merchant.
+4. `provision` — create schema `m_<slug>`, tables, policy, registry row.
+5. `deploy` — mark `status = 'live'`; the merchant is now discoverable by the gateway.
+
+### 8.4 Errors
+
+Every tool error is `{ "error": <code>, "message": str, "fallback_url"?: str }`.
+
+| Code | When | `fallback_url` |
+|---|---|---|
+| `agent_unavailable` | Agent timeout (> **2 s**) or exception, or merchant `status = 'down'` | yes |
+| `party_too_large` | `party_size > max_party_size` | yes |
+| `slot_unavailable` | Slot taken (incl. exclusion-constraint violation) or blocked | no |
+| `not_found` | Unknown merchant / reservation | no |
+| `invalid_input` | Validation error | no |
+
+## 9. Conversations to support (acceptance scenarios)
+
+**User ↔ Claude (via gateway)**
+- "Table for 4 tonight at 8pm" → `search_merchants` with preference filters → `get_availability` → Claude proposes slots → user picks → Claude asks to confirm → `create_reservation` → booking card.
+- "Move it to 9pm" → `update_reservation`. "Cancel my booking" → `cancel_reservation`.
+- Vegan preference on, merchant not tagged vegan → no match, Claude offers to drop the filter.
+- "Table for 8" when max is 6 → `party_too_large` → Claude gives the fallback link.
+- Agent down → `agent_unavailable` → Claude gives the fallback link.
+
+**Merchant ↔ platform assistant**
+- Onboarding: assistant asks for the website → asks for the description → calls `build_agent` → shows step progress → shows the agent profile card.
+- "What bookings do I have tonight?" → `list_reservations` → table message.
+- "Block 21:00 tonight" → `block_slot`; Claude users no longer get 21:00.
+- "Set max party size to 6" → `update_policy`.
+- "How busy are we tonight?" → `get_stats`.
+- "Cancel R-001" → `cancel_reservation(by="merchant")` → guest notice created.
+- A booking made through Claude appears in the merchant chat as a **"New booking via Claude"** notification within 2 s (SSE).
+
+## 10. Commands
+
+```bash
+uv sync                                   # install
+docker compose up -d db                   # Postgres 16
+uv run alembic upgrade head               # migrations
+uv run python -m gateway                  # MCP server  → http://localhost:8001/mcp
+uv run uvicorn platform.api:app --port 8002
+cd web && npm i && npm run dev            # merchant chat UI → http://localhost:5173
+uv run pytest                             # all tests (testcontainers starts Postgres)
+uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core
+npx @modelcontextprotocol/inspector       # manual MCP testing against :8001/mcp
+```
+
+Env (`.env.example`): `DATABASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `GATEWAY_PUBLIC_URL`.
+
+## 11. Milestones (each ends green on its tests)
+
+**M1 — Core + agent runtime**
+- `core/availability.py` as pure functions; unit tests for slot generation, table choice, blocked slots, last seating.
+- Provisioning from a hand-written `MerchantProfile` fixture (`tests/fixtures/le-petit-zinc.json`).
+- Integration test: **two concurrent `create_reservation` on the same table/slot → exactly one succeeds** (real Postgres).
+
+**M2 — Gateway (user side)**
+- FastMCP server with §8.1 tools, preference filtering, 2 s timeout, error mapping §8.4.
+- Tested with MCP Inspector; e2e test calling tools through an MCP client.
+- Connected to Claude as a custom connector (needs `GATEWAY_PUBLIC_URL`, e.g. via a tunnel); manual run of the §9 user scenarios.
+
+**M3 — Platform assistant + live events (merchant side)**
+- FastAPI `/chat` running a Claude tool-use loop with §8.2 admin tools; `/events` SSE fed by `LISTEN/NOTIFY`.
+- Web chat UI rendering rich messages: steps, profile card, reservations table, notifications.
+
+**M4 — Builder**
+- Crawl + extraction + validation + provisioning, streamed as steps into the merchant chat.
+- Demo on **3 real restaurant websites**; store their generated profiles as fixtures.
+
+**Definition of done (POC):** the full §9 scenario list runs end to end — merchant onboards by chat, user books from Claude, merchant sees it live and blocks a slot, outage triggers fallback.
+
+## 12. Conventions
+
+- Business logic lives in `core` and `agent` as **plain functions/classes**; MCP and HTTP layers are thin adapters.
+- No raw SQL string building from user input; parameterized queries only. Schema names come from validated slugs.
+- Every tool validates input with Pydantic and returns §8.4 errors, never stack traces.
+- Log every tool call (tool, merchant, latency, outcome) as structured JSON; never log guest names at INFO level.
+- Tests first for `availability.py` and anything touching the exclusion constraint.
+- Commits: Conventional Commits (`feat:`, `fix:`, `test:` …), one milestone per branch/PR.
+
+## 13. Default decisions (apply without asking)
+
+- **One agent per merchant** is a logical boundary: implemented as one multi-tenant `AgentService` keyed by merchant slug, data isolated by Postgres schema. No per-merchant processes in the POC.
+- **Gateway and agent runtime** run in the same process in the POC, behind an `AgentClient` interface so they can be split later.
+- **Auth:** none in M1–M2 local dev; for the Claude connector in M2, add OAuth 2.1 (as the MCP spec describes) only if the connector requires it, otherwise a static bearer token via env. Merchant platform: single hard-coded merchant session in the POC.
+- **Guest identity:** the `guest_name` Claude passes; no accounts.
+- **Guest notices** (merchant cancellations): stored per guest name and returned by `get_my_reservations`; no push to Claude.
+- **Fallback depth:** return the URL only; Claude does not drive the website.
+- **Timezone:** `Europe/Zurich` everywhere; store `timestamptz`.
+- **Location/discovery:** single city, filter by tags and price only; no ranking beyond name order.
+- **Preferences** are never stored server-side; they only arrive as `filters`.
+- Missing info in a merchant description → use template defaults (`slot_length_min=120`, `max_party_size=8`, services `19:00–22:00`) and tell the merchant in chat what was assumed.
+
+## 14. Decision log
+
+| Date | Decision | Reason |
+|---|---|---|
+| 2026-10-31 | Python + FastMCP + Postgres + FastAPI + Vite/React | See §5 |
+| 2026-10-31 | LLM fills a schema, never writes code | Safety, determinism (§7.1) |
+| 2026-10-31 | Both sides are chat-only | Product principle (§1) |
+| 2026-10-31 | Code in `code/`, `platform` → `merchant_platform`, MCP SDK v2 (`MCPServer`) | BaselHack template; stdlib name clash; FastMCP removed in v2 (§0) |
+| 2026-10-31 | Claude API for every LLM call (OpenAI not used) | One SDK; a multi-provider layer costs time for no demo gain |
+| 2026-10-31 | `AGENTS.md` is the shared instruction file, `CLAUDE.md` imports it | Team uses both Claude Code and opencode |
+
+## 15. Out of scope (POC)
+
+Payments/deposits/no-show fees · other verticals · sync with existing booking/POS software · merchant ownership verification · multi-city discovery and ranking · mobile apps · i18n beyond English UI.
+
+## 16. Open questions (do not block on these; use §13 meanwhile)
+
+- How to rank merchants when many match (distance, availability, preferences)?
+- How to verify that the person onboarding owns the website?
+- Merchants already on a booking tool: integrate it, or make our DB the source of truth?
+- Should Claude complete the website flow itself on fallback (browser) instead of returning a link?
+- One template per vertical, or a generic template?
+- Business model: per booking, subscription, or free at first?
+
+## 17. Reference: interactive prototype
+
+The design canvas *Merchant agents* (pages **Overview**, **Architecture**, **POC**) contains a clickable prototype of both conversations. It simulates the crawl, the extraction and both assistants, but implements the real availability rules of §6. Use it as the UX reference for message types and wording; this file is the reference for behaviour.
