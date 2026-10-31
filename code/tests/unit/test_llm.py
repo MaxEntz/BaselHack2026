@@ -91,10 +91,10 @@ TOOL = ToolSpec(
 )
 
 
-def stream() -> httpx.Response:
+def stream(events: list[dict[str, Any]] = EVENTS) -> httpx.Response:
     body = "".join(
         f"event: {event['type']}\ndata: {json.dumps({**event, 'sequence_number': i})}\n\n"
-        for i, event in enumerate(EVENTS)
+        for i, event in enumerate(events)
     )
     return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=body)
 
@@ -150,6 +150,53 @@ async def test_streams_text_and_returns_tool_calls() -> None:
     assert request["instructions"] == "Be brief."
     assert request["tools"][0]["strict"] is True
     assert request["tools"][0]["parameters"]["required"] == ["date"]
+
+
+REASONING = {
+    "type": "reasoning",
+    "id": "rs_1",
+    "summary": [],
+    "encrypted_content": "opaque==",
+}
+
+
+def stream_with_reasoning() -> httpx.Response:
+    completed = {**BASE, "status": "completed", "output": [REASONING, MESSAGE, CALL]}
+    return stream([*EVENTS[:-1], {"type": "response.completed", "response": completed}])
+
+
+async def test_reasoning_items_are_requested_and_kept_for_the_next_call() -> None:
+    api = Api(stream_with_reasoning)
+
+    reply = await respond(api.client(), [])
+
+    assert api.requests[0]["include"] == ["reasoning.encrypted_content"]
+    assert reply.provider_items == (REASONING,)
+    assert reply.as_message()["provider_items"] == [REASONING]
+
+
+def test_reasoning_items_go_back_within_the_current_turn_only() -> None:
+    earlier = {"type": "reasoning", "id": "rs_0", "summary": [], "encrypted_content": "old"}
+    history: list[Message] = [
+        {"role": "user", "content": "Block 21:00"},
+        {"role": "assistant", "content": "Done.", "tool_calls": [], "provider_items": [earlier]},
+        {"role": "user", "content": "Block 21:00 then show me tonight"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"id": "c1", "name": "block_slot", "arguments": "{}"}],
+            "provider_items": [REASONING],
+        },
+        {"role": "tool", "call_id": "c1", "content": "{}", "is_error": False},
+    ]
+
+    items = to_openai_input(history)
+
+    assert earlier not in items
+    assert items[3:5] == [
+        REASONING,
+        {"type": "function_call", "call_id": "c1", "name": "block_slot", "arguments": "{}"},
+    ]
 
 
 async def test_retries_once_on_overload() -> None:

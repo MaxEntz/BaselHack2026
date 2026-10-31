@@ -4,8 +4,12 @@ The conversation is stored in a neutral format (`Message`), so the tool-use loop
 touches a provider's types. Messages:
 
     {"role": "user", "content": str}
-    {"role": "assistant", "content": str, "tool_calls": [{"id", "name", "arguments"}]}
+    {"role": "assistant", "content": str, "tool_calls": [{"id", "name", "arguments"}],
+     "provider_items": [...]}
     {"role": "tool", "call_id": str, "content": str, "is_error": bool}
+
+`provider_items` is opaque to the loop: what a client needs to resend with that message
+(OpenAI: the encrypted reasoning items). Other clients ignore it.
 """
 
 import asyncio
@@ -48,6 +52,7 @@ class ToolCall:
 class LLMReply:
     text: str
     tool_calls: tuple[ToolCall, ...] = field(default=())
+    provider_items: tuple[dict[str, Any], ...] = field(default=())
 
     def as_message(self) -> Message:
         return {
@@ -57,6 +62,7 @@ class LLMReply:
                 {"id": call.id, "name": call.name, "arguments": call.arguments}
                 for call in self.tool_calls
             ],
+            "provider_items": list(self.provider_items),
         }
 
 
@@ -101,13 +107,21 @@ def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def to_openai_input(history: Sequence[Message]) -> list[dict[str, Any]]:
-    """Neutral messages → Responses API input items."""
+    """Neutral messages → Responses API input items.
+
+    Reasoning items go back only within the current turn (after the last user message): they
+    help the model carry on between tool calls, and older ones are of no use to it.
+    """
+    users = [index for index, message in enumerate(history) if message["role"] == "user"]
+    turn_start = users[-1] if users else 0
     items: list[dict[str, Any]] = []
-    for message in history:
+    for index, message in enumerate(history):
         role = message["role"]
         if role == "user":
             items.append({"role": "user", "content": message["content"]})
         elif role == "assistant":
+            if index > turn_start:
+                items.extend(message.get("provider_items", ()))
             if message["content"]:
                 items.append({"role": "assistant", "content": message["content"]})
             items.extend(
@@ -180,6 +194,9 @@ class OpenAIClient:
         }
         if self._reasoning_effort:
             request["reasoning"] = {"effort": self._reasoning_effort}
+        if self._reasoning_effort != "none":
+            # With store=False, reasoning comes back encrypted so that we can resend it.
+            request["include"] = ["reasoning.encrypted_content"]
 
         for attempt in range(2):
             streamed = False
@@ -204,5 +221,10 @@ class OpenAIClient:
                 for item in response.output
                 if item.type == "function_call"
             )
-            return LLMReply(text=response.output_text, tool_calls=calls)
+            reasoning = tuple(
+                item.model_dump(mode="json", exclude_none=True)
+                for item in response.output
+                if item.type == "reasoning"
+            )
+            return LLMReply(text=response.output_text, tool_calls=calls, provider_items=reasoning)
         raise AssertionError("unreachable")
