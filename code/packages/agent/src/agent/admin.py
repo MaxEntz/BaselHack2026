@@ -555,6 +555,8 @@ async def update_rules(
             "The booking page stays on your website.", Problem(code="booking_page_off_site")
         )
     stored = registry.profile.get("cancellation_policy")
+    if isinstance(stored, str) and not one_line(stored):
+        stored = None  # as `get_rules` shows a blank policy
     policy = cancellation_policy or None
     if isinstance(stored, str) and policy == one_line(stored, MAX_POLICY_TEXT):
         # The form got the stored text cut to one paragraph (`get_rules`): sent back as it

@@ -17,7 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from agent.provisioning import described_tools
 from agent.service import PgAgentService
 from core.config import Settings
-from core.db import blocked_slots_t, merchant_activity_t, merchant_conn, merchants_t, tables_t
+from core.db import (
+    blocked_slots_t,
+    merchant_activity_t,
+    merchant_conn,
+    merchants_t,
+    policy_t,
+    tables_t,
+)
 from core.db import reservations_t as reservations
 from core.errors import FormProblem, InvalidInput
 from core.models import (
@@ -125,6 +132,22 @@ async def test_the_same_hours_in_another_order_are_no_change(
 
     row = await registry(engine, slug)
     assert [s["start"] for s in row.profile["services"]] == ["12:00", "19:00"]
+    assert await activity(engine, slug) == []
+
+
+async def test_hours_stored_in_another_order_saved_by_start_are_no_change(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    """Stored before #201, out of order: the same hours saved by start write no line."""
+    slug = await make_merchant()
+    lunch, dinner = Service(start="12:00", end="14:00"), Service(start="19:00", end="22:00")
+    async with merchant_conn(engine, slug) as conn:
+        await conn.execute(
+            update(policy_t).values(services=[dinner.model_dump(), lunch.model_dump()])
+        )
+
+    await service.update_policy(slug, services=[lunch, dinner])
+
     assert await activity(engine, slug) == []
 
 
@@ -328,6 +351,18 @@ async def test_an_unchanged_save_of_a_long_policy_keeps_its_text_and_writes_no_l
     row = await registry(engine, slug)
     assert row.profile["cancellation_policy"] == "Free cancellation until noon."
     assert await activity(engine, slug) == [("saved", {"what": "Booking rules"})]
+
+
+async def test_an_unchanged_save_of_a_blank_policy_writes_no_line(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant(cancellation_policy="   ")
+    shown = await service.get_rules(slug)
+
+    await service.update_rules(slug, 6, str(shown.fallback_url), shown.cancellation_policy)
+
+    assert shown.cancellation_policy is None
+    assert await activity(engine, slug) == []
 
 
 async def test_rules_over_http(
