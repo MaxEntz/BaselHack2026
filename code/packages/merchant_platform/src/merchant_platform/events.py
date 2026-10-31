@@ -9,7 +9,8 @@ import asyncio
 import logging
 import re
 from collections import defaultdict
-from typing import Literal
+from datetime import date
+from typing import Literal, NamedTuple
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -69,6 +70,13 @@ class Notification(BaseModel):
     id: str
     status: ReservationStatus
     via: Via
+
+
+class Booking(NamedTuple):
+    """A reservation as re-read for a live event."""
+
+    row: AdminReservationRow
+    day: date
 
 
 def classify(op: str, status: str) -> Literal["new_booking", "updated", "cancelled"] | None:
@@ -139,13 +147,15 @@ class LiveListener:
             if slug is None:
                 log.warning("live_event_unknown_schema", extra={"schema": notification.schema_})
                 return
-            row = await self._reservation(slug, notification.id)
+            booking = await self._reservation(slug, notification.id)
         except Exception:
             log.exception("live_event_lookup_failed", extra={"schema": notification.schema_})
             return
-        if row is None:
+        if booking is None:
             return
-        self._bus.publish(slug, LiveEvent(kind=kind, via=notification.via, reservation=row))
+        row = booking.row
+        event = LiveEvent(kind=kind, via=notification.via, date=booking.day, reservation=row)
+        self._bus.publish(slug, event)
         log.info("live_event", extra={"merchant": slug, "kind": kind, "id": row.id})
 
     async def _merchant(self, schema: str) -> str | None:
@@ -166,7 +176,7 @@ class LiveListener:
         self._merchants.add(slug)
         return slug
 
-    async def _reservation(self, slug: str, reservation_id: str) -> AdminReservationRow | None:
+    async def _reservation(self, slug: str, reservation_id: str) -> Booking | None:
         query = (
             select(
                 reservations_t.c.id,
@@ -184,12 +194,14 @@ class LiveListener:
             row = (await conn.execute(query)).one_or_none()
         if row is None:
             return None
-        return AdminReservationRow(
+        start = row.starts_at.astimezone(self._tz)
+        reservation = AdminReservationRow(
             id=row.id,
-            time=row.starts_at.astimezone(self._tz).strftime("%H:%M"),
+            time=start.strftime("%H:%M"),
             guest_name=row.guest_name,
             party_size=row.party_size,
             table_label=row.label,
             via=row.via,
             status=row.status,
         )
+        return Booking(reservation, start.date())

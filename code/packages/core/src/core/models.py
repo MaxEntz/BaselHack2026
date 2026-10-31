@@ -386,7 +386,14 @@ ChatEvent = Annotated[
 
 
 class LiveEvent(_Model):
+    """A guest's change to a booking. The merchant's own changes are not sent (#81).
+
+    `via` is the channel the booking was made through; `date` is its day in the
+    merchant's timezone (`reservation.time` only has the hour).
+    """
+
     type: Literal["notification"] = "notification"
     kind: Literal["new_booking", "updated", "cancelled"]
     via: Via
+    date: Date
     reservation: AdminReservationRow
