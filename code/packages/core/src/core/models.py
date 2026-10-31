@@ -345,6 +345,20 @@ class ToolError(_Model):
     fallback_url: HttpUrl | None = None
 
 
+# Platform `GET /session`: keep in sync with web/src/types.ts
+
+
+class SessionMerchant(_Model):
+    slug: Slug
+    name: str
+
+
+class SessionOutput(_Model):
+    """The merchant a chat session works on (#88); None while it is onboarding."""
+
+    merchant: SessionMerchant | None
+
+
 # SSE events: keep in sync with web/src/types.ts
 
 

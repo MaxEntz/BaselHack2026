@@ -171,6 +171,12 @@ live booking also appears in tonight's reservations, on the same date.
   the `ChatEvent` stream above, always ending with exactly one `done`. A failing turn
   sends a generic `error` (details only in the logs) before `done`. `409` while the same
   session is still answering. A `null` session is the single POC merchant session.
+- `GET /session?session_id=<id>` (#88): `SessionOutput`, `{"merchant": {"slug", "name"} |
+  null}`, the merchant that session works on: the one it onboarded or attached, else
+  `PLATFORM_MERCHANT` when it is registered (the session's next message attaches it).
+  Read-only: an unknown session is not created. The web keeps its session id in
+  `sessionStorage` and calls this route at load and after each turn until it knows the
+  merchant, so that a reload subscribes to `/events` again. `session.json` is its mock.
 - `GET /events?merchant=<slug>`: `LiveEvent` stream, with an SSE comment every 15 s. Fed
   by `LISTEN reservations`: every committed INSERT/UPDATE on a registered merchant's
   `reservations` becomes `new_booking`, `updated` or `cancelled`, re-read from the
@@ -209,5 +215,5 @@ npm --prefix web run check:contracts
 ```
 
 The TypeScript check compiles the actual JSON mocks as literals with `satisfies`
-against `ChatEvent[]` or `LiveEvent`. Python tests validate the same mocks against
-the Pydantic `ChatEvent` and `LiveEvent`. Both checks run on pull requests.
+against `ChatEvent[]`, `LiveEvent` or `SessionOutput`. Python tests validate the same
+mocks against the Pydantic `ChatEvent`, `LiveEvent` and `SessionOutput`. Both checks run on pull requests.
