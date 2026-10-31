@@ -1,1 +1,32 @@
-"""Tool error codes and the `{error, message, fallback_url?}` payload."""
+"""Business errors; the gateway adds fallback URLs when serializing them."""
+
+from typing import ClassVar
+
+from core.models import ErrorCode
+
+
+class AgentError(Exception):
+    code: ClassVar[ErrorCode]
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class PartyTooLarge(AgentError):
+    code: ClassVar[ErrorCode] = "party_too_large"
+
+
+class SlotUnavailable(AgentError):
+    code: ClassVar[ErrorCode] = "slot_unavailable"
+
+
+class NotFound(AgentError):
+    code: ClassVar[ErrorCode] = "not_found"
+
+
+class InvalidInput(AgentError):
+    code: ClassVar[ErrorCode] = "invalid_input"
+
+
+class AgentUnavailable(AgentError):
+    code: ClassVar[ErrorCode] = "agent_unavailable"
