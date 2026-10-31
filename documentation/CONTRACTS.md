@@ -297,8 +297,10 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
   `booking_page_off_site`. `slot_length_min` stays read-only. A stored policy reads as one
   paragraph of at most 500 characters (`agent.provisioning.one_line`).
 - `PUT /settings` saves name, city, price and tags (duplicates dropped); the website stays.
-- `PUT /blocked?date=` sets the day's blocked starts. Every time must be one of the day's starts
-  (`invalid_input` otherwise, nothing changed); blocked starts that are no longer sent are reopened.
+- `PUT /blocked?date=` sets the day's blocked starts still to come, the ones `GET /blocked`
+  lists. Every time must be one of the day's starts (`invalid_input` otherwise, nothing changed);
+  a start still to come that isn't sent is reopened. Starts that have passed never change: the
+  day's past blocks stay, and a past time sent is ignored.
   It writes one activity line: the times it blocked, else the ones it reopened. `GET /blocked` and
   its answer list the blocked starts that haven't passed.
 
