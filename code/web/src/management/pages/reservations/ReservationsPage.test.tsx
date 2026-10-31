@@ -225,7 +225,8 @@ describe("Block a time", () => {
 
 describe("A live booking", () => {
   it("appears in its column, highlighted", async () => {
-    open("", 50);
+    // After the page's first read, so that the booking is new to it, even on a slow runner.
+    open("", 400);
     await screen.findByText("Tonight, 6 bookings and 17 guests.");
     await waitFor(() => expect(screen.getByText("Tonight, 7 bookings and 19 guests.")).toBeTruthy(), { timeout: 3000 });
     expect(document.querySelector(".who.fresh")?.textContent).toBe("Kim Weber2, T4Through your agent");

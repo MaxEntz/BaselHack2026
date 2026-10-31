@@ -201,8 +201,11 @@ describe("live bookings", () => {
   });
 
   it("appear on Home without a reload", async () => {
-    at(`/manage/${SLUG}`, mock(10));
-    const row = await screen.findByRole("button", { name: /Kim Weber/ });
+    // Home reads tonight first, then the live booking arrives: on a slow runner, 10 ms let it
+    // land in the first read, where nothing is new.
+    at(`/manage/${SLUG}`, mock(400));
+    await screen.findByRole("button", { name: /Sara Muller/ });
+    const row = await screen.findByRole("button", { name: /Kim Weber/ }, { timeout: 3000 });
     expect(row.className).toContain("fresh");
   });
 });
