@@ -25,3 +25,44 @@
 		respond "Forbidden" 403
 	}
 }
+
+# Sésame for merchants: the web app and its platform API (#142, ADR-0016). Its own host, so the
+# gateway's filter above stays as it is.
+sesame.191-96-88-152.sslip.io {
+	# Secret links (/api/login?token=…, #132) must not leave in a Referer header.
+	header Referrer-Policy no-referrer
+	# No `log` here: an access log would record those tokens unless it filters `token`.
+	# The dev routes never leave the server, whatever platform/.env says.
+	handle /api/dev/* {
+		respond 404
+	}
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:8002 {
+			# SSE (/chat, /events): send each event as it comes.
+			flush_interval -1
+		}
+	}
+	handle {
+		root * /opt/merchant-agents/code/web/dist
+		try_files {path} /index.html
+		encode gzip
+		file_server
+	}
+}
+
+# The fictional demo restaurants' websites, each on its own host like a real site: the crawl
+# reads them and their fallback links work from anywhere.
+le-petit-zinc.191-96-88-152.sslip.io {
+	root * /opt/merchant-agents/code/sites/le-petit-zinc
+	file_server
+}
+
+la-graine-verte.191-96-88-152.sslip.io {
+	root * /opt/merchant-agents/code/sites/la-graine-verte
+	file_server
+}
+
+maison-albane.191-96-88-152.sslip.io {
+	root * /opt/merchant-agents/code/sites/maison-albane
+	file_server
+}

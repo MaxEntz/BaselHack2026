@@ -31,9 +31,9 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 | `make site` | Demo restaurant website "Le Petit Zinc" (static, in French) | http://localhost:8080 |
 | `make sites` | The 3 demo websites: Le Petit Zinc, La Graine Verte, Maison Albane | http://localhost:8080, :8081, :8082 |
 
-Le Petit Zinc's booking form posts to `http://localhost:8002/public/le-petit-zinc/reservations` (#15). Open it at the `localhost` URL that `make site` prints, not at the `127.0.0.1` link `http.server` prints: the platform only accepts the form from the origins in its CORS list. Without the platform, the form asks guests to call.
+Le Petit Zinc's booking form posts to `http://localhost:8002/public/le-petit-zinc/reservations` (#15); served from the team server, to `https://sesame.<server>/api/…` (#142). Open it at the `localhost` URL that `make site` prints, not at the `127.0.0.1` link `http.server` prints: the platform only accepts the form from the origins in its CORS list. Without the platform, the form asks guests to call.
 
-Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md).
+Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md). The web app, the platform and the demo sites go to the same server on their own hosts (#142, once merchant accounts exist): see [`documentation/runbooks/platform.md`](../documentation/runbooks/platform.md).
 
 ## Demo data
 
@@ -96,9 +96,9 @@ packages/
 web/                    Studio and the management site (Vite + React + TS)
 sites/                  demo restaurant websites: le-petit-zinc (crawl target), 2 one-page sites
 migrations/             Alembic (public schema only; merchant schemas come from provisioning)
-scripts/                seed.py, demo_reset.py, set_status.py (outage switch), caddy_env.py (make deploy),
-                        crawl_site.py, bench_extract.py (+ bench_sites/), batp_schemas.py (make rfc),
-                        spike_extract.py (+ spike_samples/, the #4 spike)
+scripts/                seed.py, demo_reset.py, set_status.py (outage switch), caddy_env.py and
+                        platform_env.py (make deploy), crawl_site.py, bench_extract.py (+ bench_sites/),
+                        batp_schemas.py (make rfc), spike_extract.py (+ spike_samples/, the #4 spike)
 deploy/                 systemd units and Caddyfile for make deploy
 tests/{unit,integration,e2e,fixtures}/
 ```
