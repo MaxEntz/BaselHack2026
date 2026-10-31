@@ -1,11 +1,8 @@
 # Merchant web app
 
-Today, a single-column chat where merchants onboard and run their booking agent
-(`AGENTS.md` §1). Vite + React + TypeScript, plain CSS.
-
-The Sésame site replaces this page with Studio at `/` and adds a management site at
-`/manage/<slug>`, next to the chat (#127, [ADR-0015](../../documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). Mockups:
-[`documentation/design/poc-v10/`](../../documentation/design/poc-v10/README.md).
+A single-column chat where merchants onboard and run their booking agent (`AGENTS.md` §1), and
+the management site next to it (#127, [ADR-0015](../../documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). Vite + React +
+TypeScript, plain CSS. Mockups: [`documentation/design/poc-v10/`](../../documentation/design/poc-v10/README.md).
 
 ```sh
 npm ci
@@ -25,8 +22,7 @@ Routes ([ADR-0017](../../documentation/adr/0017-router-and-test-tools-for-the-ma
 management site. An unknown page goes to that merchant's Home, any other path to `/`.
 
 `e2e/primitives.spec.ts` compares each management primitive's computed styles with the v10
-mockup (`documentation/design/poc-v10/sesame-management.html`); it is skipped while the
-mockup isn't in the tree, or point `SESAME_MOCKUP` at a copy.
+mockup (`documentation/design/poc-v10/sesame-management.html`). `SESAME_MOCKUP` points it at another copy.
 
 Open <http://localhost:5173/?gallery> to review every management primitive and every card and state (steps,
 profile, reservations incl. empty, stats, policy, notifications, errors).
