@@ -30,6 +30,14 @@ jobs:
       - run: uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node
       # Chromium for the crawler's `browser` tests (#21).
       - run: uv run playwright install --with-deps chromium
+      # The built web app, for the browser test of the whole stack (tests/e2e/test_web_stack.py, #153).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: code/web/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: code/web
       # Docker is available on ubuntu-latest, so testcontainers works for integration tests.
       - run: uv run pytest
 

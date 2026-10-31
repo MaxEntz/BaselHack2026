@@ -1,0 +1,249 @@
+"""A merchant's first evening on the whole stack (#153), in Chromium against the built web app.
+
+Studio builds and publishes a merchant, its private link opens the management site in another
+browser, a guest books through the gateway and the booking shows up live, a time blocked on
+the Reservations page leaves the agent's answers, and a pause sends guests to the fallback.
+Real Postgres, platform (`default_app`), gateway and web app; only the model and the crawl are
+fakes. Needs `npm run build` in `web/` first: CI builds it, a local run without it is skipped.
+"""
+
+import json
+import os
+import re
+from collections.abc import AsyncIterator, Iterator, Sequence
+from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+from zoneinfo import ZoneInfo
+
+import pytest
+from fastapi import FastAPI
+from mcp import Client
+from playwright.async_api import Browser, Page, async_playwright, expect
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import FileResponse
+from starlette.routing import Mount, Route
+
+from builder.crawl import CrawlResult, StepEmitter
+from builder.crawl import Page as CrawledPage
+from builder.extract import TOOL_NAME
+from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
+from core.config import Settings
+from core.models import StepEvent
+from merchant_platform.api import default_app
+from tests.e2e.conftest import free_port, running_gateway, serving
+
+pytestmark = [pytest.mark.integration, pytest.mark.browser]
+
+TZ = ZoneInfo("Europe/Zurich")
+DIST = Path(__file__).parents[2] / "web" / "dist"
+FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())
+WEBSITE = "http://zinc-e2e.example/"
+NAME = "Zinc E2E"
+# Le Petit Zinc's profile (12:00-14:00 and 19:00-22:00, groups of 6) under another name.
+DRAFT = {
+    key: FIXTURE[key]
+    for key in (
+        "location",
+        "seats",
+        "services",
+        "max_party_size",
+        "tables",
+        "tags",
+        "price_level",
+        "cancellation_policy",
+    )
+} | {"name": NAME, "fallback_url": None, "assumptions": []}
+# Generous: the first build in a fresh process imports and compiles a lot.
+BUILD_MS = 30_000
+
+
+class FakeModel:
+    """The platform's model, scripted: a merchant's first message builds the agent, other turns
+    get one sentence, and the builder's extraction gets `DRAFT`."""
+
+    async def respond(
+        self,
+        *,
+        instructions: str,
+        tools: Sequence[ToolSpec],
+        history: Sequence[Message],
+        on_text: OnText,
+        tool_choice: str | None = None,
+    ) -> LLMReply:
+        if tool_choice is not None:
+            return LLMReply(text="", tool_calls=(ToolCall("x", TOOL_NAME, json.dumps(DRAFT)),))
+        if "Mode: onboarding" in instructions and history[-1]["role"] == "user":
+            arguments = {"website": WEBSITE, "description": history[-1]["content"]}
+            call = ToolCall("build", "build_agent", json.dumps(arguments))
+            return LLMReply(text="", tool_calls=(call,))
+        await on_text("Done.")
+        return LLMReply(text="Done.")
+
+
+async def fake_crawl(url: str, on_event: StepEmitter) -> CrawlResult:
+    await on_event(StepEvent(step="crawl", status="running", detail="Loading homepage"))
+    page = CrawledPage(url=url, title=NAME, text="Bistrot à Bâle.", json_ld=[])
+    await on_event(StepEvent(step="crawl", status="done", detail="1 page read", duration_ms=5))
+    return CrawlResult(website=url, pages=[page])
+
+
+def web_app(platform: FastAPI) -> Starlette:
+    """The built web app as Vite serves it in development: the platform under `/api`, any other
+    path a file of `dist`, else the app's `index.html`."""
+    root = DIST.resolve()
+
+    async def page(request: Request) -> FileResponse:
+        file = (root / request.path_params["path"]).resolve()
+        if file.is_file() and file.is_relative_to(root):
+            return FileResponse(file)
+        return FileResponse(root / "index.html")
+
+    @asynccontextmanager
+    async def lifespan(_: Starlette) -> AsyncIterator[None]:
+        # A mounted app's lifespan doesn't run on its own: the live listener lives in it.
+        async with platform.router.lifespan_context(platform):
+            yield
+
+    return Starlette(
+        routes=[Mount("/api", app=platform), Route("/{path:path}", page)], lifespan=lifespan
+    )
+
+
+@pytest.fixture(scope="module")
+def built_web() -> None:
+    if not (DIST / "index.html").exists():
+        message = "no web/dist: run `npm run build` in web/ first"
+        if os.environ.get("CI"):
+            pytest.fail(message)
+        pytest.skip(message)
+
+
+@pytest.fixture(scope="module")
+def stack(built_web: None, e2e_database_url: str) -> Iterator[tuple[str, str]]:
+    """The web app with its platform, and the gateway, on one database: their base URLs."""
+    with running_gateway(Settings(_env_file=None, database_url=e2e_database_url)) as gateway:
+        port = free_port()
+        settings = Settings(
+            _env_file=None,
+            database_url=e2e_database_url,
+            platform_web_url=f"http://127.0.0.1:{port}",
+            gateway_public_url=gateway,
+            builder_cache="off",
+        )
+        platform = default_app(settings, llm=FakeModel(), crawler=fake_crawl)
+        with serving(web_app(platform), port) as web:
+            yield web, gateway
+
+
+@pytest.fixture
+async def browser() -> AsyncIterator[Browser]:
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch()
+        yield browser
+        await browser.close()
+
+
+def tomorrow() -> date:
+    """Always bookable: the clock is real, and the service refuses past times."""
+    return datetime.now(TZ).date() + timedelta(days=1)
+
+
+async def call(gateway: str, tool: str, **arguments: Any) -> dict[str, Any]:
+    async with Client(f"{gateway}/mcp") as client:
+        result = await client.call_tool(tool, arguments)
+    assert result.structured_content is not None
+    content: dict[str, Any] = result.structured_content["result"]
+    return content
+
+
+async def offered(gateway: str, slug: str, day: date, hhmm: str) -> list[str]:
+    """The times the agent offers a party of 2 around `hhmm`."""
+    answer = await call(
+        gateway, "get_availability", merchant=slug, date=day.isoformat(), time=hhmm, party_size=2
+    )
+    return [
+        datetime.fromisoformat(slot["starts_at"]).astimezone(TZ).strftime("%H:%M")
+        for slot in answer["slots"]
+    ]
+
+
+async def build_and_publish(studio: Page, web: str) -> str:
+    """Studio, from the address to the published agent: the private link it showed."""
+    await studio.goto(f"{web}/")
+    await expect(
+        studio.get_by_role("heading", name="What's your website's address?")
+    ).to_be_visible()
+    await studio.get_by_role("textbox", name="Message").fill(
+        "zinc-e2e.example, 40 seats and groups up to 6"
+    )
+    await studio.keyboard.press("Enter")
+    await expect(studio.get_by_text("What went into your profile")).to_be_visible(timeout=BUILD_MS)
+    await expect(studio.locator(".st-status")).to_have_text("Hidden from guests")
+
+    publish = studio.get_by_role("button", name="Publish", exact=True).first
+    await expect(publish).to_be_enabled()
+    await publish.click()
+    await expect(studio.get_by_text("You're live. Agents get real answers now.")).to_be_visible()
+    await expect(studio.locator(".st-status")).to_have_text("Live")
+
+    link = re.search(rf"{re.escape(web)}/api/login\?token=[\w-]+", await studio.content())
+    assert link, "the review shows the private link"
+    return link.group(0)
+
+
+async def test_a_merchants_first_evening(browser: Browser, stack: tuple[str, str]) -> None:
+    web, gateway = stack
+    studio = await (await browser.new_context()).new_page()
+    link = await build_and_publish(studio, web)
+
+    # The private link opens the management site in a browser that never saw Studio.
+    manage = await (await browser.new_context()).new_page()
+    await manage.goto(link)
+    await expect(manage).to_have_url(re.compile(rf"{re.escape(web)}/manage/[a-z0-9-]+$"))
+    slug = manage.url.rsplit("/", 1)[-1]
+    await expect(manage).to_have_title(re.compile(NAME))
+    activity = manage.get_by_role("region", name="Recent activity")
+    await expect(activity).to_be_visible()
+    await expect(activity).not_to_contain_text("Lena Koch")
+
+    # A guest books through the gateway: the booking shows up live, with no reload.
+    day = tomorrow()
+    booked = await call(
+        gateway,
+        "create_reservation",
+        merchant=slug,
+        starts_at=datetime.combine(day, datetime.strptime("20:00", "%H:%M").time(), TZ).isoformat(),
+        party_size=2,
+        guest_name="Lena Koch",
+        idempotency_key=str(uuid4()),
+    )
+    assert booked["reservation"]["status"] == "confirmed"
+    # The bell counts what arrived since the page loaded (the toast gives way to the assistant
+    # panel, open at this width); Home's feed reads the booking again.
+    await expect(manage.get_by_role("button", name="Notifications")).to_have_text("1")
+    await expect(activity).to_contain_text("Lena Koch, 2 guests")
+
+    # A time blocked on the Reservations page leaves the agent's answers.
+    assert "21:00" in await offered(gateway, slug, day, "21:00")
+    await manage.goto(f"{web}/manage/{slug}/reservations?date={day.isoformat()}")
+    await manage.get_by_role("button", name="Block a time").click()
+    dialog = manage.get_by_role("dialog")
+    await dialog.locator("label", has_text="21:00").click()
+    await dialog.get_by_role("button", name="Save").click()
+    await expect(manage.locator(".toast")).to_contain_text("Blocked 21:00")
+    assert "21:00" not in await offered(gateway, slug, day, "21:00")
+
+    # Paused, the agent sends guests to the merchant's own booking page.
+    await manage.goto(f"{web}/manage/{slug}/agent")
+    await manage.get_by_role("button", name="Pause the agent").click()
+    paused = manage.get_by_text("Paused. Guests get your booking page.", exact=True)
+    await expect(paused).to_be_visible()
+    refused = await call(
+        gateway, "get_availability", merchant=slug, date=day.isoformat(), party_size=2
+    )
+    assert refused["error"] == "agent_unavailable"
+    assert refused["fallback_url"]
