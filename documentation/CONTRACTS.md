@@ -19,7 +19,14 @@ must not overlap. Booking timestamps require an explicit offset, such as
 `2026-10-31T20:00:00+01:00` (Europe/Zurich).
 
 `guest_name`, `idempotency_key` and `reservation_id` are stripped and must not be
-blank on tool inputs. `update_reservation` needs `starts_at` or `party_size`, and
+blank on tool inputs. No `NonEmptyStr` field holds a control character (Unicode category
+`Cc`: NUL, tab, newline…), which Postgres can't always store; spaces, non-breaking ones
+included, and letters of any script are kept (#79). A guest's day (`get_availability.date`)
+and booking time (`starts_at` of a creation or an update, also on the platform's public
+booking API) lie between 2000-01-01 and 366 days from today (`BookingDay`, `BookingTime`), so
+no date arithmetic can overflow; outside, the answer is `invalid_input`. A guest can no
+longer move, resize or cancel a booking once it has started (`slot_unavailable`); after
+that it is the merchant's. `update_reservation` needs `starts_at` or `party_size`, and
 `update_policy` needs `max_party_size` or `services`.
 
 A floor plan has at least one table and unique labels. The builder must fill a

@@ -368,13 +368,12 @@ class PgAgentService:
             current = await self._own_booking(conn, reservation_id, guest_name)
             if current.status != "confirmed":
                 _not_found(reservation_id)
+            self._check_not_started(current)
             new_start = starts_at or current.during.lower
             new_party = party_size or current.party_size
             merchant.check_party(new_party)
             if new_start != current.during.lower:
                 await self._check_new_start(conn, merchant, new_start)
-            elif new_start <= self.clock():
-                raise SlotUnavailable(f"Booking {current.id} has already started")
 
             during = Range(new_start, new_start + merchant.slot_length, bounds="[)")
             for table in candidate_tables(merchant.tables, new_party, current_id=current.table_id):
@@ -430,6 +429,7 @@ class PgAgentService:
             await self._load(conn, slug)
             current = await self._own_booking(conn, reservation_id, guest_name)
             if current.status == "confirmed":
+                self._check_not_started(current)
                 await conn.execute(
                     update(reservations_t)
                     .where(reservations_t.c.id == current.id)
@@ -448,6 +448,11 @@ class PgAgentService:
             current.guest_name,
             current.via,
         )
+
+    def _check_not_started(self, booking: _Row) -> None:
+        """A guest changes a booking only before it starts: after, it's the merchant's (#79)."""
+        if booking.during.lower <= self.clock():
+            raise SlotUnavailable(f"Booking {booking.id} has already started")
 
     async def find_guest_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
         """Upcoming confirmed bookings at every live merchant, and the guest's notices.

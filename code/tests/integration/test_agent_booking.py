@@ -502,6 +502,52 @@ async def test_cancel_of_an_unknown_booking(
         await service.cancel_reservation(slug, "R-999", by="guest", guest_name=GUEST)
 
 
+@pytest.mark.parametrize("now", ["20:30", "23:00"])  # started, then over
+async def test_a_guest_can_neither_move_nor_cancel_a_booking_once_it_started(
+    engine: AsyncEngine,
+    service: PgAgentService,
+    make_merchant: MerchantFactory,
+    clock: Clock,
+    now: str,
+) -> None:
+    # Last night's dinner must not become tomorrow's booking, nor a cancellation (#79).
+    slug = await make_merchant()
+    booked = await book(service, slug, at("20:00"))
+    clock.now = at(now)
+
+    with pytest.raises(SlotUnavailable, match="already started"):
+        await service.update_reservation(
+            slug, booked.id, GUEST, str(uuid4()), starts_at=at("20:00", DAY + timedelta(days=1))
+        )
+    with pytest.raises(SlotUnavailable, match="already started"):
+        await service.update_reservation(slug, booked.id, GUEST, str(uuid4()), party_size=3)
+    with pytest.raises(SlotUnavailable, match="already started"):
+        await service.cancel_reservation(slug, booked.id, by="guest", guest_name=GUEST)
+
+    async with merchant_conn(engine, slug) as conn:
+        row = (
+            await conn.execute(
+                select(reservations_t.c.status, reservations_t.c.during).where(
+                    reservations_t.c.id == booked.id
+                )
+            )
+        ).one()
+    assert (row.status, row.during.lower) == ("confirmed", at("20:00"))
+
+
+async def test_cancelling_an_already_cancelled_past_booking_stays_idempotent(
+    service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
+) -> None:
+    slug = await make_merchant()
+    booked = await book(service, slug, at("20:00"))
+    await service.cancel_reservation(slug, booked.id, by="guest", guest_name=GUEST)
+    clock.now = at("23:00")
+
+    again = await service.cancel_reservation(slug, booked.id, by="guest", guest_name=GUEST)
+
+    assert again.status == "cancelled"
+
+
 # find_guest_reservations
 
 

@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
@@ -22,6 +22,7 @@ from core.config import Settings, get_settings
 from core.db import make_engine
 from core.errors import AgentError, AgentUnavailable
 from core.models import (
+    BookingTime,
     ChatEvent,
     DoneEvent,
     ErrorCode,
@@ -68,7 +69,7 @@ class ResetSessionRequest(_Body):
 class PublicReservationInput(_Body):
     """The showcase site's booking form (the merchant comes from the URL)."""
 
-    starts_at: AwareDatetime
+    starts_at: BookingTime
     party_size: PositiveInt
     guest_name: NonEmptyStr
     idempotency_key: NonEmptyStr
@@ -181,6 +182,9 @@ def create_app(
             )
         except AgentError as error:
             outcome = error.code
+            raise
+        except Exception:
+            outcome = "error"  # a crash is never logged as `ok` (#79)
             raise
         finally:
             log.info(

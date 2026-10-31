@@ -14,7 +14,7 @@ from mcp.server import MCPServer
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
-from pydantic import AwareDatetime, Field, PositiveInt
+from pydantic import Field, PositiveInt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.applications import Starlette
@@ -28,6 +28,8 @@ from core.config import Settings
 from core.db import make_engine
 from core.models import (
     HHMM,
+    BookingDay,
+    BookingTime,
     CancelOutput,
     GetAvailabilityOutput,
     GetMyReservationsOutput,
@@ -128,7 +130,7 @@ GuestName = Annotated[
 ]
 PartySize = Annotated[PositiveInt, Field(description="Number of guests.")]
 StartsAt = Annotated[
-    AwareDatetime,
+    BookingTime,
     Field(description="Start time with its UTC offset, exactly as returned by get_availability."),
 ]
 IdempotencyKey = Annotated[
@@ -180,7 +182,7 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
         merchant: Merchant,
-        date: Annotated[Date, Field(description="Requested day, YYYY-MM-DD.")],
+        date: Annotated[BookingDay, Field(description="Requested day, YYYY-MM-DD.")],
         party_size: PartySize,
         time: Annotated[
             HHMM | None, Field(description="Requested time (HH:MM), 24-hour clock.")
@@ -217,7 +219,7 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         guest_name: GuestName,
         idempotency_key: IdempotencyKey,
         starts_at: Annotated[
-            AwareDatetime | None,
+            BookingTime | None,
             Field(description="New start time with its UTC offset, from get_availability."),
         ] = None,
         party_size: Annotated[

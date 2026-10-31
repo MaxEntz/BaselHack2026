@@ -185,6 +185,7 @@ Breaking one of these is a bug.
 13. **Contracts change only through a dedicated PR**, with Python and TypeScript updated together.
 14. **Only Anthropic's outbound range reaches the public gateway.** On the team server, Caddy answers `403` to any request from outside `160.79.104.0/21`, before uvicorn ([ADR-0010](adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)). A tunnel URL (plan B) is not covered.
 15. **A merchant's cancellation reaches the guest.** Its notice is returned by every `get_my_reservations` (MATP `RECALL`) for 24 real hours after the first call that returned it, so one answer lost in transit doesn't lose it (#91).
+16. **A guest changes a booking only before it starts.** `update_reservation` and the guest's `cancel_reservation` answer `slot_unavailable` once its start has passed; only the merchant acts on it after that (#79). Guest-side text never holds a control character, and guest dates stay between 2000-01-01 and a year ahead, so no input reaches the database or date arithmetic as a crash.
 
 **Assumptions (POC):**
 - One city, with no ranking beyond name order.
