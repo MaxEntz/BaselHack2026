@@ -78,3 +78,14 @@ async def test_site_booking_at_an_unknown_merchant(http: httpx.AsyncClient) -> N
         response = await http.post("/public/no-such-place/reservations", json=BOOKING)
 
     assert (response.status_code, response.json()["error"]) == (404, "not_found")
+
+
+async def test_site_booking_at_a_merchant_still_building(
+    http: httpx.AsyncClient, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant(live=False)
+
+    async with http:
+        response = await http.post(f"/public/{slug}/reservations", json=BOOKING)
+
+    assert (response.status_code, response.json()["error"]) == (404, "not_found")

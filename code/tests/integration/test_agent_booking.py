@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.provisioning import set_status
 from agent.service import PgAgentService
 from core.db import blocked_slots_t, guest_notices_t, merchant_conn, reservations_t
 from core.errors import InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
@@ -161,6 +162,28 @@ async def test_availability_rejects_a_party_no_table_can_seat(
 async def test_availability_of_an_unknown_merchant(service: PgAgentService) -> None:
     with pytest.raises(NotFound):
         await service.get_availability("no-such-place", DAY, 2)
+
+
+async def test_a_merchant_still_building_is_not_found(
+    service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant(live=False)
+
+    with pytest.raises(NotFound, match="not live yet"):
+        await service.get_availability(slug, DAY, 2)
+    with pytest.raises(NotFound, match="not live yet"):
+        await book(service, slug, at("20:00"))
+
+
+async def test_a_merchant_down_still_takes_bookings(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    # `down` stops Claude at the gateway (#13); the merchant's own site keeps working.
+    slug = await make_merchant()
+    await set_status(slug, "down", engine=engine)
+
+    assert await service.get_availability(slug, DAY, 2)
+    assert (await book(service, slug, at("20:00"))).status == "confirmed"
 
 
 async def test_availability_rejects_an_invalid_time(
@@ -483,15 +506,16 @@ async def test_cancel_of_an_unknown_booking(
 
 
 async def test_guest_sees_upcoming_bookings_across_live_merchants(
-    service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
 ) -> None:
     guest = f"Guest {uuid4().hex[:6]}"
     zinc = await make_merchant()
     other = await make_merchant(name="Chez Mimi")
-    hidden = await make_merchant(live=False)
+    hidden = await make_merchant()
     tomorrow = await book(service, other, at("19:00", DAY + timedelta(days=1)), guest_name=guest)
     soon = await book(service, zinc, at("20:00"), guest_name=guest)
     await book(service, hidden, at("20:00"), guest_name=guest)
+    await set_status(hidden, "down", engine=engine)
     cancelled = await book(service, zinc, at("21:00"), guest_name=guest)
     await service.cancel_reservation(zinc, cancelled.id, by="guest", guest_name=guest)
     await book(service, zinc, at("20:00"), guest_name="Someone Else")
