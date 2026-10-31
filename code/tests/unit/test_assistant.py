@@ -1,5 +1,6 @@
 """Platform assistant tool-use loop with a scripted LLM, a fake agent service and builder."""
 
+import asyncio
 import json
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
@@ -29,6 +30,7 @@ from core.models import (
     TableSpec,
 )
 from merchant_platform.assistant import (
+    INTERRUPTED,
     MAX_ITERATIONS,
     TOO_MANY_STEPS,
     UNAVAILABLE,
@@ -282,6 +284,37 @@ async def test_invalid_arguments_are_a_tool_error() -> None:
 
     assert session.messages[2]["is_error"] is True
     assert session.messages[2]["content"].startswith("invalid_input: starts_at")
+
+
+async def test_a_turn_cancelled_during_a_tool_leaves_the_session_usable() -> None:
+    started = asyncio.Event()
+
+    class SlowAgent(FakeAgent):
+        async def get_stats(self, slug: str, day: date) -> Stats:
+            started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    llm = ScriptedLLM(([], [call("get_stats", "call_1", date="2026-10-31")]), (["Hi."], []))
+    harness = Harness(llm, agent=SlowAgent())
+    harness.provisioned.add(SLUG)
+    session = onboarded()
+
+    turn = asyncio.create_task(harness.turn(session, "How busy?"))
+    await asyncio.wait_for(started.wait(), 1)
+    turn.cancel()  # the client left: /chat cancels the turn
+    with pytest.raises(asyncio.CancelledError):
+        await turn
+    await harness.turn(session, "Hello?")
+
+    sent = llm.calls[1]["history"]
+    calls = {c["id"] for m in sent if m["role"] == "assistant" for c in m["tool_calls"]}
+    outputs = {m["call_id"]: m for m in sent if m["role"] == "tool"}
+    assert calls == set(outputs) == {"call_1"}
+    assert outputs["call_1"]["content"] == INTERRUPTED
+    assert outputs["call_1"]["is_error"] is True
+    # The stored history isn't rewritten: the repair is made for each request.
+    assert not any(m["role"] == "tool" for m in session.messages)
 
 
 async def test_an_unavailable_llm_ends_the_turn_with_an_error() -> None:

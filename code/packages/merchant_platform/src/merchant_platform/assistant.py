@@ -34,6 +34,7 @@ KEEP_TURNS = 3
 LONG_RESULT_CHARS = 600
 
 UNAVAILABLE = "The assistant is temporarily unavailable, please retry."
+INTERRUPTED = "Interrupted before it finished."
 TOO_MANY_STEPS = "I couldn't finish that request. Could you rephrase it or split it up?"
 
 BASE_PROMPT = """\
@@ -84,6 +85,26 @@ def system_prompt(now: datetime, profile: MerchantProfile | None) -> str:
     else:
         parts.append(OPERATIONS_PROMPT.format(profile=profile.model_dump_json(indent=1)))
     return "\n".join(parts)
+
+
+def close_dangling_calls(history: Sequence[Message]) -> list[Message]:
+    """Give every tool call an output: the API rejects a call left unanswered.
+
+    A turn cancelled while a tool runs (the client left mid-`build_agent`) or a crash leaves
+    one behind; without this, every later message in the session would fail.
+    """
+    answered = {message["call_id"] for message in history if message["role"] == "tool"}
+    closed: list[Message] = []
+    for message in history:
+        closed.append(message)
+        if message["role"] != "assistant":
+            continue
+        closed.extend(
+            {"role": "tool", "call_id": call["id"], "content": INTERRUPTED, "is_error": True}
+            for call in message.get("tool_calls", ())
+            if call["id"] not in answered
+        )
+    return closed
 
 
 def compact(history: Sequence[Message]) -> list[Message]:
@@ -137,7 +158,7 @@ class Assistant:
                 reply = await self._llm.respond(
                     instructions=system_prompt(self._clock(), profile),
                     tools=SPECS,
-                    history=compact(session.messages),
+                    history=compact(close_dangling_calls(session.messages)),
                     on_text=on_text,
                 )
             except LLMUnavailable as error:
