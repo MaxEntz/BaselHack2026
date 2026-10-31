@@ -49,7 +49,7 @@ deploy: ## Ship the MATP node and the gateway to the team server -> https://191-
 	rsync -rlptz --delete --exclude .venv --exclude .env --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
-		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package matp -q && \
+		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node -q && \
 		.venv/bin/alembic upgrade head && \
 		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service /etc/systemd/system/ && \
 		systemctl daemon-reload && \

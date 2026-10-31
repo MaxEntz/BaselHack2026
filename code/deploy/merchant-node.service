@@ -9,7 +9,7 @@ WorkingDirectory=/opt/merchant-agents/code
 # Settings come from /opt/merchant-agents/code/.env (DATABASE_URL, MATP_TOKENS), read from the working directory.
 # Loopback only: the gateway on the same host is the node's only client (issue #62).
 Environment=MATP_HOST=127.0.0.1 MATP_PORT=4710
-ExecStart=/opt/merchant-agents/code/.venv/bin/python -m matp
+ExecStart=/opt/merchant-agents/code/.venv/bin/python -m merchant_node
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=true

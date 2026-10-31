@@ -83,7 +83,7 @@ The MATP node ([`PROTOCOL.md`](../PROTOCOL.md)) serves the merchant agents. It r
 `make deploy` installs, enables and restarts `merchant-node` along with `merchant-gateway`. Both read `/opt/merchant-agents/code/.env`, which `make deploy` doesn't touch. On the server, it needs:
 
 ```bash
-MATP_TOKENS=…                     # node: one token per known agent, including the gateway's (format: see .env.example)
+MATP_TOKENS='{"urn:matp:agent:claude-gateway":"…"}'   # node: JSON, one token per known agent, 16 characters or more
 MATP_URL=matp://127.0.0.1:4710    # gateway: speak MATP to the node; without it, the gateway calls the agents in-process
 MATP_TOKEN=…                      # gateway: its own token, the one listed in MATP_TOKENS
 ```
