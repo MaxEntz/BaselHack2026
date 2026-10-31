@@ -63,7 +63,7 @@ deploy: ## Ship the BATP node and the gateway to the team server -> https://191-
 		fi && \
 		systemctl enable --now --quiet caddy'
 
-.PHONY: bookings outage restore
+.PHONY: bookings demo-booking outage restore
 
 SLUG ?= le-petit-zinc
 
@@ -75,6 +75,9 @@ demo-reset: ## Known demo state: all but Le Petit Zinc, built live by onboarding
 
 bookings: ## Tonight's bookings at Le Petit Zinc, e.g. after its live onboarding
 	uv run python scripts/seed.py --with-bookings
+
+demo-booking: ## The demo's live booking: Kim Weber, 20:00 for 2 at La Graine Verte, via the gateway
+	uv run python scripts/demo_booking.py $(BOOKING)
 
 outage: ## Demo outage: SLUG goes down, Claude gets its fallback URL (SLUG=le-petit-zinc)
 	uv run python scripts/set_status.py $(SLUG) down

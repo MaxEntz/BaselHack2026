@@ -93,9 +93,10 @@ Start the scenarios from a known state, still on the server:
 ```bash
 .venv/bin/python scripts/demo_reset.py --all --with-bookings   # the 3 restaurants and tonight's bookings
 .venv/bin/python scripts/set_status.py le-petit-zinc down      # outage, then `live` to restore
+.venv/bin/python scripts/demo_booking.py                       # the live booking, through the local gateway
 ```
 
-(`make seed`, `make demo-reset` and `make outage` act on your **local** database.)
+(`make seed`, `make demo-reset` and `make outage` act on your **local** database; `make demo-booking` on your local gateway.)
 
 From your machine, the public URL must refuse you and port 4710 must stay closed:
 
