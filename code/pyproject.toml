@@ -58,6 +58,8 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Lets tests `import seed`, `import demo_reset`… as the scripts import each other.
+pythonpath = ["scripts"]
 addopts = ["--import-mode=importlib", "--strict-markers"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"

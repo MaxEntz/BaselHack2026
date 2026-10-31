@@ -31,6 +31,23 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 
 Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md).
 
+## Demo data
+
+Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_profiles` pytest fixture):
+
+| Slug | Tags | Price | Services | Tables | Max party |
+|---|---|---|---|---|---|
+| `le-petit-zinc` | vegetarian, gluten-free, terrace, kid-friendly | €€ | 12:00–14:00, 19:00–22:00 | 4×2, 6×4, 2×6 | 6 |
+| `la-graine-verte` | vegan, vegetarian, gluten-free | € | 11:30–14:30, 18:30–21:30 | 6×2, 3×4 | 4 |
+| `maison-albane` | vegetarian, terrace | €€€€ | 19:30–22:30 | 5×2, 3×4 | 6 |
+
+| Command | What |
+|---|---|
+| `make demo-reset` | Before each rehearsal: migrations, drops every `m_*` schema, empties the registry and guest notices, seeds all but Le Petit Zinc (onboarding builds it live). Refuses a non-localhost `DATABASE_URL`. `SEED="--all --with-bookings"` for a full state |
+| `make seed` | The 3 merchants, live, plus tonight's bookings at Le Petit Zinc; idempotent. `SEED="--except le-petit-zinc"` for demo mode |
+| `make bookings` | Tonight's bookings at Le Petit Zinc (19:00–21:00, via website and merchant), e.g. after its live onboarding; times already past are skipped |
+| `make outage` / `make restore` | Sets `SLUG` (default `le-petit-zinc`) `down` / `live`: Claude gets the fallback URL while it is down |
+
 ## Checks
 
 ```bash
