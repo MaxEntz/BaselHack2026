@@ -38,7 +38,7 @@ A contract change needs a dedicated PR and a message to the team, with Python an
 - `update_policy` needs `max_party_size` or `services`.
 
 ### Guest identity
-- A guest is one name, compared by `agent.service.same_guest`: whitespace runs count as one space, ends are ignored, case is `str.casefold` ("Anna Weiß" = "anna weiss"). Booking, update, cancel and `get_my_reservations` all use it ([#77](https://github.com/MaxEntz/BaselHack2026/issues/77)).
+- A guest is one name, compared by `agent.guests.same_guest`: whitespace runs count as one space, ends are ignored, accents are dropped, case is `str.casefold` ("Anna Weiß" = "anna weiss", "Léa Müller" = "lea muller"). Booking, update, cancel, `get_my_reservations` and the Guests page all use it ([#77](https://github.com/MaxEntz/BaselHack2026/issues/77)).
 - Guest updates and cancellations need `guest_name`. The protocol's overloads make `by="guest"` without a `guest_name` a type error.
 - A guest can't move, resize or cancel a booking once it has started (`slot_unavailable`); only the merchant can.
 
@@ -200,7 +200,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 | `PATCH /reservations/{id}` | `MoveBookingInput` | `ManagedReservation` | #134 |
 | `POST /reservations/{id}/cancel` | | `MerchantCancelOutput`: the booking and `outcome` | #134 |
 | `GET /slots?date=&party_size=&ignore=` | | `DaySlots`: every start of the day that hasn't passed, with the table it would get (or none) and whether it is blocked; `ignore` leaves a booking out, for a move | #134 |
-| `GET /guests?q=` | | `GuestsOutput`: guests with a live booking in the next 7 days, by name | #144 |
+| `GET /guests?q=` | | `GuestsOutput`: one row per guest (`same_guest`) whose name holds `q` and who has a live booking ahead in the next 7 days: the earliest and how many, sorted by name | #144 |
 | `GET /search?q=` | | `SearchOutput`: up to 8 bookings of the next 7 days by guest name or reference | #135 |
 | `GET`/`PUT /hours` | `HoursInput` | `Hours` | #133 |
 | `GET`/`PUT /tables` | `FloorPlanInput` | `FloorPlanOutput` | #133 |

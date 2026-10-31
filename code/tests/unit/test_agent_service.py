@@ -3,7 +3,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent.service import AgentService, PgAgentService, candidate_tables, check_start, same_guest
+from agent.guests import same_guest
+from agent.service import AgentService, PgAgentService, candidate_tables, check_start
 from core.availability import TableRow
 from core.db import make_engine
 from core.errors import SlotUnavailable
@@ -30,11 +31,13 @@ def at(hhmm: str) -> datetime:
         ("Sam\tDupont", "Sam Dupont", True),
         ("anna weiss", "Anna Weiß", True),
         ("Anna Weber", "Anna\u00a0Weber", True),
+        ("Lea Muller", "Léa Müller", True),
+        ("LÉA MÜLLER", "le\u0301a mu\u0308ller", True),
         ("Sam", "Sam Dupont", False),
         ("Sam Dupond", "Sam Dupont", False),
     ],
 )
-def test_same_guest_ignores_case_and_spacing(given: str, booked: str, expected: bool) -> None:
+def test_same_guest_ignores_case_accents_spacing(given: str, booked: str, expected: bool) -> None:
     assert same_guest(given, booked) is expected
 
 

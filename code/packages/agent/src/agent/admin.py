@@ -21,6 +21,7 @@ from sqlalchemy import Row, delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from agent.guests import guest_key
 from core import forms
 from core.availability import bookable_starts, is_bookable_start
 from core.db import (
@@ -35,6 +36,7 @@ from core.errors import InvalidInput, NotFound
 from core.models import (
     AdminReservationRow,
     FloorPlan,
+    GuestRow,
     MerchantCancelOutcome,
     Policy,
     Service,
@@ -48,6 +50,8 @@ _Row = Row[*tuple[Any, ...]]
 
 # Bounds for merchant input, well inside Postgres `integer`: a typo never reaches the DB.
 MAX_SEATS = forms.MAX_SEATS
+# The Guests page covers today and the 6 days after it.
+DAYS_AHEAD = 7
 
 _SERVICES = TypeAdapter(Services)
 _FLOOR_PLAN = TypeAdapter(FloorPlan)
@@ -121,6 +125,43 @@ async def get_stats(conn: AsyncConnection, day: date, tz: ZoneInfo) -> Stats:
         seats=seats or 0,
         blocked=tuple(_hhmm(moment, tz) for moment in blocked),
     )
+
+
+async def list_guests(
+    conn: AsyncConnection, query: str, now: datetime, tz: ZoneInfo
+) -> list[GuestRow]:
+    """Guests with a live booking that hasn't started, from now to the end of the 7th day,
+    by name (#144). One row per `guest_key`, kept if `query` is part of it."""
+    _, end = _day_bounds(now.astimezone(tz).date() + timedelta(days=DAYS_AHEAD - 1), tz)
+    rows = await conn.execute(
+        select(
+            reservations_t.c.id,
+            _start_of.label("starts_at"),
+            reservations_t.c.guest_name,
+            reservations_t.c.party_size,
+            reservations_t.c.via,
+        )
+        .where(reservations_t.c.status == "confirmed", _start_of > now, _start_of < end)
+        .order_by(_start_of, reservations_t.c.id)
+    )
+    wanted = guest_key(query)
+    by_guest: dict[str, list[_Row]] = {}
+    for row in rows:
+        key = guest_key(row.guest_name)
+        if wanted in key:
+            by_guest.setdefault(key, []).append(row)
+    return [
+        GuestRow(
+            guest_name=visits[0].guest_name,
+            reservation_id=visits[0].id,
+            date=visits[0].starts_at.astimezone(tz).date(),
+            time=_hhmm(visits[0].starts_at, tz),
+            party_size=visits[0].party_size,
+            bookings=len(visits),
+            via=visits[0].via,
+        )
+        for _, visits in sorted(by_guest.items())
+    ]
 
 
 async def block_slot(

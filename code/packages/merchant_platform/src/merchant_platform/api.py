@@ -155,6 +155,7 @@ def create_app(
     app.state.settings = settings
     app.state.development_merchant = settings.platform_merchant
     app.state.secure_cookies = settings.platform_web_url.startswith("https://")
+    app.state.agent = agent
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.public_cors_origins),
