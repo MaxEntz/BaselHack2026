@@ -141,6 +141,21 @@ async def test_chat_sends_a_single_done_when_the_assistant_sends_one() -> None:
     assert [frame["type"] for frame in frames(response.text)] == ["text", "done"]
 
 
+async def test_an_assistant_still_working_after_its_done_is_not_cut_off() -> None:
+    async def assistant(session: Session, message: str, emit: Emit) -> None:
+        await emit(TextEvent(delta="hi"))
+        await emit(DoneEvent())
+        await asyncio.sleep(0.05)  # e.g. closing the OpenAI stream
+        session.messages.append({"role": "assistant", "content": "hi"})
+
+    app = create_app(settings(), assistant=assistant)
+    async with client(app) as http:
+        response = await http.post("/chat", json={"session_id": "s", "message": "hello"})
+
+    assert [frame["type"] for frame in frames(response.text)] == ["text", "done"]
+    assert app.state.sessions.get("s").messages == [{"role": "assistant", "content": "hi"}]
+
+
 async def test_chat_reports_a_failing_assistant_without_details() -> None:
     async def failing(session: Session, message: str, emit: Emit) -> None:
         await emit(TextEvent(delta="Let me check…"))
@@ -262,7 +277,10 @@ async def test_public_reservation_without_agent_service_is_unavailable() -> None
     assert response.json()["error"] == "agent_unavailable"
 
 
-@pytest.mark.parametrize(("origin", "allowed"), [(SITE, True), ("https://evil.example", False)])
+@pytest.mark.parametrize(
+    ("origin", "allowed"),
+    [(SITE, True), ("http://127.0.0.1:8080", True), ("https://evil.example", False)],
+)
 async def test_cors_allows_the_showcase_site_only(origin: str, allowed: bool) -> None:
     app = create_app(settings(), agent=cast(AgentService, FakeAgent()))
     async with client(app) as http:

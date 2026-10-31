@@ -208,7 +208,10 @@ async def _run(
     """One assistant turn: events go to `queue`, which always ends with `done`."""
 
     async def emit(event: ChatEvent) -> None:
-        queue.put_nowait(event)
+        # `_run` sends the only `done`, once the turn is over and the session is free: an
+        # assistant still awaiting after its own `done` must not be cut off.
+        if not isinstance(event, DoneEvent):
+            queue.put_nowait(event)
 
     started = time.perf_counter()
     outcome = "ok"
@@ -238,7 +241,8 @@ async def _chat_stream(
         while True:
             event = await queue.get()
             yield ServerSentEvent(data=event.model_dump_json(), event=event.type)
-            # The first `done` ends the stream, whether the assistant or `_run` sent it.
+            # `done` only comes from `_run`, after the turn: cancelling below means the
+            # client really left.
             if isinstance(event, DoneEvent):
                 return
     finally:
