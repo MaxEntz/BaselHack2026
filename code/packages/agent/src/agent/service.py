@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.sql import Executable
 from sqlalchemy.sql.elements import ColumnElement
 
+from agent import admin
 from core.availability import (
     BusyInterval,
     TableRow,
@@ -172,19 +173,32 @@ def _constraint(error: DBAPIError) -> str | None:
     return name
 
 
-async def _attempt(conn: AsyncConnection, table_id: int, statement: Executable) -> Outcome:
+class _Unfit(Exception):
+    """The table was removed or shrunk below the party since `_load` read the floor plan."""
+
+
+async def _attempt(
+    conn: AsyncConnection, table_id: int, party_size: int, statement: Executable
+) -> Outcome:
     """Write a booking on `table_id` in a SAVEPOINT, so a conflict leaves the transaction usable.
 
-    `taken`: the table is booked over that range (exclusion violation). `key_taken`: a
-    concurrent request with the same idempotency key won. Anything else is raised.
+    `taken`: the table is booked over that range (exclusion violation), or a concurrent
+    `update_tables` removed it or made it too small. `key_taken`: a concurrent request with
+    the same idempotency key won. Anything else is raised.
     """
     try:
         async with conn.begin_nested():
-            # Queue behind other writers on this table (see the module docstring).
-            await conn.execute(
-                select(tables_t.c.id).where(tables_t.c.id == table_id).with_for_update()
+            # Queue behind other writers on this table (see the module docstring), then
+            # re-read its seats under the lock: the floor plan may have changed since `_load`.
+            seats = await conn.scalar(
+                select(tables_t.c.seats).where(tables_t.c.id == table_id).with_for_update()
             )
+            if seats is None or seats < party_size:
+                # Raised inside the SAVEPOINT, so its rollback releases the lock.
+                raise _Unfit
             await conn.execute(statement)
+    except _Unfit:
+        return "taken"
     except DBAPIError as error:
         if _sqlstate(error) == EXCLUSION_VIOLATION:
             return "taken"
@@ -300,6 +314,7 @@ class PgAgentService:
                 outcome = await _attempt(
                     conn,
                     table.id,
+                    party_size,
                     insert(reservations_t).values(
                         id=reservation_id,
                         table_id=table.id,
@@ -362,6 +377,7 @@ class PgAgentService:
                 outcome = await _attempt(
                     conn,
                     table.id,
+                    new_party,
                     update(reservations_t)
                     .where(reservations_t.c.id == current.id)
                     .values(table_id=table.id, during=during, party_size=new_party),
@@ -402,8 +418,10 @@ class PgAgentService:
         by: Literal["guest", "merchant"],
         guest_name: str | None = None,
     ) -> Reservation:
-        if by == "merchant" or guest_name is None:
-            raise NotImplementedError("Merchant cancellation and its guest notice come with #9")
+        if by == "merchant":
+            return await self._cancel_by_merchant(slug, reservation_id)
+        if guest_name is None:
+            raise InvalidInput("guest_name is required to cancel a booking as the guest")
         async with merchant_conn(self.engine, slug) as conn:
             await self._load(conn, slug)
             current = await self._own_booking(conn, reservation_id, guest_name)
@@ -471,19 +489,33 @@ class PgAgentService:
         reservations.sort(key=lambda r: (r.starts_at, r.merchant, r.id))
         return reservations, notices
 
-    # Merchant side: #9 implements these on the same class.
+    # Merchant side (#9): the queries live in `agent.admin`.
 
-    async def list_reservations(self, slug: str, day: date) -> list[AdminReservationRow]:
-        raise NotImplementedError("#9")
+    async def list_reservations(
+        self, slug: str, day: date, *, include_cancelled: bool = False
+    ) -> list[AdminReservationRow]:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug)
+            return await admin.list_reservations(
+                conn, day, self.tz, include_cancelled=include_cancelled
+            )
 
     async def get_stats(self, slug: str, day: date) -> Stats:
-        raise NotImplementedError("#9")
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug)
+            return await admin.get_stats(conn, day, self.tz)
 
     async def block_slot(self, slug: str, starts_at: datetime) -> None:
-        raise NotImplementedError("#9")
+        async with merchant_conn(self.engine, slug) as conn:
+            merchant = await self._load(conn, slug)
+            await admin.block_slot(conn, merchant.services, starts_at, self.tz)
+        log.info("slot blocked", extra={"merchant": slug, "starts_at": starts_at.isoformat()})
 
     async def unblock_slot(self, slug: str, starts_at: datetime) -> None:
-        raise NotImplementedError("#9")
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug)
+            await admin.unblock_slot(conn, starts_at)
+        log.info("slot unblocked", extra={"merchant": slug, "starts_at": starts_at.isoformat()})
 
     async def update_policy(
         self,
@@ -491,10 +523,27 @@ class PgAgentService:
         max_party_size: int | None = None,
         services: Sequence[Service] | None = None,
     ) -> Policy:
-        raise NotImplementedError("#9")
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug)
+            policy = await admin.update_policy(conn, slug, max_party_size, services)
+        log.info("policy updated", extra={"merchant": slug})
+        return policy
 
     async def update_tables(self, slug: str, tables: Sequence[TableSpec]) -> list[TableSpec]:
-        raise NotImplementedError("#9")
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug)
+            plan = await admin.update_tables(conn, slug, tables, self.clock(), self.tz)
+        log.info("floor plan updated", extra={"merchant": slug, "tables": len(plan)})
+        return plan
+
+    async def _cancel_by_merchant(self, slug: str, reservation_id: str) -> Reservation:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug)
+            row = await admin.cancel_by_merchant(conn, slug, reservation_id, self.tz, self.clock())
+        log.info(
+            "reservation cancelled by merchant", extra={"merchant": slug, "reservation": row.id}
+        )
+        return self._from_row(slug, row)
 
     # Helpers
 
