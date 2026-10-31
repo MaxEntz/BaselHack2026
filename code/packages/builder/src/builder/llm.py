@@ -1,4 +1,5 @@
-"""LLM client behind the assistant: a provider-neutral interface and its OpenAI implementation.
+"""LLM client of the builder and the platform assistant: a provider-neutral interface and its
+OpenAI implementation.
 
 The conversation is stored in a neutral format (`Message`), so the tool-use loop never
 touches a provider's types. Messages:
@@ -21,7 +22,7 @@ from typing import Any, Protocol
 import openai
 from openai import AsyncOpenAI
 
-log = logging.getLogger("merchant_platform.llm")
+log = logging.getLogger("builder.llm")
 
 Message = dict[str, Any]
 OnText = Callable[[str], Awaitable[None]]
@@ -78,8 +79,12 @@ class LLMClient(Protocol):
         tools: Sequence[ToolSpec],
         history: Sequence[Message],
         on_text: OnText,
+        tool_choice: str | None = None,
     ) -> LLMReply:
-        """One model call: streams text through `on_text`, returns the text and tool calls."""
+        """One model call: streams text through `on_text`, returns the text and tool calls.
+
+        `tool_choice` names a tool the model must call (the builder's extraction).
+        """
         ...
 
 
@@ -174,6 +179,7 @@ class OpenAIClient:
         tools: Sequence[ToolSpec],
         history: Sequence[Message],
         on_text: OnText,
+        tool_choice: str | None = None,
     ) -> LLMReply:
         request: dict[str, Any] = {
             "model": self._model,
@@ -192,6 +198,8 @@ class OpenAIClient:
             # The history is ours: nothing needs to be kept on OpenAI's side.
             "store": False,
         }
+        if tool_choice:
+            request["tool_choice"] = {"type": "function", "name": tool_choice}
         if self._reasoning_effort:
             request["reasoning"] = {"effort": self._reasoning_effort}
         if self._reasoning_effort != "none":

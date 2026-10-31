@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>La Graine Verte · Cantine végétale à Mulhouse</title>
+    <meta name="description" content="La Graine Verte, cantine 100 % végétale à Mulhouse : bols de saison, plats sans gluten, petits prix. Tous les jours, 11h30–14h30 et 18h30–21h30.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%232f6b45'/%3E%3Cpath d='M32 48c0-14 6-22 16-26-2 12-8 20-16 26zm0 0c0-10-4-16-12-19 1 9 5 15 12 19z' fill='%23f4f1e6'/%3E%3C/svg%3E">
+    <style>
+      :root {
+        --bg: #f4f1e6;
+        --card: #fffdf7;
+        --ink: #1f2a22;
+        --muted: #56625a;
+        --line: #d8d6c4;
+        --green: #2f6b45;
+        --green-deep: #234f33;
+        --sprout: #a9c46c;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color-scheme: light;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 1.0625rem/1.6 var(--sans); }
+      a { color: var(--green); text-underline-offset: 0.18em; }
+      .wrap { width: min(100% - 2rem, 62rem); margin-inline: auto; }
+      header { border-top: 8px solid var(--green); padding-block: 1.25rem; }
+      .brand { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; color: var(--green); }
+      .brand span { color: var(--ink); font-weight: 500; font-size: 0.85rem; letter-spacing: 0.12em; text-transform: uppercase; margin-left: 0.5rem; }
+      .hero { padding-block: clamp(2.5rem, 7vw, 5rem); }
+      h1, h2 { margin: 0 0 0.5em; line-height: 1.1; letter-spacing: -0.02em; text-wrap: balance; }
+      h1 { font-size: clamp(2.4rem, 5vw + 1rem, 4.2rem); font-weight: 800; }
+      h2 { font-size: 1.5rem; font-weight: 750; }
+      p { margin: 0 0 1em; }
+      .lead { max-width: 38rem; color: var(--muted); font-size: 1.2rem; }
+      .pills { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
+      .pills li { padding: 0.35rem 0.85rem; border-radius: 999px; background: var(--sprout); color: var(--green-deep); font-weight: 650; font-size: 0.9rem; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1.25rem; padding-bottom: 3rem; }
+      .card { padding: 1.5rem; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+      .card p:last-child { margin-bottom: 0; }
+      .price { display: flex; justify-content: space-between; gap: 1rem; padding-block: 0.4rem; border-bottom: 1px dashed var(--line); }
+      .price:last-of-type { border-bottom: 0; }
+      .price span:last-child { white-space: nowrap; }
+      .book { margin-bottom: 3rem; padding: clamp(1.5rem, 4vw, 2.5rem); border-radius: 18px; background: var(--green); color: var(--bg); }
+      .book h2 { color: #fff; }
+      .book a { color: #fff; font-weight: 700; }
+      .phone { font-size: clamp(1.6rem, 3vw + 1rem, 2.4rem); font-weight: 800; letter-spacing: -0.01em; }
+      footer { padding-block: 1.5rem 2rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap"><span class="brand">La Graine Verte<span>Mulhouse</span></span></div>
+    </header>
+
+    <main>
+      <section class="wrap hero">
+        <h1>Cantine 100 % végétale</h1>
+        <p class="lead">Des bols de saison, des légumes de maraîchers du Haut-Rhin et des desserts gourmands, sans aucun produit animal. À petits prix, midi et soir.</p>
+        <ul class="pills" aria-label="Notre cuisine">
+          <li>100 % végétal</li>
+          <li>Végétarien</li>
+          <li>Sans gluten pour la plupart des plats</li>
+        </ul>
+      </section>
+
+      <div class="wrap grid">
+        <section class="card" aria-labelledby="carte">
+          <h2 id="carte">À la carte</h2>
+          <p class="price"><span>Bol du jour</span><span>12 €</span></p>
+          <p class="price"><span>Dahl de lentilles corail, riz complet</span><span>11 €</span></p>
+          <p class="price"><span>Formule bol + dessert</span><span>15 €</span></p>
+          <p class="price"><span>Gâteau chocolat-noisette</span><span>5 €</span></p>
+        </section>
+        <section class="card" aria-labelledby="horaires">
+          <h2 id="horaires">Horaires</h2>
+          <p>Ouvert tous les jours.</p>
+          <p>Déjeuner : 11h30 – 14h30<br>Dîner : 18h30 – 21h30</p>
+        </section>
+        <section class="card" aria-labelledby="adresse">
+          <h2 id="adresse">Adresse</h2>
+          <p>7 passage des Semis<br>68100 Mulhouse</p>
+          <p><a href="mailto:bonjour@lagraineverte.example">bonjour@lagraineverte.example</a></p>
+        </section>
+      </div>
+
+      <section id="reserver" class="wrap book" aria-labelledby="reserver-titre">
+        <h2 id="reserver-titre">Réserver une table</h2>
+        <p>Réservez par téléphone, aux heures d'ouverture :</p>
+        <p class="phone"><a href="tel:+33389000011">03 89 00 00 11</a></p>
+        <p>Tables de 1 à 4 personnes. Annulation gratuite jusqu'à 1 heure avant le repas.</p>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">La Graine Verte est un restaurant fictif, créé pour une démonstration (BaselHack 2026). L'adresse, le téléphone et l'e-mail sont factices.</div>
+    </footer>
+  </body>
+</html>
