@@ -25,9 +25,6 @@ SETTINGS = {"name": "La Graine Verte", "city": "Mulhouse", "price_level": "€",
 
 # (method, path under /merchants/{slug}, body, issue that implements it; None once built)
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
-    ("GET", "/dashboard?date=2026-10-31", None, "#135"),
-    ("GET", "/dashboard", None, "#135"),  # the server's today
-    ("GET", "/search?q=kim", None, "#135"),
     ("GET", "/hours", None, "#133"),
     ("PUT", "/hours", HOURS, "#133"),
     ("GET", "/tables", None, "#133"),
@@ -46,11 +43,14 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
 NOT_BUILT = [route for route in ROUTES if route[3]]
 
 
-# Built routes: the overview (#132), the guests (#144) and the bookings (#134); here without
-# their services.
+# Built routes: the overview (#132), the guests (#144), the bookings (#134) and Home (#135);
+# here without their services.
 BUILT: list[tuple[str, str, dict[str, Any] | None, str]] = [
     ("GET", "", None, "#132"),
     ("GET", "/guests?q=kim", None, "#144"),
+    ("GET", "/dashboard?date=2026-10-31", None, "#135"),
+    ("GET", "/dashboard", None, "#135"),  # the server's today
+    ("GET", "/search?q=kim", None, "#135"),
     ("GET", "/reservations?date=2026-10-31", None, "#134"),
     ("POST", "/reservations", BOOKING, "#134"),
     ("PATCH", "/reservations/R-001", MOVE, "#134"),
