@@ -1,0 +1,17 @@
+{
+  "$comment": "Generated from core.models.GetMyReservationsInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "guest_name": {
+      "minLength": 1,
+      "title": "Guest Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "guest_name"
+  ],
+  "title": "MATP RECALL params",
+  "type": "object"
+}

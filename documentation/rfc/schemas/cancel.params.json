@@ -1,0 +1,23 @@
+{
+  "$comment": "Generated from core.models.CancelReservationInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "guest_name": {
+      "minLength": 1,
+      "title": "Guest Name",
+      "type": "string"
+    },
+    "reservation_id": {
+      "minLength": 1,
+      "title": "Reservation Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reservation_id",
+    "guest_name"
+  ],
+  "title": "MATP CANCEL params",
+  "type": "object"
+}
