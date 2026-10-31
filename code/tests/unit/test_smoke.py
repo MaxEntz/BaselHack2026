@@ -9,8 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from core.config import Settings
-from merchant_platform.api import app
+from core.config import Settings, get_settings
+from merchant_platform import api
 
 MODULES = [
     "core.models",
@@ -64,6 +64,21 @@ def test_settings_treat_empty_values_as_unset(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_platform_health() -> None:
-    response = TestClient(app).get("/health")
+    settings = Settings(_env_file=None, database_url="postgresql+psycopg://u:p@localhost:5432/db")
+    response = TestClient(api.create_app(settings)).get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_platform_app_is_built_on_first_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `uvicorn merchant_platform.api:app` reads the settings then, not at import time.
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost:5432/db")
+    monkeypatch.setattr(api, "configure_logging", lambda: None)
+    get_settings.cache_clear()
+    api._default_app.cache_clear()
+    try:
+        assert api.app is api.app
+        assert TestClient(api.app).get("/health").status_code == 200
+    finally:
+        get_settings.cache_clear()
+        api._default_app.cache_clear()
