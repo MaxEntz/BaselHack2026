@@ -11,7 +11,7 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import set_status
-from agent.service import NOTICE_WINDOW, PgAgentService
+from agent.service import NOTICE_WINDOW, PgAgentService, same_guest
 from core.db import blocked_slots_t, guest_notices_t, merchant_conn, reservations_t
 from core.errors import InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import Reservation
@@ -528,6 +528,43 @@ async def test_guest_sees_upcoming_bookings_across_live_merchants(
     assert [r.id for r in reservations] == [soon.id, tomorrow.id]
     assert [r.merchant for r in reservations] == [zinc, other]
     assert notices == []
+
+
+@pytest.mark.parametrize(
+    ("booked_as", "looked_up_as"),
+    [
+        ("Anna Weiß", "anna weiss"),
+        ("Anna Weiß", "Anna Weiß"),
+        ("Anna\u00a0Weber", "Anna Weber"),
+        ("Anna Weber", "anna\u00a0WEBER"),
+    ],
+)
+async def test_every_name_that_can_book_finds_its_bookings(
+    service: PgAgentService, make_merchant: MerchantFactory, booked_as: str, looked_up_as: str
+) -> None:
+    # One definition of a guest, `same_guest`, for booking and for lookups (#77).
+    slug = await make_merchant()
+    token = uuid4().hex[:6]
+    booked = await book(service, slug, at("20:00"), guest_name=f"{booked_as} {token}")
+
+    reservations, _ = await service.find_guest_reservations(f"{looked_up_as} {token}")
+
+    assert [r.id for r in reservations] == [booked.id]
+    assert same_guest(f"{looked_up_as} {token}", booked.guest_name)
+
+
+async def test_a_merchant_cancellation_reaches_a_guest_named_weiss(
+    service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    guest = f"Anna Weiß {uuid4().hex[:6]}"
+    booked = await book(service, slug, at("20:00"), guest_name=guest)
+    await service.cancel_reservation(slug, booked.id, by="merchant")
+
+    _, notices = await service.find_guest_reservations(guest.replace("ß", "ss").lower())
+
+    assert len(notices) == 1
+    assert booked.id in notices[0]
 
 
 async def test_guest_notices_come_back_for_a_day_then_stop(
