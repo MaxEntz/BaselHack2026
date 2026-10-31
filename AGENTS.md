@@ -159,7 +159,7 @@ Each merchant also has `/m/<slug>/mcp` with the 4 booking tools, without `mercha
 
 ### 8.2 Admin tools
 
-Platform assistant only, never exposed to Claude users: `build_agent`, `publish_agent` (#136), `list_reservations`, `get_stats`, `block_slot`, `unblock_slot`, `update_policy`, `update_tables`, `cancel_reservation` (as the merchant, with a guest notice).
+Platform assistant only, never exposed to Claude users: `build_agent`, `publish_agent` (#136), `update_rules`, `try_request`, `send_test_booking`, `update_look`, `show_view` (#152), `list_reservations`, `get_stats`, `block_slot`, `unblock_slot`, `update_policy`, `update_tables`, `cancel_reservation` (as the merchant, with a guest notice).
 
 ### 8.3 Builder steps
 
@@ -357,6 +357,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | Studio (#141): an address alone gets a fixed question with no model call, and the address and the answer then go to `/chat` as one message; the model's text after a build or a publish gives way to fixed sentences, except after a failed step; the top bar's Publish calls `POST /merchants/{slug}/publish`, not the model; the onboarding prompt builds at once from a message with the address and anything about the restaurant | A button must not depend on how a model reads "Publish", and the screens stay the same in every run (#127) |
 | 2026-10-31 | The request log words an `AMEND` 409 by its cause: a booking that had started (`core.errors.BookingStarted`, its message ends with `STARTED`), more guests at the same time (no `starts_at`), else a time taken | #188 |
 | 2026-10-31 | Where a management-site operation goes: the forms' reads and saves (#133), like pause and resume (#146), are on the `AgentService` protocol, delegated to `agent.admin`; the bookings and Home (#134, #135) are on `ManagementService` (`agent/management.py`) | The forms change the policy, the floor plan and the registry that the assistant's admin tools also change, so they share `agent.admin` and its registry sync; the bookings need the management site's own shapes (`ReservationDay`, `DaySlots`, `Dashboard`) and the guests' write path. A new form or merchant setting goes on `AgentService`; a new booking view goes on `ManagementService` |
+| 2026-10-31 | Studio's requests are admin tools with typed inputs (#152): `update_rules` (the cancellation policy only, so a group-size request has one tool, `update_policy`), `try_request`, `send_test_booking` (through `AgentService`, as the node's `BOOK`; refused while `building`), `update_look` (stored in the registry's profile copy; `reset` re-reads the website), `show_view`; changes come back as `diff` cards and Studio's canvas follows `view` cards. `publish_agent` is refused until a merchant message came after the build. The prompt carries the mockup's two refusals (the merchant's website, the agent site's look) and the generated tool descriptions for "what do agents read". `update_words` and the dark management site are cut, as the issue allows | No regex: the model only fills inputs and code writes the answers. With seven new tools the model once chained a tool after `build_agent`, so the review card can't be skipped by prompt alone. The platform holds no BATP client: the service call is what the node's `BOOK` runs |
 
 ## 15. Out of scope (POC)
 
