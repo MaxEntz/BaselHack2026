@@ -3,10 +3,16 @@
 }
 
 191-96-88-152.sslip.io {
-	# Only Anthropic's outbound range (Claude.ai's MCP tool calls) reaches the gateway, see ADR-0010.
-	# Reference to recheck if Claude.ai starts getting 403: https://platform.claude.com/docs/en/api/ip-addresses
-	@anthropic remote_ip 160.79.104.0/21
-	handle @anthropic {
+	# Hosted assistants call from their vendor's cloud and can't always send a token. Today: Anthropic's
+	# outbound range, for Claude.ai (https://platform.claude.com/docs/en/api/ip-addresses).
+	# Keep this list and GATEWAY_TOKENLESS_NETWORKS in the server's .env the same. See ADR-0013.
+	@hosted remote_ip 160.79.104.0/21
+	handle @hosted {
+		reverse_proxy 127.0.0.1:8001
+	}
+	# Any other assistant sends the token, and the gateway checks it. Scans without one stop here.
+	@with_token header Authorization "Bearer *"
+	handle @with_token {
 		reverse_proxy 127.0.0.1:8001
 	}
 	handle {

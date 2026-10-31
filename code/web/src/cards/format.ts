@@ -1,7 +1,7 @@
 import type { Service, Via } from "../types.ts";
 
 export const VIA_LABELS: Record<Via, string> = {
-  claude: "Claude",
+  assistant: "AI assistant",
   website: "Website",
   merchant: "Merchant",
 };

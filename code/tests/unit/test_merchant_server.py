@@ -1,4 +1,4 @@
-"""Descriptions of each merchant's own endpoint (#23): merchant text must not steer Claude."""
+"""Descriptions of each merchant's endpoint (#23): merchant text must not steer the assistant."""
 
 from typing import Any
 

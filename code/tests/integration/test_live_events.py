@@ -68,7 +68,7 @@ async def drop_merchant(engine: AsyncEngine, slug: str) -> None:
 
 
 async def book(
-    engine: AsyncEngine, slug: str, *, via: Via = "claude", at: datetime = EIGHT_PM
+    engine: AsyncEngine, slug: str, *, via: Via = "assistant", at: datetime = EIGHT_PM
 ) -> str:
     async with merchant_conn(engine, slug) as conn:
         reservation_id = await next_reservation_id(conn)
@@ -122,18 +122,18 @@ async def test_a_booking_reaches_the_merchants_subscribers_within_2_s(
     slug = merchants[0]
     queue = bus.subscribe(slug)
 
-    reservation_id = await book(engine, slug, via="claude")
+    reservation_id = await book(engine, slug, via="assistant")
 
     event = await next_event(queue)
     assert event.kind == "new_booking"
-    assert event.via == "claude"
+    assert event.via == "assistant"
     assert event.reservation.model_dump() == {
         "id": reservation_id,
         "time": "20:00",
         "guest_name": "Sam Dupont",
         "party_size": 4,
         "table_label": "T5",
-        "via": "claude",
+        "via": "assistant",
         "status": "confirmed",
     }
 
@@ -198,7 +198,7 @@ def statements(engine: AsyncEngine) -> Iterator[list[str]]:
 
 def payload(schema: str) -> str:
     return json.dumps(
-        {"schema": schema, "op": "INSERT", "id": "R-001", "status": "confirmed", "via": "claude"}
+        {"schema": schema, "op": "INSERT", "id": "R-001", "status": "confirmed", "via": "assistant"}
     )
 
 
@@ -279,7 +279,7 @@ async def test_a_rolled_back_booking_sends_nothing(
                 guest_name="Nobody",
                 party_size=2,
                 during=Range(EIGHT_PM, EIGHT_PM + timedelta(minutes=120)),
-                via="claude",
+                via="assistant",
             )
         )
         await transaction.rollback()

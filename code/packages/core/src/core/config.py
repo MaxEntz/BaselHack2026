@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     chaos_merchants: str = ""
     gateway_public_url: str | None = None
     gateway_token: SecretStr | None = None
+    # Networks that may call without the token, as JSON: hosted assistants call from their
+    # vendor's cloud and can't always send a header. Requires GATEWAY_TOKEN.
+    gateway_tokenless_networks: tuple[str, ...] = ()
     platform_public_url: str = "http://localhost:8002"
     # Origins allowed to call the platform's public booking API (the showcase site's form).
     public_cors_origins: tuple[str, ...] = ("http://localhost:8080", "http://127.0.0.1:8080")
@@ -43,7 +46,7 @@ class Settings(BaseSettings):
     # MATP node (documentation/PROTOCOL.md): loopback only in the POC (ADR-0011).
     matp_host: str = "127.0.0.1"
     matp_port: int = 4710
-    # Known agents and their tokens, as JSON: {"urn:matp:agent:claude-gateway": "…"}.
+    # Known agents and their tokens, as JSON: {"urn:matp:agent:mcp-gateway": "…"}.
     matp_tokens: dict[str, SecretStr] = {}
     # TLS for the node, required when it listens beyond loopback (PEM files).
     matp_tls_cert: str | None = None

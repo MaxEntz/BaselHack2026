@@ -18,7 +18,7 @@ const CLIENT =
 
 const WELCOME = DEMO_MERCHANT
   ? "Welcome back! Ask me about tonight's bookings, block a time slot or change your booking policy."
-  : "Hi! I'm your platform assistant. I'll turn your website into a booking agent that Claude can talk to.\n\n**What's your restaurant's website?**";
+  : "Hi! I'm your platform assistant. I'll turn your website into a booking agent that any AI assistant can talk to.\n\n**What's your restaurant's website?**";
 
 export default function App() {
   const { state, send, liveConnected } = useChat(CLIENT, WELCOME, DEMO_MERCHANT);

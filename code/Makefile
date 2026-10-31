@@ -46,6 +46,8 @@ tunnel: ## Expose a local gateway through ngrok (the team URL is served by `make
 	ngrok http --url="$(GATEWAY_PUBLIC_URL)" 8001
 
 deploy: ## Ship the MATP node and the gateway to the team server -> https://191-96-88-152.sslip.io/mcp
+	@# Caddy lets through any request carrying a token, so the gateway must have one to check it.
+	$(DEPLOY_SSH) $(DEPLOY_HOST) 'cd $(DEPLOY_DIR) && grep -q "^GATEWAY_TOKEN=." .env && grep -q "^GATEWAY_TOKENLESS_NETWORKS=." .env && { ! grep -q "^MATP_URL=." .env || grep -q "urn:matp:agent:mcp-gateway" .env; }' || (echo "Server .env incomplete: see documentation/runbooks/connector.md, Deploy a change to the LXC" >&2; exit 1)
 	rsync -rlptz --delete --exclude .venv --exclude .env --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
@@ -75,7 +77,7 @@ demo-reset: ## Known demo state: all but Le Petit Zinc, built live by onboarding
 bookings: ## Tonight's bookings at Le Petit Zinc, e.g. after its live onboarding
 	uv run python scripts/seed.py --with-bookings
 
-outage: ## Demo outage: SLUG goes down, Claude gets its fallback URL (SLUG=le-petit-zinc)
+outage: ## Demo outage: SLUG goes down, assistants get its fallback URL (SLUG=le-petit-zinc)
 	uv run python scripts/set_status.py $(SLUG) down
 
 restore: ## End of the outage: SLUG is live again

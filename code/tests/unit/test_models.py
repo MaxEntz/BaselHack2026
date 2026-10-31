@@ -235,7 +235,7 @@ def test_update_tables_rejects_invalid_floor_plans(tables: list[dict[str, object
                 "table_label": "T5",
                 "status": "confirmed",
                 "guest_name": "Sam Dupont",
-                "via": "claude",
+                "via": "assistant",
             },
         ),
     ],

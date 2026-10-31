@@ -32,7 +32,7 @@ log = logging.getLogger("gateway.discovery")
 
 PRICE_ORDER: tuple[PriceLevel, ...] = get_args(PriceLevel)
 
-# Canonical spelling (folded, words joined by "-") -> tag. Claude may write anything.
+# Canonical spelling (folded, words joined by "-") -> tag. An assistant may write anything.
 TAG_SPELLINGS: dict[str, Tag] = {tag: tag for tag in get_args(Tag)} | {
     "veggie": "vegetarian",
     "vegetarians": "vegetarian",
@@ -119,7 +119,7 @@ def normalize_tag(raw: str) -> Tag | None:
 def normalize_filters(
     raw: SearchFilters | None, near: str | None, query: str
 ) -> tuple[Criteria, list[str]]:
-    """Criteria from what Claude sent, plus the tags we don't know (reported, not fatal)."""
+    """Criteria from what the assistant sent, plus the tags we don't know (reported, not fatal)."""
     tags: set[Tag] = set()
     ignored: list[str] = []
     reported: set[str] = set()

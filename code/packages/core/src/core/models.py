@@ -18,7 +18,7 @@ from pydantic import (
 
 Tag = Literal["gluten-free", "vegetarian", "vegan", "halal", "kosher", "terrace", "kid-friendly"]
 PriceLevel = Literal["€", "€€", "€€€", "€€€€"]
-Via = Literal["claude", "merchant", "website"]
+Via = Literal["assistant", "merchant", "website"]
 ReservationStatus = Literal["confirmed", "cancelled"]
 HHMM = Annotated[str, StringConstraints(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
 Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{3,61}$")]

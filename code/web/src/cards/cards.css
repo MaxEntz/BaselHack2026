@@ -279,9 +279,9 @@
   border-radius: 999px;
 }
 
-.badge-claude {
-  color: var(--claude);
-  background: var(--claude-bg);
+.badge-assistant {
+  color: var(--assistant);
+  background: var(--assistant-bg);
 }
 
 .badge-website {

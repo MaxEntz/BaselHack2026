@@ -2,7 +2,7 @@
 
 Params and results are the tool contracts of `core.models`, so MATP and the MCP tools agree by
 construction. A merchant marked `down` refuses agent traffic with its fallback URL, as the
-gateway does for Claude (#13); its own website keeps booking through the platform.
+gateway does for its assistants (#13); its own website keeps booking through the platform.
 """
 
 import logging
@@ -34,9 +34,8 @@ from matp.messages import AgentIdentity, Intent, Request
 from matp.server import FAILED
 from matp.status import WITH_FALLBACK, Refused
 
-# Bookings over MATP come from guests' agents. The `kind` a caller declares is not trusted, and
-# `Via` has no value for agents other than Claude yet: every MATP booking is `claude`.
-VIA: Via = "claude"
+# Bookings over MATP come from guests' agents: the `kind` a caller declares is not trusted.
+VIA: Via = "assistant"
 # DISCOVER bounds, so one frame can't keep the node busy (the contracts don't cap them).
 MAX_DISCOVER_TAGS = 32
 MAX_QUERY = 500

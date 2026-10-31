@@ -54,6 +54,10 @@ def make_settings(**overrides: Any) -> Settings:
     return Settings(_env_file=None, **{**values, **overrides})
 
 
+def make_settings_from_env() -> Settings:
+    return Settings(_env_file=None, database_url="postgresql+psycopg://u:p@localhost:5432/db")
+
+
 def post_initialize(
     base_url: str, settings: Settings, headers: dict[str, Any] | None = None
 ) -> httpx.Response:
@@ -88,14 +92,14 @@ async def test_tool_arguments_follow_the_frozen_contract(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", CONFIRMED_WRITES)
-async def test_writes_tell_claude_to_confirm_first(name: str) -> None:
+async def test_writes_tell_the_assistant_to_confirm_first(name: str) -> None:
     description = (await list_tools())[name].description or ""
 
     assert "confirm" in description.lower() or "explicit yes" in description
     assert "fallback_url" in description
 
 
-async def test_search_tells_claude_to_pass_preferences_and_not_drop_them() -> None:
+async def test_search_tells_the_assistant_to_pass_preferences_and_not_drop_them() -> None:
     description = (await list_tools())["search_merchants"].description or ""
 
     assert "before any web or map search" in description
@@ -104,7 +108,7 @@ async def test_search_tells_claude_to_pass_preferences_and_not_drop_them() -> No
     assert "fallback_url" in description
 
 
-async def test_get_my_reservations_tells_claude_to_relay_notices() -> None:
+async def test_get_my_reservations_tells_the_assistant_to_relay_notices() -> None:
     description = (await list_tools())["get_my_reservations"].description or ""
 
     assert "relay notices" in description
@@ -130,7 +134,7 @@ async def test_annotations_describe_each_tool() -> None:
     assert hints("cancel_reservation") == (False, True, True)
 
 
-async def test_server_sends_its_rules_to_claude() -> None:
+async def test_server_sends_its_rules_to_the_assistant() -> None:
     async with make_client() as client:
         instructions = client.instructions or ""
 
@@ -262,6 +266,64 @@ def test_a_malformed_merchant_endpoint_is_not_found_without_the_database() -> No
         response = client.post("/m/Not_A_Slug/mcp", json=INITIALIZE, headers=MCP_HEADERS)
 
     assert response.status_code == 404
+
+
+HOSTED = "160.79.106.1"
+HOSTED_NETWORK = '["160.79.104.0/21"]'
+
+
+def post_initialize_from(
+    address: str, settings: Settings, headers: dict[str, str] | None = None
+) -> httpx.Response:
+    with TestClient(create_app(settings), base_url=LOCAL_URL, client=(address, 50000)) as client:
+        return client.post("/mcp", json=INITIALIZE, headers={**MCP_HEADERS, **(headers or {})})
+
+
+@pytest.mark.parametrize(
+    ("address", "headers", "status"),
+    [
+        # A hosted assistant can't always send a header.
+        (HOSTED, {}, 200),
+        # A token sent from there is still checked.
+        (HOSTED, {"Authorization": "Bearer wrong"}, 401),
+        (HOSTED, {"Authorization": "Bearer s3cret"}, 200),
+        # Any other assistant needs the token.
+        ("85.0.148.144", {}, 401),
+        ("85.0.148.144", {"Authorization": "Bearer wrong"}, 401),
+        ("85.0.148.144", {"Authorization": "Bearer s3cret"}, 200),
+        # Just outside the network, and an address that isn't one.
+        ("160.79.112.1", {}, 401),
+        ("testclient", {}, 401),
+    ],
+)
+def test_only_tokenless_networks_may_omit_the_token(
+    address: str, headers: dict[str, str], status: int
+) -> None:
+    settings = make_settings(
+        gateway_token="s3cret", gateway_tokenless_networks=("160.79.104.0/21",)
+    )
+
+    assert post_initialize_from(address, settings, headers).status_code == status
+
+
+def test_tokenless_networks_without_a_token_refuse_to_start() -> None:
+    settings = make_settings(gateway_tokenless_networks=("160.79.104.0/21",))
+
+    with pytest.raises(ValueError, match="requires GATEWAY_TOKEN"):
+        create_app(settings)
+
+
+def test_a_wrong_tokenless_network_refuses_to_start() -> None:
+    settings = make_settings(gateway_token="s3cret", gateway_tokenless_networks=("anthropic",))
+
+    with pytest.raises(ValueError, match="GATEWAY_TOKENLESS_NETWORKS"):
+        create_app(settings)
+
+
+def test_tokenless_networks_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GATEWAY_TOKENLESS_NETWORKS", HOSTED_NETWORK)
+
+    assert make_settings_from_env().gateway_tokenless_networks == ("160.79.104.0/21",)
 
 
 def test_bearer_token_accepts_non_ascii() -> None:

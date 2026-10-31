@@ -41,7 +41,7 @@
         },
         "via": {
           "enum": [
-            "claude",
+            "assistant",
             "merchant",
             "website"
           ],

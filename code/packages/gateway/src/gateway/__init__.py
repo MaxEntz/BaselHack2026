@@ -1,1 +1,1 @@
-"""Protocol: the public remote MCP server Claude connects to."""
+"""Protocol: the public remote MCP server AI assistants connect to."""

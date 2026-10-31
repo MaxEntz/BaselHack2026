@@ -21,7 +21,7 @@ export function ProfileCard({ data }: { data: BuildAgentOutput }) {
             <ExternalLink href={profile.website} />
           </p>
         </div>
-        <span className="pill pill-live">Live — discoverable from Claude</span>
+        <span className="pill pill-live">Live — discoverable by AI assistants</span>
       </header>
 
       {profile.tags.length > 0 && (

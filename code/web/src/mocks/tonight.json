@@ -22,7 +22,7 @@
           "guest_name": "Sam Dupont",
           "party_size": 4,
           "table_label": "T5",
-          "via": "claude",
+          "via": "assistant",
           "status": "confirmed"
         }
       ]

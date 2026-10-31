@@ -296,14 +296,14 @@ def two_hours_from(start: datetime) -> Range[datetime]:
 
 
 def booking(reservation_id: str, table_id: int, **overrides: Any) -> dict[str, Any]:
-    """A confirmed booking via Claude, 8 pm to 10 pm."""
+    """A confirmed booking via an assistant, 8 pm to 10 pm."""
     return {
         "id": reservation_id,
         "table_id": table_id,
         "guest_name": "Ada",
         "party_size": 2,
         "during": two_hours_from(EIGHT_PM),
-        "via": "claude",
+        "via": "assistant",
         **overrides,
     }
 
@@ -374,6 +374,6 @@ async def test_reservation_writes_notify_the_reservations_channel(
             "op": "INSERT",
             "id": "R-001",
             "status": "confirmed",
-            "via": "claude",
+            "via": "assistant",
         }
     ]

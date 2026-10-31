@@ -1,4 +1,4 @@
-"""Claude-side bookings on a real Postgres 16: the exclusion constraint does the locking."""
+"""Guest-side bookings on a real Postgres 16: the exclusion constraint does the locking."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -62,7 +62,7 @@ async def book(
     key: str | None = None,
 ) -> Reservation:
     return await service.create_reservation(
-        slug, start, party_size, guest_name, key or str(uuid4()), via="claude"
+        slug, start, party_size, guest_name, key or str(uuid4()), via="assistant"
     )
 
 
@@ -178,7 +178,7 @@ async def test_a_merchant_still_building_is_not_found(
 async def test_a_merchant_down_still_takes_bookings(
     engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
 ) -> None:
-    # `down` stops Claude at the gateway (#13); the merchant's own site keeps working.
+    # `down` stops assistants at the gateway (#13); the merchant's own site keeps working.
     slug = await make_merchant()
     await set_status(slug, "down", engine=engine)
 
@@ -213,7 +213,7 @@ async def test_create_books_the_smallest_table_that_fits(
         table_label="T10",  # T5-T10 seat 4; ties go by label as text (#5), so T10
         status="confirmed",
         guest_name=GUEST,
-        via="claude",
+        via="assistant",
     )
     assert reservation.starts_at.tzinfo == TZ
     assert len(await confirmed(engine, slug)) == 1
@@ -257,8 +257,8 @@ async def test_replaying_a_key_returns_the_same_booking(
 ) -> None:
     slug = await make_merchant()
 
-    first = await book(service, slug, at("20:00"), key="claude-1")
-    again = await book(service, slug, at("20:00"), key="claude-1")
+    first = await book(service, slug, at("20:00"), key="assistant-1")
+    again = await book(service, slug, at("20:00"), key="assistant-1")
 
     assert again == first
     assert len(await confirmed(engine, slug)) == 1
@@ -270,7 +270,7 @@ async def test_concurrent_replays_of_a_key_book_once(
     slug = await make_merchant(tables=ONE_TABLE, services=DINNER)
 
     results = await asyncio.gather(
-        *(book(service, slug, at("20:00"), key="claude-retry") for _ in range(5))
+        *(book(service, slug, at("20:00"), key="assistant-retry") for _ in range(5))
     )
 
     assert len({r.id for r in results}) == 1
@@ -281,10 +281,10 @@ async def test_a_key_reused_for_another_booking_is_rejected(
     service: PgAgentService, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant()
-    await book(service, slug, at("20:00"), key="claude-1")
+    await book(service, slug, at("20:00"), key="assistant-1")
 
     with pytest.raises(InvalidInput, match="idempotency_key"):
-        await book(service, slug, at("20:30"), key="claude-1")
+        await book(service, slug, at("20:30"), key="assistant-1")
 
 
 @pytest.mark.parametrize(

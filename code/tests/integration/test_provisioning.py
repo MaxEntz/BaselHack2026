@@ -138,7 +138,7 @@ async def test_provisioned_schema_rejects_overlapping_bookings(
             "guest_name": "Ada",
             "party_size": 2,
             "during": Range(start, start + timedelta(hours=2)),
-            "via": "claude",
+            "via": "assistant",
         }
 
     async with merchant_conn(engine, profile.slug) as conn:
@@ -170,7 +170,7 @@ async def test_provisioned_schema_notifies_new_reservations(
                     guest_name="Ada",
                     party_size=2,
                     during=Range(EIGHT_PM, EIGHT_PM + timedelta(hours=2)),
-                    via="claude",
+                    via="assistant",
                 )
             )
         received = [note async for note in listener.notifies(timeout=5, stop_after=1)]
@@ -181,7 +181,7 @@ async def test_provisioned_schema_notifies_new_reservations(
             "op": "INSERT",
             "id": "R-001",
             "status": "confirmed",
-            "via": "claude",
+            "via": "assistant",
         }
     ]
 

@@ -33,7 +33,7 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 
 Le Petit Zinc's booking form posts to `http://localhost:8002/public/le-petit-zinc/reservations` (#15). Open it at the `localhost` URL that `make site` prints, not at the `127.0.0.1` link `http.server` prints: the platform only accepts the form from the origins in its CORS list. Without the platform, the form asks guests to call.
 
-Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md).
+Assistants on your machine (Claude Code, Codex, OpenCode) can use `http://localhost:8001/mcp`. Hosted ones such as Claude.ai need a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md).
 
 ## Demo data
 
@@ -50,7 +50,7 @@ Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_pr
 | `make demo-reset` | Before each rehearsal: migrations, drops every `m_*` schema, empties the registry and guest notices, seeds all but Le Petit Zinc (onboarding builds it live). Refuses a non-localhost `DATABASE_URL`. `SEED="--all --with-bookings"` for a full state |
 | `make seed` | The 3 merchants, live, plus tonight's bookings at Le Petit Zinc; idempotent. `SEED="--except le-petit-zinc"` for demo mode |
 | `make bookings` | Tonight's bookings at Le Petit Zinc (19:00–21:00, via website and merchant), e.g. after its live onboarding; times already past are skipped |
-| `make outage` / `make restore` | Sets `SLUG` (default `le-petit-zinc`) `down` / `live`: Claude gets the fallback URL while it is down |
+| `make outage` / `make restore` | Sets `SLUG` (default `le-petit-zinc`) `down` / `live`: assistants get the fallback URL while it is down |
 
 ## Checks
 

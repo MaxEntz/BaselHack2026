@@ -1,7 +1,7 @@
 [project]
 name = "gateway"
 version = "0.1.0"
-description = "Protocol: public remote MCP server exposed to Claude."
+description = "Protocol: public remote MCP server exposed to AI assistants."
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "core",

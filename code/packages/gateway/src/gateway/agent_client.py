@@ -1,7 +1,7 @@
 """How the protocol reaches a merchant's agent, whichever process it runs in.
 
 `LocalAgentClient` calls the agent in the gateway's process. `MatpAgentClient` makes the gateway a
-bridge: Claude still speaks MCP to it, and it speaks MATP to the node serving the merchant agents
+bridge: assistants still speak MCP to it, and it speaks MATP to the node serving the merchant agents
 (`documentation/PROTOCOL.md`, §12). Tools only know the `AgentClient` interface.
 """
 
@@ -38,8 +38,8 @@ from matp.client import MatpClient
 from matp.messages import DEFAULT_PORT, AgentIdentity, Intent
 
 GATEWAY_AGENT = AgentIdentity(
-    id="urn:matp:agent:claude-gateway",
-    name="Claude via the merchant-agents gateway",
+    id="urn:matp:agent:mcp-gateway",
+    name="AI assistants via the merchant-agents gateway",
     kind="user-agent",
     operator="merchant-agents",
 )
@@ -85,7 +85,7 @@ class AgentClient(Protocol):
 
 
 class LocalAgentClient:
-    """In-process calls. What goes through here comes from Claude: `via` and `by` are fixed."""
+    """In-process calls. All of this comes from an assistant: `via` and `by` are fixed."""
 
     def __init__(self, service: AgentService, engine: AsyncEngine) -> None:
         self.service = service
@@ -110,7 +110,7 @@ class LocalAgentClient:
         idempotency_key: str,
     ) -> Reservation:
         return await self.service.create_reservation(
-            merchant, starts_at, party_size, guest_name, idempotency_key, via="claude"
+            merchant, starts_at, party_size, guest_name, idempotency_key, via="assistant"
         )
 
     async def update_reservation(

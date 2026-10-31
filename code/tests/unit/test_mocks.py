@@ -55,4 +55,4 @@ def test_notification_mock_is_a_booking_from_tonight() -> None:
 
     assert notification.reservation in tonight.data.reservations
     assert notification.kind == "new_booking"
-    assert notification.via == notification.reservation.via == "claude"
+    assert notification.via == notification.reservation.via == "assistant"

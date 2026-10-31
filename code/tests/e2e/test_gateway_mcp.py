@@ -54,7 +54,7 @@ def guest() -> str:
 
 
 async def call(client: Client, tool: str, **arguments: Any) -> dict[str, Any]:
-    """The tool's result. Failures are results too, so that Claude can read them."""
+    """The tool's result. Failures are results too, so that the assistant can read them."""
     result = await client.call_tool(tool, arguments)
     assert not result.is_error
     assert result.structured_content is not None
@@ -134,7 +134,7 @@ async def test_availability_returns_at_most_3_sorted_slots(gateway_base_url: str
     assert starts == sorted(starts)
 
 
-async def test_booking_is_stored_via_claude_and_replay_returns_it(
+async def test_booking_is_stored_via_assistant_and_replay_returns_it(
     gateway_base_url: str, e2e_engine: AsyncEngine
 ) -> None:
     arguments = {
@@ -154,7 +154,7 @@ async def test_booking_is_stored_via_claude_and_replay_returns_it(
         via = await conn.scalar(
             select(reservations_t.c.via).where(reservations_t.c.id == first["reservation"]["id"])
         )
-    assert via == "claude"
+    assert via == "assistant"
 
 
 async def test_move_then_cancel_a_booking(gateway_base_url: str) -> None:

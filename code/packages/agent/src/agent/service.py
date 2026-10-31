@@ -126,7 +126,7 @@ class AgentService(Protocol):
 
 
 def same_guest(given: str, booked: str) -> bool:
-    """Guest names match ignoring case and spacing: Claude may not repeat them verbatim."""
+    """Guest names match ignoring case and spacing: an assistant may not repeat them verbatim."""
     return _normalize(given) == _normalize(booked)
 
 
@@ -244,7 +244,7 @@ class PgAgentService:
 
     `clock` returns the current time (tests inject a fixed one). An unknown slug, or a
     merchant still `building` (onboarding not finished), is `NotFound`. A `down` merchant
-    still takes bookings here: the gateway stops Claude for it (#13), while its own website
+    still takes bookings here: the gateway stops assistants for it (#13), while its own website
     keeps working during an outage.
     """
 
@@ -255,7 +255,7 @@ class PgAgentService:
         self.tz = tz or ZoneInfo(get_settings().merchant_tz)
         self.clock = clock or (lambda: datetime.now(self.tz))
 
-    # Claude side (#8)
+    # Guest side, through an assistant (#8)
 
     async def get_availability(
         self, slug: str, day: date, party_size: int, time: str | None = None

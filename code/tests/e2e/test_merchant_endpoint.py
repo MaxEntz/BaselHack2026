@@ -140,7 +140,7 @@ async def test_books_moves_and_cancels_without_naming_the_merchant(
         )
 
     assert reservation["merchant"] == ZINC
-    assert reservation["via"] == "claude"
+    assert reservation["via"] == "assistant"
     assert moved["reservation"]["starts_at"] == at(day, "21:00")
     assert cancelled == {"status": "cancelled"}
 

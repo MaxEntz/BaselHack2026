@@ -9,7 +9,7 @@ from matp.messages import AgentIdentity, Hello
 from merchant_node import __main__ as node_main
 
 GATEWAY = AgentIdentity(
-    id="urn:matp:agent:claude-gateway", name="Gateway", kind="user-agent", operator="team"
+    id="urn:matp:agent:mcp-gateway", name="Gateway", kind="user-agent", operator="team"
 )
 STRANGER = AgentIdentity(
     id="urn:matp:agent:stranger", name="Stranger", kind="user-agent", operator="nobody"

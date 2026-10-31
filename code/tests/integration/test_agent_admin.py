@@ -40,7 +40,7 @@ async def book(
     service: PgAgentService, slug: str, hhmm: str, party_size: int = 2, guest: str = GUEST
 ) -> Reservation:
     return await service.create_reservation(
-        slug, at(hhmm), party_size, guest, str(uuid4()), via="claude"
+        slug, at(hhmm), party_size, guest, str(uuid4()), via="assistant"
     )
 
 
@@ -99,7 +99,7 @@ async def test_list_reservations_sorted_by_time_with_local_times(
             guest_name="Grace Hopper",
             party_size=6,
             table_label=lunch.table_label,
-            via="claude",
+            via="assistant",
             status="confirmed",
         ),
         AdminReservationRow(
@@ -108,7 +108,7 @@ async def test_list_reservations_sorted_by_time_with_local_times(
             guest_name=GUEST,
             party_size=2,
             table_label=early.table_label,
-            via="claude",
+            via="assistant",
             status="confirmed",
         ),
         AdminReservationRow(
@@ -117,7 +117,7 @@ async def test_list_reservations_sorted_by_time_with_local_times(
             guest_name=GUEST,
             party_size=4,
             table_label=late.table_label,
-            via="claude",
+            via="assistant",
             status="confirmed",
         ),
     ]
@@ -181,7 +181,7 @@ async def test_get_stats_counts_only_that_day(
 ) -> None:
     slug = await make_merchant()
     await service.create_reservation(
-        slug, at("19:00", DAY + timedelta(days=1)), 2, GUEST, str(uuid4()), via="claude"
+        slug, at("19:00", DAY + timedelta(days=1)), 2, GUEST, str(uuid4()), via="assistant"
     )
     await service.block_slot(slug, at("19:00", DAY + timedelta(days=1)))
 

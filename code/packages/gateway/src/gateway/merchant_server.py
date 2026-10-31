@@ -48,7 +48,7 @@ MERCHANT_PATH = "/m/{slug}/mcp"
 SLUG = re.compile(r"^[a-z0-9-]{3,61}$")
 # Merchant free text allowed in a tool description (name, city).
 MAX_FREE_TEXT = 80
-# Instead of the merchant's own words, which could carry instructions for Claude.
+# Instead of the merchant's own words, which could carry instructions for the assistant.
 POLICY_ELSEWHERE = "see the restaurant's own website"
 
 INSTRUCTIONS = """\

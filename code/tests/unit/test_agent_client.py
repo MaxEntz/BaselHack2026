@@ -1,4 +1,4 @@
-"""Both clients: what must never come from Claude is fixed, and MATP frames follow the spec."""
+"""Both clients: `via` and `by` are fixed for assistants, and MATP frames follow the spec."""
 
 import json
 import logging
@@ -33,7 +33,7 @@ RESERVATION = {
     "table_label": "T1",
     "status": "confirmed",
     "guest_name": "Alex",
-    "via": "claude",
+    "via": "assistant",
 }
 
 
@@ -47,17 +47,17 @@ def client(service: AsyncMock) -> LocalAgentClient:
     return LocalAgentClient(service, engine=NO_ENGINE)
 
 
-async def test_bookings_from_claude_are_marked_as_such(
+async def test_bookings_from_an_assistant_are_marked_as_such(
     client: LocalAgentClient, service: AsyncMock
 ) -> None:
     await client.create_reservation("le-petit-zinc", STARTS_AT, 2, "Alex", "key")
 
     service.create_reservation.assert_awaited_once_with(
-        "le-petit-zinc", STARTS_AT, 2, "Alex", "key", via="claude"
+        "le-petit-zinc", STARTS_AT, 2, "Alex", "key", via="assistant"
     )
 
 
-async def test_a_cancellation_from_claude_is_by_the_guest(
+async def test_a_cancellation_from_an_assistant_is_by_the_guest(
     client: LocalAgentClient, service: AsyncMock
 ) -> None:
     await client.cancel_reservation("le-petit-zinc", "R-001", "Alex")
@@ -305,5 +305,5 @@ def test_with_matp_url_the_gateway_is_a_bridge_under_its_own_identity() -> None:
     assert isinstance(agent.client, MatpClient)
     assert (agent.client.host, agent.client.port) == ("127.0.0.1", 4711)
     assert agent.client.token == "a-token-long-enough"
-    assert agent.client.agent.id == "urn:matp:agent:claude-gateway"
+    assert agent.client.agent.id == "urn:matp:agent:mcp-gateway"
     assert agent.client.agent.kind == "user-agent"

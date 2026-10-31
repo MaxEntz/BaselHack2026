@@ -8,7 +8,7 @@ export type Tag =
   | "kid-friendly";
 
 export type PriceLevel = "€" | "€€" | "€€€" | "€€€€";
-export type Via = "claude" | "merchant" | "website";
+export type Via = "assistant" | "merchant" | "website";
 
 export type Service = { start: string; end: string };
 export type TableSpec = { label: string; seats: number };

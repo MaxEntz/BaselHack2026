@@ -3,10 +3,11 @@
 import asyncio
 import logging
 import secrets
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import date as Date
 from functools import partial
+from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
 from typing import Annotated
 from urllib.parse import urlsplit
 
@@ -279,28 +280,58 @@ def allowed_hosts(public_url: str | None) -> list[str]:
     return [*LOCAL_HOSTS, host, f"{host}:*"]
 
 
+def tokenless_networks(values: Sequence[str]) -> list[IPv4Network | IPv6Network]:
+    """The networks allowed to call without the token; a wrong value stops the gateway."""
+    try:
+        return [ip_network(value) for value in values]
+    except ValueError as error:
+        raise ValueError(f"GATEWAY_TOKENLESS_NETWORKS: {error}") from None
+
+
 class BearerAuth:
     """Reject HTTP requests that don't carry `Authorization: Bearer <token>`, except `/health`.
+
+    Callers from `tokenless` networks may omit the header, since a hosted assistant calls from its
+    vendor's cloud and can't always send one. A token they do send is still checked. The client
+    address is the real one: uvicorn only trusts `X-Forwarded-*` from the local proxy.
 
     Plain ASGI rather than BaseHTTPMiddleware, which buffers Streamable HTTP's SSE responses.
     """
 
-    def __init__(self, app: ASGIApp, token: str) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        token: str,
+        tokenless: Sequence[IPv4Network | IPv6Network] = (),
+    ) -> None:
         self.app = app
         self.expected = token.encode()
+        self.tokenless = tokenless
+
+    def _from_tokenless_network(self, scope: Scope) -> bool:
+        client = scope.get("client")
+        try:
+            address = ip_address(client[0]) if client else None
+        except ValueError:
+            return False
+        return address is not None and any(address in network for network in self.tokenless)
+
+    def _allowed(self, scope: Scope) -> bool:
+        header = Headers(scope=scope).get("authorization", "")
+        if not header:
+            return self._from_tokenless_network(scope)
+        scheme, _, credentials = header.partition(" ")
+        # Headers decodes as latin-1: encoding it back recovers the bytes on the wire.
+        valid = secrets.compare_digest(credentials.encode("latin-1"), self.expected)
+        return scheme.lower() == "bearer" and valid
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope["path"] != HEALTH_PATH:
-            header = Headers(scope=scope).get("authorization", "")
-            scheme, _, credentials = header.partition(" ")
-            # Headers decodes as latin-1: encoding it back recovers the bytes on the wire.
-            valid = secrets.compare_digest(credentials.encode("latin-1"), self.expected)
-            if scheme.lower() != "bearer" or not valid:
-                response = PlainTextResponse(
-                    "Unauthorized", status_code=401, headers={"WWW-Authenticate": "Bearer"}
-                )
-                await response(scope, receive, send)
-                return
+        if scope["type"] == "http" and scope["path"] != HEALTH_PATH and not self._allowed(scope):
+            response = PlainTextResponse(
+                "Unauthorized", status_code=401, headers={"WWW-Authenticate": "Bearer"}
+            )
+            await response(scope, receive, send)
+            return
         await self.app(scope, receive, send)
 
 
@@ -326,8 +357,13 @@ def create_app(
     merchants.streamable_http_app(transport_security=security)  # creates its session manager
     endpoint = StreamableHTTPASGIApp(merchants.session_manager)
     app.router.routes.append(Route(MERCHANT_PATH, MerchantEndpoint(endpoint, db, settings)))
+    tokenless = tokenless_networks(settings.gateway_tokenless_networks)
+    if tokenless and not settings.gateway_token:
+        raise ValueError("GATEWAY_TOKENLESS_NETWORKS requires GATEWAY_TOKEN")
     if settings.gateway_token:
-        app.add_middleware(BearerAuth, token=settings.gateway_token.get_secret_value())
+        app.add_middleware(
+            BearerAuth, token=settings.gateway_token.get_secret_value(), tokenless=tokenless
+        )
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:

@@ -20,7 +20,7 @@ pytestmark = pytest.mark.integration
 ZINC = "le-petit-zinc"
 ZINC_FALLBACK = "http://localhost:8080/reservation.html"
 TZ = ZoneInfo("Europe/Zurich")
-GATEWAY_AGENT = "urn:matp:agent:claude-gateway"
+GATEWAY_AGENT = "urn:matp:agent:mcp-gateway"
 GOOD_TOKEN = "the-gateway-token-long-enough"
 
 
@@ -56,7 +56,7 @@ async def test_a_booking_crosses_the_node_under_the_gateway_s_identity(
                 idempotency_key=str(uuid4()),
             )
 
-    assert booked["reservation"]["via"] == "claude"
+    assert booked["reservation"]["via"] == "assistant"
     gateway_line = next(r.__dict__ for r in caplog.records if r.getMessage() == "tool_call")
     assert gateway_line["outcome"] == "ok"
     node_lines = [json.loads(line) for line in matp_node.logs().splitlines() if '"BOOK"' in line]

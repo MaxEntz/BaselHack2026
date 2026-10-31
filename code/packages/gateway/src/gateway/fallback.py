@@ -1,7 +1,7 @@
 """Where agent failures become tool results: timeout, `down` status, fallback URL, call log.
 
-A tool never raises: Claude would get a generic error without the link to the merchant's site.
-Every outcome is a value Claude can read, and every call logs one `tool_call` line. Guest names
+A tool never raises: the assistant would get a generic error without the link to the merchant's
+site. Every outcome is a value it can read, and every call logs one `tool_call` line. Guest names
 never appear in that line.
 """
 
@@ -25,7 +25,7 @@ log = logging.getLogger("gateway.tools")
 # Id of the MATP request behind the current tool call, to match this log line with the node's.
 matp_request: ContextVar[str | None] = ContextVar("matp_request", default=None)
 
-# A timeout can hit after the COMMIT: these calls may have succeeded although Claude sees an error.
+# A timeout can hit after the COMMIT: these calls may have succeeded despite the error.
 WRITE_TOOLS = frozenset({"create_reservation", "update_reservation", "cancel_reservation"})
 MAYBE_SAVED = (
     "The change may have gone through: check get_my_reservations before retrying, "
@@ -112,7 +112,7 @@ async def call_agent[T](
     settings: Settings | None = None,
     started: float | None = None,
 ) -> T | ToolError:
-    """Run `op` for a merchant: the result, or the `ToolError` Claude should read instead.
+    """Run `op` for a merchant: the result, or the `ToolError` the assistant should read instead.
 
     An unknown merchant and a `down` one don't reach `op`. Cancellation (the client went away)
     is not an `Exception` and propagates. `started` counts earlier work in the logged latency.

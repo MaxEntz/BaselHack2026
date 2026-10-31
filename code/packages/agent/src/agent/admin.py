@@ -1,7 +1,7 @@
 """Merchant-side operations of `PgAgentService` (#9).
 
 Reservations list, stats, slot blocking, policy and floor-plan changes, and merchant
-cancellation with a guest notice. Only the platform assistant calls them, never Claude users
+cancellation with a guest notice. Only the platform assistant calls them, never guests' assistants
 (AGENTS.md §8.2). Each function runs on a connection from `merchant_conn`, so whatever one
 call changes, in the merchant's schema and in the registry, commits or rolls back together.
 """

@@ -35,8 +35,8 @@ NOW = datetime(2026, 10, 31, 9, tzinfo=TZ)
 DAY = date(2026, 11, 2)
 GUEST = "Ada Lovelace"
 GATEWAY = AgentIdentity(
-    id="urn:matp:agent:claude-gateway",
-    name="Claude via the merchant-agents gateway",
+    id="urn:matp:agent:mcp-gateway",
+    name="AI assistants via the merchant-agents gateway",
     kind="user-agent",
     operator="merchant-agents",
 )
@@ -107,7 +107,7 @@ async def test_book_amend_cancel_and_recall(
     booked = (await client.request("BOOK", slug, booking))["reservation"]
     replayed = (await client.request("BOOK", slug, booking))["reservation"]
     assert replayed["id"] == booked["id"]
-    assert (booked["merchant"], booked["via"], booked["status"]) == (slug, "claude", "confirmed")
+    assert (booked["merchant"], booked["via"], booked["status"]) == (slug, "assistant", "confirmed")
 
     moved = await client.request(
         "AMEND",
@@ -200,7 +200,7 @@ async def test_the_fallback_url_travels_on_the_wire(
 async def test_a_declared_kind_does_not_change_who_booked(
     engine: AsyncEngine, make_merchant: MerchantFactory
 ) -> None:
-    """A caller that claims to be a merchant agent still books as a guest's agent (`claude`)."""
+    """A caller that claims to be a merchant agent still books as a guest's agent (`assistant`)."""
     slug = await make_merchant()
     service = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
     node = NodeServer(
@@ -223,7 +223,7 @@ async def test_a_declared_kind_does_not_change_who_booked(
     finally:
         await node.stop()
 
-    assert booked["reservation"]["via"] == "claude"
+    assert booked["reservation"]["via"] == "assistant"
 
 
 async def test_discover_refuses_oversized_filters(client: MatpClient) -> None:
