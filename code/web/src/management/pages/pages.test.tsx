@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import fixture from "../../../../tests/fixtures/demo/la-graine-verte-management.json" with { type: "json" };
@@ -9,8 +9,11 @@ import { ClientContext } from "../data.ts";
 
 const SLUG = "la-graine-verte";
 
-function open(page: string) {
-  const client = createMockManagementClient(fixture as ManagementFixture, { latencyMs: 0 });
+function open(page: string, liveBookingDelayMs?: number) {
+  const client = createMockManagementClient(fixture as ManagementFixture, {
+    latencyMs: 0,
+    liveBookingDelayMs,
+  });
   const router = createMemoryRouter(routes, { initialEntries: [`/manage/${SLUG}/${page}`] });
   render(
     <ClientContext.Provider value={client}>
@@ -87,6 +90,44 @@ describe("Opening hours", () => {
       "Blocked 20:00Agents stop offering it.",
     );
     expect(screen.getByRole("button", { name: "Sat 31 Oct, 20:00, open it again" })).toBeTruthy();
+  });
+});
+
+describe("Guests", () => {
+  const names = () =>
+    screen
+      .getAllByRole<HTMLTableRowElement>("row")
+      .slice(1)
+      .map((row) => row.cells[0].textContent);
+
+  it("lists everyone booked ahead, by name, with their next visit", async () => {
+    open("guests");
+    const lena = (await screen.findByRole("cell", { name: "Lena Becker" })).closest("tr")!;
+
+    expect([...lena.cells].map((cell) => cell.textContent)).toEqual([
+      "Lena Becker",
+      "Sun 1 Nov, 12:00",
+      "2",
+      "1",
+      "Agent",
+    ]);
+    expect(names()).toEqual(names().toSorted((a, b) => a!.localeCompare(b!)));
+  });
+
+  it("finds a guest whatever the accents, case and spacing", async () => {
+    open("guests");
+    await screen.findByRole("cell", { name: "Lena Becker" });
+
+    type(screen.getByPlaceholderText("Find a guest"), "  LÉNA  bec");
+    await waitFor(() => expect(names()).toEqual(["Lena Becker"]));
+
+    type(screen.getByPlaceholderText("Find a guest"), "Nobody");
+    expect(await screen.findByText("Nobody by that name.")).toBeTruthy();
+  });
+
+  it("shows a guest an agent just booked", async () => {
+    open("guests", 10);
+    expect(await screen.findByRole("cell", { name: "Kim Weber" })).toBeTruthy();
   });
 });
 

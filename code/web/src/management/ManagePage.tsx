@@ -1,6 +1,7 @@
 import { type ComponentType, useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router";
 import { useClient } from "./data.ts";
+import { GuestsPage } from "./pages/GuestsPage.tsx";
 import { HoursPage } from "./pages/HoursPage.tsx";
 import { HomePage } from "./pages/home/HomePage.tsx";
 import { RulesPage } from "./pages/RulesPage.tsx";
@@ -11,6 +12,7 @@ import { ToastProvider } from "./ui/index.ts";
 // The pages built so far; the others come with their issues (#137-#147).
 const VIEWS: Partial<Record<PageId, ComponentType<{ slug: string; version: number }>>> = {
   home: HomePage,
+  guests: GuestsPage,
   hours: HoursPage,
   rules: RulesPage,
   settings: SettingsPage,

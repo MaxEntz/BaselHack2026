@@ -58,12 +58,6 @@ export function throughAgent(via: Via): boolean {
   return via !== "merchant" && via !== "website";
 }
 
-export const SOURCE: Record<Via, { label: string; agent: boolean }> = {
-  claude: { label: "Agent", agent: true },
-  merchant: { label: "You", agent: false },
-  website: { label: "Website", agent: false },
-};
-
 export const KIND: Record<ActivityKind, string> = {
   new_booking: "New booking",
   moved: "Moved",

@@ -1,4 +1,4 @@
-import "./forms.css";
+import "./pages.css";
 import { type FormEvent, useState } from "react";
 import type { BlockedTimes, Service } from "../types.ts";
 import { useClient } from "./data.ts";
