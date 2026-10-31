@@ -70,3 +70,13 @@ def test_writes_wait_for_a_yes_even_when_the_user_confirmed_in_advance() -> None
         merchant_server.CANCEL_RESERVATION,
     ):
         assert "in advance" in text
+
+
+def test_a_check_after_the_yes_needs_no_second_confirmation() -> None:
+    # Only the get_availability call the summary is based on can't come with the booking (#109).
+    for text in (merchant_server.INSTRUCTIONS, merchant_server.CREATE_RESERVATION):
+        flat = " ".join(text.split())
+        assert "get_availability call your summary is based on" in flat
+        assert "availability again" in flat
+        # ...but never a time the user didn't confirm (#112 review).
+        assert "don't book another one" in flat

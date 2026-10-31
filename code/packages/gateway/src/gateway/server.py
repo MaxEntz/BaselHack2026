@@ -69,7 +69,10 @@ Find restaurants and book tables, on the user's behalf, at merchants connected t
   stop: call the tool only once the user's reply to that summary is an explicit yes. Choosing a
   restaurant or a time is not a yes, even when the request looks complete. Nor is a confirmation
   given before the summary ("I confirm in advance", "book directly"): show the summary anyway.
-  So never call a write tool in the same reply as search_merchants or get_availability.
+  So never call a write tool in the same reply as the search_merchants or get_availability call
+  your summary is based on. After the user's yes, checking availability again first is fine; if
+  that check no longer offers the confirmed time, don't book another one: show the new times and
+  ask again.
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page.
 - Relay the notices returned by get_my_reservations. A notice can come back for 24 hours: tell
@@ -99,10 +102,12 @@ Book a table. This takes two messages. First show the user a summary (restaurant
 party size, name), ask them to confirm, and stop. Call this tool only once their reply to that \
 summary is an explicit yes. Choosing a restaurant or a time is not a yes, even when the request \
 looks complete, and neither is a confirmation given before the summary ("I confirm in advance", \
-"book directly"): never call this tool in the same reply as search_merchants or get_availability. \
-Generate a fresh `idempotency_key` (UUID) per confirmed booking and reuse it if you retry the \
-same booking. Ask the guest's name if unknown. If the result contains `fallback_url`, give it to \
-the user."""
+"book directly"): never call this tool in the same reply as the search_merchants or \
+get_availability call your summary is based on. After the yes, you may check availability again \
+before booking; if that check no longer offers the confirmed time, don't book another one: show \
+the new times and ask again. Generate a fresh `idempotency_key` (UUID) per confirmed booking and \
+reuse it if you retry the same booking. Ask the guest's name if unknown. If the result contains \
+`fallback_url`, give it to the user."""
 
 UPDATE_RESERVATION = """\
 Change the time or party size of a booking. First show the change, ask the user to confirm, and \
