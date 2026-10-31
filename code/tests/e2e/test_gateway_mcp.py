@@ -368,7 +368,7 @@ async def test_slow_agent_gets_the_fallback_url_within_the_timeout(
         chaos_delay_ms=500,
         chaos_merchants=ZINC,
     )
-    agent = LocalAgentClient(PgAgentService(e2e_engine, tz=TZ))
+    agent = LocalAgentClient(PgAgentService(e2e_engine, tz=TZ), e2e_engine)
     availability = {"date": day_ahead().isoformat(), "party_size": 2}
     async with Client(create_server(agent, e2e_engine, settings)) as client:
         started = time.perf_counter()

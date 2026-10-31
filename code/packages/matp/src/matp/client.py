@@ -90,15 +90,22 @@ class MatpClient:
         intent: Intent,
         merchant: str | None = None,
         params: dict[str, Any] | None = None,
+        *,
+        request_id: str | None = None,
     ) -> dict[str, Any]:
-        """The intent's `result`; a business error is raised as its `AgentError`."""
+        """The intent's `result`; a business error is raised as its `AgentError`.
+
+        `request_id` names the frame, so that the caller's logs can be matched with the node's.
+        It must be unique within the session; by default the client numbers its requests.
+        """
         frame_params = params or {}
+        frame_id = request_id or f"r-{next(self._ids)}"
         try:
-            response = await self._exchange(intent, merchant, frame_params)
+            response = await self._exchange(frame_id, intent, merchant, frame_params)
         except SessionLost:
             if intent not in READ_ONLY:
                 raise
-            response = await self._exchange(intent, merchant, frame_params)
+            response = await self._exchange(frame_id, intent, merchant, frame_params)
         raise_for(response)
         return response.result or {}
 
@@ -109,7 +116,7 @@ class MatpClient:
         self._drop(self._writer)
 
     async def _exchange(
-        self, intent: Intent, merchant: str | None, params: dict[str, Any]
+        self, request_id: str, intent: Intent, merchant: str | None, params: dict[str, Any]
     ) -> Response:
         async with self._connect_lock:
             if not self.connected:
@@ -117,7 +124,8 @@ class MatpClient:
             writer = self._writer
         if writer is None:
             raise SessionLost(CLOSED)
-        request_id = f"r-{next(self._ids)}"
+        if request_id in self._pending:
+            raise ValueError(f"Request id already in flight: {request_id!r}")
         future: asyncio.Future[Response] = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
         frame = Request(id=request_id, intent=intent, merchant=merchant, params=params)

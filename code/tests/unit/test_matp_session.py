@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -69,6 +70,33 @@ async def test_hello_then_requests(node: NodeServer) -> None:
         assert client.welcome is not None
         assert "PING" in client.welcome.intents
         assert client.welcome.node == NODE
+
+
+async def test_the_caller_can_name_its_request(
+    node: NodeServer, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger="matp"):
+        async with client_for(node) as client:
+            assert await client.request("PING", request_id="r-mine") == {
+                "pong": True,
+                "agent": CALLER.id,
+            }
+
+    lines = [r.__dict__ for r in caplog.records if r.getMessage() == "matp request"]
+    assert [line["request"] for line in lines] == ["r-mine"]
+
+
+async def test_an_id_already_in_flight_is_refused(node: NodeServer) -> None:
+    async with client_for(node) as client:
+        first = asyncio.create_task(
+            client.request("PING", params={"delay": 0.2}, request_id="r-same")
+        )
+        await asyncio.sleep(0.05)
+
+        with pytest.raises(ValueError, match="r-same"):
+            await client.request("PING", request_id="r-same")
+
+        assert (await first)["pong"] is True
 
 
 async def test_a_wrong_token_is_rejected_with_401(node: NodeServer) -> None:
