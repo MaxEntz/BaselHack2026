@@ -166,9 +166,9 @@ async def provision(engine: AsyncEngine, profile: MerchantProfile) -> MerchantRe
     registry row starts in `building`; `deploy` makes the merchant discoverable. Raises
     `SlugTaken` if the slug is in use, including by a concurrent `provision`.
 
-    The merchant's `tables` and `policy` rows are the source of truth afterwards: the
-    registry's `profile` column is a snapshot of the build (its `seats` may disagree with
-    the tables) and goes stale after `update_policy` / `update_tables`.
+    The merchant's `tables` and `policy` rows are the source of truth afterwards. The
+    registry's `profile` column is a copy for display: its `seats` may disagree with the
+    tables, and `update_policy` / `update_tables` must update it too (#9).
     """
     schema = schema_for(profile.slug)
     async with merchant_conn(engine, profile.slug) as conn:
