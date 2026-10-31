@@ -14,7 +14,7 @@ This file is the single source of truth for this repository. Read it fully befor
 - **`templates/restaurant.json` lives in `agent`** (provisioning consumes it), not in `builder`.
 - **Merchant schema name** = `m_` + slug with `-` replaced by `_`; slugs are ≤ 61 characters (Postgres identifiers are limited to 63 bytes).
 - **Tool contract changes vs §8**: `update_reservation` and `cancel_reservation` also take `guest_name` (checked against the booking); `search_merchants` also returns `suggestions` and `ignored_filters`; admin tool `update_tables` added; table `public.guest_notices` added to the §7.2 SQL.
-- Work is tracked in GitHub issues (milestones M0–M4, Démo); the tracking issue #26 lists every issue and these corrections.
+- Work is tracked in GitHub issues (milestones M0–M4, Demo); the tracking issue #26 lists every issue and these corrections.
 
 ---
 

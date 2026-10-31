@@ -2,8 +2,8 @@ CLAUDE.local.md
 
 # Secrets: copy code/.env.example to code/.env
 .env
-.env.*
-!.env.example
+code/.env.*
+!code/.env.example
 
 # Python
 .venv/
