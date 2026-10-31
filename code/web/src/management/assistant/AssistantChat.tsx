@@ -1,11 +1,10 @@
-import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Markdown, { type Components } from "react-markdown";
 import { Link, useNavigate } from "react-router";
 import type { ChatClient } from "../../chat/client.ts";
 import type { ChatItem } from "../../chat/state.ts";
 import { useChat } from "../../chat/useChat.ts";
 import type { ConversationItem, LiveEvent, ManagePage } from "../../types.ts";
-import { announceChange } from "../changes.ts";
 import { useClient, useLoad } from "../data.ts";
 import { dayLong, dayShort } from "../dates.ts";
 import { guests, throughAgent } from "../pages/home/format.ts";
@@ -93,22 +92,7 @@ function Conversation({
   sessionId: string;
   restore: readonly ConversationItem[];
 }) {
-  // A turn that ran a tool may have changed what the pages show (#137): the stream says so,
-  // as `tool_start` and its card can land in one render.
-  const ran = useRef(false);
-  const watched = useMemo<ChatClient>(
-    () => ({
-      ...chat,
-      async *send(message, id, signal) {
-        for await (const event of chat.send(message, id, signal)) {
-          if (event.type === "tool_start") ran.current = true;
-          yield event;
-        }
-      },
-    }),
-    [chat],
-  );
-  const { state, send, notify } = useChat(watched, WELCOME, { slug, name }, { sessionId, restore, listen: false });
+  const { state, send, notify } = useChat(chat, WELCOME, { slug, name }, { sessionId, restore, listen: false });
   const [text, setText] = useState("");
   const asked = new Set(state.items.flatMap((item) => (item.type === "user" ? [item.text] : [])));
   const feed = useRef<HTMLDivElement>(null);
@@ -119,12 +103,6 @@ function Conversation({
     live(notify);
     return () => live(null);
   }, [live, notify]);
-
-  useEffect(() => {
-    if (state.busy || !ran.current) return;
-    ran.current = false;
-    announceChange(slug);
-  }, [state.busy, slug]);
 
   useLayoutEffect(() => {
     const node = feed.current;

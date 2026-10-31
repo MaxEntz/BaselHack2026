@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { announceChange } from "../management/changes.ts";
 import type { ChatEvent, ConversationItem, LiveEvent } from "../types.ts";
+import { changeWatcher } from "./changes.ts";
 import type { ChatClient } from "./client.ts";
 import { ChatError } from "./client.ts";
 import { chime } from "./chime.ts";
@@ -39,9 +41,9 @@ export function useChat(
   session.current ??= sessionId ?? storedSessionId();
   const busy = useRef(false);
   const controller = useRef<AbortController | null>(null);
-  const known = useRef(state.merchant !== null);
+  const knownSlug = useRef(state.merchant?.slug ?? null);
   useEffect(() => {
-    known.current = state.merchant !== null;
+    knownSlug.current = state.merchant?.slug ?? null;
   }, [state.merchant]);
 
   // Ask the platform which merchant the session works on (#88): after a
@@ -73,9 +75,11 @@ export function useChat(
       dispatch({ type: "send", text, site });
       const abort = new AbortController();
       controller.current = abort;
+      const changed = changeWatcher();
       try {
         for await (const event of open(abort.signal, session.current as string)) {
           dispatch({ type: "chat", event });
+          if (changed(event) && knownSlug.current) announceChange(knownSlug.current);
           if (event.type === "card" && event.kind === "profile" && event.login_url) {
             setClaimed(false);
             void client.claim(session.current as string).finally(() => setClaimed(true));
@@ -94,7 +98,7 @@ export function useChat(
       } finally {
         busy.current = false;
       }
-      if (!known.current && !abort.signal.aborted) void refresh();
+      if (!knownSlug.current && !abort.signal.aborted) void refresh();
     },
     [client, refresh],
   );
