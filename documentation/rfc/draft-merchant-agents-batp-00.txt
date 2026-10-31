@@ -8,20 +8,20 @@ Intended status: Experimental
 Expires: 4 May 2027
 
 
-                Merchant Agent Transfer Protocol (MATP)
-                     draft-merchant-agents-matp-00
+                  Broad Agent Transfer Protocol (BATP)
+                     draft-merchant-agents-batp-00
 
 Abstract
 
-   This document specifies the Merchant Agent Transfer Protocol (MATP),
-   an application protocol reserved for software agents that book with
-   merchants on behalf of people or businesses.  A MATP session runs
+   This document specifies the Broad Agent Transfer Protocol (BATP), an
+   application protocol reserved for software agents that book with
+   merchants on behalf of people or businesses.  A BATP session runs
    over TCP, starts with a handshake that names the calling agent, and
    carries newline-delimited JSON frames.  Each request states an intent
    (discover merchants, check availability, book, amend, cancel, recall
    bookings, ping) and the merchant it addresses.  Responses carry
    numeric status codes and, when the merchant's own agent cannot serve
-   the request, a fallback URL to the merchant's website.  MATP is
+   the request, a fallback URL to the merchant's website.  BATP is
    designed to sit behind a Model Context Protocol (MCP) server, which
    acts as a bridge for assistants that only speak MCP.
 
@@ -55,7 +55,7 @@ Copyright Notice
 
                            Expires 4 May 2027                   [Page 1]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    This document is subject to BCP 78 and the IETF Trust's Legal
@@ -111,7 +111,7 @@ Table of Contents
 
                            Expires 4 May 2027                   [Page 2]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    Appendix C.  JSON Schemas . . . . . . . . . . . . . . . . . . . .  24
@@ -137,7 +137,7 @@ Internet-Draft                    MATP                      October 2026
    the calling agent, route agent traffic separately, or apply rules
    meant for agents.
 
-   MATP gives that traffic its own channel.  Every frame says which
+   BATP gives that traffic its own channel.  Every frame says which
    agent is talking (established once per session), what it intends to
    do, and to which merchant.  The protocol is deliberately small: it
    covers what a network of merchant agents needs to take bookings, and
@@ -154,8 +154,8 @@ Internet-Draft                    MATP                      October 2026
 1.2.  Relation to MCP
 
    Assistants such as Claude connect to remote tools through MCP [MCP].
-   An MCP server can act as a bridge: each of its tools maps to one MATP
-   intent (Appendix A).  Any other agent can speak MATP directly.
+   An MCP server can act as a bridge: each of its tools maps to one BATP
+   intent (Appendix A).  Any other agent can speak BATP directly.
 
 
 
@@ -167,14 +167,14 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                   [Page 3]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
 1.3.  Relation to AGTP
 
    The idea of an application protocol reserved for agent traffic, with
    agent identity and intent-named methods, comes from the AGTP
-   Internet-Draft [I-D.hood-independent-agtp].  MATP is independent from
+   Internet-Draft [I-D.hood-independent-agtp].  BATP is independent from
    it: it does not implement AGTP, it uses a different transport framing
    and method set, and it is limited to the booking use case.
 
@@ -190,7 +190,7 @@ Internet-Draft                    MATP                      October 2026
    [RFC5234].  JSON terminology ("object", "member", "string") is that
    of [RFC8259].
 
-   Node:  A MATP server.  It serves the merchant agents of one backend.
+   Node:  A BATP server.  It serves the merchant agents of one backend.
 
    Merchant agent:  One merchant's booking logic and data, served by a
       node and addressed by the merchant's slug.
@@ -223,7 +223,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                   [Page 4]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
 3.  Protocol Overview
@@ -240,19 +240,19 @@ Internet-Draft                    MATP                      October 2026
    assistant --->| MCP client  |------------------->| MCP gateway |
                  +-------------+                    |  (bridge)   |
                                                     +------+------+
-                                                           | MATP
-   other agent ------------------- MATP --------------+    | TCP 4710
+                                                           | BATP
+   other agent ------------------- BATP --------------+    | TCP 4710
                                                       v    v
                                                     +-------------+
-                                                    |  MATP node  |
+                                                    |  BATP node  |
                                                     +------+------+
                                                            |
                                           merchant agents (one per slug)
 
-              Figure 1: MATP deployment with an MCP bridge
+              Figure 1: BATP deployment with an MCP bridge
 
      Caller                                        Node
-       |  hello {agent, token, matp: "0.1"}         |
+       |  hello {agent, token, batp: "0.1"}         |
        |------------------------------------------->|
        |  welcome {node, intents, session}          |
        |<-------------------------------------------|
@@ -269,9 +269,9 @@ Internet-Draft                    MATP                      October 2026
 
 4.  Transport
 
-   MATP runs over TCP [RFC9293].  A node listens on a configured port.
+   BATP runs over TCP [RFC9293].  A node listens on a configured port.
    This document uses port 4710 for its examples and its reference
-   implementation; that port is not registered for MATP (Section 14), so
+   implementation; that port is not registered for BATP (Section 14), so
    a caller MUST be able to use another port.
 
 
@@ -279,7 +279,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                   [Page 5]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    On the loopback interface, a session MAY use plain TCP.  On any other
@@ -297,11 +297,11 @@ Internet-Draft                    MATP                      October 2026
 
    A merchant agent is named by a URI [RFC3986] of the form:
 
-   matp-URI = "matp://" host [ ":" port ] "/" slug
+   batp-URI = "batp://" host [ ":" port ] "/" slug
    slug     = 3*61( %x61-7A / DIGIT / "-" )   ; a-z, 0-9, "-"
 
    where host and port are those of [RFC3986].  When port is absent, it
-   is 4710.  For example, matp://node.example/le-petit-zinc names the
+   is 4710.  For example, batp://node.example/le-petit-zinc names the
    merchant agent le-petit-zinc on the node at node.example.  The slug
    is not sent in the handshake: a session reaches every merchant agent
    of a node, and each request names its merchant (Section 7).
@@ -335,7 +335,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                   [Page 6]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    *  A sender MUST NOT generate an object with two members of the same
@@ -362,7 +362,7 @@ Internet-Draft                    MATP                      October 2026
           +========+=============================+=============+
           | type   | "hello"                     | REQUIRED    |
           +--------+-----------------------------+-------------+
-          | matp   | version string (Section 11) | REQUIRED    |
+          | batp   | version string (Section 11) | REQUIRED    |
           +--------+-----------------------------+-------------+
           | agent  | object, below               | REQUIRED    |
           +--------+-----------------------------+-------------+
@@ -391,7 +391,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                   [Page 7]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    +=================+=============================+==================+
@@ -413,7 +413,7 @@ Internet-Draft                    MATP                      October 2026
 
    *  agent.id names the calling agent.  The node treats it as an opaque
       string and attributes every request of the session to it.  This
-      document uses identifiers of the form urn:matp:agent:<name>; matp
+      document uses identifiers of the form urn:batp:agent:<name>; batp
       is not a registered URN namespace [RFC8141], so these identifiers
       are only meaningful between parties that agreed on them.
 
@@ -434,7 +434,7 @@ Internet-Draft                    MATP                      October 2026
        +=========+===================================+=============+
        | type    | "welcome"                         | REQUIRED    |
        +---------+-----------------------------------+-------------+
-       | matp    | the version the node will use for | REQUIRED    |
+       | batp    | the version the node will use for | REQUIRED    |
        |         | this session                      |             |
        +---------+-----------------------------------+-------------+
        | node    | object with id (string, REQUIRED) | REQUIRED    |
@@ -447,7 +447,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                   [Page 8]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
        +---------+-----------------------------------+-------------+
@@ -471,7 +471,7 @@ Internet-Draft                    MATP                      October 2026
           +---------+-----------------------------+-------------+
           | message | string, for humans          | REQUIRED    |
           +---------+-----------------------------+-------------+
-          | matp    | the version the node speaks | OPTIONAL    |
+          | batp    | the version the node speaks | OPTIONAL    |
           +---------+-----------------------------+-------------+
 
                          Table 4: Members of reject
@@ -479,8 +479,8 @@ Internet-Draft                    MATP                      October 2026
    *  401: the agent is unknown to the node, the token is missing where
       it is required, or the token does not match the agent.
 
-   *  426: the node does not speak the major version in hello.matp
-      (Section 11).  The node SHOULD include matp.
+   *  426: the node does not speak the major version in hello.batp
+      (Section 11).  The node SHOULD include batp.
 
    *  400: the first frame was not a valid hello.
 
@@ -503,7 +503,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                   [Page 9]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
      | intent   | intent name   | REQUIRED                           |
@@ -559,7 +559,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 10]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    +==============+=====================+==============================+
@@ -615,7 +615,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 11]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
 7.4.  Idle sessions
@@ -671,7 +671,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 12]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    *  For AMEND, the key is scoped to the merchant too.  A node that
@@ -727,7 +727,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 13]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
            +==============+==========+=========================+
@@ -754,7 +754,7 @@ Internet-Draft                    MATP                      October 2026
            |              |          | the session open        |
            +--------------+----------+-------------------------+
 
-                         Table 9: MATP 0.1 intents
+                         Table 9: BATP 0.1 intents
 
 8.1.  DISCOVER
 
@@ -783,7 +783,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 14]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    Result: slots, at most 3, each with starts_at and table_label.  When
@@ -806,7 +806,7 @@ Internet-Draft                    MATP                      October 2026
 
    via is the booking channel, as the merchant sees it.  Version 0.1
    defines "claude", "merchant" and "website"; "website" is never set by
-   MATP.  A node MUST record "merchant" when the caller's agent.kind is
+   BATP.  A node MUST record "merchant" when the caller's agent.kind is
    merchant-agent, and "claude" when it is user-agent, whatever
    assistant the caller is.  So in this version, via is only accurate
    for callers behind the reference bridge (Section 12).  A later
@@ -839,7 +839,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 15]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
 8.6.  RECALL
@@ -895,7 +895,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 16]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
      |        |                   | not one the       |              |
@@ -923,7 +923,7 @@ Internet-Draft                    MATP                      October 2026
      |        |                   | out               |              |
      +--------+-------------------+-------------------+--------------+
 
-                      Table 10: MATP 0.1 status codes
+                      Table 10: BATP 0.1 status codes
 
    The status values 400 and 413 also appear in error frames
    (Section 7.5), which carry no error.code; there, 413 means a frame
@@ -951,7 +951,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 17]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
 11.  Versioning and Extensibility
@@ -1007,7 +1007,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 18]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    Writes without confirmation:  A misbehaving caller can book, amend or
@@ -1063,18 +1063,18 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 19]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
-   URI scheme:  The matp scheme of Section 4 is not registered.  A later
+   URI scheme:  The batp scheme of Section 4 is not registered.  A later
       version would request provisional registration under [RFC7595]
       with this template:
 
-      *  Scheme name: matp
+      *  Scheme name: batp
 
       *  Status: Provisional
 
-      *  Applications/protocols that use this scheme name: the Merchant
+      *  Applications/protocols that use this scheme name: the Broad
          Agent Transfer Protocol (this document)
 
       *  Contact: the authors of this document
@@ -1083,7 +1083,7 @@ Internet-Draft                    MATP                      October 2026
 
       *  References: this document
 
-   URN namespace:  The urn:matp: identifiers used in examples are not a
+   URN namespace:  The urn:batp: identifiers used in examples are not a
       registered URN namespace ([RFC8141]).
 
 15.  References
@@ -1119,7 +1119,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 20]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
@@ -1141,6 +1141,12 @@ Internet-Draft                    MATP                      October 2026
 
 15.2.  Informative References
 
+   [BATP-SCHEMAS]
+              Merchant Agents (BaselHack 2026), "BATP JSON Schemas
+              (generated from the reference implementation)", 31 October
+              2026, <https://github.com/MaxEntz/BaselHack2026/tree/main/
+              documentation/rfc/schemas>.
+
    [I-D.bhutton-json-schema]
               Wright, A., Andrews, H. H., Hutton, B., and G. Dennis,
               "JSON Schema: A Media Type for Describing JSON Documents",
@@ -1154,12 +1160,6 @@ Internet-Draft                    MATP                      October 2026
               Progress, Internet-Draft, draft-hood-independent-agtp-10,
               30 October 2026, <https://datatracker.ietf.org/doc/html/
               draft-hood-independent-agtp-10>.
-
-   [MATP-SCHEMAS]
-              Merchant Agents (BaselHack 2026), "MATP JSON Schemas
-              (generated from the reference implementation)", 31 October
-              2026, <https://github.com/MaxEntz/BaselHack2026/tree/main/
-              documentation/rfc/schemas>.
 
    [MCP]      Model Context Protocol, "Model Context Protocol
               Specification",
@@ -1175,7 +1175,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 21]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    [RFC6335]  Cotton, M., Eggert, L., Touch, J., Westerlund, M., and S.
@@ -1196,13 +1196,13 @@ Internet-Draft                    MATP                      October 2026
 
 Appendix A.  The MCP Bridge
 
-   An MCP server can let an assistant that only speaks MCP use a MATP
+   An MCP server can let an assistant that only speaks MCP use a BATP
    node.  The reference bridge opens one session with agent.id
-   urn:matp:agent:claude-gateway and agent.kind user-agent, and maps its
+   urn:batp:agent:claude-gateway and agent.kind user-agent, and maps its
    tools to intents:
 
    +=====================+==============+=============================+
-   | MCP tool            | MATP intent  | Notes                       |
+   | MCP tool            | BATP intent  | Notes                       |
    +=====================+==============+=============================+
    | search_merchants    | DISCOVER     |                             |
    +---------------------+--------------+-----------------------------+
@@ -1219,7 +1219,7 @@ Appendix A.  The MCP Bridge
    | get_my_reservations | RECALL       |                             |
    +---------------------+--------------+-----------------------------+
 
-                   Table 11: MCP tools and MATP intents
+                   Table 11: MCP tools and BATP intents
 
    *  The tool descriptions tell the assistant to confirm with the guest
       before create_reservation, update_reservation and
@@ -1231,7 +1231,7 @@ Appendix A.  The MCP Bridge
 
                            Expires 4 May 2027                  [Page 22]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    *  The bridge answers each tool call within 2 seconds, including the
@@ -1251,13 +1251,13 @@ Appendix B.  Example Session
    caller.  Long frames are wrapped here for readability: on the wire,
    each is one line.
 
-C: {"type": "hello", "matp": "0.1",
-    "agent": {"id": "urn:matp:agent:claude-gateway",
+C: {"type": "hello", "batp": "0.1",
+    "agent": {"id": "urn:batp:agent:claude-gateway",
               "name": "Claude via the merchant-agents gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
-N: {"type": "welcome", "matp": "0.1",
-    "node": {"id": "urn:matp:node:merchant-agents",
+N: {"type": "welcome", "batp": "0.1",
+    "node": {"id": "urn:batp:node:merchant-agents",
              "name": "Merchant Agents"},
     "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
                 "RECALL", "PING"],
@@ -1287,7 +1287,7 @@ N: {"type": "response", "id": "r-2", "status": 200,
 
                            Expires 4 May 2027                  [Page 23]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    The caller then books, and checks a larger party while the booking is
@@ -1324,7 +1324,7 @@ Appendix C.  JSON Schemas
    These schemas use JSON Schema 2020-12 [I-D.bhutton-json-schema].
    They are generated from the reference implementation's contract
    models, so this appendix and the implementation cannot drift
-   [MATP-SCHEMAS].  In the params of AVAILABILITY, BOOK, AMEND and
+   [BATP-SCHEMAS].  In the params of AVAILABILITY, BOOK, AMEND and
    CANCEL, the merchant is not a member: it is the request's merchant.
 
 C.1.  DISCOVER params
@@ -1343,7 +1343,7 @@ C.1.  DISCOVER params
 
                            Expires 4 May 2027                  [Page 24]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
                  "enum": [
@@ -1399,7 +1399,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 25]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
            },
@@ -1429,7 +1429,7 @@ Internet-Draft                    MATP                      October 2026
      "required": [
        "query"
      ],
-     "title": "MATP DISCOVER params",
+     "title": "BATP DISCOVER params",
      "type": "object"
    }
 
@@ -1455,7 +1455,7 @@ C.2.  DISCOVER result
 
                            Expires 4 May 2027                  [Page 26]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
          "required": [
@@ -1511,7 +1511,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 27]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
                  "terrace",
@@ -1567,7 +1567,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 28]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
          "items": {
@@ -1580,7 +1580,7 @@ Internet-Draft                    MATP                      October 2026
      "required": [
        "merchants"
      ],
-     "title": "MATP DISCOVER result",
+     "title": "BATP DISCOVER result",
      "type": "object"
    }
 
@@ -1623,7 +1623,7 @@ C.3.  AVAILABILITY params
 
                            Expires 4 May 2027                  [Page 29]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    {
@@ -1659,7 +1659,7 @@ Internet-Draft                    MATP                      October 2026
        "date",
        "party_size"
      ],
-     "title": "MATP AVAILABILITY params",
+     "title": "BATP AVAILABILITY params",
      "type": "object"
    }
 
@@ -1679,7 +1679,7 @@ C.4.  AVAILABILITY result
 
                            Expires 4 May 2027                  [Page 30]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    {
@@ -1721,7 +1721,7 @@ Internet-Draft                    MATP                      October 2026
      "required": [
        "slots"
      ],
-     "title": "MATP AVAILABILITY result",
+     "title": "BATP AVAILABILITY result",
      "type": "object"
    }
 
@@ -1735,7 +1735,7 @@ C.5.  BOOK params
 
                            Expires 4 May 2027                  [Page 31]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    {
@@ -1772,7 +1772,7 @@ Internet-Draft                    MATP                      October 2026
        "guest_name",
        "idempotency_key"
      ],
-     "title": "MATP BOOK params",
+     "title": "BATP BOOK params",
      "type": "object"
    }
 
@@ -1791,7 +1791,7 @@ C.6.  BOOK, AMEND and CANCEL result
 
                            Expires 4 May 2027                  [Page 32]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
            "guest_name": {
@@ -1847,7 +1847,7 @@ Internet-Draft                    MATP                      October 2026
 
                            Expires 4 May 2027                  [Page 33]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
            "starts_at",
@@ -1871,7 +1871,7 @@ Internet-Draft                    MATP                      October 2026
      "required": [
        "reservation"
      ],
-     "title": "MATP BOOK result",
+     "title": "BATP BOOK result",
      "type": "object"
    }
 
@@ -1903,7 +1903,7 @@ C.7.  AMEND params
 
                            Expires 4 May 2027                  [Page 34]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
              "type": "integer"
@@ -1940,7 +1940,7 @@ Internet-Draft                    MATP                      October 2026
        "guest_name",
        "idempotency_key"
      ],
-     "title": "MATP AMEND params",
+     "title": "BATP AMEND params",
      "type": "object"
    }
 
@@ -1959,7 +1959,7 @@ C.8.  CANCEL params
 
                            Expires 4 May 2027                  [Page 35]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    {
@@ -1984,7 +1984,7 @@ Internet-Draft                    MATP                      October 2026
        "reservation_id",
        "guest_name"
      ],
-     "title": "MATP CANCEL params",
+     "title": "BATP CANCEL params",
      "type": "object"
    }
 
@@ -2005,7 +2005,7 @@ C.9.  RECALL params
      "required": [
        "guest_name"
      ],
-     "title": "MATP RECALL params",
+     "title": "BATP RECALL params",
      "type": "object"
    }
 
@@ -2015,7 +2015,7 @@ C.9.  RECALL params
 
                            Expires 4 May 2027                  [Page 36]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
 C.10.  RECALL result
@@ -2071,7 +2071,7 @@ C.10.  RECALL result
 
                            Expires 4 May 2027                  [Page 37]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
              ],
@@ -2115,7 +2115,7 @@ Internet-Draft                    MATP                      October 2026
        "reservations",
        "notices"
      ],
-     "title": "MATP RECALL result",
+     "title": "BATP RECALL result",
      "type": "object"
    }
 
@@ -2127,20 +2127,20 @@ C.11.  PING params and result
 
                            Expires 4 May 2027                  [Page 38]
 
-Internet-Draft                    MATP                      October 2026
+Internet-Draft                    BATP                      October 2026
 
 
    {
-     "$comment": "Generated from matp_schemas.PingParams",
+     "$comment": "Generated from batp_schemas.PingParams",
      "$schema": "https://json-schema.org/draft/2020-12/schema",
      "description": "`PING` takes no params: `{}`.",
      "properties": {},
-     "title": "MATP PING params",
+     "title": "BATP PING params",
      "type": "object"
    }
 
    {
-     "$comment": "Generated from matp_schemas.PingResult",
+     "$comment": "Generated from batp_schemas.PingResult",
      "$schema": "https://json-schema.org/draft/2020-12/schema",
      "properties": {
        "pong": {
@@ -2158,7 +2158,7 @@ Internet-Draft                    MATP                      October 2026
        "pong",
        "server_time"
      ],
-     "title": "MATP PING result",
+     "title": "BATP PING result",
      "type": "object"
    }
 

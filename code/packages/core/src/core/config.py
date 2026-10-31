@@ -17,10 +17,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-6.1-terra"
     merchant_tz: str = "Europe/Zurich"
     agent_timeout_ms: int = 2000
-    # Where the gateway reaches the merchant agents: `matp://host[:port]`, with this agent's token.
+    # Where the gateway reaches the merchant agents: `batp://host[:port]`, with this agent's token.
     # Unset: they run in the gateway's process.
-    matp_url: str | None = None
-    matp_token: SecretStr | None = None
+    batp_url: str | None = None
+    batp_token: SecretStr | None = None
     # Fault injection for demos and tests (#13): delay before each agent call, only for these
     # comma-separated slugs (empty = every merchant).
     chaos_delay_ms: int = 0
@@ -40,14 +40,14 @@ class Settings(BaseSettings):
     builder_reasoning_effort: str | None = "none"
     builder_cache: Literal["read_write", "read_only", "off"] = "read_write"
     crawl_allow_private: bool = False
-    # MATP node (documentation/PROTOCOL.md): loopback only in the POC (ADR-0011).
-    matp_host: str = "127.0.0.1"
-    matp_port: int = 4710
-    # Known agents and their tokens, as JSON: {"urn:matp:agent:claude-gateway": "…"}.
-    matp_tokens: dict[str, SecretStr] = {}
+    # BATP node (documentation/PROTOCOL.md): loopback only in the POC (ADR-0011).
+    batp_host: str = "127.0.0.1"
+    batp_port: int = 4710
+    # Known agents and their tokens, as JSON: {"urn:batp:agent:claude-gateway": "…"}.
+    batp_tokens: dict[str, SecretStr] = {}
     # TLS for the node, required when it listens beyond loopback (PEM files).
-    matp_tls_cert: str | None = None
-    matp_tls_key: str | None = None
+    batp_tls_cert: str | None = None
+    batp_tls_key: str | None = None
 
 
 @lru_cache

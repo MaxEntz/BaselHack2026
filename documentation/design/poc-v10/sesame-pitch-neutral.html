@@ -193,8 +193,8 @@ On the other side, the guest just talks to Claude. Claude finds the restaurant t
   <p class="at pipe"><b>Onboarding: from website to live agent</b><span>Crawl the site</span> <i>→</i> <span>Extract a profile</span> <i>→</i> <span>Validate</span> <i>→</i> <span>Provision</span> <i>→</i> <span>Go live</span></p>
   <p class="at fall"><b>Fallback</b>If the agent is down or too slow, the guest gets the restaurant’s own booking page.</p>
   <div class="frames">
-<pre>{"type": "hello", "matp": "0.1",
- "agent": {"id": "urn:matp:agent:claude-gateway",
+<pre>{"type": "hello", "batp": "0.1",
+ "agent": {"id": "urn:batp:agent:claude-gateway",
            "name": "Claude via the merchant-agents
                     gateway",
            "kind": "user-agent",
@@ -209,7 +209,7 @@ On the other side, the guest just talks to Claude. Claude finds the restaurant t
  "result": {"slots": [
    {"starts_at": "2026-11-02T20:00:00+01:00",
     "table_label": "T5"}]}}</pre>
-    <p>Frames from the MATP spec: one JSON object per line, over TCP.</p>
+    <p>Frames from the BATP spec: one JSON object per line, over TCP.</p>
   </div>
   <p class="foot"><svg aria-hidden="true"><use href="#logo"/></svg><span>4</span></p>
   <aside hidden>~30 s

@@ -381,7 +381,7 @@ def test_availability_takes_both_ends_of_the_booking_range(day: date) -> None:
 def test_guest_identity_fields_are_at_most_200_characters(
     model: type[BaseModel], fields: dict[str, object], field: str
 ) -> None:
-    # A 3 KB key overflows the unique index; a 2 MB name overflows a MATP frame.
+    # A 3 KB key overflows the unique index; a 2 MB name overflows a BATP frame.
     model.model_validate(fields | {field: "a" * models.MAX_GUEST_TEXT})
     with pytest.raises(ValidationError, match="at most 200"):
         model.model_validate(fields | {field: "a" * (models.MAX_GUEST_TEXT + 1)})

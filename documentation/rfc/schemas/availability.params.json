@@ -31,6 +31,6 @@
     "date",
     "party_size"
   ],
-  "title": "MATP AVAILABILITY params",
+  "title": "BATP AVAILABILITY params",
   "type": "object"
 }

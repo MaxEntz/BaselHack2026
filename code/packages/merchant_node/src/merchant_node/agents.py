@@ -1,6 +1,6 @@
-"""The merchant agents behind the MATP node: one handler per intent (PROTOCOL.md §7).
+"""The merchant agents behind the BATP node: one handler per intent (PROTOCOL.md §7).
 
-Params and results are the tool contracts of `core.models`, so MATP and the MCP tools agree by
+Params and results are the tool contracts of `core.models`, so BATP and the MCP tools agree by
 construction. A merchant marked `down` refuses agent traffic with its fallback URL, as the
 gateway does for Claude (#13); its own website keeps booking through the platform.
 """
@@ -15,6 +15,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import AgentService
+from batp.messages import AgentIdentity, Intent, Request
+from batp.server import FAILED
+from batp.status import WITH_FALLBACK, Refused
 from core.db import merchants_t
 from core.errors import AgentError, AgentUnavailable, InvalidInput, NotFound
 from core.models import (
@@ -30,12 +33,9 @@ from core.models import (
     Via,
 )
 from gateway.discovery import search
-from matp.messages import AgentIdentity, Intent, Request
-from matp.server import FAILED
-from matp.status import WITH_FALLBACK, Refused
 
-# Bookings over MATP come from guests' agents. The `kind` a caller declares is not trusted, and
-# `Via` has no value for agents other than Claude yet: every MATP booking is `claude`.
+# Bookings over BATP come from guests' agents. The `kind` a caller declares is not trusted, and
+# `Via` has no value for agents other than Claude yet: every BATP booking is `claude`.
 VIA: Via = "claude"
 
 log = logging.getLogger("merchant_node")

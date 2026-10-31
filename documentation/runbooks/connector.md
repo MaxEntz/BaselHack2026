@@ -24,8 +24,8 @@ Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not f
 | Claude.ai's calls accepted by the server | ✅ validated | coming from `160.79.106.x`, all `200`, no `Host` or `Origin` rejected in the logs |
 | Anthropic's calls through the filter | ✅ validated | Claude Desktop's tool calls came from `160.79.106.x`, all `200`, with the deployed Caddyfile |
 | Caddy IP filter (#45): `403` outside `160.79.104.0/21` | ✅ validated | `403` and `server: Caddy` on `/mcp`, `/health` and `/.env` from outside, on the LXC |
-| One restaurant's endpoint `/m/<slug>/mcp` (#23) | 🔶 locally | e2e, in-process and over MATP: 4 tools described from the profile, booking without `merchant`, `404`, `down`, new merchant without restart, older protocol. Claude.ai: ⏳ step 6 |
-| MATP node on the LXC (#62) | ✅ validated | SDK client on the LXC, over MATP: booking, move, cancellation, party too large, outage and restore. `127.0.0.1:4710` only, closed from outside. Node stopped: the gateway stays up, gives the fallback link, and recovers without a restart |
+| One restaurant's endpoint `/m/<slug>/mcp` (#23) | 🔶 locally | e2e, in-process and over BATP: 4 tools described from the profile, booking without `merchant`, `404`, `down`, new merchant without restart, older protocol. Claude.ai: ⏳ step 6 |
+| BATP node on the LXC (#62) | ✅ validated | SDK client on the LXC, over BATP: booking, move, cancellation, party too large, outage and restore. `127.0.0.1:4710` only, closed from outside. Node stopped: the gateway stays up, gives the fallback link, and recovers without a restart |
 | SSH tunnel (`ssh -L`) | ❌ refused | `AllowTcpForwarding no` in the server's SSH hardening |
 | MCP Inspector | ✅ validated | `tools/list` locally: the 6 tools, their schemas and annotations |
 | ngrok tunnel (steps 1 to 3) | ⏳ not tested | alternative if the LXC is no longer available |
@@ -77,16 +77,16 @@ On a new server, create the database in UTF-8. Without a locale, Postgres picks 
 CREATE DATABASE merchant_agents OWNER merchant ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0;
 ```
 
-## MATP node on the LXC
+## BATP node on the LXC
 
-The MATP node ([`PROTOCOL.md`](../PROTOCOL.md)) serves the merchant agents. It runs on the LXC as the systemd service `merchant-node` (`code/deploy/merchant-node.service`), as the same unprivileged user as the gateway. The unit pins `MATP_HOST=127.0.0.1` and `MATP_PORT=4710`, which override `.env`. The gateway, on the same host, is its only client. Port 4710 is **not** exposed: the firewall only opens 22, 80 and 443. Opening it needs TLS and a firewall rule on a shared server, so ask first, in a separate issue.
+The BATP node ([`PROTOCOL.md`](../PROTOCOL.md)) serves the merchant agents. It runs on the LXC as the systemd service `merchant-node` (`code/deploy/merchant-node.service`), as the same unprivileged user as the gateway. The unit pins `BATP_HOST=127.0.0.1` and `BATP_PORT=4710`, which override `.env`. The gateway, on the same host, is its only client. Port 4710 is **not** exposed: the firewall only opens 22, 80 and 443. Opening it needs TLS and a firewall rule on a shared server, so ask first, in a separate issue.
 
 `make deploy` installs, enables and restarts `merchant-node` along with `merchant-gateway`. Both read `/opt/merchant-agents/code/.env`, which `make deploy` doesn't touch. On the server, it needs:
 
 ```bash
-MATP_TOKENS='{"urn:matp:agent:claude-gateway":"…"}'   # node: JSON, one token per known agent, 16 characters or more
-MATP_URL=matp://127.0.0.1:4710    # gateway: speak MATP to the node; without it, the gateway calls the agents in-process
-MATP_TOKEN=…                      # gateway: its own token, the one listed in MATP_TOKENS
+BATP_TOKENS='{"urn:batp:agent:claude-gateway":"…"}'   # node: JSON, one token per known agent, 16 characters or more
+BATP_URL=batp://127.0.0.1:4710    # gateway: speak BATP to the node; without it, the gateway calls the agents in-process
+BATP_TOKEN=…                      # gateway: its own token, the one listed in BATP_TOKENS
 ```
 
 Generate a token with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. After editing `.env`, restart both services.
@@ -107,7 +107,7 @@ From your machine, the port must stay closed (the connection times out):
 timeout 5 bash -c 'echo > /dev/tcp/191.96.88.152/4710' && echo OPEN || echo closed
 ```
 
-If the node is down, the gateway's tools answer `agent_unavailable` with each restaurant's fallback URL (#61), and `journalctl -u merchant-node` says why. The usual causes are a missing `DATABASE_URL` or `MATP_TOKENS`, or Postgres down (`systemctl status postgresql`).
+If the node is down, the gateway's tools answer `agent_unavailable` with each restaurant's fallback URL (#61), and `journalctl -u merchant-node` says why. The usual causes are a missing `DATABASE_URL` or `BATP_TOKENS`, or Postgres down (`systemctl status postgresql`).
 
 ## Prerequisites
 

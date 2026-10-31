@@ -73,6 +73,6 @@
   "required": [
     "reservation"
   ],
-  "title": "MATP CANCEL result",
+  "title": "BATP CANCEL result",
   "type": "object"
 }

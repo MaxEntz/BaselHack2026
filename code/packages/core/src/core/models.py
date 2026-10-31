@@ -41,7 +41,7 @@ NonEmptyStr = Annotated[
 ]
 
 # A guest's name, key or booking reference (#79): a 3 KB key would overflow the unique index,
-# and a 2 MB name a MATP frame.
+# and a 2 MB name a BATP frame.
 MAX_GUEST_TEXT = 200
 GuestText = Annotated[NonEmptyStr, StringConstraints(max_length=MAX_GUEST_TEXT)]
 

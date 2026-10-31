@@ -1,4 +1,4 @@
-"""MATP frames (documentation/PROTOCOL.md §5 to §7).
+"""BATP frames (documentation/PROTOCOL.md §5 to §7).
 
 Every frame is a JSON object with a `type`. Unknown fields are ignored (§13), so a newer peer
 can talk to an older one within the same major version.
@@ -31,7 +31,7 @@ ADDRESSED: frozenset[Intent] = frozenset({"AVAILABILITY", "BOOK", "AMEND", "CANC
 AgentKind = Literal["user-agent", "merchant-agent"]
 
 RequestId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
-Urn = Annotated[str, StringConstraints(pattern=r"^urn:matp:(agent|node):[a-z0-9][a-z0-9.-]{0,62}$")]
+Urn = Annotated[str, StringConstraints(pattern=r"^urn:batp:(agent|node):[a-z0-9][a-z0-9.-]{0,62}$")]
 Label = Annotated[str, StringConstraints(min_length=1, max_length=200)]
 
 
@@ -55,14 +55,14 @@ class NodeIdentity(_Frame):
 
 class Hello(_Frame):
     type: Literal["hello"] = "hello"
-    matp: str
+    batp: str
     agent: AgentIdentity
     token: str | None = Field(default=None, repr=False)
 
 
 class Welcome(_Frame):
     type: Literal["welcome"] = "welcome"
-    matp: str = PROTOCOL_VERSION
+    batp: str = PROTOCOL_VERSION
     node: NodeIdentity
     intents: tuple[Intent, ...]
     session: str

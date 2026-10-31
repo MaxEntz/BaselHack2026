@@ -1,4 +1,4 @@
-"""The MATP node on a real Postgres 16: every intent end to end through `MatpClient`."""
+"""The BATP node on a real Postgres 16: every intent end to end through `BatpClient`."""
 
 import asyncio
 import json
@@ -12,6 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import set_status
 from agent.service import PgAgentService
+from batp.client import BatpClient
+from batp.codec import MAX_FRAME, encode
+from batp.messages import AgentIdentity, Hello
+from batp.server import NodeServer
 from core.errors import (
     AgentUnavailable,
     InvalidInput,
@@ -19,10 +23,6 @@ from core.errors import (
     PartyTooLarge,
     SlotUnavailable,
 )
-from matp.client import MatpClient
-from matp.codec import MAX_FRAME, encode
-from matp.messages import AgentIdentity, Hello
-from matp.server import NodeServer
 from merchant_node.__main__ import NODE
 from merchant_node.agents import MerchantAgents
 
@@ -35,7 +35,7 @@ NOW = datetime(2026, 10, 31, 9, tzinfo=TZ)
 DAY = date(2026, 11, 2)
 GUEST = "Ada Lovelace"
 GATEWAY = AgentIdentity(
-    id="urn:matp:agent:claude-gateway",
+    id="urn:batp:agent:claude-gateway",
     name="Claude via the merchant-agents gateway",
     kind="user-agent",
     operator="merchant-agents",
@@ -47,7 +47,7 @@ def at(hhmm: str) -> str:
 
 
 @pytest.fixture
-async def client(engine: AsyncEngine) -> AsyncIterator[MatpClient]:
+async def client(engine: AsyncEngine) -> AsyncIterator[BatpClient]:
     service = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
 
     def only_the_gateway(hello: Hello) -> bool:
@@ -57,21 +57,21 @@ async def client(engine: AsyncEngine) -> AsyncIterator[MatpClient]:
         node=NODE, handle=MerchantAgents(engine, service), authenticate=only_the_gateway
     )
     await node.start("127.0.0.1", 0)
-    async with MatpClient("127.0.0.1", node.port, GATEWAY, token="gw-token") as matp:
-        yield matp
+    async with BatpClient("127.0.0.1", node.port, GATEWAY, token="gw-token") as batp:
+        yield batp
     await node.stop()
 
 
-async def test_ping_and_the_node_identity(client: MatpClient) -> None:
+async def test_ping_and_the_node_identity(client: BatpClient) -> None:
     result = await client.request("PING")
 
     assert result["pong"] is True
     assert client.welcome is not None
-    assert client.welcome.node.id == "urn:matp:node:merchant-agents"
+    assert client.welcome.node.id == "urn:batp:node:merchant-agents"
 
 
 async def test_discover_finds_live_merchants_with_preferences(
-    client: MatpClient, make_merchant: MerchantFactory
+    client: BatpClient, make_merchant: MerchantFactory
 ) -> None:
     token = f"zq{uuid4().hex[:6]}"
     live = await make_merchant(name=f"Zinc {token}")
@@ -87,7 +87,7 @@ async def test_discover_finds_live_merchants_with_preferences(
 
 
 async def test_book_amend_cancel_and_recall(
-    client: MatpClient, make_merchant: MerchantFactory
+    client: BatpClient, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant()
 
@@ -131,7 +131,7 @@ async def test_book_amend_cancel_and_recall(
 
 
 async def test_refusals_carry_their_status_and_fallback_url(
-    client: MatpClient, make_merchant: MerchantFactory
+    client: BatpClient, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant(tables=[{"label": "T1", "seats": 4}], seats=4)
     booking = {"starts_at": at("20:00"), "party_size": 4, "guest_name": GUEST}
@@ -152,7 +152,7 @@ async def test_refusals_carry_their_status_and_fallback_url(
 
 
 async def test_a_down_merchant_refuses_agents_with_its_fallback_url(
-    engine: AsyncEngine, client: MatpClient, make_merchant: MerchantFactory
+    engine: AsyncEngine, client: BatpClient, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant()
     await set_status(slug, "down", engine=engine)
@@ -174,7 +174,7 @@ async def test_the_fallback_url_travels_on_the_wire(
     await node.start("127.0.0.1", 0)
     try:
         reader, writer = await asyncio.open_connection("127.0.0.1", node.port, limit=MAX_FRAME)
-        writer.write(encode({"type": "hello", "matp": "0.1", "agent": GATEWAY.model_dump()}))
+        writer.write(encode({"type": "hello", "batp": "0.1", "agent": GATEWAY.model_dump()}))
         await reader.readline()
         writer.write(
             encode(
@@ -209,8 +209,8 @@ async def test_a_declared_kind_does_not_change_who_booked(
     await node.start("127.0.0.1", 0)
     impostor = GATEWAY.model_copy(update={"kind": "merchant-agent"})
     try:
-        async with MatpClient("127.0.0.1", node.port, impostor) as matp:
-            booked = await matp.request(
+        async with BatpClient("127.0.0.1", node.port, impostor) as batp:
+            booked = await batp.request(
                 "BOOK",
                 slug,
                 {
@@ -226,13 +226,13 @@ async def test_a_declared_kind_does_not_change_who_booked(
     assert booked["reservation"]["via"] == "claude"
 
 
-async def test_discover_refuses_oversized_filters(client: MatpClient) -> None:
+async def test_discover_refuses_oversized_filters(client: BatpClient) -> None:
     with pytest.raises(InvalidInput, match="at most 32 tags"):
         await client.request("DISCOVER", params={"query": "x", "filters": {"tags": ["vegan"] * 33}})
 
 
 async def test_a_notice_whose_recall_answer_was_lost_comes_back_on_the_next_recall(
-    client: MatpClient, engine: AsyncEngine, make_merchant: MerchantFactory
+    client: BatpClient, engine: AsyncEngine, make_merchant: MerchantFactory
 ) -> None:
     # The node handled the first RECALL, but its answer never reached the guest (#91).
     slug = await make_merchant()
@@ -276,7 +276,7 @@ async def test_a_handler_timeout_gives_the_merchants_fallback_url(
     await node.start("127.0.0.1", 0)
     try:
         reader, writer = await asyncio.open_connection("127.0.0.1", node.port, limit=MAX_FRAME)
-        writer.write(encode({"type": "hello", "matp": "0.1", "agent": GATEWAY.model_dump()}))
+        writer.write(encode({"type": "hello", "batp": "0.1", "agent": GATEWAY.model_dump()}))
         await reader.readline()
         request = {"type": "request", "id": "r-1", "intent": "AVAILABILITY", "merchant": slug}
         writer.write(encode(request | {"params": {"date": DAY.isoformat(), "party_size": 2}}))
