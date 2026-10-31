@@ -1,14 +1,11 @@
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["openai>=3.42", "pydantic>=2.14", "python-dotenv>=1.2"]
-# ///
 """Spike #4: extract a MerchantProfile from website text + owner description (OpenAI API).
 
-The LLM only fills a JSON schema (MerchantProfile + `assumptions`). Pydantic validates the
-result, with one retry that feeds the validation errors back (AGENTS.md §8.3). The code then
-overwrites the fields it owns (`slug`, `website`) and rejects a `fallback_url` outside the site.
+The LLM only fills a JSON schema (`core.models.MerchantProfile` + `assumptions`). Pydantic
+validates the result, with one retry that feeds the validation errors back (AGENTS.md §8.3).
+The code then overwrites the fields it owns (`slug`, `website`) and rejects a `fallback_url`
+outside the site.
 
-Run from `code/` (inline dependencies, independent of the uv workspace):
+Run from `code/`, in the uv workspace; OPENAI_API_KEY comes from the environment or code/.env:
 
     uv run scripts/spike_extract.py scripts/spike_samples/le-petit-zinc.txt "On ferme à 23h"
     uv run scripts/spike_extract.py --bench --runs 5     # the issue's 3 cases + an injection case
@@ -22,7 +19,6 @@ Modes (--mode), both on the Responses API with a strict schema:
 import argparse
 import asyncio
 import json
-import os
 import re
 import statistics
 import sys
@@ -31,85 +27,38 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated, Any, Literal, NamedTuple, Self
+from typing import Any, Literal, NamedTuple
 
 import openai
-from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from openai.types.responses import Response
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    HttpUrl,
-    PositiveInt,
-    StringConstraints,
-    ValidationError,
-    model_validator,
-)
+from pydantic import Field, HttpUrl, SecretStr, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# --- Local draft of the #2 contract (core/models.py): import it from `core` once #2 is merged.
-
-Tag = Literal["gluten-free", "vegetarian", "vegan", "halal", "kosher", "terrace", "kid-friendly"]
-PriceLevel = Literal["€", "€€", "€€€", "€€€€"]
-HHMM = Annotated[str, StringConstraints(pattern=r"^\d{2}:\d{2}$")]
-Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{3,61}$")]
-
-
-class _Frozen(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class Service(_Frozen):
-    start: HHMM
-    end: HHMM
-
-    @model_validator(mode="after")
-    def _end_after_start(self) -> Self:
-        if self.end <= self.start:
-            raise ValueError("end must be after start (no service past midnight in the POC)")
-        return self
-
-
-class TableSpec(_Frozen):
-    label: str
-    seats: PositiveInt
-
-
-class Location(_Frozen):
-    city: str | None
-    lat: float | None
-    lng: float | None
-
-
-class MerchantProfile(_Frozen):
-    slug: Slug
-    name: str
-    website: HttpUrl
-    vertical: Literal["restaurant"]
-    location: Location | None
-    seats: PositiveInt
-    services: list[Service] = Field(min_length=1)
-    max_party_size: PositiveInt
-    tables: list[TableSpec]
-    tags: list[Tag]
-    price_level: PriceLevel
-    cancellation_policy: str | None
-    fallback_url: HttpUrl
-
-
-# --- Spike
+from core.models import MerchantProfile
 
 
 class ExtractedProfile(MerchantProfile):
-    assumptions: list[str] = Field(
+    assumptions: tuple[str, ...] = Field(
         description="One sentence per value taken from the defaults instead of the sources."
     )
 
 
+class _Env(BaseSettings):
+    """OPENAI_* from the environment or code/.env; no DATABASE_URL needed, unlike core Settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).resolve().parents[1] / ".env",
+        env_ignore_empty=True,
+        extra="ignore",
+    )
+
+    openai_api_key: SecretStr | None = None
+    openai_model: str = "gpt-6.1-terra"
+
+
 Mode = Literal["tool-forced", "structured"]
 
-DEFAULT_MODEL = "gpt-6.1-terra"
 TOOL_NAME = "save_merchant_profile"
 TOOL_DESCRIPTION = (
     "Save the restaurant profile filled from the website text and the owner's description."
@@ -126,10 +75,15 @@ SUPPORTED_FORMATS = {
 
 
 def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Drop the string formats strict mode rejects; Pydantic still checks them after the call."""
+    """Adapt a Pydantic schema to strict mode; Pydantic still validates the reply in full.
+
+    Strict mode rejects unsupported string formats and wants every property in `required`:
+    fields with a `None` default (location, cancellation_policy…) are already nullable through
+    `anyOf`, so they become required-but-nullable and their `default` is dropped.
+    """
     cleaned: dict[str, Any] = {}
     for key, value in schema.items():
-        if key == "format" and value not in SUPPORTED_FORMATS:
+        if key == "default" or (key == "format" and value not in SUPPORTED_FORMATS):
             continue
         if key in ("properties", "$defs"):
             value = {name: strict_schema(sub) for name, sub in value.items()}
@@ -138,6 +92,8 @@ def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
         elif key == "anyOf":
             value = [strict_schema(sub) for sub in value]
         cleaned[key] = value
+    if "properties" in cleaned:
+        cleaned["required"] = list(cleaned["properties"])
     return cleaned
 
 
@@ -205,7 +161,7 @@ PROMPTS = {
 
 def user_message(website_text: str, description: str, mode: Mode) -> str:
     # The website text is untrusted: drop anything that would close its tag early.
-    website_text = website_text.replace("</website_text>", "")
+    website_text = re.sub(r"</\s*website_text\s*>", "", website_text, flags=re.IGNORECASE)
     ask = (
         "Return the profile as JSON."
         if mode == "structured"
@@ -403,9 +359,15 @@ async def extract_profile(
 # --- Fields the code owns
 
 
-def slugify(name: str) -> str:
-    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")[:61].rstrip("-")
+def slugify(name: str, site: HttpUrl) -> str:
+    """Slug from the name, or from the site's host when the name gives under 3 characters
+    ("Bo", "寿司"). The builder must still add a suffix when the slug is taken."""
+    for source in (name, (site.host or "").removeprefix("www.")):
+        ascii_text = unicodedata.normalize("NFKD", source).encode("ascii", "ignore").decode()
+        slug = re.sub(r"[^a-z0-9]+", "-", ascii_text.lower()).strip("-")[:61].rstrip("-")
+        if len(slug) >= 3:
+            break
+    return slug
 
 
 def same_site(url: HttpUrl, site: HttpUrl) -> bool:
@@ -417,7 +379,10 @@ def enforce_code_owned_fields(
 ) -> tuple[ExtractedProfile, list[str]]:
     """The code, not the LLM, sets `slug` and `website` and vets `fallback_url`."""
     site = HttpUrl(website) if website else profile.website
-    fields = profile.model_dump(mode="json") | {"slug": slugify(profile.name), "website": str(site)}
+    fields = profile.model_dump(mode="json") | {
+        "slug": slugify(profile.name, site),
+        "website": str(site),
+    }
     notes = []
     if fields["slug"] != profile.slug:
         notes.append(f"slug {profile.slug!r} -> {fields['slug']!r}")
@@ -623,13 +588,14 @@ def print_details(case: Case, runs: list[Extraction], verbose: bool) -> None:
                 print(f"```json\n{r.final.model_dump_json(indent=2)}\n```")
 
 
-def check_api_key() -> None:
-    key = os.environ.get("OPENAI_API_KEY")
-    if key == "":  # an empty value in .env means "not set"
-        del os.environ["OPENAI_API_KEY"]
-    elif key is not None and (key.startswith("sk-ant-") or not key.startswith("sk-")):
+def openai_client(env: _Env) -> AsyncOpenAI:
+    if env.openai_api_key is None:
+        sys.exit("OPENAI_API_KEY is not set: put it in code/.env.")
+    key = env.openai_api_key.get_secret_value()
+    if key.startswith("sk-ant-") or not key.startswith("sk-"):
         # Never send another provider's secret to the API.
         sys.exit("OPENAI_API_KEY is not an OpenAI key (sk-…).")
+    return AsyncOpenAI(api_key=key)
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -648,11 +614,7 @@ async def run(args: argparse.Namespace) -> int:
         print(json.dumps(request, ensure_ascii=False, indent=2))
         return 0
 
-    check_api_key()
-    try:
-        client = AsyncOpenAI()
-    except openai.OpenAIError as e:
-        sys.exit(f"{e}\nPut OPENAI_API_KEY in code/.env.")
+    client = openai_client(args.env)
     schema_kind = "raw" if args.raw_schema else "strict"
     effort = args.effort or "default"
     eprint(
@@ -690,13 +652,14 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def parse_args() -> argparse.Namespace:
+    env = _Env()
     parser = argparse.ArgumentParser(description="Spike #4: MerchantProfile extraction.")
     parser.add_argument("text_file", nargs="?", type=Path, help="website text (crawl or paste)")
     parser.add_argument("description", nargs="?", default="", help="the owner's description")
     parser.add_argument("--website", help="URL given by the merchant (sets `website`)")
     parser.add_argument("--bench", action="store_true", help="run the issue's cases")
     parser.add_argument("--runs", type=int, default=1, help="calls per case (p50 over them)")
-    parser.add_argument("--model", default=os.environ.get("OPENAI_MODEL") or DEFAULT_MODEL)
+    parser.add_argument("--model", default=env.openai_model)
     parser.add_argument("--mode", choices=["tool-forced", "structured"], default="tool-forced")
     parser.add_argument("--prompt", choices=sorted(PROMPTS), default="v2")
     parser.add_argument("--effort", choices=["none", "low", "medium", "high"])
@@ -709,9 +672,9 @@ def parse_args() -> argparse.Namespace:
     if not args.bench and args.text_file is None:
         parser.error("TEXT_FILE is required (or use --bench)")
     args.schema = RAW_SCHEMA if args.raw_schema else STRICT_SCHEMA
+    args.env = env
     return args
 
 
 if __name__ == "__main__":
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")  # code/.env, as in the workspace
     sys.exit(asyncio.run(run(parse_args())))
