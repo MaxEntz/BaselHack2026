@@ -49,8 +49,8 @@ BOOKING = {
 }
 
 
-def refusal(code: str) -> dict[str, Any]:
-    return {"error": {"code": code, "message": "No."}}
+def refusal(code: str, message: str = "No.") -> dict[str, Any]:
+    return {"error": {"code": code, "message": message}}
 
 
 def test_the_issues_four_wordings() -> None:
@@ -143,6 +143,27 @@ def test_the_demo_fixture_is_worded_as_the_server_words_it() -> None:
                 "Emma Roth tried to cancel a booking that had started",
                 "Bookings can only be changed before they start.",
             ),
+        ),
+        (
+            "AMEND",
+            409,
+            {"reservation_id": "R-007", "guest_name": "Emma Roth", "party_size": 4},
+            refusal("slot_unavailable", "Booking R-007 has already started"),
+            (
+                "Emma Roth tried to change a booking that had started",
+                "Bookings can only be changed before they start.",
+            ),
+        ),
+        (
+            "AMEND",
+            409,
+            {
+                "reservation_id": "R-007",
+                "guest_name": "Emma Roth",
+                "starts_at": BOOKING["starts_at"],
+            },
+            refusal("slot_unavailable", "That time was just taken."),
+            ("Emma Roth asked for a time that had just gone", "Claude offered them another one."),
         ),
         (
             "AMEND",

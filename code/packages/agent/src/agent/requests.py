@@ -57,9 +57,10 @@ def describe(
                 f"A group of {party} was sent to your booking page",
                 f"{limit}, so the guest got your link instead.",
             )
-        case 409 if intent == "CANCEL":
+        case 409 if intent == "CANCEL" or (intent == "AMEND" and _started(answer)):
+            verb = "cancel" if intent == "CANCEL" else "change"
             return (
-                f"{guest} tried to cancel a booking that had started",
+                f"{guest} tried to {verb} a booking that had started",
                 "Bookings can only be changed before they start.",
             )
         case 409:
@@ -91,6 +92,12 @@ def _booking(starts: datetime | None, party: int | None, booking: dict[str, Any]
     if table:
         parts.append(f"table {table}")
     return ", ".join(parts) + "." if parts else ""
+
+
+def _started(answer: dict[str, Any]) -> bool:
+    """A 409 the node sent because the booking had already started (`_check_not_started`)."""
+    message = _text(_object(answer.get("error")).get("message")) or ""
+    return "already started" in message
 
 
 def _guests(n: int) -> str:
