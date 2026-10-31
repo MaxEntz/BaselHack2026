@@ -1,4 +1,4 @@
-import type { ChatClient } from "../chat/client.ts";
+import { ChatError, type ChatClient } from "../chat/client.ts";
 import type { ChatEvent, LiveEvent, SessionOutput } from "../types.ts";
 import cards from "./cards.json";
 import notification from "./notification.json";
@@ -14,6 +14,11 @@ const NOTIFICATION = notification as LiveEvent;
 const SESSION = session as SessionOutput;
 
 const NOTIFICATION_DELAY_MS = 6000;
+// A description containing "cut" drops the stream while `extract` runs (#86).
+const CUT = /\bcut\b/i;
+const CUT_AT = ONBOARDING.findIndex(
+  (event) => event.type === "step" && event.step === "extract" && event.status === "running",
+);
 
 // Replays the contract mocks with realistic delays (VITE_MOCK=1).
 export function createMockClient(onboarded: boolean): ChatClient {
@@ -25,6 +30,7 @@ export function createMockClient(onboarded: boolean): ChatClient {
       return /block|busy|stat|polic|party|max/i.test(message) ? CARDS : TONIGHT;
     }
     if (website) {
+      if (CUT.test(message)) return ONBOARDING.slice(0, CUT_AT + 1);
       onboarded = true;
       return ONBOARDING;
     }
@@ -39,7 +45,8 @@ export function createMockClient(onboarded: boolean): ChatClient {
 
   return {
     async *send(message, _sessionId, signal) {
-      for (const event of script(message)) {
+      const events = script(message);
+      for (const event of events) {
         if (event.type === "text") {
           // Stream word by word, like the real assistant.
           for (const word of event.delta.match(/\S+\s*/g) ?? []) {
@@ -50,6 +57,11 @@ export function createMockClient(onboarded: boolean): ChatClient {
         }
         await sleep(delayBefore(event), signal);
         yield event;
+      }
+      if (events.at(-1)?.type !== "done") {
+        // What `httpClient` raises when the stream ends without `done`.
+        await sleep(300, signal);
+        throw new ChatError("The connection was interrupted before the reply ended.");
       }
     },
 

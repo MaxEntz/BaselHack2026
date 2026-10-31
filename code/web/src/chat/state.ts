@@ -79,7 +79,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       });
     case "failed":
       return append(
-        { ...state, busy: false, activity: null },
+        { ...interruptBuild(state), busy: false, activity: null },
         { type: "error", turn: state.turn, message: action.message },
       );
     case "chat":
@@ -121,8 +121,30 @@ function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         { type: "error", turn: state.turn, message: event.message },
       );
     case "done":
-      return { ...state, busy: false, activity: null };
+      return { ...interruptBuild(state), busy: false, activity: null };
   }
+}
+
+// A turn that ends with a step still running (stream cut, or `done` before the last step)
+// stopped the build: the server undid it (#86). No spinner or "Building" pill may outlive it.
+function interruptBuild(state: ChatState): ChatState {
+  const index = lastTurnItemIndex(state, (item) => item.type === "steps");
+  const group = index === -1 ? null : state.items[index];
+  let next = state;
+  if (group?.type === "steps") {
+    const entries = Object.entries(group.steps) as [StepName, StepState][];
+    if (entries.some(([, step]) => step.status === "running")) {
+      const steps = Object.fromEntries(
+        entries.map(([name, step]) => [
+          name,
+          step.status === "running" ? { ...step, status: "error", detail: "Interrupted" } : step,
+        ]),
+      );
+      next = replaceAt(state, index, { ...group, steps });
+    }
+  }
+  if (next.status !== "building") return next;
+  return { ...next, status: next.merchant ? "live" : null };
 }
 
 // Deltas extend the turn's last assistant message, unless something else
@@ -139,9 +161,10 @@ function appendText(state: ChatState, delta: string): ChatState {
 // All steps of one build are grouped into a single StepGroup per turn.
 function applyStep(state: ChatState, event: StepEvent): ChatState {
   const { type: _type, step, ...stepState } = event;
-  let status: AgentStatus = "building";
-  // A failed rebuild leaves an onboarded merchant's agent live.
-  if (event.status === "error") status = state.merchant ? "live" : "down";
+  let status: AgentStatus | null = "building";
+  // A failed rebuild leaves an onboarded merchant's agent live; a failed first build leaves no
+  // agent at all (the server undoes it), as when the stream is cut (#86).
+  if (event.status === "error") status = state.merchant ? "live" : null;
   else if (step === "deploy" && event.status === "done") status = "live";
   const next: ChatState = { ...state, status };
   const index = lastTurnItemIndex(state, (item) => item.type === "steps");
