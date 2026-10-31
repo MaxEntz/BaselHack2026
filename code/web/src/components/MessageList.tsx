@@ -9,10 +9,15 @@ type Props = {
   items: readonly ChatItem[];
   activity: string | null;
   busy: boolean;
+  onRetry: () => void;
 };
 
-export function MessageList({ items, activity, busy }: Props) {
+export function MessageList({ items, activity, busy, onRetry }: Props) {
   const list = useRef<HTMLDivElement>(null);
+  // A live notification arriving after an error must not hide its retry.
+  const retryIndex = busy
+    ? -1
+    : items.findLastIndex((item) => item.type !== "notification");
   const stick = useRef(true);
 
   useLayoutEffect(() => {
@@ -33,8 +38,13 @@ export function MessageList({ items, activity, busy }: Props) {
   return (
     <div className="messages" ref={list} onScroll={onScroll} aria-live="polite">
       <div className="messages-inner">
-        {items.map((item) => (
-          <ChatItemView key={item.id} item={item} />
+        {items.map((item, index) => (
+          <ChatItemView
+            key={item.id}
+            item={item}
+            // Only the latest error offers a retry, and never during a turn.
+            onRetry={index === retryIndex ? onRetry : undefined}
+          />
         ))}
         {busy && (
           <div className="activity" role="status">

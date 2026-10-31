@@ -1,5 +1,9 @@
 import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
+import { CardView } from "../cards/CardView.tsx";
+import { ErrorItem } from "../cards/ErrorItem.tsx";
+import { NotificationItem } from "../cards/NotificationItem.tsx";
+import { StepsCard } from "../cards/StepsCard.tsx";
 import type { ChatItem } from "../chat/state.ts";
 
 // Links in assistant replies open next to the chat, never in place of it.
@@ -9,7 +13,12 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
 };
 
-export function ChatItemView({ item }: { item: ChatItem }) {
+type Props = {
+  item: ChatItem;
+  onRetry?: () => void;
+};
+
+export function ChatItemView({ item, onRetry }: Props) {
   switch (item.type) {
     case "user":
       return <div className="bubble bubble-user">{item.text}</div>;
@@ -20,40 +29,12 @@ export function ChatItemView({ item }: { item: ChatItem }) {
         </div>
       );
     case "steps":
-      return (
-        <div className="card">
-          <ul className="plain-steps">
-            {Object.entries(item.steps).map(([step, state]) => (
-              <li key={step}>
-                {step}: {state.status}
-                {state.detail && ` — ${state.detail}`}
-              </li>
-            ))}
-          </ul>
-        </div>
-      );
+      return <StepsCard steps={item.steps} />;
     case "card":
-      // Placeholder until the dedicated cards land (#20).
-      return (
-        <div className="card">
-          <strong>{item.card.kind}</strong>
-          <pre>{JSON.stringify(item.card.data, null, 2)}</pre>
-        </div>
-      );
-    case "notification": {
-      const { kind, reservation } = item.event;
-      return (
-        <div className="notification" role="alert">
-          🔔 {kind.replace("_", " ")} — {reservation.id} · {reservation.party_size}{" "}
-          guests · {reservation.time}
-        </div>
-      );
-    }
+      return <CardView card={item.card} />;
+    case "notification":
+      return <NotificationItem event={item.event} />;
     case "error":
-      return (
-        <div className="error-item" role="alert">
-          {item.message}
-        </div>
-      );
+      return <ErrorItem message={item.message} onRetry={onRetry} />;
   }
 }

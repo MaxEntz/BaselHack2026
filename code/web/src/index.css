@@ -14,8 +14,12 @@
   --warning-bg: #fff4d6;
   --danger: #b42318;
   --danger-bg: #fdecea;
-  --notify: #6b2bd9;
+  --notify: #5b21b6;
   --notify-bg: #f1eaff;
+  --info: #1d4ed8;
+  --info-bg: #e6eeff;
+  --claude: #b4532a;
+  --claude-bg: #fbeae2;
   --radius: 14px;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.04);
 
@@ -182,37 +186,6 @@ a {
   box-shadow: var(--shadow);
 }
 
-.card pre {
-  margin: 8px 0 0;
-  font: 0.85rem/1.4 var(--mono);
-  white-space: pre-wrap;
-}
-
-.plain-steps {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.notification {
-  align-self: stretch;
-  padding: 12px 16px;
-  color: var(--notify);
-  background: var(--notify-bg);
-  border-left: 5px solid var(--notify);
-  border-radius: var(--radius);
-  font-weight: 600;
-  animation: slide-in 0.4s ease-out;
-}
-
-.error-item {
-  align-self: flex-start;
-  max-width: 85%;
-  padding: 12px 16px;
-  color: var(--danger);
-  background: var(--danger-bg);
-  border-radius: var(--radius);
-}
-
 .activity {
   display: flex;
   align-items: center;
@@ -296,13 +269,6 @@ a {
   }
   40% {
     opacity: 1;
-  }
-}
-
-@keyframes slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
   }
 }
 
