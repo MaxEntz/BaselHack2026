@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Réserver une table · Le Petit Zinc, Mulhouse</title>
+    <meta name="description" content="Réservez votre table au Petit Zinc, bistrot alsacien à Mulhouse, pour le déjeuner ou le dîner.">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="style.css">
+    <script src="booking.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#contenu">Aller au contenu</a>
+    <header class="site-header">
+      <div class="kelsch" aria-hidden="true"></div>
+      <div class="wrap header-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-name">Le Petit Zinc</span>
+          <span class="brand-tag">Bistrot alsacien · Mulhouse</span>
+        </a>
+        <nav class="site-nav" aria-label="Navigation principale">
+          <a href="index.html">Accueil</a>
+          <a href="carte.html">La carte</a>
+          <a href="horaires.html">Horaires</a>
+          <a href="contact.html">Contact</a>
+          <a class="button" href="reservation.html" aria-current="page">Réserver</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="contenu">
+      <div class="wrap page-head">
+        <p class="eyebrow">Réservation</p>
+        <h1>Réserver une table</h1>
+        <p class="lead">Déjeuner ou dîner : choisissez votre jour et votre heure, votre table vous attend.</p>
+      </div>
+
+      <div class="wrap section split">
+        <section class="card" aria-labelledby="formulaire">
+          <h2 id="formulaire">Votre réservation</h2>
+          <noscript><p class="notice notice-info">Activez JavaScript pour réserver en ligne, ou appelez-nous au 03 89 00 00 00.</p></noscript>
+          <form id="booking-form" class="form">
+            <div class="field">
+              <label for="guest-name">Nom</label>
+              <input id="guest-name" name="guest_name" type="text" autocomplete="name" maxlength="80" required>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="booking-date">Date</label>
+                <input id="booking-date" name="date" type="date" required>
+              </div>
+              <div class="field">
+                <label for="booking-time">Heure</label>
+                <select id="booking-time" name="time" required>
+                  <option value="">Choisir une heure</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="party-size">Personnes</label>
+                <select id="party-size" name="party_size" required>
+                  <option value="1">1 personne</option>
+                  <option value="2" selected>2 personnes</option>
+                  <option value="3">3 personnes</option>
+                  <option value="4">4 personnes</option>
+                  <option value="5">5 personnes</option>
+                  <option value="6">6 personnes</option>
+                  <option value="7">7 personnes</option>
+                  <option value="8">8 personnes</option>
+                  <option value="9">9 personnes</option>
+                  <option value="10">10 personnes</option>
+                  <option value="11">11 personnes</option>
+                  <option value="12">12 personnes</option>
+                </select>
+              </div>
+            </div>
+            <button class="button" type="submit">Confirmer la réservation</button>
+            <p id="booking-status" class="notice" role="status" aria-live="polite" hidden></p>
+          </form>
+        </section>
+
+        <aside>
+          <section class="card" aria-labelledby="bon-a-savoir">
+            <h2 id="bon-a-savoir">Bon à savoir</h2>
+            <p>Service du déjeuner de 12h à 14h, service du dîner de 19h à 22h, tous les jours.</p>
+            <p>Groupes : nous contacter au <a href="tel:+33389000000">03 89 00 00 00</a>.</p>
+          </section>
+          <p class="note">Une allergie, une chaise haute ? Dites-le-nous en arrivant, ou appelez-nous avant votre venue.</p>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap footer-grid">
+        <div>
+          <span class="brand-name">Le Petit Zinc</span>
+          <p>14 rue des Ferblantiers<br>68100 Mulhouse</p>
+        </div>
+        <div>
+          <h2>Horaires</h2>
+          <p>Tous les jours<br>12h – 14h · 19h – 22h</p>
+        </div>
+        <div>
+          <h2>Contact</h2>
+          <p><a href="tel:+33389000000">03 89 00 00 00</a><br><a href="mailto:bonjour@lepetitzinc.example">bonjour@lepetitzinc.example</a></p>
+        </div>
+      </div>
+      <p class="wrap footer-note">Le Petit Zinc est un restaurant fictif, créé pour une démonstration (BaselHack 2026). L'adresse, le téléphone et l'e-mail sont factices.</p>
+      <div class="kelsch" aria-hidden="true"></div>
+    </footer>
+  </body>
+</html>
