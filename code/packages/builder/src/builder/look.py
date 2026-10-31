@@ -321,12 +321,12 @@ def read_look(sample: Mapping[str, Any] | None) -> tuple[Look | None, list[Build
         str(heading.get("font") or sample.get("body_font") or ""), FONTS_BUNDLED
     )
     body, body_was = _font(str(sample.get("body_font") or ""), BODY_BUNDLED)
-    for kind, was, used in (("titles", display_was, display), ("text", body_was, body)):
+    for kind, was, used in (("titles use", display_was, display), ("text uses", body_was, body)):
         if was:
             closest = "serif" if used == "serif" else "sans-serif" if used == "sans" else used
             flags.append(
                 BuildFlag(
-                    title=f"Your {kind} use {was}, which the management site can't host.",
+                    title=f"Your {kind} {_font_name(was)}, which the management site can't host.",
                     detail=f"It uses the closest it has: a {closest}.",
                 )
             )
@@ -353,6 +353,18 @@ def read_look(sample: Mapping[str, Any] | None) -> tuple[Look | None, list[Build
         texture=texture,
     )
     return look, flags
+
+
+# A family is the page's own text, and flags reach the assistant's model (ARCHITECTURE.md §4):
+# only a name that looks like a font's is repeated, never a sentence (#197 review).
+FONT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .'-]{0,39}$")
+
+
+def _font_name(family: str) -> str:
+    """`family` if it looks like a font name (40 characters, 4 words at most), else "a font"."""
+    if FONT_NAME.fullmatch(family) and len(family.split()) <= 4:
+        return family
+    return "a font"
 
 
 def _display(font: str) -> DisplayFont:

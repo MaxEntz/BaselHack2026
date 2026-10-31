@@ -46,6 +46,11 @@ MAX_REDIRECTS = 5
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 # Only the text is read: skip what is heavy and never holds any.
 SKIPPED_RESOURCES = frozenset({"image", "media", "font"})
+# The look's sample (#149): read within its own time, and bounded before it is cached.
+LOOK_TIMEOUT_S = 2.0
+LOOK_KEYS = 40
+LOOK_KEY_CHARS = 64
+LOOK_FONT_CHARS = 200
 # Element ids kept per page, in document order: enough for a one-page site's sections.
 MAX_ANCHORS = 200
 
@@ -392,8 +397,9 @@ async def _read(
                 with suppress(PlaywrightTimeout):
                     await tab.wait_for_load_state("networkidle", timeout=settle_s * 1000)
             raw = await tab.evaluate(_EXTRACT)
-            styles = await _styles(tab) if look else None
             final_url = tab.url
+        # Outside the page's deadline, with its own: a heavy page loses its look, not its crawl.
+        styles = await _styles(tab) if look else None
     finally:
         with suppress(PlaywrightError):
             await tab.close()
@@ -410,14 +416,55 @@ async def _read(
 
 
 async def _styles(tab: Any) -> dict[str, Any] | None:
-    """The page's computed styles; None if they can't be read: the build then uses the default
-    look, it never fails for it."""
+    """The page's computed styles, bounded; None if they can't be read within `LOOK_TIMEOUT_S`:
+    the build then uses the default look, it never fails for it."""
     try:
-        styles = await tab.evaluate(_LOOK)
-    except PlaywrightError:
+        styles = await asyncio.wait_for(tab.evaluate(_LOOK), LOOK_TIMEOUT_S)
+    except (PlaywrightError, TimeoutError):
         log.warning("crawl_look_unreadable")
         return None
-    return styles if isinstance(styles, dict) else None
+    return bounded_look(styles) if isinstance(styles, dict) else None
+
+
+def bounded_look(styles: dict[str, Any]) -> dict[str, Any]:
+    """The sample as the cache stores it: the page writes its keys (it can even redefine
+    `getComputedStyle`), so each map keeps its `LOOK_KEYS` heaviest entries, keys and strings
+    cut to `LOOK_KEY_CHARS`."""
+
+    def cut(value: Any, limit: int = LOOK_KEY_CHARS) -> str:
+        return str(value)[:limit]
+
+    def heaviest(counts: Any) -> dict[str, float]:
+        if not isinstance(counts, dict):
+            return {}
+        weights = {}
+        for key, weight in counts.items():
+            try:
+                weights[cut(key, 2 * LOOK_KEY_CHARS)] = float(weight)
+            except (TypeError, ValueError):
+                continue
+        ranked = sorted(weights.items(), key=lambda kv: -kv[1])[:LOOK_KEYS]
+        return dict(ranked)
+
+    heading = styles.get("heading")
+    numbers = ("blob_area", "textures", "page_area", "page_width")
+    return {
+        "bg": cut(styles.get("bg")),
+        "ink": cut(styles.get("ink")),
+        "body_font": cut(styles.get("body_font"), LOOK_FONT_CHARS),
+        "heading": {
+            "size": heading.get("size"),
+            "color": cut(heading.get("color")),
+            "font": cut(heading.get("font"), LOOK_FONT_CHARS),
+        }
+        if isinstance(heading, dict)
+        else None,
+        "backgrounds": heaviest(styles.get("backgrounds")),
+        "texts": heaviest(styles.get("texts")),
+        "borders": heaviest(styles.get("borders")),
+        "radii": [r for r in styles.get("radii") or [] if isinstance(r, list)][:500],
+        **{name: styles.get(name) for name in numbers},
+    }
 
 
 async def _landing(context: BrowserContext, guard: HostGuard, url: str, timeout_ms: float) -> str:
