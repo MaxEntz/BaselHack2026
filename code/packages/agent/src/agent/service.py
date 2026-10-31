@@ -12,6 +12,7 @@ transaction never holds one table while waiting for another.
 
 import logging
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal, NoReturn, Protocol, overload
 from zoneinfo import ZoneInfo
@@ -71,6 +72,18 @@ NOTICE_WINDOW = timedelta(hours=24)
 Outcome = Literal["done", "taken", "key_taken"]
 
 
+MerchantCancelOutcome = admin.CancelOutcome
+
+
+@dataclass(frozen=True)
+class MerchantCancellation:
+    """The booking after a merchant's cancellation, and what was done: the merchant must never
+    be told the guest will be notified when no notice was stored (#82)."""
+
+    reservation: Reservation
+    outcome: MerchantCancelOutcome
+
+
 class AgentService(Protocol):
     """Implementations raise core.errors.AgentError for business failures."""
 
@@ -107,6 +120,8 @@ class AgentService(Protocol):
     async def cancel_reservation(
         self, slug: str, reservation_id: str, *, by: Literal["merchant"], guest_name: None = None
     ) -> Reservation: ...
+
+    async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation: ...
 
     async def find_guest_reservations(
         self, guest_name: str
@@ -434,7 +449,7 @@ class PgAgentService:
         guest_name: str | None = None,
     ) -> Reservation:
         if by == "merchant":
-            return await self._cancel_by_merchant(slug, reservation_id)
+            return (await self.cancel_by_merchant(slug, reservation_id)).reservation
         if guest_name is None:
             raise InvalidInput("guest_name is required to cancel a booking as the guest")
         async with merchant_conn(self.engine, slug) as conn:
@@ -617,14 +632,17 @@ class PgAgentService:
         log.info("floor plan updated", extra={"merchant": slug, "tables": len(plan)})
         return plan
 
-    async def _cancel_by_merchant(self, slug: str, reservation_id: str) -> Reservation:
+    async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation:
         async with merchant_conn(self.engine, slug) as conn:
             await self._load(conn, slug, merchant_side=True)
-            row = await admin.cancel_by_merchant(conn, slug, reservation_id, self.tz, self.clock())
+            row, outcome = await admin.cancel_by_merchant(
+                conn, slug, reservation_id, self.tz, self.clock()
+            )
         log.info(
-            "reservation cancelled by merchant", extra={"merchant": slug, "reservation": row.id}
+            "reservation cancelled by merchant",
+            extra={"merchant": slug, "reservation": row.id, "cancel_outcome": outcome},
         )
-        return self._from_row(slug, row)
+        return MerchantCancellation(reservation=self._from_row(slug, row), outcome=outcome)
 
     # Helpers
 

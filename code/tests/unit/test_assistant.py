@@ -14,7 +14,7 @@ from openai import AsyncOpenAI
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from agent.service import AgentService
+from agent.service import AgentService, MerchantCancellation, MerchantCancelOutcome
 from builder.build import AlreadyProvisioned
 from builder.llm import (
     LLMClient,
@@ -98,6 +98,15 @@ class DownLLM(ScriptedLLM):
         raise LLMUnavailable("InternalServerError")
 
 
+# What cancelling each of FakeAgent's bookings does (#82).
+OUTCOMES: dict[str, MerchantCancelOutcome] = {
+    "R-001": "notified",
+    "R-002": "ended",
+    "R-003": "guest_cancelled",
+    "R-004": "already_cancelled",
+}
+
+
 class FakeAgent:
     """In-memory merchant operations for SLUG."""
 
@@ -143,12 +152,21 @@ class FakeAgent:
     async def update_tables(self, slug: str, tables: Sequence[TableSpec]) -> list[TableSpec]:
         return list(tables)
 
+    async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation:
+        outcome = OUTCOMES.get(reservation_id)
+        if outcome is None:
+            raise NotFound(f"No booking {reservation_id}")
+        self.cancelled.append(reservation_id)
+        return MerchantCancellation(
+            reservation=await self.cancel_reservation(slug, reservation_id, by="merchant"),
+            outcome=outcome,
+        )
+
     async def cancel_reservation(
         self, slug: str, reservation_id: str, *, by: str, guest_name: str | None = None
     ) -> Reservation:
-        if reservation_id != "R-001":
+        if reservation_id not in OUTCOMES:
             raise NotFound(f"No booking {reservation_id}")
-        self.cancelled.append(reservation_id)
         return Reservation(
             id=reservation_id,
             merchant=slug,
@@ -508,6 +526,35 @@ async def test_operations_cards() -> None:
     assert cards[4]["data"]["text"] == "R-001 cancelled. The guest will be notified."
     assert agent.blocked == [datetime.fromisoformat(nine_pm)]
     assert agent.cancelled == ["R-001"]
+
+
+@pytest.mark.parametrize(
+    ("reservation_id", "text"),
+    [
+        ("R-001", "R-001 cancelled. The guest will be notified."),
+        ("R-002", "R-002 is in the past: cancelled, no notice sent."),
+        ("R-003", "R-003 was already cancelled by the guest."),
+        ("R-004", "R-004 was already cancelled: no new notice sent."),
+    ],
+)
+async def test_a_merchant_cancellation_card_says_what_was_done(
+    reservation_id: str, text: str
+) -> None:
+    llm = ScriptedLLM(
+        ([], [call("cancel_reservation", reservation_id=reservation_id)]), (["Done."], [])
+    )
+    agent = FakeAgent()
+    harness = Harness(llm, agent=agent)
+    harness.provisioned.add(SLUG)
+    session = onboarded()
+
+    events = await harness.turn(session, f"Cancel {reservation_id}")
+
+    cards = [event for event in events if event["type"] == "card"]
+    assert [card["data"]["text"] for card in cards] == [text]
+    assert agent.cancelled == [reservation_id]
+    tool_message = next(m for m in session.messages if m["role"] == "tool")
+    assert json.loads(tool_message["content"])["text"] == text  # what the model relays
 
 
 def admin_tool_lines(caplog: pytest.LogCaptureFixture) -> list[dict[str, Any]]:

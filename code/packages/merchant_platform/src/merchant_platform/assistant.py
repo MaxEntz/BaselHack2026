@@ -78,8 +78,8 @@ Mode: operations. The merchant's agent is live.
 assumptions from its result (default values used) and ask the merchant to confirm or correct \
 them. Corrections go through update_policy or update_tables. Then wrap up with: "Your agent \
 is live: Claude users can now book you."
-- Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel \
-and say the guest will be notified.
+- Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel. \
+If its result says the guest won't be notified, say why in a few words.
 
 The merchant's validated profile:
 {profile}
