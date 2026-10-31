@@ -7,12 +7,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from builder.crawl import USEFUL_LINK
 from core.models import MerchantProfile
 
 SITES = Path(__file__).parents[2] / "sites"
 SITE = SITES / "le-petit-zinc"
-# AGENTS.md §8.3: the links the crawl follows from the homepage.
-CRAWL_FILTER = re.compile(r"menu|carte|hours|horaires|contact|book|reserv", re.IGNORECASE)
 WEEK = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
 
 
@@ -58,7 +57,7 @@ def test_every_local_link_points_to_a_file() -> None:
 def test_homepage_links_to_the_pages_the_crawl_reads() -> None:
     links = {urlsplit(href).path for href in Page(SITE / "index.html").links}
 
-    crawled = {link for link in links if CRAWL_FILTER.search(link)}
+    crawled = {link for link in links if USEFUL_LINK.search(link)}
 
     assert {"carte.html", "horaires.html", "contact.html", "reservation.html"} <= crawled
 

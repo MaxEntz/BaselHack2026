@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     platform_merchant: str | None = None
     # Reasoning effort of the platform assistant: lower is faster to the first word.
     openai_reasoning_effort: str | None = "low"
+    # Reasoning effort of the builder's extraction (spike #4: `none` is as accurate, faster).
+    builder_reasoning_effort: str | None = "none"
     builder_cache: Literal["read_write", "read_only", "off"] = "read_write"
     crawl_allow_private: bool = False
 

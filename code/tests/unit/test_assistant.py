@@ -14,6 +14,17 @@ from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from agent.service import AgentService
+from builder.build import AlreadyProvisioned
+from builder.llm import (
+    LLMClient,
+    LLMReply,
+    LLMUnavailable,
+    Message,
+    OnText,
+    OpenAIClient,
+    ToolCall,
+    ToolSpec,
+)
 from core.errors import NotFound
 from core.models import (
     AdminReservationRow,
@@ -38,18 +49,8 @@ from merchant_platform.assistant import (
     compact,
     system_prompt,
 )
-from merchant_platform.llm import (
-    LLMClient,
-    LLMReply,
-    LLMUnavailable,
-    Message,
-    OnText,
-    OpenAIClient,
-    ToolCall,
-    ToolSpec,
-)
 from merchant_platform.sessions import Session
-from merchant_platform.tools import NOT_AVAILABLE, NOT_ONBOARDED, AdminTools
+from merchant_platform.tools import NOT_AVAILABLE, NOT_ONBOARDED, SITE_TAKEN, AdminTools
 
 TZ = ZoneInfo("Europe/Zurich")
 NOW = datetime(2026, 10, 31, 18, 30, tzinfo=TZ)
@@ -399,6 +400,31 @@ async def test_the_default_merchant_skips_onboarding() -> None:
 
     assert session.merchant_slug == SLUG
     assert "Mode: operations" in llm.calls[0]["instructions"]
+
+
+@pytest.mark.parametrize(("owned", "attached"), [(None, None), (SLUG, SLUG)])
+async def test_onboarding_an_existing_site_only_reaches_the_platform_merchant(
+    owned: str | None, attached: str | None
+) -> None:
+    async def known_site(arguments: BuildAgentInput, emit: Any) -> BuildAgentOutput:
+        raise AlreadyProvisioned(SLUG, "http://localhost:8080/")
+
+    tools = AdminTools(FakeAgent(), known_site, TZ, today=lambda: TODAY, owned_merchant=owned)  # type: ignore[arg-type]
+    session = Session(id="s")
+    events: list[ChatEvent] = []
+
+    async def emit(event: ChatEvent) -> None:
+        events.append(event)
+
+    result = await tools.run(
+        session, call("build_agent", website="http://localhost:8080/", description="x"), emit
+    )
+
+    assert result.is_error is True
+    assert session.merchant_slug == attached
+    if attached is None:
+        assert result.content == f"invalid_input: {SITE_TAKEN}"
+        assert SLUG not in result.content
 
 
 # Operations scenarios (AGENTS.md §9)
