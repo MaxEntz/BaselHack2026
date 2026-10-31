@@ -58,8 +58,19 @@ flowchart TB
 ## 3. Main flow: Claude books, the merchant sees it live
 
 > **Status:** this section describes the target flow.
-> - **Built:** the data layer (`core/db.py`, `core/availability.py`, provisioning, and the trigger that sends `NOTIFY`), plus the web chat, which runs on mock data.
-> - **Not built yet:** the gateway's user tools (#11–#14), the `AgentService` implementation (#8, #9), the platform API (#15) and the live-event listener (#18).
+> - **Built:**
+>   - the data layer: `core/db.py`, `core/availability.py`, provisioning, and the trigger that sends `NOTIFY`;
+>   - the platform API, with the `/chat` and `/events` streams (#15);
+>   - the live-event listener (#18);
+>   - the web chat;
+>   - the demo data.
+> - **Not built yet:**
+>   - the gateway's user tools (#11–#14);
+>   - the `AgentService` implementation (#8, #9);
+>   - the merchant assistant (#17);
+>   - the builder (#21, #22).
+>
+> So steps 2–14 below are not wired end to end yet.
 >
 > §4 gives the state of each component.
 
@@ -120,17 +131,17 @@ Paths are relative to `code/`.
 | Contracts | `packages/core/src/core/models.py`, `errors.py`, `packages/agent/src/agent/service.py`, `web/src/types.ts` | Tool inputs/outputs, SSE events, business errors, the async `AgentService` protocol ([CONTRACTS.md](CONTRACTS.md)) | No I/O, no business logic; never change without a dedicated PR | ✅ #2 |
 | Settings | `packages/core/src/core/config.py` | Typed settings from the environment and `code/.env`; `DATABASE_URL` required | No defaults for secrets | ✅ #1 |
 | Availability rules | `packages/core/src/core/availability.py` | Pure functions: bookable start times, table choice, slot search (up to 3) | No database access; never reads the clock (`now` is passed in) | ✅ #5 |
-| DB layer | `packages/core/src/core/db.py`, `migrations/versions/0001_public_schema.py` | Engine; `schema_for(slug)`; merchant tables declared once (with the exclusion constraint and the notify trigger); `merchant_conn` (one transaction, schema translation); registry and guest notices in `public` | No business rules; no migrations for merchant schemas (drop + re-provision) | ✅ #6 |
+| DB layer | `packages/core/src/core/db.py`, `migrations/versions/0001_public_schema.py` | Engine; `schema_for(slug)`; merchant tables declared once, with the exclusion constraint, the notify trigger, and a trigger that skips updates that change nothing (an idempotent replay sends no notification); `merchant_conn` (one transaction, schema translation); registry and guest notices in `public` | No business rules; no migrations for merchant schemas (drop + re-provision) | ✅ #6 |
 | Provisioning | `packages/agent/src/agent/provisioning.py`, `packages/agent/src/agent/templates/restaurant.json` | `MerchantProfile` → merchant schema, floor plan, policy, registry row (all or nothing); `deploy` / `set_status` / `deprovision`; default floor plan; generated tool descriptions | Never calls an LLM, never builds SQL from profile text, never takes bookings | ✅ #7 |
 | Agent service | `packages/agent/src/agent/service.py` (`PgAgentService`) | Bookings (availability, create, update, cancel), merchant operations (list, stats, block, policy, tables), guest notices | Knows nothing of MCP or HTTP; no authentication | 🚧 #8, #9 |
 | Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `discovery.py`, `fallback.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, optional bearer token, the 6 user tools, preference filtering, 2 s timeout and `fallback_url` | Never stores preferences; never exposes admin tools; never returns a stack trace | ✅ `ping` (#3); 🚧 tools #11–#14 |
 | Builder | `packages/builder/src/builder/crawl.py`, `extract.py`, `build.py` | Website + description → validated `MerchantProfile` → provision → deploy, streamed as steps; cache for the demo | Never writes SQL or code; never decides a value the schema doesn't allow | 🚧 #21, #22 (extraction validated by the spike, `scripts/spike_extract.py`) |
-| Platform API | `packages/merchant_platform/src/merchant_platform/api.py` | `POST /chat` (SSE stream of `ChatEvent`), `GET /events` (SSE `LiveEvent`), public booking API for the site | No business logic (delegates to the assistant and the service) | ✅ `/health`; 🚧 #15 |
-| Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py` | OpenAI tool-use loop over the admin tools; onboarding questions | Never formats results itself (cards come from tool results); never reachable by Claude users | 🚧 #17 |
-| Live events | `packages/merchant_platform/src/merchant_platform/events.py` | `LISTEN reservations` → `LiveEvent` on SSE | Does not poll the database | 🚧 #18 |
+| Platform API | `packages/merchant_platform/src/merchant_platform/api.py`, `sessions.py`, `logs.py` | Endpoints: `POST /chat` (SSE stream of `ChatEvent`, one turn at a time per session), `GET /events?merchant=` (SSE `LiveEvent`), `POST /public/{slug}/reservations` (the showcase site's form, CORS-limited), `/health`, dev-only `/dev/reset-session`. Also: in-memory sessions, JSON logs | No business logic: delegates to the assistant and the `AgentService`. Until #8 plugs the service in, the public booking API answers `agent_unavailable` | ✅ #15 |
+| Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py` | OpenAI tool-use loop over the admin tools; onboarding questions | Never formats results itself (cards come from tool results); never reachable by Claude users | 🚧 #17 (placeholder `run_turn` answers "not connected yet") |
+| Live events | `packages/merchant_platform/src/merchant_platform/events.py` | `LiveListener` holds a `LISTEN reservations` connection, reads the booking row for each notification, and turns it into a `LiveEvent` (`new_booking`, `updated`, `cancelled`). `LiveBus` fans it out to that merchant's open `/events` streams | Does not poll the database; does not trust the payload beyond identifiers | ✅ #18 |
 | Web chat | `web/` | Merchant chat: SSE client, one component per card kind, live notifications, mock mode (`VITE_MOCK=1`, `/?gallery`) | No business logic, no forms | ✅ #19, #20 |
 | Demo site | `sites/le-petit-zinc/` | Fictional restaurant site (French): crawl target and fallback URL | — | 🚧 #16 |
-| Demo data | `tests/fixtures/*.json`, `scripts/seed.py`, `demo_reset.py`, `set_status.py` | 3 fictional Mulhouse restaurants; reset the demo to a known state; outage switch | Refuses to reset a non-local database | 🚧 #10 (`le-petit-zinc.json` on `main`) |
+| Demo data | `tests/fixtures/*.json`, `scripts/seed.py`, `demo_reset.py`, `set_status.py` (`make seed`, `demo-reset`, `outage`, `restore`) | 3 fictional Mulhouse restaurants; reset the demo to a known state; outage switch | Refuses to reset a non-local database | ✅ #10 (`seed --with-bookings` needs #8) |
 | Deployment | `deploy/Caddyfile`, `deploy/merchant-gateway.service`, `make deploy` | Gateway on the team server behind Caddy (HTTPS), systemd service | Ships only the gateway (not the web app, the platform or Postgres). Outside `/opt/merchant-agents` it installs the systemd unit, and replaces the Caddyfile and restarts Caddy when it changed, which affects every site on the shared server | ✅ #3 |
 
 ## 5. Stack and justifications
@@ -165,7 +176,7 @@ Breaking one of these is a bug.
 6. **The LLM only produces validated data.** It fills `MerchantProfile`, which Pydantic validates. It never produces SQL, code or tool definitions ([ADR-0003](adr/0003-llm-fills-a-schema-never-generates-code.md)).
 7. **Slugs are `^[a-z0-9-]{3,61}$`**, and the schema name is `m_` + slug with `-` → `_` (at most 63 bytes, the Postgres limit). Only `schema_for(slug)` turns a slug into an identifier.
 8. **Merchant queries go through `merchant_conn` with Core constructs**, never `text()`, which the schema translation does not rewrite.
-9. **Notifications follow commits.** `NOTIFY` is delivered at commit, so a rolled-back booking never reaches the merchant's chat.
+9. **Notifications follow commits.** `NOTIFY` is delivered at commit, so a rolled-back booking never reaches the merchant's chat. An `UPDATE` that changes nothing is skipped by a `BEFORE UPDATE` trigger, so a replay sends no notification.
 10. **Time is `Europe/Zurich`, stored as `timestamptz`.** Every `starts_at` in a tool input requires an explicit UTC offset (`AwareDatetime`). `get_availability` takes a date and a local `HH:MM`.
 11. **The merchant's `tables` and `policy` rows are authoritative.** The registry's `profile` column is a display copy that `update_policy` / `update_tables` keep in sync.
 12. **Provisioning is all or nothing.** A failed provision leaves no schema and no registry row. A slug in use raises `SlugTaken`.
@@ -236,4 +247,4 @@ In this order, to rebuild the project yourself:
 
 ---
 
-*Last updated: 2026-10-31, describing `main` at commit `002c52c`.*
+*Last updated: 2026-10-31, describing `main` at commit `6861ac7`.*
