@@ -48,14 +48,19 @@ from core.errors import InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import (
     AdminReservationRow,
     AgentRequest,
+    BlockedTime,
     GuestRow,
     MerchantCancelOutcome,
+    MerchantSettings,
     Policy,
+    PriceLevel,
     Reservation,
+    Rules,
     Service,
     Slot,
     Stats,
     TableSpec,
+    Tag,
     Via,
 )
 
@@ -154,6 +159,47 @@ class AgentService(Protocol):
     ) -> list[AgentRequest]:
         """What other agents asked the merchant's agent on `day`, newest first, 10 at most
         (#146). Rows hold guest names: the merchant's side only."""
+        ...
+
+    # The management site's forms (#133): each save keeps the registry in step.
+
+    async def get_policy(self, slug: str) -> Policy:
+        """Services by start, the group limit and the slot length."""
+        ...
+
+    async def get_tables(self, slug: str) -> list[TableSpec]:
+        """The floor plan, in the order it was last saved."""
+        ...
+
+    async def get_rules(self, slug: str) -> Rules: ...
+
+    async def update_rules(
+        self,
+        slug: str,
+        max_party_size: int,
+        fallback_url: str,
+        cancellation_policy: str | None,
+    ) -> Rules:
+        """Refused with `booking_page_off_site` when the page leaves the merchant's website."""
+        ...
+
+    async def get_settings(self, slug: str) -> MerchantSettings: ...
+
+    async def update_settings(
+        self,
+        slug: str,
+        name: str,
+        city: str | None,
+        price_level: PriceLevel,
+        tags: Sequence[Tag],
+    ) -> MerchantSettings: ...
+
+    async def list_blocked(self, slug: str) -> list[BlockedTime]:
+        """The blocked starts to come."""
+        ...
+
+    async def set_blocked(self, slug: str, day: date, times: Sequence[str]) -> list[BlockedTime]:
+        """The day's blocked starts become `times` (local `HH:MM`); answers those to come."""
         ...
 
 
@@ -625,6 +671,74 @@ class PgAgentService:
             return await admin.list_agent_requests(
                 conn, slug, day, self.tz, refused=refused, max_party_size=merchant.max_party_size
             )
+
+    # The management site's forms (#133): the queries live in `agent.admin`.
+
+    async def get_policy(self, slug: str) -> Policy:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            return await admin.get_policy(conn)
+
+    async def get_tables(self, slug: str) -> list[TableSpec]:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            return await admin.get_tables(conn, slug)
+
+    async def get_rules(self, slug: str) -> Rules:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            return await admin.get_rules(conn, slug)
+
+    async def update_rules(
+        self,
+        slug: str,
+        max_party_size: int,
+        fallback_url: str,
+        cancellation_policy: str | None,
+    ) -> Rules:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            rules = await admin.update_rules(
+                conn, slug, max_party_size, fallback_url, cancellation_policy, at=self.clock()
+            )
+        log.info("booking rules updated", extra={"merchant": slug})
+        return rules
+
+    async def get_settings(self, slug: str) -> MerchantSettings:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            return await admin.get_settings(conn, slug)
+
+    async def update_settings(
+        self,
+        slug: str,
+        name: str,
+        city: str | None,
+        price_level: PriceLevel,
+        tags: Sequence[Tag],
+    ) -> MerchantSettings:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            settings = await admin.update_settings(
+                conn, slug, name, city, price_level, tags, at=self.clock()
+            )
+        log.info("settings updated", extra={"merchant": slug})
+        return settings
+
+    async def list_blocked(self, slug: str) -> list[BlockedTime]:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            return await admin.list_blocked(conn, self.clock(), self.tz)
+
+    async def set_blocked(self, slug: str, day: date, times: Sequence[str]) -> list[BlockedTime]:
+        async with merchant_conn(self.engine, slug) as conn:
+            merchant = await self._load(conn, slug, merchant_side=True)
+            await admin.set_blocked(
+                conn, slug, merchant.services, day, times, self.tz, at=self.clock()
+            )
+            blocked = await admin.list_blocked(conn, self.clock(), self.tz)
+        log.info("blocked times set", extra={"merchant": slug, "date": day.isoformat()})
+        return blocked
 
     async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation:
         async with merchant_conn(self.engine, slug) as conn:
