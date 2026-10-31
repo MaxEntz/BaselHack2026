@@ -1,5 +1,6 @@
 """build_agent on Postgres with a fake crawl and LLM: steps, slug, cache, chat onboarding."""
 
+import asyncio
 import json
 from collections.abc import AsyncIterator, Sequence
 from datetime import date
@@ -14,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import deprovision
-from builder.build import AlreadyProvisioned, Builder
+from builder.build import GENERATED_DIR, AlreadyProvisioned, Builder
 from builder.cache import BuildCache
 from builder.crawl import CrawlResult, Page, StepEmitter
 from builder.extract import TOOL_NAME, ExtractionFailed
@@ -295,3 +296,56 @@ async def test_onboarding_through_the_chat_api(
         "done",
     ]
     assert app.state.sessions.get("s").merchant_slug == slug
+
+
+@pytest.mark.parametrize("stop", [RuntimeError("deploy failed"), asyncio.CancelledError()])
+async def test_a_build_stopped_before_deploy_leaves_nothing_behind(
+    engine: AsyncEngine,
+    tmp_path: Path,
+    slugs: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    stop: BaseException,
+) -> None:
+    site, name = unique_site()
+
+    async def failing_deploy(slug: str, *, engine: AsyncEngine | None = None) -> None:
+        raise stop
+
+    monkeypatch.setattr("builder.build.deploy", failing_deploy)
+    run = Run()
+    with pytest.raises(type(stop)):
+        await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", run.emit)
+
+    async with engine.connect() as conn:
+        left = await conn.scalar(select(merchants_t.c.slug).where(merchants_t.c.website == site))
+    assert left is None
+    monkeypatch.undo()
+    # The site can be onboarded again straight away.
+    output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
+    slugs.append(output.profile.slug)
+    assert await status_of(engine, output.profile.slug) == "live"
+
+
+async def test_a_building_leftover_does_not_block_its_site(
+    engine: AsyncEngine, tmp_path: Path, slugs: list[str]
+) -> None:
+    site, name = unique_site()
+    leftover = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(
+        site, "", Run().emit
+    )
+    slugs.append(leftover.profile.slug)
+    async with engine.begin() as conn:
+        await conn.execute(
+            merchants_t.update()
+            .where(merchants_t.c.slug == leftover.profile.slug)
+            .values(status="building")
+        )
+
+    output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
+    slugs.append(output.profile.slug)
+
+    assert output.profile.slug == f"{leftover.profile.slug}-2"
+
+
+def test_generated_profiles_stay_out_of_the_source_tree() -> None:
+    assert GENERATED_DIR.parts[-3:] == (".cache", "builder", "generated")

@@ -1,5 +1,6 @@
 """build_agent pipeline: crawl -> extract -> validate -> provision -> deploy, as step events."""
 
+import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -9,7 +10,7 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.provisioning import deploy, generated_tools, provision
+from agent.provisioning import deploy, deprovision, generated_tools, provision
 from builder.cache import BuildCache, crawl_key, extraction_key
 from builder.crawl import CrawlResult, StepEmitter, crawl, normalize_url, page_name
 from builder.extract import PROMPT_VERSION, ExtractionFailed, ExtractionResult, extract_profile
@@ -23,8 +24,9 @@ log = logging.getLogger("builder.build")
 StepName = Literal["crawl", "extract", "validate", "provision", "deploy"]
 Crawl = Callable[[str, StepEmitter], Awaitable[CrawlResult]]
 
-# Generated profiles are kept as proof and as fallback fixtures.
-GENERATED_DIR = Path(__file__).parents[4] / "tests" / "fixtures" / "generated"
+# Generated profiles, kept as proof: copy the ones worth committing to tests/fixtures/.
+# Under .cache (ignored by git): a build never writes into the source tree.
+GENERATED_DIR = Path(__file__).parents[4] / ".cache" / "builder" / "generated"
 LLM_DOWN = "The AI service is unavailable right now. Please try again in a moment."
 STEP_FAILED = "Something went wrong while creating your agent."
 
@@ -97,8 +99,16 @@ class Builder:
             await deploy(profile.slug, engine=self._engine)
             return "Your agent is live."
 
-        await self._step("provision", on_event, provisioned)
-        await self._step("deploy", on_event, deployed)
+        live = False
+        try:
+            await self._step("provision", on_event, provisioned)
+            await self._step("deploy", on_event, deployed)
+            live = True
+        finally:
+            if not live:
+                # Stopped between provision and deploy (error, or the merchant left and the
+                # turn was cancelled): never leave a half-built merchant blocking its site.
+                await self._undo(profile.slug)
         self._save(profile)
         log.info(
             "build_agent",
@@ -206,9 +216,24 @@ class Builder:
             StepEvent(step=name, status="error", detail=detail, duration_ms=_ms_since(started))
         )
 
+    async def _undo(self, slug: str) -> None:
+        # Shielded: the cleanup must finish even while the turn is being cancelled.
+        try:
+            await asyncio.shield(deprovision(slug, engine=self._engine))
+        except Exception:
+            log.exception("build_undo_failed", extra={"merchant": slug})
+
     async def _merchant_with_site(self, site: str) -> str | None:
+        """The live (or down) merchant with this website. A `building` leftover doesn't count:
+        it was never published, and must not block the site."""
         async with self._engine.connect() as conn:
-            rows = (await conn.execute(select(merchants_t.c.slug, merchants_t.c.website))).all()
+            rows = (
+                await conn.execute(
+                    select(merchants_t.c.slug, merchants_t.c.website).where(
+                        merchants_t.c.status != "building"
+                    )
+                )
+            ).all()
         for slug, website in rows:
             try:
                 if normalize_url(website) == site:
