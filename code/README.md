@@ -64,7 +64,7 @@ Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_pr
 
 ```bash
 make test                         # uv run pytest
-make lint                         # ruff check, ruff format --check, mypy (the line below)
+make lint                         # ruff check, ruff format --check, mypy (the `ruff`/`mypy` line below)
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
 uv run pytest tests/e2e           # §9 user scenarios through a real MCP client
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
