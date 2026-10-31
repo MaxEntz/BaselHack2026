@@ -7,6 +7,7 @@ The database functions take an optional `engine`: long-running processes pass th
 scripts omit it and get a short-lived engine on DATABASE_URL, disposed after the call.
 """
 
+import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -45,6 +46,11 @@ PLACEHOLDER_SAMPLES: dict[str, Any] = {
     "max_party_size": 8,
     "cancellation_policy": "none stated",
 }
+
+# Merchant free text allowed in a tool description (name, city).
+MAX_FREE_TEXT = 80
+# Instead of the merchant's own words, which could carry instructions for Claude.
+POLICY_ELSEWHERE = "see the restaurant's own website"
 
 # Postgres errors raised by CREATE SCHEMA when the name is taken: duplicate_schema, or a
 # unique violation on pg_namespace when a concurrent transaction creates it first.
@@ -157,6 +163,37 @@ def generated_tools(profile: MerchantProfile) -> list[GeneratedTool]:
         GeneratedTool(name=tool.name, description=tool.description.format_map(values))
         for tool in TEMPLATE.tools
     ]
+
+
+def one_line(text: str, limit: int = MAX_FREE_TEXT) -> str:
+    """Merchant text fit for a tool description: one line, no control characters, bounded."""
+    printable = "".join(" " if unicodedata.category(char)[0] == "C" else char for char in text)
+    line = " ".join(printable.split())
+    return line if len(line) <= limit else f"{line[: limit - 1].rstrip()}…"
+
+
+def described_profile(profile: MerchantProfile) -> MerchantProfile:
+    """The profile as the descriptions may show it.
+
+    Tool descriptions read as the connector's instructions, and the free text of a profile comes
+    from the merchant's website, which anyone can onboard (#22): the cancellation policy never
+    goes in, and the name and city are bounded. Services and party size are validated already.
+    """
+    location = profile.location
+    if location and location.city:
+        location = location.model_copy(update={"city": one_line(location.city)})
+    return profile.model_copy(
+        update={
+            "name": one_line(profile.name),
+            "location": location,
+            "cancellation_policy": POLICY_ELSEWHERE,
+        }
+    )
+
+
+def described_tools(profile: MerchantProfile) -> list[GeneratedTool]:
+    """What an AI agent reads on `/m/<slug>/mcp`: the tool sentences of the described profile."""
+    return generated_tools(described_profile(profile))
 
 
 def _registry_row(profile: MerchantProfile) -> dict[str, Any]:

@@ -19,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError
 from agent.provisioning import MAX_DEFAULT_SEATS, TEMPLATE, default_tables
 from builder.crawl import CrawlResult
 from builder.llm import LLMClient, Message, ToolSpec
+from builder.look import describe as describe_look
+from builder.look import read_look
 from core.errors import InvalidInput
 from core.models import (
     BuildFact,
@@ -253,6 +255,8 @@ def finalize(draft: ProfileDraft, crawl: CrawlResult, description: str = "") -> 
             assumptions.append(f"Seats set to {total}, the total of your tables.")
         seats = total
     drafted_tables = not draft.tables
+    # Read by code from the homepage's computed styles, never by the model (#149).
+    look, look_flags = read_look(crawl.pages[0].look if crawl.pages else None)
     profile = MerchantProfile.model_validate(
         {
             "slug": slugify(draft.name, website),
@@ -269,6 +273,7 @@ def finalize(draft: ProfileDraft, crawl: CrawlResult, description: str = "") -> 
             "price_level": draft.price_level,
             "cancellation_policy": draft.cancellation_policy,
             "fallback_url": fallback_url(draft.fallback_url, crawl),
+            "look": look,
         }
     )
     sources = verified_sources(draft.sources, crawl, description)
@@ -276,7 +281,10 @@ def finalize(draft: ProfileDraft, crawl: CrawlResult, description: str = "") -> 
         profile=profile,
         assumptions=assumptions,
         facts=facts_of(profile, sources),
-        flags=flags_of(profile, draft, sources, drafted_tables=drafted_tables, seats=draft.seats),
+        flags=[
+            *flags_of(profile, draft, sources, drafted_tables=drafted_tables, seats=draft.seats),
+            *look_flags,
+        ],
     )
 
 
@@ -290,6 +298,7 @@ FACT_LABELS: dict[FactKey, str] = {
     "cancellation_policy": "Cancelling",
     "price_level": "Price level",
     "booking_page": "Booking page",
+    "look": "Look",
 }
 SOURCE_FIELDS = ("name", "services", "tags", "max_party_size", "cancellation_policy", "price_level")
 # Shorter quotes ("6", "€", "19h") are in almost any page: found, but no evidence of anything.
@@ -361,6 +370,11 @@ def facts_of(profile: MerchantProfile, sources: dict[str, Verified]) -> list[Bui
         "price_level": (profile.price_level, sources.get("price_level")),
         "booking_page": (f"{booking}, used as the fallback", None),
     }
+    look_line = (
+        describe_look(profile.look)
+        if profile.look
+        else "Sésame's default look, until you pick some"
+    )
     facts = []
     for key, (value, source) in values.items():
         if key in ("max_party_size", "price_level") and source is not None:
@@ -375,6 +389,10 @@ def facts_of(profile: MerchantProfile, sources: dict[str, Verified]) -> list[Bui
                 quote=source.quote if source else None,
             )
         )
+    # Read from the homepage's styles, or the default look when nothing could be.
+    # Read from the homepage's styles; None means the default look (#150).
+    read_from = "/" if profile.look is not None else None
+    facts.append(BuildFact(key="look", label="Look", value=look_line, source=read_from, quote=None))
     return facts
 
 

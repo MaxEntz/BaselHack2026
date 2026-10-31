@@ -111,7 +111,7 @@ test("a built agent's card leaves the pill on building until it is published (#1
   );
 
   assert.equal(built.status, "building");
-  assert.equal(built.merchant?.slug, "le-petit-zinc");
+  assert.equal(built.merchant?.slug, "la-graine-verte");
   assert.equal(steps(built).deploy?.status, "waiting");
 
   const published = run(

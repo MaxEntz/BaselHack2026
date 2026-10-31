@@ -27,5 +27,6 @@
   "tags": ["vegetarian", "gluten-free", "terrace", "kid-friendly"],
   "price_level": "€€",
   "cancellation_policy": null,
-  "fallback_url": "http://localhost:8080/reservation.html"
+  "fallback_url": "http://localhost:8080/reservation.html",
+  "look": {"bg": "#f7f2e8", "surface": "#fffaf0", "line": "#ddcfb8", "ink": "#2a2320", "muted": "#675c54", "accent": "#8f2d2a", "accent_2": "#7e2825", "on_accent": "#eeddd7", "display_font": "serif", "body_font": "sans", "corners": "rounded", "radius_px": 10, "texture": "none"}
 }

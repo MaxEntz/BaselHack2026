@@ -4,8 +4,9 @@ from typing import Any
 
 import seed
 
+from agent.provisioning import MAX_FREE_TEXT, one_line
 from gateway import merchant_server
-from gateway.merchant_server import MAX_FREE_TEXT, describe, one_line
+from gateway.merchant_server import describe
 
 GENERIC = "Generic guidance."
 INJECTION = (

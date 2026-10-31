@@ -18,7 +18,8 @@
     "mcp_url": "https://191-96-88-152.sslip.io/m/la-graine-verte/mcp",
     "management_url": "http://localhost:5173/manage/la-graine-verte",
     "owner_name": "Camille",
-    "demo": true
+    "demo": true,
+    "look": {"bg": "#edebe2", "surface": "#f8f6ef", "line": "#d5d2c3", "ink": "#47522f", "muted": "#5f6a45", "accent": "#727f55", "accent_2": "#935046", "on_accent": "#f4f2ea", "display_font": "Fraunces Soft", "body_font": "Karla", "corners": "organic", "radius_px": 30, "texture": "leather"}
   },
   "hours": {
     "services": [
