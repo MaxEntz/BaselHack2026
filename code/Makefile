@@ -46,7 +46,7 @@ tunnel: ## Expose a local gateway through ngrok (the team URL is served by `make
 	ngrok http --url="$(GATEWAY_PUBLIC_URL)" 8001
 
 deploy: ## Ship the MATP node and the gateway to the team server -> https://191-96-88-152.sslip.io/mcp
-	rsync -rlptz --delete --exclude .venv --exclude .env --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
+	rsync -rlptz --delete --exclude .venv --exclude .env --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .hypothesis --exclude '.coverage*' --exclude htmlcov --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
 		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node -q && \
