@@ -9,10 +9,11 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from core.models import Service
+from core.models import MIN_SERVICE_MINUTES, Service
 
 STEP_MIN = 30
-LAST_SEATING_OFFSET_MIN = 60
+# Same rule as service validation: the shortest valid service has exactly one start.
+LAST_SEATING_OFFSET_MIN = MIN_SERVICE_MINUTES
 
 
 @dataclass(frozen=True)

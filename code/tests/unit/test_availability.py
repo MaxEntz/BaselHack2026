@@ -93,6 +93,12 @@ def test_two_services_give_a_sorted_union() -> None:
     ]
 
 
+def test_shortest_valid_service_has_one_start() -> None:
+    shortest = Service(start="19:00", end="20:00")
+
+    assert bookable_starts([shortest], DAY, TZ) == [at("19:00")]
+
+
 def test_service_shorter_than_last_seating_has_no_starts() -> None:
     # Service validation rejects it; the rule must still hold on its own.
     short = Service.model_construct(start="19:00", end="19:45")
