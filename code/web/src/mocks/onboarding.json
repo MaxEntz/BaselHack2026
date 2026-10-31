@@ -55,7 +55,7 @@
         { "key": "max_party_size", "label": "Largest group", "value": "6, from \"Réservation en ligne jusqu'à 6 personnes\"", "source": "/reservation.html", "quote": "Réservation en ligne jusqu'à 6 personnes" },
         { "key": "cancellation_policy", "label": "Cancelling", "value": "None on your site", "source": null, "quote": null },
         { "key": "price_level", "label": "Price level", "value": "€€", "source": null, "quote": null },
-        { "key": "booking_page", "label": "Booking page", "value": "/reservation.html, used as the fallback", "source": "/", "quote": null }
+        { "key": "booking_page", "label": "Booking page", "value": "/reservation.html, used as the fallback", "source": null, "quote": null }
       ],
       "flags": [
         { "title": "No cancellation policy on your site.", "detail": "Guests see none until you give me one." }

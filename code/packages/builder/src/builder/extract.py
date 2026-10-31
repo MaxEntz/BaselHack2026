@@ -292,6 +292,8 @@ FACT_LABELS: dict[FactKey, str] = {
     "booking_page": "Booking page",
 }
 SOURCE_FIELDS = ("name", "services", "tags", "max_party_size", "cancellation_policy", "price_level")
+# Shorter quotes ("6", "€") are in almost any page: found, but no evidence of anything.
+MIN_QUOTE = 8
 
 
 @dataclass(frozen=True)
@@ -322,6 +324,8 @@ def verified_sources(sources: Sources, crawl: CrawlResult, description: str) -> 
         if source is None or not (quote := " ".join(source.quote.split())[:200]):
             continue
         wanted = _comparable(quote)
+        if len(wanted) < MIN_QUOTE:
+            continue
         named = source.page and _page_key(source.page)
         ordered = sorted(pages, key=lambda url: _page_key(url) != named)
         where = next((url for url in ordered if wanted in pages[url]), None)
@@ -364,8 +368,8 @@ def facts_of(profile: MerchantProfile, sources: dict[str, Verified]) -> list[Bui
                 key=key,
                 label=FACT_LABELS[key],
                 value=value,
-                # The booking page is the crawl's own finding: the site itself.
-                source=source.where if source else ("/" if key == "booking_page" else None),
+                # The booking page is the crawl's own finding, named by its value: no source.
+                source=source.where if source else None,
                 quote=source.quote if source else None,
             )
         )

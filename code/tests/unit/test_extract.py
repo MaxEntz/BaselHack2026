@@ -504,3 +504,21 @@ async def test_defaults_without_a_source_are_flagged_and_sourced_values_are_not(
     assert "€€ is a default price level." in guessed.title
     [still] = [f for f in priced.flags if "default" in f.title]
     assert "price level" not in still.title
+
+
+@pytest.mark.parametrize("quote", ["4", "€", "12 €"])
+async def test_a_quote_too_short_to_prove_anything_is_no_source(quote: str) -> None:
+    # Found in the page all right, but a digit or a price sign is in almost any page.
+    result = await extract_profile(
+        GRAINE, "", FakeLLM(sourced(max_party_size={"page": SITE, "quote": quote}))
+    )
+
+    [largest] = [f for f in result.facts if f.key == "max_party_size"]
+    assert (largest.value, largest.source, largest.quote) == ("4", None, None)
+
+
+async def test_the_booking_page_is_the_crawls_finding_without_a_source() -> None:
+    result = await extract_profile(CRAWL, "", FakeLLM(draft()))
+
+    [booking] = [f for f in result.facts if f.key == "booking_page"]
+    assert (booking.value, booking.source) == ("/reservation.html, used as the fallback", None)

@@ -155,7 +155,7 @@ Each merchant also has `/m/<slug>/mcp` with the 4 booking tools, without `mercha
 
 ### 8.2 Admin tools
 
-Platform assistant only, never exposed to Claude users: `build_agent`, `list_reservations`, `get_stats`, `block_slot`, `unblock_slot`, `update_policy`, `update_tables`, `cancel_reservation` (as the merchant, with a guest notice).
+Platform assistant only, never exposed to Claude users: `build_agent`, `publish_agent` (#136), `list_reservations`, `get_stats`, `block_slot`, `unblock_slot`, `update_policy`, `update_tables`, `cancel_reservation` (as the merchant, with a guest notice).
 
 ### 8.3 Builder steps
 
@@ -189,7 +189,7 @@ Every tool error is `{ "error": <code>, "message": str, "fallback_url"?: str }`.
 - Agent down → `agent_unavailable` → Claude gives the fallback link.
 
 **Merchant ↔ platform assistant**
-- Onboarding: assistant asks for the website → asks for the description → calls `build_agent` → shows step progress → shows the agent profile card.
+- Onboarding: assistant asks for the website → asks for the description → calls `build_agent` → shows step progress (`deploy` waits: "Waiting for you.") → shows the review card, hidden from guests, with each fact's source and the flags to check → the merchant confirms or corrects them (`update_policy`, `update_tables`) → `publish_agent` → "Your agent is live: Claude users can now book you." (#136)
 - "What bookings do I have tonight?" → `list_reservations` → table message.
 - "Block 21:00 tonight" → `block_slot`; Claude users no longer get 21:00.
 - "Set max party size to 6" → `update_policy`.
