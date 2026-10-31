@@ -1,0 +1,1227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le Petit Zinc · Home</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%238f2d2a'/%3E%3Ctext x='32' y='45' fill='%23f7f2e8' font-family='Georgia, serif' font-size='38' font-style='italic' font-weight='600' text-anchor='middle'%3EZ%3C/text%3E%3C/svg%3E">
+<style>
+/* Demo build: static, self-contained, fake data generated from the restaurant's real booking rules.
+   Identity: Le Petit Zinc (code/sites/le-petit-zinc/style.css). */
+:root {
+  --page: #f7f2e8; --paper-deep: #efe5d2; --card: #fffcf6; --ink: #2a2320; --text2: #3a322e;
+  --muted: #675c54; --faint: #998d82; --line: #e6dccb; --line-soft: #efe7d9; --field: #cdbfa6;
+  --wine: #8f2d2a; --wine-deep: #6e1f1d; --wine-tint: #f4e4df; --web: #2c6fa6;
+  --ok: #2f6b3a; --ok-bg: #e5efe2;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, P052, "URW Palladio L", "Book Antiqua", Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--page); color: var(--ink); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+svg { flex: none; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input, select { font: inherit; color: inherit; }
+a { color: var(--wine); text-decoration: none; }
+[hidden] { display: none !important; }
+
+.app { display: grid; grid-template-columns: 248px minmax(0, 1fr) 368px; height: 100vh; }
+.app.no-drawer { grid-template-columns: 248px minmax(0, 1fr); }
+.app.no-drawer .drawer { display: none; }
+
+/* Monogram */
+.mono { flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--wine); color: #f7f2e8;
+  display: inline-flex; align-items: center; justify-content: center; font: italic 600 21px/1 var(--serif); }
+.mono.sm { width: 26px; height: 26px; border-radius: 7px; font-size: 16px; }
+.mono.xs { width: 24px; height: 24px; border-radius: 7px; font-size: 15px; }
+
+/* Sidebar */
+.side { background: var(--card); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.kelsch { height: 8px; flex: none; background-color: var(--card);
+  background-image: linear-gradient(90deg, rgb(143 45 42 / .5) 50%, transparent 0), linear-gradient(rgb(143 45 42 / .5) 50%, transparent 0);
+  background-size: 8px 8px; }
+.side-in { padding: 14px 12px; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.ws { display: flex; align-items: center; gap: 11px; padding: 8px; border-radius: 10px; }
+.ws .n { flex: 1; min-width: 0; }
+.ws b { display: block; font: italic 600 18px/1.1 var(--serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws small { display: block; margin-top: 4px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav { margin-top: 18px; display: flex; flex-direction: column; gap: 2px; }
+.nav a { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 8px; color: #463d38; }
+.nav a:hover { background: var(--paper-deep); }
+.nav a svg { color: var(--muted); }
+.nav a span { flex: 1; }
+.nav a.on { background: var(--wine-tint); color: var(--wine-deep); font-weight: 600; }
+.nav a.on svg { color: var(--wine); }
+.navsec { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); padding: 22px 10px 6px; }
+.side-foot { margin-top: auto; border-top: 1px solid var(--line); padding-top: 8px; }
+
+/* Top bar */
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.top { flex: none; height: 64px; border-bottom: 1px solid var(--line); background: var(--card); display: flex; align-items: center; gap: 12px; padding: 0 28px; position: relative; }
+.search { flex: 1; max-width: 520px; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px 0 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--faint); background: var(--page); text-align: left; }
+.search:hover { border-color: var(--field); }
+.search span { flex: 1; }
+kbd { font: 500 11px var(--sans); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; color: var(--muted); background: var(--card); }
+.sp { flex: 1; }
+.clock { font-size: 12.5px; color: var(--muted); }
+.ibtn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; color: var(--muted); position: relative; }
+.ibtn:hover { border-color: var(--field); color: var(--ink); }
+.ibtn .dot { position: absolute; top: 6px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--wine); border: 2px solid var(--card); }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--paper-deep); display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 600; color: var(--wine-deep); }
+.pop { position: absolute; top: 58px; right: 70px; width: 360px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgb(42 35 32 / .14); z-index: 30; overflow: hidden; }
+.pop h4 { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.pop .it { display: block; width: 100%; text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line-soft); font-size: 13px; color: var(--ink); }
+.pop .it:hover { background: var(--page); }
+.pop .it small { display: block; color: var(--faint); font-size: 11.5px; }
+.pop .it.new { background: #fff6ef; }
+
+/* Content */
+.content { flex: 1; overflow: auto; padding: 30px 36px 48px; display: flex; flex-direction: column; gap: 18px; }
+.hello h1, .page-h h1 { margin: 0; font: 600 28px/1.15 var(--serif); letter-spacing: -.01em; }
+.hello p, .page-h p { margin: 4px 0 0; color: var(--muted); }
+.page-h { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.page-h .r { margin-left: auto; display: flex; gap: 8px; }
+.actions, .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); font-weight: 500; font-size: 13.5px; color: var(--text2); white-space: nowrap; }
+.btn:hover { border-color: var(--field); }
+.btn svg { color: var(--muted); }
+.btn.pri { background: var(--wine); border-color: var(--wine); color: #fff; }
+.btn.pri:hover { background: var(--wine-deep); }
+.btn.pri svg { color: #fff; }
+.btn.danger { color: var(--wine); border-color: #e4c7c0; }
+.btn.danger:hover { background: var(--wine-tint); }
+.btn.sm { height: 30px; padding: 0 11px; font-size: 13px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--card); }
+.seg button { height: 32px; padding: 0 12px; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 500; }
+.seg button.ico { width: 32px; padding: 0; justify-content: center; }
+.seg button[aria-pressed="true"] { background: var(--paper-deep); color: var(--ink); }
+.seg button + button { border-left: 1px solid var(--line); }
+.datenav { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); padding: 0 4px; height: 34px; }
+.datenav b { min-width: 150px; text-align: center; font-weight: 600; font-size: 13.5px; }
+.datenav button { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.datenav button:hover { background: var(--paper-deep); color: var(--ink); }
+.input { height: 34px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); padding: 0 12px; min-width: 0; }
+.input:focus { outline: 2px solid rgb(143 45 42 / .25); border-color: var(--wine); }
+.input[disabled] { color: var(--muted); background: var(--page); }
+
+.cards { display: grid; gap: 16px; }
+.r1 { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }
+.r2 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; box-shadow: 0 1px 2px rgb(42 35 32 / .03); min-width: 0; }
+.card.flush { padding: 0; overflow: hidden; }
+.ch { display: flex; align-items: center; gap: 8px; color: var(--text2); font-weight: 600; }
+.ch .x { margin-left: auto; display: flex; gap: 6px; align-items: center; color: var(--faint); font-weight: 400; font-size: 12.5px; }
+.big { font: 600 32px/1.1 var(--serif); letter-spacing: -.01em; margin-top: 6px; }
+.big small { font: 500 13px var(--sans); color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+.sub { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; margin-top: 4px; }
+.delta { margin-left: auto; display: flex; gap: 14px; color: var(--text2); }
+.delta span { display: flex; align-items: center; gap: 4px; }
+.muted { color: var(--muted); } .faint { color: var(--faint); }
+.link { color: var(--wine); font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.link:hover { color: var(--wine-deep); }
+
+/* Sources */
+.src { display: inline-flex; align-items: center; gap: 7px; color: var(--text2); font-size: 12.5px; white-space: nowrap; }
+.src i { width: 8px; height: 8px; border-radius: 2px; display: block; }
+.src.agent i, i.agent { background: var(--wine); }
+.src.website i, i.website { background: var(--web); }
+.tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--paper-deep); color: var(--muted); white-space: nowrap; font-style: normal; }
+.tag.ok { background: var(--ok-bg); color: var(--ok); }
+.tag.bad { background: var(--wine-tint); color: var(--wine-deep); }
+
+/* Line chart */
+.chart { position: relative; margin: 14px -20px -18px; }
+.chart svg { display: block; width: 100%; height: 190px; }
+.chart .hit { position: absolute; inset: 0 0 28px 0; cursor: pointer; }
+.xl { display: flex; justify-content: space-between; padding: 6px 20px 14px; font-size: 11.5px; color: var(--faint); }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: #fff; border-radius: 8px; padding: 7px 10px; font-size: 12px; line-height: 1.35; box-shadow: 0 6px 16px rgb(0 0 0 / .15); white-space: nowrap; transform: translate(-50%, calc(-100% - 12px)); z-index: 2; }
+.tip span { color: #c9bfb4; }
+.cdot { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--wine); border: 2px solid var(--card); transform: translate(-50%, -50%); pointer-events: none; }
+.covers-table { margin-top: 12px; max-height: 214px; overflow: auto; font-size: 13px; }
+
+/* Lists */
+.list { margin-top: 8px; }
+.r { display: grid; grid-template-columns: 50px minmax(0, 1fr) 62px 84px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 13.5px; }
+button.r { width: 100%; text-align: left; border-radius: 6px; }
+button.r:hover { background: var(--page); }
+.r .t { font-weight: 600; } .r .p { color: var(--muted); }
+.r .g { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+.r.blocked { color: var(--faint); }
+.r.blocked .g { display: flex; align-items: center; gap: 6px; font-style: italic; }
+.r .src { justify-content: flex-end; }
+
+table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.data th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+.data td { padding: 11px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+.data tr.click { cursor: pointer; }
+.data tr.click:hover td { background: var(--page); }
+.data tr.off td, .data tr.off td .src { color: var(--faint); }
+.data .num { text-align: right; }
+.data tr.blk td { color: var(--faint); font-style: italic; background: repeating-linear-gradient(135deg, transparent 0 6px, rgb(42 35 32 / .03) 6px 7px); }
+.covers-table .data th, .covers-table .data td { padding: 6px 4px; }
+.empty { padding: 36px; text-align: center; color: var(--muted); }
+
+/* Small cards */
+.stack { display: flex; gap: 2px; height: 10px; margin-top: 16px; }
+.stack i { display: block; height: 10px; border-radius: 2px; }
+.leg { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: 12px; color: var(--text2); }
+.leg span { display: flex; align-items: center; gap: 6px; }
+.leg i { width: 8px; height: 8px; border-radius: 2px; display: block; }
+.leg b { font-weight: 500; color: var(--muted); }
+.meter { height: 10px; border-radius: 3px; background: var(--paper-deep); margin-top: 16px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; border: 1px solid var(--line); padding: 3px 8px; border-radius: 6px; color: var(--text2); background: var(--card); }
+button.chip:hover { border-color: var(--field); }
+.chip.on { background: var(--wine-tint); border-color: #e4c7c0; color: var(--wine-deep); }
+.week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: end; height: 96px; margin-top: 12px; }
+.week .col { display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; position: relative; cursor: pointer; }
+.week .bar { width: 100%; max-width: 26px; background: #dcc9c2; border-radius: 4px 4px 0 0; position: relative; }
+.week .col.today .bar { background: var(--wine); }
+.week .col:hover .bar { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--field); }
+.week .d { font-size: 11px; color: var(--faint); }
+.week .col.today .d { color: var(--wine); font-weight: 600; }
+.week .v { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--ink); opacity: 0; }
+.week .col:hover .v, .week .col.today .v { opacity: 1; }
+.act .row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 170px 86px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); font-size: 13.5px; align-items: center; }
+.act .row:last-child { border-bottom: 0; }
+.act .h { color: var(--faint); font-size: 12.5px; }
+.act .w { color: var(--muted); }
+.act .src { justify-content: flex-end; }
+
+/* Timeline */
+.tl { padding: 16px 20px 20px; }
+.tl .axis, .tl .lane-row { display: grid; grid-template-columns: 56px 1fr; align-items: center; }
+.tl .ticks { position: relative; height: 18px; font-size: 11px; color: var(--faint); }
+.tl .ticks i { position: absolute; font-style: normal; transform: translateX(-50%); }
+.tl .lane-row { height: 34px; }
+.tl .lbl { font-size: 12px; font-weight: 600; color: var(--muted); }
+.tl .lbl small { font-weight: 400; color: var(--faint); margin-left: 4px; }
+.tl .lane { position: relative; height: 34px; border-top: 1px solid var(--line-soft); }
+.tl .grid-v { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-soft); }
+.tl .bk { position: absolute; top: 5px; height: 24px; border-radius: 5px; font-size: 11.5px; line-height: 24px; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; text-align: left; }
+.tl .bk.agent { background: var(--wine); } .tl .bk.website { background: var(--web); }
+.tl .bk:hover { filter: brightness(1.1); }
+.tl .blockcol { position: absolute; top: 18px; bottom: 0; background: repeating-linear-gradient(135deg, rgb(42 35 32 / .13) 0 1px, transparent 1px 6px); border-left: 1px dashed var(--muted); }
+.tl .now { position: absolute; top: 18px; bottom: 0; width: 2px; background: var(--wine); opacity: .6; }
+
+/* Floor plan */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; text-align: left; min-height: 116px; display: flex; flex-direction: column; gap: 6px; }
+.tile:hover { border-color: var(--field); }
+.tile .lab { display: flex; justify-content: space-between; align-items: baseline; font: 600 20px/1 var(--serif); }
+.tile .lab small { font: 500 12px var(--sans); color: var(--muted); }
+.tile .seats { display: flex; gap: 4px; flex-wrap: wrap; }
+.tile .seats i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--field); }
+.tile.busy { border-color: #e4c7c0; background: #fff7f2; }
+.tile.busy .seats i.f { background: var(--wine); border-color: var(--wine); }
+.tile .st { margin-top: auto; font-size: 12.5px; color: var(--muted); }
+.tile.busy .st { color: var(--wine-deep); }
+.tile.add { align-items: center; justify-content: center; flex-direction: row; border-style: dashed; color: var(--muted); font-weight: 500; }
+
+/* Forms */
+.form { display: grid; gap: 14px; }
+.field { display: grid; gap: 6px; }
+.field > span { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.field .help { font-size: 12px; color: var(--faint); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--card); flex: none; }
+.stepper button { width: 34px; height: 34px; font-size: 18px; color: var(--muted); }
+.stepper button:hover { background: var(--paper-deep); }
+.stepper b { min-width: 44px; text-align: center; font-size: 15px; }
+.switch { position: relative; width: 38px; height: 22px; border-radius: 999px; background: var(--field); flex: none; transition: background .15s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch[aria-checked="true"] { background: var(--wine); }
+.switch[aria-checked="true"]::after { transform: translateX(16px); }
+.setrow { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line-soft); }
+.setrow:last-child { border-bottom: 0; }
+.setrow .lbl { flex: 1; }
+.setrow .lbl b { display: block; font-weight: 600; }
+.setrow .lbl small { color: var(--muted); font-size: 12.5px; }
+.err { color: var(--wine); font-size: 12.5px; font-weight: 500; }
+.note { font-size: 12.5px; color: var(--muted); background: var(--page); border: 1px solid var(--line-soft); border-radius: 9px; padding: 10px 12px; }
+.slots { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Overlays */
+.overlay { position: fixed; inset: 0; background: rgb(42 35 32 / .28); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+.overlay.sheet-o { align-items: stretch; justify-content: flex-end; padding: 0; }
+.modal { width: 460px; max-width: calc(100vw - 32px); background: var(--card); border-radius: 14px; box-shadow: 0 24px 60px rgb(42 35 32 / .25); overflow: hidden; }
+.modal .mh, .sheet .mh { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 15px; }
+.modal .mh .x, .sheet .mh .x { margin-left: auto; color: var(--faint); }
+.modal .mb, .sheet .mb { padding: 18px 20px; }
+.modal .mf, .sheet .mf { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--page); }
+.sheet { width: 440px; max-width: 100vw; height: 100%; background: var(--card); box-shadow: -12px 0 40px rgb(42 35 32 / .15); display: flex; flex-direction: column; }
+.sheet .mb { flex: 1; overflow: auto; }
+.kv { display: grid; grid-template-columns: 120px 1fr; gap: 10px 12px; font-size: 13.5px; margin: 0; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; font-weight: 500; }
+.sheet h3 { font: 600 22px/1.2 var(--serif); margin: 0 0 4px; }
+.sheet h4 { margin: 22px 0 8px; font-size: 12.5px; color: var(--muted); }
+.palette { width: 560px; }
+.palette input { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 16px 20px; font-size: 15px; background: var(--card); outline: none; }
+.palette .res { max-height: 380px; overflow: auto; padding: 6px; }
+.palette .res button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; text-align: left; font-size: 13.5px; }
+.palette .res button.sel, .palette .res button:hover { background: var(--paper-deep); }
+.palette .res small { margin-left: auto; color: var(--faint); font-size: 12px; }
+.palette .grp { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); padding: 10px 12px 4px; }
+.toasts { position: fixed; left: 24px; bottom: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 60; }
+.toast { background: var(--ink); color: #fff; border-radius: 10px; padding: 11px 14px; font-size: 13px; box-shadow: 0 10px 28px rgb(0 0 0 / .2); max-width: 380px; animation: tin .2s ease-out; }
+.toast b { display: block; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #e8b7ad; margin-bottom: 2px; }
+@keyframes tin { from { transform: translateY(8px); opacity: 0; } }
+
+/* Assistant */
+.drawer { background: var(--card); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.dh { flex: none; height: 64px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; padding: 0 18px; font-weight: 600; }
+.dh .x { margin-left: auto; display: flex; gap: 6px; color: var(--faint); }
+.dh .x button { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+.dh .x button:hover { background: var(--paper-deep); color: var(--ink); }
+.th { flex: 1; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; font-size: 13.5px; min-height: 0; }
+.day { text-align: center; font-size: 11.5px; color: var(--faint); }
+.me { align-self: flex-end; background: var(--paper-deep); padding: 9px 13px; border-radius: 14px 14px 4px 14px; max-width: 82%; }
+.ai { display: flex; gap: 10px; align-items: flex-start; }
+.ai > div { min-width: 0; flex: 1; }
+.ai p { margin: 2px 0 0; }
+.mini { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card); }
+.mini > div { display: flex; justify-content: space-between; gap: 10px; padding: 7px 11px; font-size: 12.5px; border-top: 1px solid var(--line-soft); }
+.mini > div:first-child { border-top: 0; }
+.mini span { color: var(--muted); text-align: right; }
+.evt { display: block; width: 100%; text-align: left; border: 1px solid var(--line); border-left: 3px solid var(--wine); border-radius: 8px; padding: 9px 12px; font-size: 12.5px; background: #fffaf3; }
+.evt.website { border-left-color: var(--web); }
+.evt b { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--wine); margin-bottom: 2px; }
+.evt.website b { color: var(--web); }
+.typing { display: inline-flex; gap: 4px; padding: 8px 0; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); animation: bl 1s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes bl { 50% { opacity: .25; } }
+.sugg { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 18px 12px; }
+.sugg button { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; color: var(--text2); background: var(--card); }
+.sugg button:hover { border-color: var(--field); }
+.comp { flex: none; margin: 0 18px 18px; border: 1px solid #d6c8b2; border-radius: 12px; padding: 8px 8px 8px 14px; background: var(--page); display: flex; align-items: flex-end; gap: 10px; }
+.comp:focus-within { border-color: var(--wine); }
+.comp textarea { flex: 1; border: 0; background: none; resize: none; font: inherit; outline: none; padding: 6px 0; max-height: 120px; }
+.comp .s { width: 32px; height: 32px; border-radius: 8px; background: var(--wine); color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
+.comp .s:hover { background: var(--wine-deep); }
+.chat-page { flex: 1; display: flex; flex-direction: column; min-height: 0; max-width: 820px; width: 100%; margin: 0 auto; }
+.chat-page .th { font-size: 14.5px; padding: 28px 24px; gap: 18px; }
+.chat-page .sugg { padding: 0 24px 12px; }
+.chat-page .comp { margin: 0 24px 24px; }
+.content.chat { padding: 0; }
+
+@media (max-width: 1280px) { .app, .app.no-drawer { grid-template-columns: 232px minmax(0, 1fr); } .drawer { display: none; } }
+@media (max-width: 900px) {
+  .app, .app.no-drawer { grid-template-columns: 1fr; height: auto; } .side { display: none; }
+  .r1, .r2 { grid-template-columns: 1fr; } .content { padding: 20px 16px; }
+  .act .row { grid-template-columns: 70px minmax(0, 1fr) 80px; } .act .w { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side">
+    <div class="kelsch" aria-hidden="true"></div>
+    <div class="side-in">
+      <div class="ws"><div class="mono">Z</div><div class="n"><b id="ws-name"></b><small id="ws-sub"></small></div></div>
+      <nav class="nav" id="nav"></nav>
+      <nav class="nav side-foot" id="nav-foot"></nav>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <button class="search" data-act="palette"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>Search a guest, a booking, a page…</span><kbd>⌘</kbd><kbd>K</kbd></button>
+      <div class="sp"></div>
+      <span class="clock" id="clock"></span>
+      <button class="ibtn" data-act="bell" aria-label="Notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0"/></svg><span class="dot" id="bell-dot" hidden></span></button>
+      <div class="avatar" title="Camille Laurent, owner">CL</div>
+      <div class="pop" id="bell-pop" hidden></div>
+    </header>
+    <main class="content" id="view"></main>
+  </div>
+
+  <aside class="drawer" id="drawer">
+    <div class="dh"><span class="mono sm">Z</span>Assistant
+      <span class="x">
+        <button data-act="go" data-to="assistant" aria-label="Open full screen"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+        <button data-act="drawer-close" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </span>
+    </div>
+    <div class="th" id="thread-drawer"></div>
+    <div class="sugg" id="sugg-drawer"></div>
+    <form class="comp" data-chat><textarea rows="1" placeholder="Ask anything about your restaurant…"></textarea><button class="s" aria-label="Send"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></form>
+  </aside>
+</div>
+<div id="overlay-root"></div>
+<div class="toasts" id="toasts"></div>
+
+<!-- ===================== Data & booking rules (no DOM) ===================== -->
+<script id="logic">
+"use strict";
+const TODAY = "2026-10-31";
+const NOW0 = 18 * 60 + 5; // the demo starts on Saturday 31 October 2026 at 18:05
+
+const pad = n => String(n).padStart(2, "0");
+const hm = m => pad(Math.floor(m / 60)) + ":" + pad(m % 60);
+const dUTC = s => { const [y, mo, d] = s.split("-").map(Number); return Date.UTC(y, mo - 1, d); };
+const addDays = (s, n) => new Date(dUTC(s) + n * 864e5).toISOString().slice(0, 10);
+const diffDays = (a, b) => Math.round((dUTC(a) - dUTC(b)) / 864e5);
+const dow = s => new Date(dUTC(s)).getUTCDay();
+const WD = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MO = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const dayNum = s => Number(s.slice(8, 10));
+const monIdx = s => Number(s.slice(5, 7)) - 1;
+const fmtShort = s => `${WD[dow(s)].slice(0, 3)} ${dayNum(s)} ${MO[monIdx(s)].slice(0, 3)}`;
+const fmtLong = s => `${WD[dow(s)]} ${dayNum(s)} ${MO[monIdx(s)]}`;
+const fmtDM = s => `${dayNum(s)} ${MO[monIdx(s)].slice(0, 3)}`;
+const cmpAt = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.min - b.min);
+const tnum = l => Number(l.replace(/\D/g, ""));
+
+function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function pick(r, weighted) { let x = r() * weighted.reduce((a, w) => a + w[1], 0); for (const [v, w] of weighted) { if ((x -= w) < 0) return v; } return weighted[weighted.length - 1][0]; }
+
+/* ---- Booking rules (AGENTS.md §6) ---- */
+function startsOf(svc) { const out = []; for (let m = svc.start; m <= svc.end - 60; m += 30) out.push(m); return out; }
+function bookableStarts(st) { return st.services.flatMap(startsOf).sort((a, b) => a - b); }
+function serviceAt(st, min) { return st.services.find(s => min >= s.start && min <= s.end - 60) || null; }
+function isBlocked(st, date, min) { return st.blocked.some(b => b.date === date && b.start === min); }
+function isPast(date, min, now) { return date < TODAY || (date === TODAY && min <= now); }
+function tableFree(st, label, date, start, ignoreId) {
+  return !st.reservations.some(r => r.status === "confirmed" && r.table === label && r.date === date && r.id !== ignoreId &&
+    r.start < start + st.slotLen && start < r.start + st.slotLen);
+}
+function findTable(st, date, start, party, ignoreId) {
+  return [...st.tables].filter(t => t.seats >= party).sort((a, b) => a.seats - b.seats || tnum(a.label) - tnum(b.label))
+    .find(t => tableFree(st, t.label, date, start, ignoreId)) || null;
+}
+/* Every write goes through these checks. Returns { table } or { error, message }. */
+function checkSlot(st, date, start, party, now, ignoreId) {
+  if (party < 1) return { error: "invalid", message: "A booking needs at least one guest." };
+  if (party > st.maxParty) return { error: "party_too_large", message: `Groups above ${st.maxParty} can’t book online.` };
+  if (!bookableStarts(st).includes(start)) return { error: "closed", message: `${hm(start)} isn’t a bookable start time.` };
+  if (isPast(date, start, now)) return { error: "past", message: `${hm(start)} has already passed.` };
+  if (isBlocked(st, date, start)) return { error: "blocked", message: `${hm(start)} is blocked on ${fmtShort(date)}.` };
+  const t = findTable(st, date, start, party, ignoreId);
+  if (!t) return { error: "full", message: `No table for ${party} is free at ${hm(start)} on ${fmtShort(date)}.` };
+  return { table: t.label };
+}
+function availability(st, date, party, around, now) {
+  return bookableStarts(st).map(m => ({ m, c: checkSlot(st, date, m, party, now) })).filter(x => x.c.table)
+    .sort((a, b) => Math.abs(a.m - around) - Math.abs(b.m - around) || a.m - b.m).slice(0, 3)
+    .sort((a, b) => a.m - b.m).map(x => ({ start: x.m, table: x.c.table }));
+}
+
+/* ---- Stats ---- */
+const confirmedOn = (st, date) => st.reservations.filter(r => r.date === date && r.status === "confirmed");
+function covers(st, date, svc) { return confirmedOn(st, date).filter(r => !svc || serviceAt(st, r.start) === svc).reduce((a, r) => a + r.party, 0); }
+function seatsTotal(st) { return st.tables.reduce((a, t) => a + t.seats, 0); }
+
+/* ---- Fake data ---- */
+const FIRST = ["Léa", "Thomas", "Claire", "Lukas", "Sophie", "Andreas", "Julie", "Marc", "Anne", "Nina", "Paul", "Emma", "Hugo", "Chloé", "Louis", "Manon", "Jonas", "Laura", "Nicolas", "Sarah", "Elias", "Mathieu", "Elise", "Simon", "Inès", "Yves", "Alice", "Pierre", "Marie", "Jan", "Lena", "Felix", "Mia", "David", "Eva", "Romain", "Pauline", "Tobias", "Hannah", "Lucas"];
+const LAST = ["Martin", "Schmitt", "Dubois", "Keller", "Muller", "Meier", "Weber", "Roth", "Fischer", "Brunner", "Wagner", "Huber", "Klein", "Bernard", "Lefèvre", "Graf", "Koch", "Moser", "Frey", "Bauer", "Zimmermann", "Lambert", "Girard", "Hoffmann", "Baumann", "Steiner", "Vogel", "Marchal", "Kieffer", "Gauthier", "Ritter", "Wolf", "Schneider", "Haas", "Burger", "Lehmann", "Jung", "Fuchs"];
+const LIVE_GUESTS = ["Nina Brunner", "Hugo Lambert", "Elise Kieffer"];
+
+function initialState() {
+  const r = rng(20261031);
+  const st = {
+    restaurant: { name: "Le Petit Zinc", cuisine: "Bistrot alsacien", city: "Mulhouse", address: "14 rue des Ferblantiers, 68100 Mulhouse",
+      website: "http://localhost:8080/", bookingPage: "http://localhost:8080/reservation.html", price: "€€",
+      tags: ["vegetarian", "gluten-free", "terrace", "kid-friendly"] },
+    services: [{ key: "lunch", name: "Lunch", start: 720, end: 840 }, { key: "dinner", name: "Dinner", start: 1140, end: 1320 }],
+    maxParty: 6, slotLen: 120,
+    tables: [2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 6, 6].map((s, i) => ({ label: "T" + (i + 1), seats: s })),
+    reservations: [], blocked: [], notices: [], events: [],
+    settings: { live: true },
+  };
+  st.blocked.push({ date: "2026-11-05", start: 1200, at: { date: "2026-10-28", min: 10 * 60 + 12 }, reason: "Private event" });
+
+  // Guest pool: unique names, regulars first; the live-demo guests are new guests.
+  const TONIGHT = [
+    ["Léa Martin", 1140, 2, "website", ["2026-10-24", 11 * 60 + 12]], ["Thomas Schmitt", 1140, 4, "agent", ["2026-10-29", 21 * 60 + 40]],
+    ["Claire Dubois", 1140, 2, "website", ["2026-10-27", 9 * 60 + 5]], ["Lukas Keller", 1170, 4, "agent", ["2026-10-30", 13 * 60 + 22]],
+    ["Sophie Muller", 1170, 2, "website", ["2026-10-30", 19 * 60 + 48]], ["Andreas Meier", 1200, 6, "agent", [TODAY, 17 * 60 + 41]],
+    ["Julie Weber", 1200, 4, "agent", [TODAY, 12 * 60 + 15]], ["Marc Roth", 1230, 3, "agent", [TODAY, 18 * 60 + 4]],
+    ["Anne Fischer", 1230, 2, "website", [TODAY, 10 * 60 + 30]],
+  ];
+  const pool = [], seen = new Set(LIVE_GUESTS);
+  for (const [g] of TONIGHT) seen.add(g);
+  while (pool.length < 300) { const n = FIRST[Math.floor(r() * FIRST.length)] + " " + LAST[Math.floor(r() * LAST.length)]; if (!seen.has(n)) { seen.add(n); pool.push(n); } }
+  TONIGHT.forEach(([g], i) => pool.splice(4 + i * 11, 0, g)); // tonight's guests have some history
+  const busy = new Map([[TODAY, new Set(TONIGHT.map(x => x[0]))]]); // one booking per guest per day
+  const guest = d => { const used = busy.get(d) || new Set(); busy.set(d, used);
+    for (;;) { const g = pool[Math.floor(pool.length * Math.pow(r(), 1.2))]; if (!used.has(g)) { used.add(g); return g; } } };
+
+  const DEMAND = { lunch: [10, 5, 6, 6, 6, 8, 9], dinner: [9, 6, 7, 8, 10, 12, 12] }; // Sun..Sat
+  const START_W = { lunch: [[720, 45], [750, 40], [780, 15]], dinner: [[1140, 20], [1170, 25], [1200, 30], [1230, 15], [1260, 10]] };
+  const PARTY_W = [[2, 46], [3, 10], [4, 28], [5, 5], [6, 9]];
+  const first = "2026-09-01", last = "2026-11-07", span = diffDays(last, first);
+
+  for (let d = first; d <= last; d = addDays(d, 1)) {
+    const progress = diffDays(d, first) / span, ahead = diffDays(d, TODAY);
+    const lead = ahead <= 0 ? 1 : [1, .8, .58, .46, .4, .36, .33, .3][Math.min(ahead, 7)];
+    for (const svc of st.services) {
+      if (d === TODAY && svc.key === "dinner") continue; // tonight is scripted below
+      const n = Math.round(DEMAND[svc.key][dow(d)] * (0.82 + 0.3 * progress) * lead * (0.85 + 0.3 * r()));
+      for (let k = 0; k < n; k++) {
+        const start = pick(r, START_W[svc.key]), party = pick(r, PARTY_W);
+        if (isBlocked(st, d, start)) continue;
+        const t = findTable(st, d, start, party); if (!t) continue;
+        // Booked before the slot and before the demo's "now".
+        let leadDays = Math.max(ahead, 0) + pick(r, [[0, 18], [1, 22], [2, 16], [3, 12], [5, 10], [7, 8], [10, 6], [14, 4]]), at;
+        for (;;) {
+          const cd = addDays(d, -leadDays); let lo = 8 * 60, hi = 22 * 60 + 30;
+          if (cd === d) hi = Math.min(hi, start - 45);
+          if (cd === TODAY) hi = Math.min(hi, NOW0 - 6);
+          if (hi > lo) { at = { date: cd, min: lo + Math.floor(r() * (hi - lo)) }; break; }
+          leadDays++;
+        }
+        const res = { id: "", date: d, start, party, table: t.label, guest: guest(d), source: r() < 0.28 + 0.36 * progress ? "agent" : "website", status: "confirmed", at };
+        if (r() < 0.045) { // some guests cancel; a few cancellations come from the restaurant
+          const startAt = { date: d, min: start }, nowAt0 = { date: TODAY, min: NOW0 - 6 };
+          const lim = cmpAt(startAt, nowAt0) < 0 ? startAt : nowAt0;
+          const cd = addDays(at.date, Math.floor(r() * (Math.max(diffDays(lim.date, at.date), 0) + 1)));
+          const lo = cd === at.date ? at.min + 5 : 8 * 60, hi = cd === lim.date ? lim.min - 30 : 22 * 60 + 30;
+          if (hi > lo) { res.status = "cancelled"; res.cancelledBy = r() < 0.85 ? "guest" : "restaurant"; res.cancelledAt = { date: cd, min: lo + Math.floor(r() * (hi - lo)) }; }
+        }
+        st.reservations.push(res);
+      }
+    }
+  }
+  for (const [g, start, party, source, [cd, cm]] of TONIGHT) {
+    st.reservations.push({ id: "", date: TODAY, start, party, table: findTable(st, TODAY, start, party).label, guest: g, source, status: "confirmed", at: { date: cd, min: cm } });
+  }
+  // References follow booking order.
+  st.reservations.sort((a, b) => cmpAt(a.at, b.at) || (a.date < b.date ? -1 : 1));
+  st.reservations.forEach((x, i) => { x.id = "R-" + String(i + 1).padStart(4, "0"); });
+  st.nextId = st.reservations.length + 1;
+  for (const x of st.reservations) {
+    st.events.push({ type: "created", at: x.at, rid: x.id });
+    if (x.status === "cancelled") {
+      st.events.push({ type: "cancelled", at: x.cancelledAt, rid: x.id, by: x.cancelledBy });
+      if (x.cancelledBy === "restaurant") st.notices.push({ guest: x.guest, rid: x.id, at: x.cancelledAt });
+    }
+  }
+  st.blocked.push({ date: TODAY, start: 1260, at: { date: TODAY, min: NOW0 }, reason: "" });
+  st.events.push({ type: "blocked", at: { date: "2026-10-28", min: 10 * 60 + 12 }, date: "2026-11-05", start: 1200 });
+  st.events.push({ type: "blocked", at: { date: TODAY, min: NOW0 }, date: TODAY, start: 1260 });
+  st.events.sort((a, b) => cmpAt(a.at, b.at));
+  return st;
+}
+
+/* Invariants the demo data must satisfy. Returns the problems found (empty = perfect). */
+function selfTest(st, now) {
+  const errs = [], ids = new Set(), starts = bookableStarts(st), nowA = { date: TODAY, min: now };
+  for (const x of st.reservations) {
+    if (ids.has(x.id)) errs.push(`duplicate id ${x.id}`); ids.add(x.id);
+    if (!starts.includes(x.start)) errs.push(`${x.id} starts at ${hm(x.start)}, not a bookable time`);
+    const t = st.tables.find(t => t.label === x.table);
+    if (!t) errs.push(`${x.id} on unknown table ${x.table}`); else if (x.party > t.seats) errs.push(`${x.id}: ${x.party} guests on ${x.table} (${t.seats} seats)`);
+    if (x.party > st.maxParty) errs.push(`${x.id}: party ${x.party} above the maximum`);
+    if (cmpAt(x.at, nowA) > 0) errs.push(`${x.id} booked in the future`);
+    if (cmpAt(x.at, { date: x.date, min: x.start }) >= 0) errs.push(`${x.id} booked after its start`);
+    if (x.status === "cancelled" && (cmpAt(x.cancelledAt, x.at) <= 0 || cmpAt(x.cancelledAt, nowA) > 0 || cmpAt(x.cancelledAt, { date: x.date, min: x.start }) >= 0)) errs.push(`${x.id} cancelled at an impossible time`);
+    if (!["agent", "website"].includes(x.source)) errs.push(`${x.id} unknown source ${x.source}`);
+    const blk = st.blocked.find(b => b.date === x.date && b.start === x.start);
+    if (blk && x.status === "confirmed" && cmpAt(x.at, blk.at) > 0) errs.push(`${x.id} booked on a blocked time`);
+  }
+  const conf = st.reservations.filter(x => x.status === "confirmed"), perDay = new Set();
+  for (const x of conf) { const k = x.guest + x.date; if (perDay.has(k)) errs.push(`${x.guest} has two bookings on ${x.date}`); perDay.add(k); }
+  for (let i = 0; i < conf.length; i++) for (let j = i + 1; j < conf.length; j++) {
+    const a = conf[i], b = conf[j];
+    if (a.table === b.table && a.date === b.date && a.start < b.start + st.slotLen && b.start < a.start + st.slotLen) errs.push(`overlap ${a.id} / ${b.id} on ${a.table}`);
+  }
+  [...st.reservations].sort((a, b) => cmpAt(a.at, b.at)).forEach((x, i, arr) => { if (i && x.id < arr[i - 1].id) errs.push(`reference order ${x.id}`); });
+  return errs;
+}
+if (typeof module !== "undefined") module.exports = { initialState, selfTest, covers, confirmedOn, availability, checkSlot, bookableStarts, seatsTotal, serviceAt, TODAY, NOW0, hm, addDays, fmtShort };
+</script>
+
+<!-- ===================== Interface ===================== -->
+<script>
+"use strict";
+let S = initialState();
+let T0 = Date.now();
+const nowMin = () => Math.min(NOW0 + Math.floor((Date.now() - T0) / 60000), 23 * 60 + 59);
+const nowAt = () => ({ date: TODAY, min: nowMin() });
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const $ = (s, el = document) => el.querySelector(s);
+const SRC = { agent: "Agent", website: "Website" };
+const src = s => `<span class="src ${s}"><i></i>${SRC[s]}</span>`;
+const byId = id => S.reservations.find(r => r.id === id);
+const whenAt = at => at.date === TODAY ? hm(at.min) : at.date === addDays(TODAY, -1) ? `Yesterday ${hm(at.min)}` : `${fmtDM(at.date)} ${hm(at.min)}`;
+const serviceName = m => (serviceAt(S, m) || { name: "—" }).name;
+const dayLabel = (d, m) => d === TODAY ? (m != null && m >= 17 * 60 ? "tonight" : "today") : d === addDays(TODAY, 1) ? "tomorrow" : `on ${fmtLong(d)}`;
+const ICON = {
+  home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  left: '<path d="m15 6-6 6 6 6"/>', right: '<path d="m9 6 6 6-6 6"/>', arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  line: '<path d="M3 17l5-6 4 4 8-9"/>', table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/>',
+  up: '<path d="M7 17 17 7M9 7h8v8"/>', down: '<path d="M7 7l10 10M17 9v8H9"/>', list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  bars: '<path d="M3 6h10M3 12h16M3 18h7"/>',
+};
+const ic = (n, s = 16) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
+
+const ROUTES = [
+  ["home", "Home", "home"], ["assistant", "Assistant", "chat"], ["reservations", "Reservations", "cal"], ["guests", "Guests", "users"],
+  ["hours", "Opening hours", "clock", "Restaurant"], ["floor", "Floor plan", "grid", "Restaurant"], ["rules", "Booking rules", "sliders", "Restaurant"],
+];
+const UI = { route: "home", drawer: true, resDate: TODAY, resSvc: "all", resSrc: "all", resQ: "", resView: "list", resCancelled: false,
+  floorDate: TODAY, floorTime: 1200, guestQ: "", coversView: "chart", bellSeen: { date: TODAY, min: 17 * 60 + 30 }, typing: false };
+
+/* ---------------- Assistant ---------------- */
+let thread = [];
+function seedThread() {
+  const roth = S.reservations.find(r => r.guest === "Marc Roth" && r.date === TODAY && r.start === 1230);
+  thread = [
+    { role: "me", text: "What bookings do I have tonight?", at: { date: TODAY, min: 18 * 60 + 2 } },
+    { role: "ai", html: answerBookings(TODAY, "dinner", { date: TODAY, min: 18 * 60 + 2 }), at: { date: TODAY, min: 18 * 60 + 2 } },
+    { role: "event", rid: roth.id, kind: "created", at: roth.at },
+    { role: "me", text: "Block 21:00 tonight", at: { date: TODAY, min: NOW0 } },
+    { role: "ai", html: `<p>Done. <b>21:00 is blocked tonight</b>: guests won’t be offered it anymore. Nobody was booked at 21:00.</p>`, at: { date: TODAY, min: NOW0 } },
+  ];
+}
+const miniRows = list => `<div class="mini">${list.map(r => `<div>${hm(r.start)} · ${esc(r.guest)}<span>${r.party} · ${r.table} · ${SRC[r.source]}</span></div>`).join("")}</div>`;
+function answerBookings(date, svcKey, asOf) {
+  const svc = S.services.find(s => s.key === svcKey);
+  const list = S.reservations.filter(r => r.date === date && r.status === "confirmed" && (!svc || serviceAt(S, r.start) === svc) && (!asOf || cmpAt(r.at, asOf) <= 0))
+    .sort((a, b) => a.start - b.start || tnum(a.table) - tnum(b.table));
+  const label = date === TODAY && svcKey === "dinner" ? "tonight" : `${svc ? "for " + svc.name.toLowerCase() + " " : ""}${dayLabel(date)}`;
+  if (!list.length) return `<p>No bookings ${label} yet.</p>`;
+  const g = list.reduce((a, r) => a + r.party, 0), ag = list.filter(r => r.source === "agent").length;
+  const by = {}; list.forEach(r => (by[r.start] = (by[r.start] || 0) + r.party));
+  const peak = Object.entries(by).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+  const seats = svc ? ` for ${seatsTotal(S)} seats` : "";
+  return `<p>${list.length} booking${list.length > 1 ? "s" : ""} ${label}, <b>${g} guest${g > 1 ? "s" : ""}</b>${seats}. ${ag} through your agent, ${list.length - ag} through your website. The busiest time is ${hm(+peak[0])} with ${peak[1]} guest${peak[1] > 1 ? "s" : ""}.</p>${miniRows(list)}`;
+}
+function threadHTML() {
+  let out = "", last = "";
+  for (const m of thread) {
+    const d = m.at.date === TODAY ? "Today" : fmtLong(m.at.date);
+    if (d !== last) { out += `<div class="day">${d}, ${hm(m.at.min)}</div>`; last = d; }
+    if (m.role === "me") out += `<div class="me">${esc(m.text)}</div>`;
+    else if (m.role === "ai") out += `<div class="ai"><span class="mono xs">Z</span><div>${m.html}</div></div>`;
+    else { const r = byId(m.rid); out += `<button class="evt ${r.source}" data-act="res" data-id="${r.id}"><b>New booking · ${SRC[r.source]}</b>${esc(r.guest)} · ${r.party} guests · ${r.date === TODAY ? "tonight" : fmtShort(r.date)} ${hm(r.start)} · ${r.table}</button>`; }
+  }
+  if (UI.typing) out += `<div class="ai"><span class="mono xs">Z</span><div><span class="typing"><i></i><i></i><i></i></span></div></div>`;
+  return out;
+}
+const SUGG = ["How busy are we tomorrow?", "Table for 4 at 20:00 tonight", "Bookings for Sunday lunch", "Block 13:00 on Sunday"];
+function renderThreads() {
+  for (const id of ["thread-drawer", "thread-page"]) { const el = document.getElementById(id); if (el) { el.innerHTML = threadHTML(); el.scrollTop = el.scrollHeight; } }
+  for (const id of ["sugg-drawer", "sugg-page"]) { const el = document.getElementById(id); if (el) el.innerHTML = SUGG.map(s => `<button data-act="ask" data-q="${esc(s)}">${esc(s)}</button>`).join(""); }
+}
+function parseDay(t) {
+  if (/\b(tonight|today|this evening|this afternoon)\b/.test(t)) return TODAY;
+  if (/\btomorrow\b/.test(t)) return addDays(TODAY, 1);
+  for (let i = 0; i < 7; i++) { const d = addDays(TODAY, i), w = WD[dow(d)].toLowerCase(); if (new RegExp(`\\b(${w}|${w.slice(0, 3)})\\b`).test(t)) return d; }
+  let m = t.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(oct|nov)/);
+  if (m) return `2026-${m[2] === "oct" ? "10" : "11"}-${pad(+m[1])}`;
+  m = t.match(/\b(oct|nov)\w*\s+(\d{1,2})\b/);
+  if (m) return `2026-${m[1] === "oct" ? "10" : "11"}-${pad(+m[2])}`;
+  return null;
+}
+function parseTime(t) {
+  let m = t.match(/\b(\d{1,2})[:h](\d{2})\b/) || t.match(/\b(\d{1,2})h\b/);
+  if (m) return +m[1] * 60 + (+m[2] || 0);
+  m = t.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+  if (m) return ((+m[1] % 12) + (m[3] === "pm" ? 12 : 0)) * 60 + (+m[2] || 0);
+  m = t.match(/\bat\s+(\d{1,2})\b(?!\s*(people|guests|persons))/);
+  if (m) { const h = +m[1]; return (h < 11 ? h + 12 : h) * 60; }
+  return null;
+}
+function parseParty(t) { const m = t.match(/\b(?:for|party of)\s+(\d{1,2})\b(?![:h]\d)/) || t.match(/\b(\d{1,2})\s*(?:people|guests|persons|pax)\b/); return m ? +m[1] : null; }
+function parseSvc(t) { return /\b(lunch|midday|noon)\b/.test(t) ? "lunch" : /\b(dinner|tonight|evening)\b/.test(t) ? "dinner" : null; }
+const startsList = () => S.services.map(s => `${s.name.toLowerCase()} ${startsOf(s).map(hm).join(", ")}`).join("; ");
+
+function reply(raw) {
+  const t = raw.toLowerCase().trim(), now = nowMin();
+  const idm = t.match(/\br-?\s?(\d{1,4})\b/);
+  if (/\bcancel/.test(t)) {
+    if (!idm) { const ex = S.reservations.find(r => r.status === "confirmed" && !isPast(r.date, r.start, now)); return `<p>Which booking? Give me its reference, for example <b>${ex.id}</b>. You’ll find it in Reservations.</p>`; }
+    const res = cancelBooking("R-" + idm[1].padStart(4, "0"));
+    return res.ok ? `<p>Done. <b>${res.r.id}</b> is cancelled: ${esc(res.r.guest)}, ${res.r.party} guests, ${fmtShort(res.r.date)} at ${hm(res.r.start)}. The guest will be told the restaurant cancelled.</p>` : `<p>${res.message}</p>`;
+  }
+  if (/\b(unblock|reopen)\b/.test(t)) {
+    const time = parseTime(t), day = parseDay(t) || TODAY;
+    if (time == null) return `<p>Which time should I reopen? For example “Reopen 21:00 tonight”.</p>`;
+    const res = unblockSlot(day, time);
+    return res.ok ? `<p>Done. <b>${hm(time)}</b> ${dayLabel(day, time)} is open again for bookings.</p>` : `<p>${res.message}</p>`;
+  }
+  if (/\b(block|close)\b/.test(t)) {
+    const time = parseTime(t), day = parseDay(t) || TODAY;
+    if (time == null) return `<p>Which time should I block? Bookable start times are ${startsList()}.</p>`;
+    const res = blockSlot(day, time);
+    if (!res.ok) return `<p>${res.message}</p>`;
+    const n = confirmedOn(S, day).filter(r => r.start === time).length;
+    return `<p>Done. <b>${hm(time)}</b> is blocked ${dayLabel(day, time)}: guests won’t be offered it anymore.${n ? ` The ${n} booking${n > 1 ? "s" : ""} already at ${hm(time)} stay${n > 1 ? "" : "s"} as ${n > 1 ? "they are" : "it is"}.` : ` Nobody was booked at ${hm(time)}.`}</p>`;
+  }
+  if (/\b(max|maximum|largest|biggest)\b.*\b(party|group)|party size|group size/.test(t)) {
+    const n = (t.match(/\b(\d{1,2})\b/g) || []).map(Number).pop();
+    if (n == null) return `<p>Guests can book for up to <b>${S.maxParty} people</b>. Tell me the new limit, for example “Set max party size to 8”.</p>`;
+    const res = setMaxParty(n);
+    if (!res.ok) return `<p>${res.message}</p>`;
+    const big = Math.max(...S.tables.map(x => x.seats));
+    return n > big ? `<p>Done. The largest group is now <b>${n}</b>. Your largest table seats ${big}, so add a bigger table in Floor plan before groups of ${big + 1} or more can book.</p>` : `<p>Done. Guests can now book for up to <b>${n} people</b>; bigger groups are sent to your booking page.</p>`;
+  }
+  if (/\b(table for|available|availability|free table|space for|room for|fit)\b/.test(t) || (parseParty(t) && parseTime(t) != null)) {
+    const party = parseParty(t) || 2, day = parseDay(t) || TODAY;
+    let around = parseTime(t); if (around == null) around = day === TODAY ? Math.max(1140, Math.ceil((now + 1) / 30) * 30) : 1200;
+    const c = checkSlot(S, day, around, party, now);
+    if (c.error === "party_too_large") return `<p>${c.message} A group of ${party} is sent to your booking page.</p>`;
+    if (c.table) return `<p>Yes: a table for <b>${party}</b> is free ${dayLabel(day, around)} at <b>${hm(around)}</b> (${c.table}).</p>`;
+    const alt = availability(S, day, party, around, now);
+    return `<p>${c.message}${alt.length ? " Closest free times:" : " Nothing else is free for that group that day."}</p>${alt.length ? `<div class="mini">${alt.map(a => `<div>${hm(a.start)}<span>${a.table}</span></div>`).join("")}</div>` : ""}`;
+  }
+  if (/\b(hours|opening|open)\b/.test(t)) return `<p>You’re open every day: ${S.services.map(s => `${s.name.toLowerCase()} ${hm(s.start)}–${hm(s.end)}`).join(", ")}. Last seating is one hour before closing.</p>`;
+  if (/\b(week|next 7 days|coming days)\b/.test(t)) {
+    const days = [...Array(7)].map((_, i) => addDays(TODAY, i));
+    return `<p><b>${days.reduce((a, d) => a + covers(S, d), 0)} guests</b> booked over the next 7 days.</p><div class="mini">${days.map(d => `<div>${d === TODAY ? "Today" : fmtShort(d)}<span>${covers(S, d)} guests · ${confirmedOn(S, d).length} bookings</span></div>`).join("")}</div>`;
+  }
+  if (/\b(busy|covers|how many|full|stats|guests)\b/.test(t)) {
+    const day = parseDay(t) || TODAY, tot = covers(S, day);
+    const parts = S.services.map(s => { const c = covers(S, day, s); return `${s.name.toLowerCase()} ${c} of ${seatsTotal(S)} seats`; }).join(", ");
+    return `<p>${day === TODAY ? "Today" : fmtLong(day)}: <b>${tot} guests</b> in ${confirmedOn(S, day).length} bookings (${parts}).</p>`;
+  }
+  if (/\b(booking|bookings|reservation|reservations|who|list|tonight|today|tomorrow|lunch|dinner)\b/.test(t) || parseDay(t)) {
+    const day = parseDay(t) || TODAY, svc = parseSvc(t);
+    return answerBookings(day, svc || (day === TODAY && now >= S.services[0].end ? S.services[S.services.length - 1].key : null), null);
+  }
+  return `<p>I can list bookings, check what’s free, block or reopen a time, change the maximum party size or cancel a booking. Try “Bookings for tomorrow”, “Table for 4 at 20:00” or “Block 13:00 on Sunday”.</p>`;
+}
+function ask(text) {
+  text = text.trim(); if (!text || UI.typing) return;
+  thread.push({ role: "me", text, at: nowAt() }); UI.typing = true; renderThreads();
+  setTimeout(() => { UI.typing = false; thread.push({ role: "ai", html: reply(text), at: nowAt() }); refresh(); }, 650);
+}
+
+/* ---------------- Writes ---------------- */
+function logEvent(e) { S.events.push({ ...e, at: nowAt() }); }
+function cancelBooking(id) {
+  const r = byId(id);
+  if (!r) return { ok: false, message: `There is no booking <b>${id}</b>.` };
+  if (r.status === "cancelled") return { ok: false, message: `<b>${id}</b> is already cancelled.` };
+  if (isPast(r.date, r.start, nowMin())) return { ok: false, message: `<b>${id}</b> has already started.` };
+  r.status = "cancelled"; r.cancelledBy = "restaurant"; r.cancelledAt = nowAt();
+  S.notices.push({ guest: r.guest, rid: r.id, at: nowAt() }); logEvent({ type: "cancelled", rid: r.id, by: "restaurant" });
+  return { ok: true, r };
+}
+function moveBooking(id, start) {
+  const r = byId(id), c = checkSlot(S, r.date, start, r.party, nowMin(), r.id);
+  if (!c.table) return { ok: false, message: c.message };
+  const from = r.start; r.start = start; r.table = c.table; logEvent({ type: "moved", rid: r.id, from });
+  return { ok: true };
+}
+function blockSlot(date, start) {
+  if (!bookableStarts(S).includes(start)) return { ok: false, message: `${hm(start)} isn’t a start time. Bookable start times are ${startsList()}.` };
+  if (isPast(date, start, nowMin())) return { ok: false, message: `${hm(start)} ${dayLabel(date, start)} has already passed.` };
+  if (isBlocked(S, date, start)) return { ok: false, message: `${hm(start)} is already blocked ${dayLabel(date, start)}.` };
+  S.blocked.push({ date, start, at: nowAt(), reason: "" }); logEvent({ type: "blocked", date, start });
+  return { ok: true };
+}
+function unblockSlot(date, start) {
+  const i = S.blocked.findIndex(b => b.date === date && b.start === start);
+  if (i < 0) return { ok: false, message: `${hm(start)} isn’t blocked ${dayLabel(date, start)}.` };
+  S.blocked.splice(i, 1); logEvent({ type: "unblocked", date, start });
+  return { ok: true };
+}
+function setMaxParty(n) {
+  if (!Number.isInteger(n) || n < 1 || n > 20) return { ok: false, message: "The maximum party size must be between 1 and 20." };
+  if (n === S.maxParty) return { ok: false, message: `Guests can already book for up to ${n} people.` };
+  logEvent({ type: "policy", from: S.maxParty, to: n }); S.maxParty = n; return { ok: true };
+}
+function newBooking(guest, date, prefer, party, source) {
+  let start = prefer, table = checkSlot(S, date, prefer, party, nowMin()).table;
+  if (!table) { const a = availability(S, date, party, prefer, nowMin())[0]; if (!a) return null; start = a.start; table = a.table; }
+  const r = { id: "R-" + String(S.nextId++).padStart(4, "0"), date, start, party, table, guest, source, status: "confirmed", at: nowAt() };
+  S.reservations.push(r); logEvent({ type: "created", rid: r.id });
+  return r;
+}
+
+/* ---------------- Pages ---------------- */
+function eventText(e) {
+  const r = e.rid && byId(e.rid);
+  switch (e.type) {
+    case "created": return [`${r.id} · ${esc(r.guest)} · ${r.party} guests · ${r.date === TODAY ? "today" : fmtShort(r.date)} ${hm(r.start)}`, "New booking", r.source];
+    case "cancelled": return [`${r.id} · ${esc(r.guest)} · ${fmtShort(r.date)} ${hm(r.start)}`, e.by === "guest" ? "Cancelled by the guest" : "Cancelled by you", r.source];
+    case "moved": return [`${r.id} · ${esc(r.guest)} · ${hm(e.from)} → ${hm(r.start)}`, "Moved by you", r.source];
+    case "blocked": return [`${hm(e.start)} blocked ${dayLabel(e.date, e.start)}`, "You", null];
+    case "unblocked": return [`${hm(e.start)} reopened ${dayLabel(e.date, e.start)}`, "You", null];
+    case "policy": return [`Maximum party size ${e.from} → ${e.to}`, "You", null];
+    case "hours": return ["Opening hours updated", "You", null];
+    case "tables": return [esc(e.text), "You", null];
+  }
+  return ["", "", null];
+}
+
+function viewHome() {
+  const now = nowMin(), svc = S.services.find(s => now < s.end) || S.services[S.services.length - 1];
+  const tonight = confirmedOn(S, TODAY).filter(r => serviceAt(S, r.start) === svc).sort((a, b) => a.start - b.start || tnum(a.table) - tnum(b.table));
+  const rows = [...tonight.map(r => ({ k: r.start, r })), ...S.blocked.filter(b => b.date === TODAY && serviceAt(S, b.start) === svc).map(b => ({ k: b.start + .5, m: b.start }))].sort((a, b) => a.k - b.k);
+  const guests = tonight.reduce((a, r) => a + r.party, 0), seats = seatsTotal(S);
+  const days = [...Array(30)].map((_, i) => addDays(TODAY, i - 29));
+  const series = days.map(d => ({ d, c: covers(S, d), a: confirmedOn(S, d).filter(r => r.source === "agent").reduce((x, r) => x + r.party, 0) }));
+  const total = series.reduce((x, s) => x + s.c, 0), viaAgent = series.reduce((x, s) => x + s.a, 0);
+  const cancelled = S.reservations.filter(r => r.status === "cancelled" && r.date >= days[0] && r.date <= TODAY).length;
+  const oct = S.reservations.filter(r => r.status === "confirmed" && r.date.startsWith("2026-10"));
+  const pa = Math.round(100 * oct.filter(r => r.source === "agent").length / oct.length);
+  const week = [...Array(7)].map((_, i) => addDays(TODAY, i)).map(d => ({ d, c: covers(S, d) })), wmax = Math.max(...week.map(w => w.c), 1);
+  let next4 = null; for (const m of startsOf(svc)) { const c = checkSlot(S, TODAY, m, 4, now); if (c.table) { next4 = m; break; } }
+  const acts = S.events.filter(e => cmpAt(e.at, nowAt()) <= 0).sort((a, b) => cmpAt(b.at, a.at)).slice(0, 6);
+  const hour = Math.floor(now / 60);
+  return `
+  <div class="hello"><h1>${hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"}, Camille</h1><p>${fmtLong(TODAY)} · ${svc.name} ${hm(svc.start)}–${hm(svc.end)}</p></div>
+  <div class="actions">
+    <button class="btn pri" data-act="drawer-open">${ic("chat", 15)}Ask assistant</button>
+    <button class="btn" data-act="block-dialog">${ic("lock", 15)}Block a time</button>
+    <button class="btn" data-act="go" data-to="reservations">${ic("cal", 15)}Reservations</button>
+    <button class="btn" data-act="go" data-to="hours">${ic("clock", 15)}Opening hours</button>
+    <button class="btn" data-act="go" data-to="floor">${ic("grid", 15)}Floor plan</button>
+  </div>
+  <section class="cards r1">
+    <article class="card">
+      <div class="ch">Guests<span class="x"><span class="seg">
+        <button class="ico" aria-pressed="${UI.coversView === "chart"}" data-act="covers-view" data-v="chart" aria-label="Chart">${ic("line", 15)}</button>
+        <button class="ico" aria-pressed="${UI.coversView === "table"}" data-act="covers-view" data-v="table" aria-label="Table">${ic("table", 15)}</button></span></span></div>
+      <div class="big">${total.toLocaleString("en-US")}<small>guests</small></div>
+      <div class="sub">Last 30 days<span class="delta"><span>${ic("up", 13)}<b>${viaAgent.toLocaleString("en-US")}</b>&nbsp;through your agent</span><span>${ic("down", 13)}${cancelled} cancelled</span></span></div>
+      ${UI.coversView === "chart" ? `<div class="chart" id="covers-chart"><svg viewBox="0 0 600 190" preserveAspectRatio="none" role="img" aria-label="Guests per day, last 30 days"></svg><div class="hit"></div><div class="tip" hidden></div><div class="cdot" hidden></div>
+        <div class="xl">${[0, 7, 14, 21, 29].map(i => `<span>${fmtDM(days[i])}</span>`).join("")}</div></div>`
+      : `<div class="covers-table"><table class="data"><thead><tr><th>Day</th><th class="num">Guests</th><th class="num">Agent</th><th class="num">Website</th></tr></thead><tbody>${[...series].reverse().map(s => `<tr class="click" data-act="go-day" data-d="${s.d}"><td>${fmtShort(s.d)}</td><td class="num">${s.c}</td><td class="num">${s.a}</td><td class="num">${s.c - s.a}</td></tr>`).join("")}</tbody></table></div>`}
+    </article>
+    <article class="card">
+      <div class="ch">${svc.key === "dinner" ? "Tonight" : svc.name}<span class="x">${guests} guests · ${tonight.length} bookings</span></div>
+      <div class="list">${rows.slice(0, 10).map(x => x.r
+        ? `<button class="r" data-act="res" data-id="${x.r.id}"><span class="t">${hm(x.r.start)}</span><span class="g">${esc(x.r.guest)}</span><span class="p">${x.r.party} · ${x.r.table}</span>${src(x.r.source)}</button>`
+        : `<div class="r blocked"><span class="t">${hm(x.m)}</span><span class="g">${ic("lock", 12)}Blocked</span><span></span><button class="link" style="justify-self:end;font-size:12px" data-act="unblock" data-d="${TODAY}" data-m="${x.m}">Reopen</button></div>`).join("") || `<div class="empty">No bookings yet.</div>`}</div>
+      <div style="margin-top:12px"><button class="link" data-act="go-day" data-d="${TODAY}">${rows.length > 10 ? `All ${tonight.length} bookings` : "Open today’s bookings"} ${ic("arrow", 14)}</button></div>
+    </article>
+  </section>
+  <section class="cards r2">
+    <article class="card">
+      <div class="ch">Next 7 days<span class="x">guests</span></div>
+      <div class="big">${week.reduce((a, w) => a + w.c, 0)}<small>guests booked</small></div>
+      <div class="week">${week.map((w, i) => `<div class="col${i === 0 ? " today" : ""}" data-act="go-day" data-d="${w.d}" title="${fmtShort(w.d)}: ${w.c} guests"><div class="bar" style="height:${Math.max(3, (w.c / wmax) * 72)}px"><span class="v">${w.c}</span></div><span class="d">${i === 0 ? "Today" : WD[dow(w.d)].slice(0, 3)}</span></div>`).join("")}</div>
+    </article>
+    <article class="card">
+      <div class="ch">Where bookings come from<span class="x">October</span></div>
+      <div class="big">${pa}%<small>through your agent</small></div>
+      <div class="stack" role="img" aria-label="Agent ${pa}%, Website ${100 - pa}%"><i class="agent" style="width:${pa}%"></i><i class="website" style="width:${100 - pa}%"></i></div>
+      <div class="leg"><span><i class="agent"></i>Agent <b>${pa}%</b></span><span><i class="website"></i>Website <b>${100 - pa}%</b></span><span class="faint">${oct.length} bookings</span></div>
+    </article>
+    <article class="card">
+      <div class="ch">Floor ${svc.key === "dinner" ? "tonight" : "today"}<span class="x">${S.tables.length} tables</span></div>
+      <div class="big">${guests}<small>of ${seats} seats booked</small></div>
+      <div class="meter" role="img" aria-label="${Math.round(100 * guests / seats)}% of seats booked"><i style="width:${Math.min(100, 100 * guests / seats)}%"></i></div>
+      <div class="chips">${next4 != null ? `<span class="chip">Next table for 4 · ${hm(next4)}</span>` : `<span class="chip">No table for 4 left</span>`}<span class="chip">Groups up to ${S.maxParty}</span></div>
+    </article>
+  </section>
+  <article class="card act">
+    <div class="ch">Recent activity</div>
+    ${acts.map(e => { const [a, b, s] = eventText(e); return `<div class="row"${e.rid ? ` data-act="res" data-id="${e.rid}" style="cursor:pointer"` : ""}><span class="h">${whenAt(e.at)}</span><span>${a}</span><span class="w">${b}</span>${s ? src(s) : "<span></span>"}</div>`; }).join("")}
+  </article>`;
+}
+function drawCovers() {
+  const box = document.getElementById("covers-chart"); if (!box) return;
+  const days = [...Array(30)].map((_, i) => addDays(TODAY, i - 29));
+  const series = days.map(d => ({ d, c: covers(S, d), a: confirmedOn(S, d).filter(r => r.source === "agent").reduce((x, r) => x + r.party, 0) }));
+  const svg = box.querySelector("svg"), tip = box.querySelector(".tip"), dot = box.querySelector(".cdot"), hit = box.querySelector(".hit");
+  const W = 600, H = 190, padT = 14, padB = 4, max = Math.ceil(Math.max(...series.map(s => s.c)) / 25) * 25 + 10;
+  const x = i => (i / (series.length - 1)) * W, y = v => padT + (1 - v / max) * (H - padT - padB);
+  const pts = series.map((s, i) => `${x(i).toFixed(1)},${y(s.c).toFixed(1)}`).join(" L");
+  svg.innerHTML = `<defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8f2d2a" stop-opacity=".16"/><stop offset="1" stop-color="#8f2d2a" stop-opacity="0"/></linearGradient></defs>
+    ${[.25, .5, .75].map(f => `<line x1="0" x2="${W}" y1="${y(max * f)}" y2="${y(max * f)}" stroke="#efe7d9" vector-effect="non-scaling-stroke"/>`).join("")}
+    <path d="M${pts} L${W},${H} L0,${H} Z" fill="url(#fill)"/><path d="M${pts}" fill="none" stroke="#8f2d2a" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    <line class="cross" y1="0" y2="${H}" stroke="#2a2320" stroke-opacity=".3" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" visibility="hidden"/>`;
+  const cross = svg.querySelector(".cross");
+  hit.onmousemove = e => {
+    const r = svg.getBoundingClientRect(), i = Math.max(0, Math.min(series.length - 1, Math.round(((e.clientX - r.left) / r.width) * (series.length - 1)))), s = series[i];
+    const px = (x(i) / W) * r.width, py = (y(s.c) / H) * r.height;
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    dot.hidden = false; dot.style.left = px + "px"; dot.style.top = py + "px";
+    tip.hidden = false; tip.style.left = Math.min(Math.max(px, 90), r.width - 90) + "px"; tip.style.top = py + "px";
+    tip.innerHTML = `<span>${fmtShort(s.d)}</span><br><b>${s.c} guests</b> · ${s.a} through your agent`;
+    hit.dataset.d = s.d;
+  };
+  hit.onmouseleave = () => { tip.hidden = true; dot.hidden = true; cross.setAttribute("visibility", "hidden"); };
+  hit.onclick = () => hit.dataset.d && goDay(hit.dataset.d);
+}
+
+function statusTag(r) {
+  if (r.status === "cancelled") return `<span class="tag bad">Cancelled</span>`;
+  const now = nowMin();
+  if (isPast(r.date, r.start + S.slotLen, now)) return `<span class="tag">Done</span>`;
+  if (isPast(r.date, r.start, now)) return `<span class="tag">Seated</span>`;
+  return `<span class="tag ok">Confirmed</span>`;
+}
+function viewReservations() {
+  const d = UI.resDate, svc = S.services.find(s => s.key === UI.resSvc);
+  let list = S.reservations.filter(r => r.date === d);
+  if (svc) list = list.filter(r => serviceAt(S, r.start) === svc);
+  if (UI.resSrc !== "all") list = list.filter(r => r.source === UI.resSrc);
+  if (!UI.resCancelled) list = list.filter(r => r.status === "confirmed");
+  if (UI.resQ) { const q = UI.resQ.toLowerCase(); list = list.filter(r => r.guest.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)); }
+  list.sort((a, b) => a.start - b.start || tnum(a.table) - tnum(b.table));
+  const blk = UI.resQ || UI.resSrc !== "all" ? [] : S.blocked.filter(b => b.date === d && (!svc || serviceAt(S, b.start) === svc));
+  const conf = list.filter(r => r.status === "confirmed"), g = conf.reduce((a, r) => a + r.party, 0);
+  const rows = [...list.map(r => ({ k: r.start, r })), ...blk.map(b => ({ k: b.start + .5, b }))].sort((a, b) => a.k - b.k);
+  return `
+  <div class="page-h"><div><h1>Reservations</h1><p>${conf.length} booking${conf.length === 1 ? "" : "s"} · ${g} guest${g === 1 ? "" : "s"}${svc ? ` · ${svc.name.toLowerCase()}` : ""} · ${fmtLong(d)}</p></div>
+    <div class="r"><button class="btn" data-act="block-dialog" data-d="${d >= TODAY ? d : TODAY}">${ic("lock", 15)}Block a time</button></div></div>
+  <div class="toolbar">
+    <span class="datenav"><button data-act="res-day" data-n="-1" aria-label="Previous day">${ic("left", 15)}</button><b>${d === TODAY ? "Today · " : ""}${fmtShort(d)}</b><button data-act="res-day" data-n="1" aria-label="Next day">${ic("right", 15)}</button></span>
+    ${d !== TODAY ? `<button class="btn sm" data-act="go-day" data-d="${TODAY}">Today</button>` : ""}
+    <span class="seg">${[["all", "All day"], ...S.services.map(s => [s.key, s.name])].map(([k, l]) => `<button aria-pressed="${UI.resSvc === k}" data-act="res-svc" data-v="${k}">${l}</button>`).join("")}</span>
+    <span class="seg">${[["all", "All sources"], ["agent", "Agent"], ["website", "Website"]].map(([k, l]) => `<button aria-pressed="${UI.resSrc === k}" data-act="res-src" data-v="${k}">${l}</button>`).join("")}</span>
+    <input class="input" style="width:190px" placeholder="Guest or reference" value="${esc(UI.resQ)}" data-input="resQ">
+    <label class="chip" style="cursor:pointer;height:34px;padding:0 10px;border-radius:9px"><input type="checkbox" ${UI.resCancelled ? "checked" : ""} data-act="res-cancelled"> Show cancelled</label>
+    <span class="seg" style="margin-left:auto"><button class="ico" aria-pressed="${UI.resView === "list"}" data-act="res-view" data-v="list" aria-label="List">${ic("list", 15)}</button><button class="ico" aria-pressed="${UI.resView === "timeline"}" data-act="res-view" data-v="timeline" aria-label="Timeline">${ic("bars", 15)}</button></span>
+  </div>
+  ${UI.resView === "list" ? `<article class="card flush"><table class="data"><thead><tr><th>Time</th><th>Guest</th><th class="num">Guests</th><th>Table</th><th>Source</th><th>Reference</th><th>Status</th><th>Booked</th></tr></thead><tbody>
+    ${rows.map(x => x.r ? `<tr class="click${x.r.status === "cancelled" ? " off" : ""}" data-act="res" data-id="${x.r.id}"><td><b>${hm(x.r.start)}</b></td><td>${esc(x.r.guest)}</td><td class="num">${x.r.party}</td><td>${x.r.table}</td><td>${src(x.r.source)}</td><td class="muted">${x.r.id}</td><td>${statusTag(x.r)}</td><td class="muted">${whenAt(x.r.at)}</td></tr>`
+      : `<tr class="blk"><td><b>${hm(x.b.start)}</b></td><td colspan="6">${ic("lock", 12)} Blocked: no new bookings at this time${x.b.reason ? ` · ${esc(x.b.reason)}` : ""}</td><td>${isPast(x.b.date, x.b.start, nowMin()) ? "" : `<button class="link" data-act="unblock" data-d="${x.b.date}" data-m="${x.b.start}">Reopen</button>`}</td></tr>`).join("")
+    || `<tr><td colspan="8" class="empty">No bookings match.</td></tr>`}</tbody></table></article>`
+  : S.services.filter(s => !svc || s === svc).map(s => timeline(d, s, list)).join("")}`;
+}
+function timeline(d, svc, list) {
+  const from = svc.start, to = svc.end - 60 + S.slotLen, span = to - from, pct = m => ((m - from) / span) * 100;
+  const hours = []; for (let m = Math.ceil(from / 60) * 60; m <= to; m += 60) hours.push(m);
+  const res = list.filter(r => r.status === "confirmed" && serviceAt(S, r.start) === svc);
+  const blk = S.blocked.filter(b => b.date === d && serviceAt(S, b.start) === svc);
+  const nowP = d === TODAY && nowMin() >= from && nowMin() <= to ? pct(nowMin()) : null;
+  return `<article class="card flush"><div class="tl"><div class="ch" style="margin-bottom:10px">${svc.name}<span class="x">${res.reduce((a, r) => a + r.party, 0)} guests · ${res.length} bookings</span></div>
+    <div style="position:relative">
+      <div class="axis"><span></span><div class="ticks">${hours.map(m => `<i style="left:${pct(m)}%">${hm(m)}</i>`).join("")}</div></div>
+      ${S.tables.map(t => `<div class="lane-row"><span class="lbl">${t.label}<small>${t.seats}p</small></span><div class="lane">${hours.map(m => `<span class="grid-v" style="left:${pct(m)}%"></span>`).join("")}
+        ${res.filter(r => r.table === t.label).map(r => `<button class="bk ${r.source}" style="left:${pct(r.start)}%;width:calc(${(S.slotLen / span) * 100}% - 3px)" data-act="res" data-id="${r.id}" title="${hm(r.start)} · ${esc(r.guest)} · ${r.party} guests">${hm(r.start)} ${esc(r.guest)} · ${r.party}</button>`).join("")}</div></div>`).join("")}
+      <div style="position:absolute;top:0;bottom:0;left:56px;right:0;pointer-events:none">${blk.map(b => `<div class="blockcol" style="left:${pct(b.start)}%;width:${(30 / span) * 100}%"></div>`).join("")}${nowP != null ? `<div class="now" style="left:${nowP}%"></div>` : ""}</div>
+    </div>
+    <div class="leg" style="margin-top:14px"><span><i class="agent"></i>Agent</span><span><i class="website"></i>Website</span><span><i style="background:repeating-linear-gradient(135deg,rgb(42 35 32 / .4) 0 1px,transparent 1px 3px)"></i>Blocked start time</span>${nowP != null ? `<span><i style="background:var(--wine);width:2px"></i>Now</span>` : ""}</div></div></article>`;
+}
+
+function guestIndex() {
+  const m = new Map(), now = nowMin();
+  for (const r of S.reservations) {
+    const g = m.get(r.guest) || { name: r.guest, visits: 0, covers: 0, upcoming: null, last: null, agent: 0, website: 0 };
+    if (r.status === "confirmed") {
+      g[r.source]++;
+      if (isPast(r.date, r.start, now)) { g.visits++; g.covers += r.party; if (!g.last || r.date > g.last) g.last = r.date; }
+      else if (!g.upcoming || cmpAt({ date: r.date, min: r.start }, { date: g.upcoming.date, min: g.upcoming.start }) < 0) g.upcoming = r;
+    }
+    m.set(r.guest, g);
+  }
+  return [...m.values()];
+}
+function viewGuests() {
+  const all = guestIndex();
+  let gs = UI.guestQ ? all.filter(g => g.name.toLowerCase().includes(UI.guestQ.toLowerCase())) : all;
+  gs = gs.sort((a, b) => b.visits - a.visits || (b.last || "").localeCompare(a.last || "") || a.name.localeCompare(b.name));
+  return `<div class="page-h"><div><h1>Guests</h1><p>${all.length} guests since 1 September · ${all.filter(g => g.visits >= 5).length} regulars with 5 visits or more</p></div></div>
+  <div class="toolbar"><input class="input" style="width:280px" placeholder="Search a guest" value="${esc(UI.guestQ)}" data-input="guestQ"></div>
+  <article class="card flush"><table class="data"><thead><tr><th>Guest</th><th class="num">Visits</th><th class="num">Guests brought</th><th>Last visit</th><th>Next booking</th><th>Usually books via</th></tr></thead><tbody>
+  ${gs.slice(0, 80).map(g => `<tr class="click" data-act="guest" data-g="${esc(g.name)}"><td><b>${esc(g.name)}</b>${g.visits >= 5 ? ` <span class="tag">Regular</span>` : ""}</td><td class="num">${g.visits}</td><td class="num">${g.covers}</td><td>${g.last ? fmtShort(g.last) : "—"}</td><td>${g.upcoming ? `${fmtShort(g.upcoming.date)} · ${hm(g.upcoming.start)}` : "—"}</td><td>${g.agent + g.website ? src(g.agent >= g.website ? "agent" : "website") : "—"}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">No guest matches.</td></tr>`}
+  </tbody></table></article>${gs.length > 80 ? `<p class="faint" style="margin:0">Showing 80 of ${gs.length} guests. Search to find someone.</p>` : ""}`;
+}
+
+let hoursDraft = null;
+function validateHours(svcs) {
+  for (const s of svcs) if (s.end - s.start < 60) return `${s.name} must last at least one hour.`;
+  const o = [...svcs].sort((a, b) => a.start - b.start);
+  for (let i = 1; i < o.length; i++) if (o[i].start < o[i - 1].end) return `${o[i - 1].name} and ${o[i].name} overlap.`;
+  return "";
+}
+function viewHours() {
+  hoursDraft = hoursDraft || S.services.map(s => ({ ...s }));
+  const times = []; for (let m = 600; m <= 1410; m += 30) times.push(m);
+  const sel = (i, f) => `<select class="input" data-hours="${i}" data-f="${f}" aria-label="${hoursDraft[i].name} ${f === "start" ? "opens" : "closes"}">${times.map(m => `<option value="${m}" ${hoursDraft[i][f] === m ? "selected" : ""}>${hm(m)}</option>`).join("")}</select>`;
+  const err = validateHours(hoursDraft), dirty = JSON.stringify(hoursDraft) !== JSON.stringify(S.services);
+  return `<div class="page-h"><div><h1>Opening hours</h1><p>Open every day. Guests can start a booking every 30 minutes until one hour before closing.</p></div></div>
+  <section class="cards r1">
+    <article class="card"><div class="form">
+      ${hoursDraft.map((s, i) => `<div class="field"><span>${s.name} · opens, closes</span><div class="row2">${sel(i, "start")}${sel(i, "end")}</div>
+        <div class="slots">${startsOf(s).map(m => `<span class="chip">${hm(m)}</span>`).join("") || `<span class="faint">No start time</span>`}</div></div>`).join("")}
+      ${err ? `<div class="err">${err}</div>` : ""}
+      <div class="note">Changing your hours never moves or cancels a booking. Your agent and your website offer the new times right away.</div>
+      <div class="actions"><button class="btn pri" data-act="hours-save" ${err || !dirty ? "disabled" : ""}>Save hours</button>${dirty ? `<button class="btn" data-act="hours-reset">Discard changes</button>` : ""}</div>
+    </div></article>
+    <article class="card"><div class="ch">Next 7 days</div>
+      <table class="data" style="margin-top:8px"><thead><tr><th>Day</th>${S.services.map(s => `<th>${s.name}</th>`).join("")}</tr></thead><tbody>${[...Array(7)].map((_, i) => addDays(TODAY, i)).map(d => `<tr><td>${d === TODAY ? "<b>Today</b>" : fmtShort(d)}</td>${S.services.map(s => `<td class="muted">${hm(s.start)}–${hm(s.end)}</td>`).join("")}</tr>`).join("")}</tbody></table>
+    </article>
+  </section>`;
+}
+
+function viewFloor() {
+  const d = UI.floorDate, m = UI.floorTime;
+  const occ = l => S.reservations.find(r => r.status === "confirmed" && r.date === d && r.table === l && r.start <= m && m < r.start + S.slotLen);
+  const busy = S.tables.filter(t => occ(t.label)).length;
+  return `<div class="page-h"><div><h1>Floor plan</h1><p>${S.tables.length} tables · ${seatsTotal(S)} seats · a booking keeps its table for ${S.slotLen / 60} hours</p></div></div>
+  <div class="toolbar"><span class="muted">Show the room</span>
+    <span class="datenav"><button data-act="floor-day" data-n="-1" aria-label="Previous day">${ic("left", 15)}</button><b>${d === TODAY ? "Today · " : ""}${fmtShort(d)}</b><button data-act="floor-day" data-n="1" aria-label="Next day">${ic("right", 15)}</button></span>
+    <span class="seg">${bookableStarts(S).map(x => `<button aria-pressed="${x === m}" data-act="floor-time" data-v="${x}">${hm(x)}</button>`).join("")}</span>
+    <span class="muted" style="margin-left:auto">${busy} of ${S.tables.length} tables taken at ${hm(m)}</span></div>
+  <div class="tiles">${S.tables.map(t => { const r = occ(t.label); return `<button class="tile${r ? " busy" : ""}" data-act="${r ? "res" : "table"}" data-id="${r ? r.id : ""}" data-l="${t.label}">
+      <span class="lab">${t.label}<small>${t.seats} seats</small></span><span class="seats">${[...Array(t.seats)].map((_, i) => `<i class="${r && i < r.party ? "f" : ""}"></i>`).join("")}</span>
+      <span class="st">${r ? `${esc(r.guest)} · ${r.party} · ${hm(r.start)}–${hm(r.start + S.slotLen)}` : "Free"}</span></button>`; }).join("")}
+    <button class="tile add" data-act="table-add">${ic("plus", 16)} Add a table</button></div>
+  <p class="faint" style="margin:0;font-size:12.5px">Click a free table to change its seats. Click a taken table to open its booking.</p>`;
+}
+
+function viewRules() {
+  const big = Math.max(...S.tables.map(t => t.seats));
+  const up = S.blocked.filter(b => !isPast(b.date, b.start, nowMin())).sort((a, b) => cmpAt({ date: a.date, min: a.start }, { date: b.date, min: b.start }));
+  return `<div class="page-h"><div><h1>Booking rules</h1><p>What your agent and your website can book for you.</p></div></div>
+  <section class="cards r1">
+    <article class="card">
+      <div class="setrow"><div class="lbl"><b>Largest group</b><small>Bigger groups are sent to your booking page.${S.maxParty > big ? ` Your largest table seats ${big}.` : ""}</small></div>
+        <span class="stepper"><button data-act="maxp" data-n="-1" aria-label="Decrease">−</button><b>${S.maxParty}</b><button data-act="maxp" data-n="1" aria-label="Increase">+</button></span></div>
+      <div class="setrow"><div class="lbl"><b>Table time</b><small>Each booking keeps its table for this long.</small></div><b>${S.slotLen / 60} hours</b></div>
+      <div class="setrow"><div class="lbl"><b>Start times</b><small>Every 30 minutes, last seating one hour before closing.</small></div><span class="muted" style="text-align:right">${S.services.map(s => startsOf(s).map(hm).join(" · ")).join("<br>")}</span></div>
+      <div class="setrow"><div class="lbl"><b>Table choice</b><small>Each booking gets the smallest free table that fits the group.</small></div></div>
+    </article>
+    <article class="card">
+      <div class="ch">Blocked times<span class="x"><button class="btn sm" data-act="block-dialog">${ic("plus", 14)}Block a time</button></span></div>
+      <div class="list">${up.map(b => `<div class="r" style="grid-template-columns:110px 60px 1fr 70px"><span>${b.date === TODAY ? "Today" : fmtShort(b.date)}</span><span class="t">${hm(b.start)}</span><span class="muted">${esc(b.reason || "")}</span><button class="link" style="justify-self:end" data-act="unblock" data-d="${b.date}" data-m="${b.start}">Reopen</button></div>`).join("") || `<div class="empty">Nothing is blocked.</div>`}</div>
+      <p class="faint" style="margin:12px 0 0;font-size:12.5px">Blocking a time never cancels the bookings already there.</p>
+    </article>
+  </section>`;
+}
+
+function viewSettings() {
+  const R = S.restaurant, TAGS = ["vegetarian", "vegan", "gluten-free", "halal", "kosher", "terrace", "kid-friendly"];
+  return `<div class="page-h"><div><h1>Settings</h1><p>Your restaurant as guests see it.</p></div></div>
+  <section class="cards r1">
+    <article class="card"><div class="form">
+      <div class="row2"><label class="field"><span>Name</span><input class="input" value="${esc(R.name)}" data-set="name"></label><label class="field"><span>Kind of place</span><input class="input" value="${esc(R.cuisine)}" data-set="cuisine"></label></div>
+      <label class="field"><span>Address</span><input class="input" value="${esc(R.address)}" data-set="address"></label>
+      <div class="row2"><label class="field"><span>Website</span><input class="input" value="${esc(R.website)}" disabled></label><label class="field"><span>Booking page</span><input class="input" value="${esc(R.bookingPage)}" disabled><small class="help">Where guests go when a booking can’t be made online.</small></label></div>
+      <div class="field"><span>Price level</span><span class="seg" style="width:max-content">${["€", "€€", "€€€", "€€€€"].map(p => `<button aria-pressed="${R.price === p}" data-act="price" data-v="${p}">${p}</button>`).join("")}</span></div>
+      <div class="field"><span>Good to know</span><div class="chips" style="margin:0">${TAGS.map(t => `<button class="chip${R.tags.includes(t) ? " on" : ""}" data-act="tag" data-v="${t}">${t}</button>`).join("")}</div><small class="help">Guests looking for these find you.</small></div>
+    </div></article>
+    <article class="card">
+      <div class="ch">Demo</div>
+      <div class="setrow"><div class="lbl"><b>Live bookings</b><small>New bookings arrive during the demo, as on a real evening.</small></div><button class="switch" role="switch" aria-checked="${S.settings.live}" aria-label="Live bookings" data-act="live"></button></div>
+      <div class="setrow"><div class="lbl"><b>Reset the demo</b><small>Back to Saturday 31 October at 18:05 with the original data.</small></div><button class="btn danger sm" data-act="reset">Reset</button></div>
+    </article>
+  </section>`;
+}
+
+function viewAssistant() {
+  return `<div class="chat-page"><div class="th" id="thread-page"></div><div class="sugg" id="sugg-page"></div>
+    <form class="comp" data-chat><textarea rows="1" placeholder="Ask anything about your restaurant…"></textarea><button class="s" aria-label="Send"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></form></div>`;
+}
+
+/* ---------------- Overlays ---------------- */
+const root = () => document.getElementById("overlay-root");
+function closeOverlay() { root().innerHTML = ""; }
+function modal(title, body, foot, cls = "") { root().innerHTML = `<div class="overlay" data-act="overlay"><div class="modal ${cls}" role="dialog" aria-label="${esc(title || "Search")}">${title ? `<div class="mh">${title}<button class="x" data-act="close" aria-label="Close">${ic("x", 16)}</button></div>` : ""}${body}${foot ? `<div class="mf">${foot}</div>` : ""}</div></div>`; }
+function sheet(title, body, foot) { root().innerHTML = `<div class="overlay sheet-o" data-act="overlay"><div class="sheet" role="dialog" aria-label="${esc(title)}"><div class="mh">${title}<button class="x" data-act="close" aria-label="Close">${ic("x", 16)}</button></div><div class="mb">${body}</div>${foot ? `<div class="mf">${foot}</div>` : ""}</div></div>`; }
+
+function openRes(id, msg = "") {
+  const r = byId(id), now = nowMin(), live = r.status === "confirmed" && !isPast(r.date, r.start, now);
+  const alts = live ? bookableStarts(S).filter(m => m !== r.start).map(m => ({ m, c: checkSlot(S, r.date, m, r.party, now, r.id) })).filter(x => x.c.table) : [];
+  const t = S.tables.find(x => x.label === r.table);
+  sheet(r.id, `<h3>${esc(r.guest)}</h3><p class="muted" style="margin:0 0 18px">${fmtLong(r.date)} · ${hm(r.start)}–${hm(r.start + S.slotLen)}</p>
+    <dl class="kv"><dt>Guests</dt><dd>${r.party}</dd><dt>Table</dt><dd>${r.table}${t ? ` · ${t.seats} seats` : ""}</dd>
+    <dt>Service</dt><dd>${serviceName(r.start)}</dd><dt>Booked via</dt><dd>${src(r.source)}</dd>
+    <dt>Booked</dt><dd>${fmtShort(r.at.date)} at ${hm(r.at.min)}</dd>
+    <dt>Status</dt><dd>${statusTag(r)}${r.status === "cancelled" ? ` <span class="faint">by ${r.cancelledBy === "guest" ? "the guest" : "you"}, ${fmtShort(r.cancelledAt.date)} ${hm(r.cancelledAt.min)}</span>` : ""}</dd></dl>
+    ${r.status === "cancelled" && r.cancelledBy === "restaurant" ? `<div class="note" style="margin-top:16px">${esc(r.guest)} was told the restaurant cancelled.</div>` : ""}
+    ${live ? `<h4>Move to another time</h4><div class="slots">${alts.map(x => `<button class="chip" data-act="move" data-id="${r.id}" data-m="${x.m}">${hm(x.m)} · ${x.c.table}</button>`).join("") || `<span class="faint">No other time is free for ${r.party} that day.</span>`}</div>` : ""}
+    ${msg ? `<p class="err" style="margin-top:12px">${msg}</p>` : ""}
+    <h4>Other bookings by ${esc(r.guest)}</h4>${guestHistory(r.guest, r.id)}`,
+    live ? `<button class="btn danger" data-act="cancel-ask" data-id="${r.id}">Cancel booking</button><button class="btn" data-act="close">Close</button>` : `<button class="btn" data-act="close">Close</button>`);
+}
+function guestHistory(name, except) {
+  const list = S.reservations.filter(r => r.guest === name && r.id !== except).sort((a, b) => cmpAt({ date: b.date, min: b.start }, { date: a.date, min: a.start }));
+  return list.length ? `<div class="list">${list.map(r => `<button class="r" style="grid-template-columns:96px 46px 1fr 78px" data-act="res" data-id="${r.id}"><span>${fmtShort(r.date)}</span><span class="t">${hm(r.start)}</span><span class="p">${r.party} guests · ${r.table}${r.status === "cancelled" ? " · cancelled" : ""}</span>${src(r.source)}</button>`).join("")}</div>` : `<p class="faint" style="margin:0">None.</p>`;
+}
+function openGuest(name) {
+  const g = guestIndex().find(x => x.name === name);
+  sheet("Guest", `<h3>${esc(name)}</h3><p class="muted" style="margin:0 0 18px">${g.visits} visit${g.visits === 1 ? "" : "s"} · ${g.covers} guests brought${g.last ? ` · last visit ${fmtShort(g.last)}` : ""}</p>
+    ${g.upcoming ? `<div class="note">Next booking: <b>${fmtLong(g.upcoming.date)} at ${hm(g.upcoming.start)}</b>, ${g.upcoming.party} guests, ${g.upcoming.table}.</div>` : ""}
+    <h4>All bookings</h4>${guestHistory(name, null)}`, `<button class="btn" data-act="close">Close</button>`);
+}
+function blockDialog(date = TODAY, start = null, err = "") {
+  const dates = [...Array(14)].map((_, i) => addDays(TODAY, i));
+  const opts = bookableStarts(S).filter(m => !isPast(date, m, nowMin()));
+  if (start == null || !opts.includes(start)) start = opts.find(m => !isBlocked(S, date, m)) ?? null;
+  const n = start == null ? 0 : confirmedOn(S, date).filter(r => r.start === start).length;
+  modal("Block a time", `<div class="mb"><div class="form">
+    <div class="row2"><label class="field"><span>Day</span><select class="input" data-blk="date">${dates.map(d => `<option value="${d}" ${d === date ? "selected" : ""}>${d === TODAY ? "Today" : fmtShort(d)}</option>`).join("")}</select></label>
+    <label class="field"><span>Start time</span><select class="input" data-blk="start">${opts.map(m => `<option value="${m}" ${m === start ? "selected" : ""} ${isBlocked(S, date, m) ? "disabled" : ""}>${hm(m)}${isBlocked(S, date, m) ? " · blocked" : ""}</option>`).join("")}</select></label></div>
+    <div class="note">${start == null ? "Every remaining time that day is already blocked or past." : `Guests won’t be offered ${hm(start)} anymore. ${n ? `The ${n} booking${n > 1 ? "s" : ""} already at that time stay${n > 1 ? "" : "s"}.` : "Nobody is booked at that time."}`}</div>
+    ${err ? `<div class="err">${err}</div>` : ""}</div></div>`,
+    `<button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="block-save" ${start == null ? "disabled" : ""}>Block ${start == null ? "" : hm(start)}</button>`);
+}
+function upcomingMax(label) { return Math.max(0, ...S.reservations.filter(r => r.table === label && r.status === "confirmed" && !isPast(r.date, r.start, nowMin())).map(r => r.party)); }
+function openTable(label, err = "") {
+  const t = S.tables.find(x => x.label === label), used = S.reservations.some(r => r.table === label), need = upcomingMax(label);
+  modal(`Table ${label}`, `<div class="mb"><div class="form">
+    <div class="setrow" style="padding-top:0"><div class="lbl"><b>Seats</b><small>${need ? `Upcoming bookings on ${label} need at least ${need}.` : "No upcoming booking on this table."}</small></div>
+    <span class="stepper"><button data-act="seats" data-l="${label}" data-n="-1" aria-label="Fewer seats">−</button><b>${t.seats}</b><button data-act="seats" data-l="${label}" data-n="1" aria-label="More seats">+</button></span></div>
+    ${err ? `<div class="err">${err}</div>` : ""}
+    ${used ? `<div class="note">${label} can’t be removed because bookings refer to it. You can still change its seats.</div>` : ""}</div></div>`,
+    `${used ? "" : `<button class="btn danger" data-act="table-remove" data-l="${label}" style="margin-right:auto">Remove table</button>`}<button class="btn pri" data-act="close">Done</button>`);
+}
+
+/* Search (⌘K) */
+let palSel = 0, palCur = [];
+function openPalette() { modal("", `<input placeholder="Search a guest, a reference (R-…), a page…" data-pal aria-label="Search"><div class="res" id="pal-res"></div>`, "", "palette"); $("[data-pal]").focus(); palSel = 0; palRender(""); }
+function palItems(q) {
+  q = q.trim().toLowerCase();
+  const out = [...ROUTES, ["settings", "Settings"]].filter(r => !q || r[1].toLowerCase().includes(q)).map(r => ({ grp: "Pages", label: r[1], sub: "", act: () => go(r[0]) }));
+  if (q) {
+    const id = q.match(/^r-?(\d{1,4})$/);
+    S.reservations.filter(r => id ? r.id === "R-" + id[1].padStart(4, "0") : r.guest.toLowerCase().includes(q))
+      .sort((a, b) => cmpAt({ date: b.date, min: b.start }, { date: a.date, min: a.start })).slice(0, 6)
+      .forEach(r => out.push({ grp: "Bookings", label: `${r.id} · ${r.guest}`, sub: `${fmtShort(r.date)} ${hm(r.start)}${r.status === "cancelled" ? " · cancelled" : ""}`, act: () => openRes(r.id) }));
+    [...new Set(S.reservations.map(r => r.guest))].filter(g => g.toLowerCase().includes(q)).slice(0, 5).forEach(g => out.push({ grp: "Guests", label: g, sub: "", act: () => openGuest(g) }));
+  }
+  return out;
+}
+function palRender(q) {
+  palCur = palItems(q); palSel = Math.min(palSel, Math.max(palCur.length - 1, 0)); let g = "";
+  $("#pal-res").innerHTML = palCur.map((x, i) => (x.grp !== g ? `<div class="grp">${(g = x.grp)}</div>` : "") + `<button class="${i === palSel ? "sel" : ""}" data-act="pal" data-i="${i}">${esc(x.label)}<small>${esc(x.sub)}</small></button>`).join("") || `<div class="empty">No result.</div>`;
+}
+function palGo(i) { const it = palCur[i]; if (!it) return; closeOverlay(); it.act(); }
+
+function toast(kind, text) { const el = document.createElement("div"); el.className = "toast"; el.innerHTML = `<b>${kind}</b>${text}`; $("#toasts").appendChild(el); setTimeout(() => el.remove(), 6000); }
+
+/* Notifications */
+function notifs() { return S.events.filter(e => (e.type === "created" || (e.type === "cancelled" && e.by === "guest")) && cmpAt(e.at, nowAt()) <= 0).sort((a, b) => cmpAt(b.at, a.at)).slice(0, 8); }
+function renderBell() {
+  const pop = $("#bell-pop");
+  $("#bell-dot").hidden = pop.hidden ? !notifs().some(e => cmpAt(e.at, UI.bellSeen) > 0) : true;
+  if (pop.hidden) return;
+  pop.innerHTML = `<h4>Notifications</h4>${notifs().map(e => { const r = byId(e.rid); return `<button class="it${cmpAt(e.at, UI.bellSeenPrev || UI.bellSeen) > 0 ? " new" : ""}" data-act="res" data-id="${r.id}">${e.type === "created" ? "New booking" : "Cancelled by the guest"} · ${SRC[r.source]}<br>${esc(r.guest)} · ${r.party} guests · ${r.date === TODAY ? "today" : fmtShort(r.date)} ${hm(r.start)}<small>${whenAt(e.at)}</small></button>`; }).join("")}`;
+}
+
+/* ---------------- Router ---------------- */
+function go(r) { location.hash = "#/" + r; }
+function goDay(d) { UI.resDate = d; UI.resSvc = "all"; UI.resQ = ""; closeOverlay(); if (UI.route === "reservations") refresh(); else go("reservations"); }
+function refresh() {
+  const R = S.restaurant;
+  $("#ws-name").textContent = R.name; $("#ws-sub").textContent = `${R.cuisine.split(" ")[0]} · ${R.city}`;
+  document.title = `${R.name} · ${(ROUTES.find(x => x[0] === UI.route) || ["", "Settings"])[1]}`;
+  let sec = "";
+  $("#nav").innerHTML = ROUTES.map(([k, l, i, s]) => (s && s !== sec ? `<div class="navsec">${(sec = s)}</div>` : "") + `<a href="#/${k}" class="${UI.route === k ? "on" : ""}">${ic(i)}<span>${l}</span></a>`).join("");
+  $("#nav-foot").innerHTML = `<a href="#/settings" class="${UI.route === "settings" ? "on" : ""}">${ic("gear")}<span>Settings</span></a>`;
+  const v = { home: viewHome, assistant: viewAssistant, reservations: viewReservations, guests: viewGuests, hours: viewHours, floor: viewFloor, rules: viewRules, settings: viewSettings }[UI.route] || viewHome;
+  const view = $("#view"), ae = document.activeElement, focus = ae && ae.dataset && ae.dataset.input, caret = focus ? ae.selectionStart : 0, scroll = view.scrollTop;
+  view.innerHTML = v(); view.classList.toggle("chat", UI.route === "assistant"); view.scrollTop = scroll;
+  if (focus) { const el = view.querySelector(`[data-input="${focus}"]`); if (el) { el.focus(); el.setSelectionRange(caret, caret); } }
+  $("#app").classList.toggle("no-drawer", !UI.drawer || UI.route === "assistant");
+  $("#clock").textContent = `${WD[dow(TODAY)].slice(0, 3)} ${fmtDM(TODAY)} · ${hm(nowMin())}`;
+  drawCovers(); renderThreads(); renderBell();
+}
+function route() { UI.route = (location.hash.match(/^#\/(\w+)/) || [, "home"])[1]; closeOverlay(); $("#view").scrollTop = 0; refresh(); $("#view").scrollTop = 0; }
+window.addEventListener("hashchange", route);
+
+/* ---------------- Events ---------------- */
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-act]");
+  if (!el || el.dataset.act !== "bell") { $("#bell-pop").hidden = true; renderBell(); }
+  if (!el) return;
+  const a = el.dataset.act, d = el.dataset;
+  switch (a) {
+    case "overlay": if (e.target === el) closeOverlay(); break;
+    case "close": closeOverlay(); break;
+    case "go": go(d.to); break;
+    case "go-day": goDay(d.d); break;
+    case "drawer-open": if (UI.route !== "assistant") { UI.drawer = true; refresh(); setTimeout(() => $("#drawer textarea").focus(), 0); } break;
+    case "drawer-close": UI.drawer = false; refresh(); break;
+    case "ask": ask(d.q); break;
+    case "covers-view": UI.coversView = d.v; refresh(); break;
+    case "res": openRes(d.id); break;
+    case "guest": openGuest(d.g); break;
+    case "res-day": UI.resDate = addDays(UI.resDate, +d.n); refresh(); break;
+    case "res-svc": UI.resSvc = d.v; refresh(); break;
+    case "res-src": UI.resSrc = d.v; refresh(); break;
+    case "res-view": UI.resView = d.v; refresh(); break;
+    case "res-cancelled": UI.resCancelled = el.checked; refresh(); break;
+    case "move": { const r = moveBooking(d.id, +d.m); refresh(); openRes(d.id, r.ok ? "" : r.message); if (r.ok) toast("Booking moved", `${d.id} · now at ${hm(+d.m)} on ${byId(d.id).table}`); break; }
+    case "cancel-ask": { const r = byId(d.id); modal("Cancel this booking?", `<div class="mb"><p style="margin:0">${r.id} · ${esc(r.guest)} · ${r.party} guests · ${fmtLong(r.date)} at ${hm(r.start)}.</p><p class="muted" style="margin-bottom:0">The guest will be told the restaurant cancelled.</p></div>`, `<button class="btn" data-act="res" data-id="${r.id}">Keep it</button><button class="btn pri" data-act="cancel-do" data-id="${r.id}">Cancel booking</button>`); break; }
+    case "cancel-do": { const r = cancelBooking(d.id); refresh(); openRes(d.id); if (r.ok) toast("Booking cancelled", `${d.id} · ${esc(r.r.guest)} will be told`); break; }
+    case "block-dialog": blockDialog(d.d || TODAY); break;
+    case "block-save": { const date = $("[data-blk=date]").value, m = +$("[data-blk=start]").value, r = blockSlot(date, m); if (!r.ok) { blockDialog(date, m, r.message); break; } closeOverlay(); refresh(); toast("Time blocked", `${hm(m)} ${dayLabel(date, m)}`); break; }
+    case "unblock": { const r = unblockSlot(d.d, +d.m); refresh(); if (r.ok) toast("Time reopened", `${hm(+d.m)} ${dayLabel(d.d, +d.m)}`); break; }
+    case "hours-save": { if (validateHours(hoursDraft)) break; S.services = hoursDraft.map(s => ({ ...s })); hoursDraft = null; logEvent({ type: "hours" }); refresh(); toast("Opening hours saved", S.services.map(s => `${s.name} ${hm(s.start)}–${hm(s.end)}`).join(" · ")); break; }
+    case "hours-reset": hoursDraft = null; refresh(); break;
+    case "floor-day": UI.floorDate = addDays(UI.floorDate, +d.n); refresh(); break;
+    case "floor-time": UI.floorTime = +d.v; refresh(); break;
+    case "table": openTable(d.l); break;
+    case "seats": {
+      const t = S.tables.find(x => x.label === d.l), n = t.seats + +d.n, need = upcomingMax(d.l);
+      if (n < 1 || n > 12) { openTable(d.l, "A table seats between 1 and 12 guests."); break; }
+      if (n < need) { openTable(d.l, `${d.l} has an upcoming booking for ${need}.`); break; }
+      t.seats = n; logEvent({ type: "tables", text: `${d.l} now seats ${n}` }); refresh(); openTable(d.l); break;
+    }
+    case "table-add": { const l = "T" + (Math.max(...S.tables.map(t => tnum(t.label))) + 1); S.tables.push({ label: l, seats: 2 }); logEvent({ type: "tables", text: `Table ${l} added, 2 seats` }); refresh(); openTable(l); break; }
+    case "table-remove": { S.tables = S.tables.filter(t => t.label !== d.l); logEvent({ type: "tables", text: `Table ${d.l} removed` }); closeOverlay(); refresh(); break; }
+    case "maxp": { if (setMaxParty(S.maxParty + +d.n).ok) refresh(); break; }
+    case "price": S.restaurant.price = d.v; refresh(); break;
+    case "tag": { const t = S.restaurant.tags, i = t.indexOf(d.v); i < 0 ? t.push(d.v) : t.splice(i, 1); refresh(); break; }
+    case "live": S.settings.live = !S.settings.live; refresh(); break;
+    case "reset": S = initialState(); T0 = Date.now(); liveT0 = Date.now(); liveIdx = 0; hoursDraft = null; seedThread(); UI.bellSeen = { date: TODAY, min: 17 * 60 + 30 }; UI.drawer = true; refresh(); toast("Demo reset", "Saturday 31 October, 18:05, original data"); break;
+    case "palette": openPalette(); break;
+    case "pal": palGo(+d.i); break;
+    case "bell": { const p = $("#bell-pop"); p.hidden = !p.hidden; if (!p.hidden) { UI.bellSeenPrev = UI.bellSeen; } renderBell(); if (!p.hidden) UI.bellSeen = nowAt(); break; }
+  }
+});
+document.addEventListener("input", e => {
+  const el = e.target;
+  if (el.dataset.input) { UI[el.dataset.input] = el.value; refresh(); }
+  if (el.dataset.pal !== undefined) { palSel = 0; palRender(el.value); }
+  if (el.dataset.set) { S.restaurant[el.dataset.set] = el.value; $("#ws-name").textContent = S.restaurant.name; $("#ws-sub").textContent = `${S.restaurant.cuisine.split(" ")[0]} · ${S.restaurant.city}`; }
+  if (el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+});
+document.addEventListener("change", e => {
+  const el = e.target;
+  if (el.dataset.hours) { hoursDraft[+el.dataset.hours][el.dataset.f] = +el.value; refresh(); }
+  if (el.dataset.blk) blockDialog($("[data-blk=date]").value, el.dataset.blk === "start" ? +el.value : null);
+});
+document.addEventListener("submit", e => {
+  if (!e.target.matches("[data-chat]")) return; e.preventDefault();
+  const ta = e.target.querySelector("textarea"); ask(ta.value); ta.value = ""; ta.style.height = "auto";
+});
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); return; }
+  if (e.key === "Escape") { closeOverlay(); $("#bell-pop").hidden = true; renderBell(); }
+  if (e.target.tagName === "TEXTAREA" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.target.form.requestSubmit(); }
+  if (e.target.dataset && e.target.dataset.pal !== undefined) {
+    if (e.key === "ArrowDown") { palSel = Math.min(palSel + 1, palCur.length - 1); palRender(e.target.value); e.preventDefault(); }
+    if (e.key === "ArrowUp") { palSel = Math.max(palSel - 1, 0); palRender(e.target.value); e.preventDefault(); }
+    if (e.key === "Enter") { e.preventDefault(); palGo(palSel); }
+  }
+});
+
+/* ---------------- Live demo bookings ---------------- */
+const LIVE = [
+  { after: 25, guest: "Nina Brunner", date: TODAY, start: 1230, party: 2, source: "agent" },
+  { after: 70, guest: "Hugo Lambert", date: addDays(TODAY, 1), start: 750, party: 4, source: "website" },
+  { after: 130, guest: "Elise Kieffer", date: TODAY, start: 1200, party: 2, source: "agent" },
+];
+let liveIdx = 0, liveT0 = Date.now();
+setInterval(() => {
+  $("#clock").textContent = `${WD[dow(TODAY)].slice(0, 3)} ${fmtDM(TODAY)} · ${hm(nowMin())}`;
+  const L = LIVE[liveIdx]; if (!L || !S.settings.live || (Date.now() - liveT0) / 1000 < L.after) return;
+  liveIdx++;
+  const r = newBooking(L.guest, L.date, L.start, L.party, L.source); if (!r) return;
+  thread.push({ role: "event", rid: r.id, kind: "created", at: r.at });
+  toast(`New booking · ${SRC[r.source]}`, `${esc(r.guest)} · ${r.party} guests · ${r.date === TODAY ? "tonight" : fmtShort(r.date)} ${hm(r.start)} · ${r.table}`);
+  if (!document.activeElement || !document.activeElement.dataset || !document.activeElement.dataset.input) refresh();
+}, 1000);
+
+const problems = selfTest(S, NOW0);
+if (problems.length) console.error("Demo data problems:", problems); else console.info("Demo data: every invariant holds.");
+seedThread();
+route();
+</script>
+</body>
+</html>

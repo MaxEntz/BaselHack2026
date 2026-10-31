@@ -78,6 +78,7 @@ packages/
 └── merchant_platform/  FastAPI /chat + /events, platform assistant
 web/                    merchant chat UI (Vite + React + TS)
 sites/                  demo restaurant websites: le-petit-zinc (crawl target), 2 one-page sites
+sites/client-dashboard/ static merchant dashboard demo (fake data, open index.html directly)
 migrations/             Alembic (public schema only; merchant schemas come from provisioning)
 scripts/                seed, demo reset, outage switch
 tests/{unit,integration,e2e,fixtures}/
