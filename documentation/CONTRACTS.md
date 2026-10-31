@@ -82,7 +82,12 @@ live booking also appears in tonight's reservations.
   the `ChatEvent` stream above, always ending with exactly one `done`. A failing turn
   sends a generic `error` (details only in the logs) before `done`. `409` while the same
   session is still answering. A `null` session is the single POC merchant session.
-- `GET /events?merchant=<slug>`: `LiveEvent` stream, with an SSE comment every 15 s.
+- `GET /events?merchant=<slug>`: `LiveEvent` stream, with an SSE comment every 15 s. Fed
+  by `LISTEN reservations`: every committed INSERT/UPDATE on a registered merchant's
+  `reservations` becomes `new_booking`, `updated` or `cancelled`, re-read from the
+  merchant's schema. An UPDATE that changes nothing (an idempotent replay) is skipped by
+  the `reservations_skip_noop` trigger and sends nothing. The listener reconnects after 1, 2, 4 then 10 s; each open stream
+  keeps at most 100 pending events (oldest dropped).
 - `POST /public/{slug}/reservations` (the showcase site's form) with `{starts_at,
   party_size, guest_name, idempotency_key}`: `201` + `{"reservation": Reservation}`
   booked `via="website"`. Errors use the `ToolError` body with `404` (`not_found`), `409`

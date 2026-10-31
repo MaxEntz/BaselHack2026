@@ -179,6 +179,16 @@ event.listen(
         "FOR EACH ROW EXECUTE FUNCTION public.notify_reservation()"
     ),
 )
+# An UPDATE that changes nothing (an idempotent replay) is skipped before it happens, so it
+# never shows the merchant another "Booking updated" card.
+event.listen(
+    reservations_t,
+    "after_create",
+    DDL(  # type: ignore[no-untyped-call]
+        "CREATE TRIGGER reservations_skip_noop BEFORE UPDATE ON %(fullname)s "
+        "FOR EACH ROW EXECUTE FUNCTION suppress_redundant_updates_trigger()"
+    ),
+)
 
 
 async def next_reservation_id(conn: AsyncConnection) -> str:
