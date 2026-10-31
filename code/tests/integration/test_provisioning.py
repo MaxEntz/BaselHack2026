@@ -24,6 +24,7 @@ from agent.provisioning import (
     provision,
     set_status,
 )
+from core.config import get_settings
 from core.db import merchant_conn, merchants_t, policy_t, reservations_t, schema_for, tables_t
 from core.errors import InvalidInput, NotFound
 from core.models import MerchantProfile, TableSpec
@@ -43,9 +44,9 @@ def profile(profile_data: dict[str, Any]) -> MerchantProfile:
 async def provisioned(
     engine: AsyncEngine, profile: MerchantProfile
 ) -> AsyncIterator[MerchantRecord]:
-    record = await provision(engine, profile)
+    record = await provision(profile, engine=engine)
     yield record
-    await deprovision(engine, profile.slug)
+    await deprovision(profile.slug, engine=engine)
 
 
 async def schema_exists(engine: AsyncEngine, slug: str) -> bool:
@@ -107,24 +108,24 @@ async def test_deploy_and_set_status_switch_the_registry_status(
             )
         return value
 
-    await deploy(engine, profile.slug)
+    await deploy(profile.slug, engine=engine)
     assert await status() == "live"
-    await set_status(engine, profile.slug, "down")
+    await set_status(profile.slug, "down", engine=engine)
     assert await status() == "down"
-    await set_status(engine, profile.slug, "live")
+    await set_status(profile.slug, "live", engine=engine)
     assert await status() == "live"
 
 
 async def test_status_of_an_unknown_merchant_raises_not_found(engine: AsyncEngine) -> None:
     with pytest.raises(NotFound, match="no-such-merchant"):
-        await deploy(engine, "no-such-merchant")
+        await deploy("no-such-merchant", engine=engine)
 
 
 async def test_set_status_refuses_an_unknown_status(
     engine: AsyncEngine, profile: MerchantProfile, provisioned: MerchantRecord
 ) -> None:
     with pytest.raises(InvalidInput, match="closed"):
-        await set_status(engine, profile.slug, "closed")  # type: ignore[arg-type]
+        await set_status(profile.slug, "closed", engine=engine)  # type: ignore[arg-type]
 
 
 async def test_provisioned_schema_rejects_overlapping_bookings(
@@ -199,7 +200,7 @@ async def test_failure_midway_leaves_nothing_behind(
     engine: AsyncEngine, profile: MerchantProfile, update: dict[str, Any]
 ) -> None:
     with pytest.raises(DBAPIError):
-        await provision(engine, profile.model_copy(update=update))
+        await provision(profile.model_copy(update=update), engine=engine)
 
     assert not await schema_exists(engine, profile.slug)
     assert await registry_rows(engine, profile.slug) == 0
@@ -209,7 +210,7 @@ async def test_provisioning_the_same_slug_twice_is_refused(
     engine: AsyncEngine, profile: MerchantProfile, provisioned: MerchantRecord
 ) -> None:
     with pytest.raises(SlugTaken, match="already provisioned"):
-        await provision(engine, profile)
+        await provision(profile, engine=engine)
 
     assert await registry_rows(engine, profile.slug) == 1
 
@@ -222,7 +223,7 @@ async def test_a_leftover_schema_counts_as_taken(
         await conn.execute(CreateSchema(schema))
     try:
         with pytest.raises(SlugTaken):
-            await provision(engine, profile)
+            await provision(profile, engine=engine)
     finally:
         async with engine.begin() as conn:
             await conn.execute(DropSchema(schema, cascade=True))
@@ -232,9 +233,9 @@ async def test_concurrent_provisioning_of_one_slug_lets_exactly_one_win(
     engine: AsyncEngine, profile: MerchantProfile
 ) -> None:
     results = await asyncio.gather(
-        provision(engine, profile), provision(engine, profile), return_exceptions=True
+        provision(profile, engine=engine), provision(profile, engine=engine), return_exceptions=True
     )
-    await deprovision(engine, profile.slug)
+    await deprovision(profile.slug, engine=engine)
 
     assert sorted(type(result).__name__ for result in results) == ["MerchantRecord", "SlugTaken"]
 
@@ -242,9 +243,35 @@ async def test_concurrent_provisioning_of_one_slug_lets_exactly_one_win(
 async def test_deprovision_removes_schema_and_registry_row(
     engine: AsyncEngine, profile: MerchantProfile
 ) -> None:
-    await provision(engine, profile)
+    await provision(profile, engine=engine)
 
-    assert await deprovision(engine, profile.slug) is True
+    assert await deprovision(profile.slug, engine=engine) is True
     assert not await schema_exists(engine, profile.slug)
     assert await registry_rows(engine, profile.slug) == 0
-    assert await deprovision(engine, profile.slug) is False
+    assert await deprovision(profile.slug, engine=engine) is False
+
+
+async def test_without_an_engine_the_functions_use_database_url(
+    engine: AsyncEngine,
+    database_url: str,
+    profile: MerchantProfile,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # How the #10 scripts call them: no engine, DATABASE_URL from the environment.
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    try:
+        await provision(profile)
+        await deploy(profile.slug)
+        await set_status(profile.slug, "down")
+        async with engine.connect() as conn:
+            status = await conn.scalar(
+                select(merchants_t.c.status).where(merchants_t.c.slug == profile.slug)
+            )
+        removed = await deprovision(profile.slug)
+    finally:
+        get_settings.cache_clear()
+
+    assert status == "down"
+    assert removed is True
+    assert await registry_rows(engine, profile.slug) == 0

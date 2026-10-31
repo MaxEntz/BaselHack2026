@@ -2,8 +2,13 @@
 
 Deterministic code driven by the validated profile and `templates/restaurant.json`: the LLM
 only fills the profile, it never produces SQL, code or tool definitions (AGENTS.md §7.1).
+
+The database functions take an optional `engine`: long-running processes pass their own;
+scripts omit it and get a short-lived engine on DATABASE_URL, disposed after the call.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from importlib.resources import files
 from importlib.resources.abc import Traversable
@@ -17,7 +22,15 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.schema import CreateSchema, DropSchema
 
-from core.db import merchant_conn, merchant_metadata, merchants_t, policy_t, schema_for, tables_t
+from core.db import (
+    make_engine,
+    merchant_conn,
+    merchant_metadata,
+    merchants_t,
+    policy_t,
+    schema_for,
+    tables_t,
+)
 from core.errors import InvalidInput, NotFound
 from core.models import GeneratedTool, MerchantProfile, PriceLevel, Services, TableSpec
 
@@ -159,7 +172,22 @@ def _registry_row(profile: MerchantProfile) -> dict[str, Any]:
     }
 
 
-async def provision(engine: AsyncEngine, profile: MerchantProfile) -> MerchantRecord:
+@asynccontextmanager
+async def _engine(engine: AsyncEngine | None) -> AsyncIterator[AsyncEngine]:
+    """The caller's engine, or a short-lived one on DATABASE_URL, disposed afterwards."""
+    if engine is not None:
+        yield engine
+        return
+    owned = make_engine()
+    try:
+        yield owned
+    finally:
+        await owned.dispose()
+
+
+async def provision(
+    profile: MerchantProfile, *, engine: AsyncEngine | None = None
+) -> MerchantRecord:
     """Create the merchant's schema, floor plan, policy and registry row, all or nothing.
 
     Postgres DDL is transactional, so a failure at any step leaves nothing behind. The
@@ -171,7 +199,7 @@ async def provision(engine: AsyncEngine, profile: MerchantProfile) -> MerchantRe
     tables, and `update_policy` / `update_tables` must update it too (#9).
     """
     schema = schema_for(profile.slug)
-    async with merchant_conn(engine, profile.slug) as conn:
+    async with _engine(engine) as db, merchant_conn(db, profile.slug) as conn:
         existing = await conn.scalar(
             select(merchants_t.c.id).where(merchants_t.c.slug == profile.slug)
         )
@@ -201,11 +229,13 @@ async def provision(engine: AsyncEngine, profile: MerchantProfile) -> MerchantRe
     return MerchantRecord(id=merchant_id, slug=profile.slug, schema=schema, status="building")
 
 
-async def set_status(engine: AsyncEngine, slug: str, status: SwitchableStatus) -> None:
+async def set_status(
+    slug: str, status: SwitchableStatus, *, engine: AsyncEngine | None = None
+) -> None:
     """Switch a provisioned merchant on (`live`) or off (`down`: the demo's outage switch)."""
     if status not in get_args(SwitchableStatus):
         raise InvalidInput(f"Status must be one of {get_args(SwitchableStatus)}, got {status!r}")
-    async with engine.begin() as conn:
+    async with _engine(engine) as db, db.begin() as conn:
         result = await conn.execute(
             update(merchants_t).where(merchants_t.c.slug == slug).values(status=status)
         )
@@ -213,18 +243,18 @@ async def set_status(engine: AsyncEngine, slug: str, status: SwitchableStatus) -
         raise NotFound(f"Unknown merchant: {slug!r}")
 
 
-async def deploy(engine: AsyncEngine, slug: str) -> None:
+async def deploy(slug: str, *, engine: AsyncEngine | None = None) -> None:
     """Last builder step: the merchant becomes discoverable by the gateway."""
-    await set_status(engine, slug, "live")
+    await set_status(slug, "live", engine=engine)
 
 
-async def deprovision(engine: AsyncEngine, slug: str) -> bool:
+async def deprovision(slug: str, *, engine: AsyncEngine | None = None) -> bool:
     """Drop the merchant's schema and registry row (its guest notices cascade).
 
     Idempotent, for `demo-reset` and tests: returns False when there was nothing to remove.
     """
     schema = schema_for(slug)
-    async with engine.begin() as conn:
+    async with _engine(engine) as db, db.begin() as conn:
         had_schema = await conn.run_sync(lambda sync_conn: inspect(sync_conn).has_schema(schema))
         await conn.execute(DropSchema(schema, cascade=True, if_exists=True))
         result = await conn.execute(delete(merchants_t).where(merchants_t.c.slug == slug))
