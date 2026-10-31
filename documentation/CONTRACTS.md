@@ -77,6 +77,12 @@ text content is the plain JSON object.
   merchant, it answers `agent_unavailable` with that merchant's `fallback_url`. Otherwise a
   request for that restaurant would silently propose others.
 - Without the registry there is no URL to give: `agent_unavailable` has no `fallback_url`.
+- `AGENT_TIMEOUT_MS` (2 s) bounds the whole tool call, not each step (#92): the registry
+  lookup and the agent call share one deadline (`gateway.fallback.deadline_in`). On
+  `/m/<slug>/mcp`, the deadline starts with `MerchantEndpoint`'s slug check and is passed to
+  the tool (and to `tools/list`) in the ASGI scope's `state`. One exception: when
+  `search_merchants` ran out of time, the lookup of the named merchant's fallback link gets
+  `LINK_LOOKUP_SHARE` (10 %) of the budget, so the call answers within 2.2 s.
 - A timeout on a write may hit after the COMMIT, so its message asks Claude to check
   `get_my_reservations` before retrying.
 - `get_my_reservations` returns a notice on every call for 24 hours (real time, in UTC) after
