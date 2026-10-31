@@ -129,15 +129,26 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 
 | Route | Input | Output | Errors |
 |---|---|---|---|
-| `POST /chat` | `{session_id: str \| null, message: str}` (1–4000 characters) | `ChatEvent` SSE stream, exactly one final `done` | `409` while the session is still answering; a failing turn sends a generic `error` before `done` |
+| `POST /chat` | `{session_id: str \| null, message: str}` (1–4000 characters) | `ChatEvent` SSE stream, exactly one final `done` | `409` while the session is still answering; `403` `needs_invite` for an onboarding without the invitation; a failing turn sends a generic `error` before `done` |
 | `GET /session?session_id=` | — | `SessionOutput`: `{merchant: {slug, name} \| null}` | — |
-| `GET /events?merchant=<slug>` | — | `LiveEvent` SSE stream | — |
+| `GET /events?merchant=<slug>` | — | `LiveEvent` SSE stream | `401` `not_signed_in`, `403` `other_merchant` |
+| `GET /login?token=` | — | `303` to `/manage/<slug>`, with the owner cookie | `401` `not_signed_in` for an unknown link |
+| `POST /logout` | — | `204`, the owner cookie removed | — |
+| `POST /invite` | `{code: str}` | `204`, with the invite cookie (nothing when no code is set) | `403` `needs_invite` for a wrong code |
 | `POST /public/{slug}/reservations` | `{starts_at, party_size, guest_name, idempotency_key}` | `201` + `{reservation}`, `via="website"` | `ToolError` body: `404` `not_found`, `409` `slot_unavailable`, `422` `party_too_large` / `invalid_input`, `503` `agent_unavailable` |
 | `POST /dev/reset-session` | `{session_id: str \| null}` | Restarts onboarding | Disabled with `PLATFORM_DEV_ROUTES=0` |
 | `GET /health` | — | Status | — |
 
 - Request validation errors on any route: `422` + `ToolError` (`invalid_input`).
 - A `null` chat session is the single POC merchant session.
+- **Accounts (#132, [ADR-0018](adr/0018-open-a-merchants-site-with-a-secret-link.md)).**
+  - A build gives its merchant an owner and a secret link, `<PLATFORM_WEB_URL>/api/login?token=…`. The link is shown once, as the profile card's `login_url`; the model and the chat history never see it. Only the token's SHA-256 is stored (`public.merchant_owners`). `make owner-link SLUG=… [NAME=…]` issues a new one, and the old link stops working.
+  - `GET /login` sets `sesame_owner`: `HttpOnly`, `SameSite=Lax`, `Path=/`, 30 days, and `Secure` when `PLATFORM_WEB_URL` is `https`. The cookie is signed with `PLATFORM_COOKIE_SECRET` (a random key per process when unset) and names the merchant and its current link. A new link or the merchant's deletion ends it.
+  - The owner cookie is needed by every `/merchants/{slug}` route and by `/events`. `/session` reports the session's own merchant, else the cookie's, else `PLATFORM_MERCHANT`. `/chat` attaches a session without a merchant to the cookie's, so a restart or another browser finds the merchant again.
+  - With `PLATFORM_INVITE_CODE` set, a session that works on no merchant needs the invite cookie, set by `POST /invite` (the web sends `/?invite=<code>`), before any model call. A cookie owner or `PLATFORM_MERCHANT` needs none.
+  - `PLATFORM_MERCHANT` is development only: its pages and events open without a link.
+  - Cross-origin requests never carry the cookies: CORS allows no credentials.
+  - The token never reaches a log line: uvicorn's access log masks `token=`.
 - `GET /session` answers the merchant the session onboarded or attached, else `PLATFORM_MERCHANT` when registered. It never creates a session. The web keeps its session id in `sessionStorage` and asks at load and after each turn until it knows the merchant ([#88](https://github.com/MaxEntz/BaselHack2026/issues/88)).
 - Public booking API: a `building` merchant is `not_found`; a `down` one still takes bookings (the outage only stops the gateway). CORS: `PUBLIC_CORS_ORIGINS` only (default `http://localhost:8080`, `http://127.0.0.1:8080`).
 

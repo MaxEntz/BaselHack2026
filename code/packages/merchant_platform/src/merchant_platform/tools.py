@@ -161,6 +161,10 @@ SPECS = tuple(ToolSpec(t.name, t.description, t.input.model_json_schema()) for t
 _BY_NAME = {tool.name: tool for tool in TOOLS}
 
 
+# The secret link of a merchant just built, for its owner (#132).
+IssueLink = Callable[[str], Awaitable[str]]
+
+
 class AdminTools:
     """Runs the model's tool calls for one merchant session."""
 
@@ -172,14 +176,17 @@ class AdminTools:
         today: Callable[[], date],
         *,
         owned_merchant: str | None = None,
+        issue_link: IssueLink | None = None,
     ) -> None:
         """`owned_merchant` (PLATFORM_MERCHANT) is the only existing merchant a session may
-        take over by onboarding its website again: there is no authentication (§13, §15)."""
+        take over by onboarding its website again (development only, §13, §15).
+        `issue_link` gives a new merchant its owner's secret link (#132)."""
         self._agent = agent
         self._build_agent = build_agent
         self._tz = tz
         self._today = today
         self._owned_merchant = owned_merchant
+        self._issue_link = issue_link
 
     async def run(self, session: Session, call: ToolCall, emit: Emit) -> ToolResult:
         """Runs one call and logs it (§12): tool, merchant, latency, and `ok` or the error code.
@@ -289,7 +296,12 @@ class AdminTools:
         output = await self._build_agent(arguments, emit)
         session.merchant_slug = output.profile.slug
         data = output.model_dump(mode="json", exclude={"tools"})
-        return Outcome({"shown_to_merchant": "profile card", **data}, ProfileCard(data=output))
+        # On the card only: the secret link never goes to the model or the history.
+        link = await self._issue_link(output.profile.slug) if self._issue_link else None
+        return Outcome(
+            {"shown_to_merchant": "profile card", **data},
+            ProfileCard(data=output, login_url=link),
+        )
 
     def _require_agent(self) -> AgentService:
         if self._agent is None:

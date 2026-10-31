@@ -28,6 +28,7 @@ from core.models import (
     MerchantProfile,
     TextEvent,
 )
+from merchant_platform.accounts import Accounts, login_url
 from merchant_platform.sessions import Session
 from merchant_platform.tools import SPECS, AdminTools, Emit
 
@@ -263,9 +264,12 @@ async def run_turn(session: Session, user_message: str, emit: Emit) -> None:
 
 
 def default_assistant(
-    settings: Settings, engine: AsyncEngine, agent: AgentService | None = None
+    settings: Settings,
+    engine: AsyncEngine,
+    agent: AgentService | None = None,
+    accounts: Accounts | None = None,
 ) -> RunTurn:
-    """The assistant wired to OpenAI, the registry and the builder."""
+    """The assistant wired to OpenAI, the registry, the builder and the owners' links."""
     if settings.openai_api_key is None:
         return run_turn
     tz = ZoneInfo(settings.merchant_tz)
@@ -290,12 +294,17 @@ def default_assistant(
     async def build(arguments: BuildAgentInput, emit: StepEmitter) -> BuildAgentOutput:
         return await builder.build_agent(str(arguments.website), arguments.description, emit)
 
+    async def issue_link(slug: str) -> str:
+        assert accounts is not None
+        return login_url(settings.platform_web_url, await accounts.issue_link_token(slug))
+
     tools = AdminTools(
         agent,
         build,
         tz,
         today=lambda: datetime.now(tz).date(),
         owned_merchant=settings.platform_merchant,
+        issue_link=issue_link if accounts else None,
     )
     return Assistant(
         llm, tools, registry_profiles(engine), tz, default_merchant=settings.platform_merchant

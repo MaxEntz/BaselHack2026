@@ -1,8 +1,9 @@
 """FastAPI app: `/chat` (SSE), `/events` (SSE), `/session`, the public booking API, the
-management site's `/merchants/{slug}` routes and `/health`."""
+management site's `/merchants/{slug}` routes, the owner's `/login` (#132) and `/health`."""
 
 import asyncio
 import logging
+import secrets
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -37,6 +38,13 @@ from core.models import (
     Slug,
     ToolError,
 )
+from merchant_platform.accounts import (
+    INVITE_COOKIE,
+    Accounts,
+    MemoryOwnerStore,
+    PgOwnerStore,
+    Signer,
+)
 from merchant_platform.assistant import (
     ProfileLookup,
     RunTurn,
@@ -45,11 +53,19 @@ from merchant_platform.assistant import (
     run_turn,
     session_merchant,
 )
-from merchant_platform.auth import NotSignedIn, OtherMerchant
+from merchant_platform.auth import (
+    NeedsInvite,
+    NotSignedIn,
+    OtherMerchant,
+    cookie_owner,
+    require_owner,
+)
+from merchant_platform.auth import router as auth_router
 from merchant_platform.events import LiveBus, LiveListener
 from merchant_platform.logs import configure_logging
 from merchant_platform.management import NotBuiltYet
 from merchant_platform.management import router as management_router
+from merchant_platform.overview import RegistryLookup, registry_records
 from merchant_platform.sessions import Session, SessionStore
 
 log = logging.getLogger("merchant_platform.api")
@@ -58,6 +74,7 @@ MAX_MESSAGE_LENGTH = 4000
 # SSE comment interval, so that proxies don't cut idle streams.
 HEARTBEAT_SECONDS = 15.0
 TURN_FAILED = "Something went wrong on our side. Please try again."
+NEEDS_INVITE = "Building a new agent needs an invitation: open the link you were given."
 
 HTTP_STATUS: dict[ErrorCode, int] = {
     "not_found": 404,
@@ -99,16 +116,20 @@ def create_app(
     bus: LiveBus | None = None,
     listener: LiveListener | None = None,
     engine: AsyncEngine | None = None,
+    accounts: Accounts | None = None,
+    registry: RegistryLookup | None = None,
     heartbeat_seconds: float = HEARTBEAT_SECONDS,
 ) -> FastAPI:
     """Build the platform API around its collaborators (injected by tests).
 
     Without `agent`, the public booking API answers `agent_unavailable`. Without `profiles`
     (the registry), `/session` reports no merchant. `listener` feeds `bus` while the app
-    runs; `engine` is disposed at shutdown.
+    runs; `engine` is disposed at shutdown. Without `accounts`, owners live in memory. Without
+    `registry`, `GET /merchants/{slug}` answers `agent_unavailable`.
     """
     sessions = SessionStore()
     live = bus or LiveBus()
+    owners = accounts or default_accounts(settings, MemoryOwnerStore())
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -129,7 +150,11 @@ def create_app(
     app = FastAPI(title="Sésame platform", lifespan=lifespan)
     app.state.sessions = sessions
     app.state.bus = live
+    app.state.accounts = owners
+    app.state.registry = registry
+    app.state.settings = settings
     app.state.development_merchant = settings.platform_merchant
+    app.state.secure_cookies = settings.platform_web_url.startswith("https://")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.public_cors_origins),
@@ -163,10 +188,15 @@ def create_app(
     async def other_merchant(_: Request, error: OtherMerchant) -> JSONResponse:
         return management_error(403, "other_merchant", str(error))
 
+    @app.exception_handler(NeedsInvite)
+    async def needs_invite(_: Request, error: NeedsInvite) -> JSONResponse:
+        return management_error(403, "needs_invite", str(error))
+
     @app.exception_handler(NotBuiltYet)
     async def not_built_yet(_: Request, error: NotBuiltYet) -> JSONResponse:
         return management_error(501, "not_built_yet", str(error))
 
+    app.include_router(auth_router)
     app.include_router(management_router)
 
     @app.get("/health")
@@ -174,8 +204,15 @@ def create_app(
         return {"status": "ok"}
 
     @app.post("/chat", response_class=EventSourceResponse)
-    async def chat(body: ChatRequest) -> EventSourceResponse:
+    async def chat(request: Request, body: ChatRequest) -> EventSourceResponse:
         session = sessions.get(body.session_id)
+        owner = await cookie_owner(request)
+        if session.merchant_slug is None and owner is not None:
+            # The account brings its merchant back, after a restart or in another browser.
+            session.merchant_slug = owner.slug
+        if not owners.invited(request.cookies.get(INVITE_COOKIE)) and not await _attached(session):
+            # Before any model call: an onboarding crawls a site and spends the OpenAI key.
+            raise NeedsInvite(NEEDS_INVITE)
         # No await between the check and the acquisition: no other request can slip in.
         if session.lock.locked():
             raise HTTPException(409, "A reply is already in progress for this session.")
@@ -186,26 +223,38 @@ def create_app(
         session.turn = asyncio.create_task(_run(assistant, session, body.message, queue))
         return EventSourceResponse(_chat_stream(queue, session.turn), ping=heartbeat_seconds)
 
+    async def _attached(session: Session) -> bool:
+        """Whether the session works on a merchant, or will from its next message."""
+        if session.merchant_slug is not None:
+            return True
+        if profiles is None:
+            return False
+        return await session_merchant(session, settings.platform_merchant, profiles) is not None
+
     @app.get("/session")
     async def session_info(
+        request: Request,
         session_id: Annotated[str | None, Query(max_length=100)] = None,
     ) -> SessionOutput:
         """The merchant the chat session works on, so that the web finds it after a reload.
 
-        Read-only: an unknown session isn't created, and reports PLATFORM_MERCHANT like a new
-        one, since its first message attaches it.
+        Read-only: an unknown session isn't created. It reports the owner's merchant, else
+        PLATFORM_MERCHANT, like a new one, since its first message attaches it.
         """
         if profiles is None:
             return SessionOutput(merchant=None)
-        profile = await session_merchant(
-            sessions.find(session_id), settings.platform_merchant, profiles
-        )
+        owner = await cookie_owner(request)
+        default = owner.slug if owner else settings.platform_merchant
+        profile = await session_merchant(sessions.find(session_id), default, profiles)
         if profile is None:
             return SessionOutput(merchant=None)
         return SessionOutput(merchant=SessionMerchant(slug=profile.slug, name=profile.name))
 
     @app.get("/events", response_class=EventSourceResponse)
-    async def events(merchant: Annotated[Slug, Query()]) -> EventSourceResponse:
+    async def events(request: Request, merchant: Annotated[Slug, Query()]) -> EventSourceResponse:
+        # Its events carry guest names: the owner's only (#132).
+        await require_owner(request, merchant)
+
         async def stream() -> AsyncIterator[ServerSentEvent]:
             # Subscribe inside the generator: its `finally` always pairs the unsubscribe.
             queue = live.subscribe(merchant)
@@ -313,6 +362,16 @@ async def _chat_stream(
             turn.cancel()
 
 
+def default_accounts(settings: Settings, store: MemoryOwnerStore | PgOwnerStore) -> Accounts:
+    if settings.platform_cookie_secret is None:
+        secret = secrets.token_bytes(32)
+        log.warning("PLATFORM_COOKIE_SECRET unset: owner cookies end with this process")
+    else:
+        secret = settings.platform_cookie_secret.get_secret_value().encode()
+    invite = settings.platform_invite_code
+    return Accounts(store, Signer(secret), invite.get_secret_value() if invite else None)
+
+
 def management_error(status: int, code: ManagementErrorCode, message: str) -> JSONResponse:
     body = ManagementError(error=code, message=message)
     return JSONResponse(body.model_dump(mode="json", exclude_none=True), status_code=status)
@@ -335,14 +394,17 @@ def _default_app() -> FastAPI:
     bus = LiveBus()
     listener = LiveListener(settings.database_url, engine, bus, settings.merchant_tz)
     agent = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
+    accounts = default_accounts(settings, PgOwnerStore(engine))
     return create_app(
         settings,
-        assistant=default_assistant(settings, engine, agent),
+        assistant=default_assistant(settings, engine, agent, accounts),
         agent=agent,
         profiles=registry_profiles(engine),
         bus=bus,
         listener=listener,
         engine=engine,
+        accounts=accounts,
+        registry=registry_records(engine),
     )
 
 

@@ -4,7 +4,9 @@ import type { BuildAgentOutput } from "../types.ts";
 import { strings } from "../strings.ts";
 import { formatServices, plural } from "./format.ts";
 
-export function ProfileCard({ data }: { data: BuildAgentOutput }) {
+type ProfileCardProps = { data: BuildAgentOutput; loginUrl?: string | null };
+
+export function ProfileCard({ data, loginUrl = null }: ProfileCardProps) {
   const { profile, assumptions, tools, mcp_url } = data;
   // The tables are the source of truth for capacity (documentation/CONTRACTS.md).
   const seats = profile.tables.reduce((sum, table) => sum + table.seats, 0);
@@ -72,6 +74,14 @@ export function ProfileCard({ data }: { data: BuildAgentOutput }) {
 
       <McpUrl label="MCP URL (all restaurants)" url={mcp_url} />
       <McpUrl label="This restaurant only" url={merchantMcpUrl(mcp_url, profile.slug)} />
+
+      {loginUrl && (
+        <div className="assumptions" role="note">
+          <strong>Your private link: keep it, it is shown only once.</strong>
+          <p>It opens your management site from any browser. Anyone with it can manage your bookings.</p>
+          <McpUrl label="Private link" url={loginUrl} />
+        </div>
+      )}
     </section>
   );
 }

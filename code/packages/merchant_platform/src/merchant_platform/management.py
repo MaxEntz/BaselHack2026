@@ -7,10 +7,13 @@ implements it, after checking its input: a form that breaks a rule answers `422`
 owner (`auth.owner_of_path`): `401` without one, `403` for another merchant.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Request
 
+from core.config import Settings
+from core.errors import AgentUnavailable, NotFound
 from core.forms import checked_rules, checked_services, checked_settings, checked_tables
 from core.models import (
     AgentRequests,
@@ -40,7 +43,9 @@ from core.models import (
     SettingsInput,
     Slug,
 )
+from merchant_platform.accounts import Owner
 from merchant_platform.auth import owner_of_path
+from merchant_platform.overview import RegistryLookup, merchant_overview
 
 router = APIRouter(
     prefix="/merchants/{slug}", tags=["management"], dependencies=[Depends(owner_of_path)]
@@ -60,8 +65,17 @@ class NotBuiltYet(Exception):
 
 
 @router.get("")
-async def overview(slug: SlugPath) -> MerchantOverview:
-    raise NotBuiltYet("#132")
+async def overview(
+    request: Request, slug: SlugPath, owner: Annotated[Owner, Depends(owner_of_path)]
+) -> MerchantOverview:
+    registry: RegistryLookup | None = request.app.state.registry
+    if registry is None:
+        raise AgentUnavailable("The merchant registry isn't available.")
+    record = await registry(slug)
+    if record is None:
+        raise NotFound(f"No merchant {slug!r}.")
+    settings: Settings = request.app.state.settings
+    return merchant_overview(record, owner.name, settings, datetime.now(UTC))
 
 
 @router.get("/dashboard")

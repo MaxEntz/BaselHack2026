@@ -419,7 +419,9 @@ ProblemCode = Literal[
     "booking_page_off_site",  # the booking page must stay on the merchant's host
 ]
 # `ErrorCode` stays the §8.4 list the tools answer; the management site adds its own.
-ManagementErrorCode = ErrorCode | Literal["not_signed_in", "other_merchant", "not_built_yet"]
+ManagementErrorCode = (
+    ErrorCode | Literal["not_signed_in", "other_merchant", "needs_invite", "not_built_yet"]
+)
 
 
 class MerchantOverview(_Model):
@@ -756,6 +758,8 @@ class ProfileCard(_Model):
     type: Literal["card"] = "card"
     kind: Literal["profile"] = "profile"
     data: BuildAgentOutput
+    # The owner's secret link (#132), shown once: never part of the tool result the model reads.
+    login_url: str | None = None
 
 
 class ReservationsCard(_Model):
