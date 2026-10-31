@@ -15,7 +15,7 @@ npx playwright install chromium   # once
 npm run test:e2e           # Playwright (e2e/), 1440 px, starts Vite in mock mode on :5179
 ```
 
-Routes ([ADR-0016](../../documentation/adr/0016-router-and-test-tools-for-the-management-site.md)):
+Routes ([ADR-0017](../../documentation/adr/0017-router-and-test-tools-for-the-management-site.md)):
 `/` is Studio (today the chat below), `/manage/<slug>` and `/manage/<slug>/<page>`
 (`assistant`, `reservations`, `guests`, `hours`, `floor`, `rules`, `agent`, `settings`) the
 management site. An unknown page goes to that merchant's Home, any other path to `/`.
