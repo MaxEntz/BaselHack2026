@@ -37,9 +37,6 @@ from matp.status import WITH_FALLBACK, Refused
 # Bookings over MATP come from guests' agents. The `kind` a caller declares is not trusted, and
 # `Via` has no value for agents other than Claude yet: every MATP booking is `claude`.
 VIA: Via = "claude"
-# DISCOVER bounds, so one frame can't keep the node busy (the contracts don't cap them).
-MAX_DISCOVER_TAGS = 32
-MAX_QUERY = 500
 
 log = logging.getLogger("merchant_node")
 
@@ -83,11 +80,7 @@ class MerchantAgents:
 
     async def _discover(self, agent: AgentIdentity, request: Request) -> Result:
         inp = SearchMerchantsInput.model_validate(request.params)
-        tags = inp.filters.tags if inp.filters else ()
-        if len(tags) > MAX_DISCOVER_TAGS or len(inp.query) > MAX_QUERY:
-            raise InvalidInput(
-                f"DISCOVER takes at most {MAX_DISCOVER_TAGS} tags and a {MAX_QUERY}-character query"
-            )
+        # `search` refuses a query or filters beyond its bounds before reading the registry.
         found = await search(inp.query, inp.near, inp.date, inp.filters, engine=self.engine)
         return _dump(found)
 

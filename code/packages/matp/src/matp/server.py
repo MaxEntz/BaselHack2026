@@ -19,6 +19,7 @@ from core.errors import AgentError
 from matp.codec import MAX_FRAME, FrameError, FrameTooLarge, encode, read_frame
 from matp.messages import (
     ALL_INTENTS,
+    IN_FLIGHT_LIMIT,
     PROTOCOL_VERSION,
     AgentIdentity,
     ErrorBody,
@@ -31,7 +32,7 @@ from matp.messages import (
     Welcome,
     compatible,
 )
-from matp.status import Refused, error_body, status_for
+from matp.status import TOO_MANY_REQUESTS, Refused, error_body, status_for
 
 log = logging.getLogger("matp.node")
 
@@ -56,7 +57,7 @@ class NodeServer:
         hello_timeout: float = 10.0,
         send_timeout: float = 10.0,
         handler_timeout: float = 10.0,
-        max_in_flight: int = 32,
+        max_in_flight: int = IN_FLIGHT_LIMIT,
         max_sessions: int = 64,
         max_malformed: int = 10,
     ) -> None:
@@ -225,7 +226,8 @@ class NodeServer:
                 await send(_invalid(request.id, f"{request.intent} is not served by this node"))
                 continue
             if len(tasks) >= self.max_in_flight:
-                await send(_invalid(request.id, "Too many requests in flight"))
+                # Not carried out; the caller may send it again after an earlier answer (§6).
+                await send(_too_many(request.id))
                 continue
             task = asyncio.create_task(self._answer(caller, request, send))
             tasks.add(task)
@@ -282,6 +284,11 @@ def _invalid(request_id: str | None, message: str) -> Response:
     return Response(
         id=request_id, status=400, error=ErrorBody(code="invalid_input", message=message)
     )
+
+
+def _too_many(request_id: str) -> Response:
+    error = ErrorBody(code="too_many_requests", message="Too many requests in flight")
+    return Response(id=request_id, status=TOO_MANY_REQUESTS, error=error)
 
 
 def _unavailable(request_id: str, message: str) -> Response:

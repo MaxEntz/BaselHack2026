@@ -158,7 +158,7 @@ through the guest notice returned by `RECALL`.
   - at least 32 requests in flight per session: beyond the node's limit, extra requests get `429 too_many_requests` and may be sent again once earlier ones are answered;
   - 64 sessions per node, the next one gets a `503` reject;
   - a session closes after 10 malformed frames in a row, or when its peer stops reading for 10 s.
-- **Bounded work:** a `DISCOVER` takes at most 32 tags and a 500-character query.
+- **Bounded work:** a `DISCOVER` takes at most 32 tags and a 500-character query (`gateway.discovery.MAX_TAGS`, `MAX_QUERY`, shared with the gateway's `search_merchants`).
 - **Logging:** refused sessions are logged at WARNING with the peer address and the agent they claimed, never the token. Database errors never carry query parameters (guest names).
 - **Guest identity** is only the guest name and the booking reference (AGENTS.md §13). Fine for the POC with trusted callers; the draft's Security Considerations say what a real deployment needs.
 
@@ -189,7 +189,13 @@ implementation speaks MATP to the node instead of calling `PgAgentService` in-pr
 
 The gateway's fallback layer (`fallback.py`) is unchanged. Its 2 s budget now includes the hop
 to the node, and a MATP `503` or a dropped session becomes `agent_unavailable` with the
-fallback URL.
+fallback URL. A refusal from the node (`400`, `404`, `409`, `413`) keeps its own §8.4 code, also
+on `search_merchants`: the node answered, so it is never reported as an outage (#90).
+
+`MatpClient` keeps at most 32 requests in flight on its session, the minimum every node accepts;
+the others wait for a slot within the gateway's budget. A `429` anyway, an unknown status or
+`error.code`, or an answer it can't read fails that request only, as `agent_unavailable` with the
+fallback URL; the session and the other requests go on. Any `2xx` is a success.
 
 The gateway keeps reading the registry itself for the `down` status and the fallback URL, so that
 a dead node still gives the restaurant's link. For the same reason, when `DISCOVER` fails and the
@@ -219,11 +225,9 @@ ignored; because `params` are strict, a caller only sends the params of the sess
 ## 15. Where the reference node still differs from the draft
 
 The Internet-Draft is the normative text. The node in `packages/matp/` (#60) was written in
-parallel and still differs on three points, to be aligned in a follow-up:
+parallel and still differs on two points, to be aligned in a follow-up:
 
 - **Oversized frame:** the node answers with a `response` frame without `id` (status `413`),
   not with the session-level `error` frame of §3.
-- **In-flight limit:** the node answers `400 invalid_input` beyond 32 requests, not
-  `429 too_many_requests`.
 - **`via`:** the node records every MATP booking as `claude`, whatever `kind` the caller
   declares (§7). The draft's BOOK section still says `merchant` for a `merchant-agent`.

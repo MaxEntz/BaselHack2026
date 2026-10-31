@@ -11,7 +11,14 @@ import pytest
 from pydantic import BaseModel, PositiveInt, ValidationError
 
 from core.config import Settings
-from core.errors import AgentUnavailable, InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
+from core.errors import (
+    AgentError,
+    AgentUnavailable,
+    InvalidInput,
+    NotFound,
+    PartyTooLarge,
+    SlotUnavailable,
+)
 from core.logs import JsonFormatter
 from core.models import ErrorCode, ToolError
 from gateway.discovery import RegistryEntry
@@ -283,7 +290,7 @@ async def test_call_service_logs_a_tool_error_returned_by_the_operation(
     assert [r.__dict__["outcome"] for r in logged] == ["agent_unavailable"]
 
 
-@pytest.mark.parametrize("error", [RuntimeError("secret"), TimeoutError(), InvalidInput("secret")])
+@pytest.mark.parametrize("error", [RuntimeError("secret"), TimeoutError()])
 async def test_call_service_failure_is_unavailable_without_url(error: Exception) -> None:
     result = await call_service("get_my_reservations", raising(error), settings=SETTINGS)
 
@@ -333,6 +340,43 @@ async def test_call_merchant_without_registry_is_unavailable_without_url(
     assert "secret" not in result.message
     outcomes = [r.__dict__["outcome"] for r in caplog.records if r.getMessage() == "tool_call"]
     assert outcomes == ["agent_unavailable"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        InvalidInput("A search takes at most 32 tags"),
+        NotFound("Unknown reservation"),
+        SlotUnavailable("No table left"),
+    ],
+)
+async def test_call_service_keeps_a_refusal_as_its_own_error_without_a_link(
+    error: AgentError, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A refusal comes from a service that works: no outage, no merchant's link, no crash log.
+    looked_up = False
+
+    async def named() -> RegistryEntry:
+        nonlocal looked_up
+        looked_up = True
+        return ZINC
+
+    with caplog.at_level(logging.INFO, logger="gateway.tools"):
+        result = await call_service(
+            "search_merchants", raising(error), settings=SETTINGS, named=named
+        )
+
+    assert result == ToolError(error=error.code, message=str(error))
+    assert not looked_up
+    assert [r.levelno for r in caplog.records] == [logging.INFO]
+
+
+async def test_call_service_validation_error_is_invalid_input() -> None:
+    result = await call_service("search_merchants", raising(validation_error()), settings=SETTINGS)
+
+    assert isinstance(result, ToolError)
+    assert result.error == "invalid_input"
+    assert GUEST not in result.message
 
 
 async def test_call_service_gives_the_named_merchant_s_link_when_it_fails() -> None:

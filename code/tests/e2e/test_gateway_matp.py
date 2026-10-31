@@ -1,9 +1,11 @@
 """What only exists with the bridge: MCP → MATP → node, and that node dying or freezing (#61)."""
 
+import asyncio
 import json
 import logging
 import time
 from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -11,8 +13,15 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from mcp import Client
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from core.config import Settings
+from core.models import ToolError
+from gateway.agent_client import GATEWAY_AGENT as GATEWAY_IDENTITY
+from gateway.agent_client import MatpAgentClient, parse_matp_url
+from gateway.discovery import find_merchant
+from gateway.fallback import call_merchant
+from matp.client import MatpClient
 from tests.e2e.conftest import MatpNode, running_gateway
 
 pytestmark = pytest.mark.integration
@@ -121,6 +130,31 @@ async def test_slow_node_times_out_within_the_budget_and_the_session_survives(
     assert slow["fallback_url"] == ZINC_FALLBACK
     assert 1.5 < elapsed < 3
     assert "slots" in back
+
+
+async def test_a_burst_of_calls_over_one_session_is_never_invalid_input(
+    matp_node: MatpNode, e2e_engine: AsyncEngine
+) -> None:
+    # 80 calls on one session, 32 at most in flight on the node: none is refused as invalid (#90).
+    host, port = parse_matp_url(matp_node.url)
+    agent = MatpAgentClient(MatpClient(host, port, GATEWAY_IDENTITY))
+    day = datetime.now(TZ).date() + timedelta(days=1)
+    settings = Settings(_env_file=None, database_url="postgresql+psycopg://u:p@h/db")
+
+    async def one() -> object:
+        find = partial(find_merchant, ZINC, engine=e2e_engine)
+        op = partial(agent.get_availability, ZINC, day, 2, "20:00")
+        return await call_merchant(ZINC, "get_availability", find, op, settings=settings)
+
+    try:
+        results = await asyncio.gather(*(one() for _ in range(80)))
+    finally:
+        await agent.close()
+
+    errors = [result for result in results if isinstance(result, ToolError)]
+    assert all(error.error == "agent_unavailable" for error in errors), errors
+    assert all(error.fallback_url is not None for error in errors), errors
+    assert len(errors) < len(results)
 
 
 async def test_only_the_gateway_s_token_opens_a_session_on_a_secured_node(

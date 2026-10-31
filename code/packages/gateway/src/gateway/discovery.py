@@ -19,6 +19,7 @@ from sqlalchemy import RowMapping, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from core.db import merchants_t
+from core.errors import InvalidInput
 from core.models import (
     FilterSuggestion,
     MerchantSummary,
@@ -69,6 +70,11 @@ NEAR_NOISE = frozenset({"near", "nearby", "around", "close", "here", "me", "pres
 
 # Shorter query words are ignored: "le" or "la" would match half the names.
 MIN_QUERY_WORD = 3
+
+# Bounds on one search, so a request can't keep the gateway or the node busy (the contracts
+# don't cap them). The gateway's tool and the MATP node share them, so both modes agree (#90).
+MAX_QUERY = 500
+MAX_TAGS = 32
 
 
 @dataclass(frozen=True)
@@ -270,6 +276,14 @@ async def find_named_down_merchant(query: str, *, engine: AsyncEngine) -> Regist
     return RegistryEntry(**named[0])
 
 
+def check_search_bounds(query: str, filters: SearchFilters | None) -> None:
+    tags = filters.tags if filters else ()
+    if len(tags) > MAX_TAGS or len(query) > MAX_QUERY:
+        raise InvalidInput(
+            f"A search takes at most {MAX_TAGS} tags and a {MAX_QUERY}-character query"
+        )
+
+
 async def search(
     query: str,
     near: str | None,
@@ -282,6 +296,7 @@ async def search(
 
     `date` is accepted but not used to filter yet: the model has no closing days (POC).
     """
+    check_search_bounds(query, filters)
     criteria, ignored = normalize_filters(filters, near, query)
     merchants = await load_live_merchants(engine)
     return SearchMerchantsOutput(
