@@ -51,7 +51,7 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
    make deploy
    ```
 
-   On top of the gateway and the node, it now ships `web/dist`, creates the `sesame` user if needed, syncs the platform and the builder, installs Chromium under `/opt/merchant-agents/ms-playwright`, gives `sesame` a writable `.cache`, and installs and restarts `merchant-platform`.
+   On top of the gateway and the node, it now ships `web/dist` (both copies readable by everyone, `--chmod=a+rX`, so `sesame` and Caddy can read them), creates the `sesame` user if needed, syncs the platform and the builder, installs Chromium under `/opt/merchant-agents/ms-playwright`, gives `sesame` a writable `.cache`, and installs and restarts `merchant-platform`.
 
 ## Operate it
 
@@ -73,6 +73,7 @@ cd /opt/merchant-agents/code
 
 ## Check after a deployment
 
+- [ ] `systemctl status merchant-platform` is `active`: the `sesame` user can read the code. `make deploy` ships it with `rsync --chmod=a+rX`, so a checkout made with `umask 077` still gives readable files.
 - [ ] From a phone on a mobile network, `https://sesame.191-96-88-152.sslip.io` opens the web app.
 - [ ] Building a merchant from `https://le-petit-zinc.191-96-88-152.sslip.io` reads 5 pages (the crawl reaches the site with `CRAWL_ALLOW_PRIVATE=0`), then publishes it.
 - [ ] A booking made from Claude appears live in the merchant's chat ("New booking via Claude").
