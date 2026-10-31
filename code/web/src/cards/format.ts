@@ -33,6 +33,23 @@ export function describeDate(date: string): string {
   return `on ${shortDate(day)}`;
 }
 
+// A booking's day: "today", "tomorrow" or "Sat 7 Nov".
+export function describeDay(date: string): string {
+  const day = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(day.getTime())) return date;
+  const noon = new Date();
+  noon.setHours(12, 0, 0, 0);
+  // Rounded: a day is 23 or 25 hours long when the clocks change.
+  switch (Math.round((day.getTime() - noon.getTime()) / 86_400_000)) {
+    case 0:
+      return "today";
+    case 1:
+      return "tomorrow";
+    default:
+      return shortDate(day);
+  }
+}
+
 function shortDate(day: Date): string {
   return day.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 }
