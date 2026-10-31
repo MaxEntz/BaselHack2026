@@ -10,6 +10,7 @@ VITE_MOCK=1 npm run dev    # no backend: replays src/mocks/*.json
 npm run build              # tsc (strict) + vite build
 npm run lint
 npm run check:contracts    # mocks vs src/types.ts
+npm test                   # tests/*.test.ts (the chat reducer), Node's own runner, no extra dependency
 ```
 
 Open <http://localhost:5173/?gallery> to review every card and state (steps,
@@ -19,7 +20,7 @@ profile, reservations incl. empty, stats, policy, notifications, errors).
 
 | Variable | Effect |
 |---|---|
-| `VITE_MOCK=1` | Replays the contract mocks with realistic delays instead of calling the API. |
+| `VITE_MOCK=1` | Replays the contract mocks with realistic delays instead of calling the API. During onboarding, a description containing the word "cut" drops the stream while the agent is being built (#86). |
 | `VITE_MERCHANT_SLUG` | Skips onboarding: the chat starts as this merchant and subscribes to its live events. |
 | `VITE_MERCHANT_NAME` | Name shown in the header with `VITE_MERCHANT_SLUG` (defaults to the slug). |
 
