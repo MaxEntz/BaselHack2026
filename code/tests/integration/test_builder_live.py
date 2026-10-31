@@ -72,7 +72,10 @@ async def test_builds_le_petit_zinc_from_its_website(
         profile = output.profile
         assert set(profile.tags) >= {"vegetarian", "gluten-free", "terrace", "kid-friendly"}
         assert profile.price_level == "€€"
-        assert len(profile.services) == 2
+        assert [(s.start, s.end) for s in profile.services] == [
+            ("12:00", "14:00"),
+            ("19:00", "22:00"),
+        ]
         assumptions = " ".join(output.assumptions).lower()
         assert "table" in assumptions
         assert profile.max_party_size == 6

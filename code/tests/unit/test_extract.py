@@ -226,15 +226,27 @@ async def test_a_one_page_site_falls_back_to_its_booking_section(
     assert str(result.profile.fallback_url) == expected
 
 
-async def test_a_word_that_only_contains_book_is_not_a_booking_section() -> None:
+@pytest.mark.parametrize(
+    ("anchor", "section"),
+    [
+        ("reservation", True),
+        ("book-a-table", True),
+        ("booking", True),
+        ("online_booking", True),
+        ("icon_facebook", False),
+        ("bookimage", False),
+        ("notebook", False),
+    ],
+)
+async def test_only_an_id_naming_a_booking_is_a_booking_section(anchor: str, section: bool) -> None:
     page = ONE_PAGE.pages[0]
     crawl = CrawlResult(
-        website=SITE, pages=[Page(page.url, page.title, page.text, [], anchors=["icon_facebook"])]
+        website=SITE, pages=[Page(page.url, page.title, page.text, [], anchors=[anchor])]
     )
 
     result = await extract_profile(crawl, "", FakeLLM(draft(fallback_url=None)))
 
-    assert str(result.profile.fallback_url) == SITE
+    assert str(result.profile.fallback_url) == (f"{SITE}#{anchor}" if section else SITE)
 
 
 async def test_without_a_booking_page_the_fallback_is_the_homepage() -> None:

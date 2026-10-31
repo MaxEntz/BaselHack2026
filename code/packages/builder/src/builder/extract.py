@@ -41,8 +41,9 @@ TAGS: tuple[str, ...] = get_args(Tag)
 Weekday = Literal["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 WEEKDAYS: tuple[str, ...] = get_args(Weekday)
 BOOKING_PAGE = re.compile(r"book|reserv", re.IGNORECASE)
-# A section id starting with the word: `reserver`, `book-a-table`, not `icon_facebook`.
-BOOKING_ANCHOR = re.compile(r"(?:^|[-_])(?:book|reserv)", re.IGNORECASE)
+# A section id naming a booking: `reserver`, `reservation`, `book-a-table`, `booking`, not
+# `icon_facebook` or `bookimage` (an image on volkshaus-basel.ch).
+BOOKING_ANCHOR = re.compile(r"(?:^|[-_])(?:reserv|book(?:ing)?(?:$|[-_]))", re.IGNORECASE)
 
 _DEFAULTS = TEMPLATE.defaults
 INSTRUCTIONS = f"""\
