@@ -964,3 +964,25 @@ async def test_publish_agent_needs_a_merchant_and_a_platform_that_publishes() ->
     assert harness.published == []
     assert "onboard the merchant first" in json.dumps(no_merchant.calls[-1]["history"])
     assert "isn't available" in json.dumps(no_publish.calls[-1]["history"])
+
+
+async def test_the_crawled_quotes_never_reach_the_model() -> None:
+    # A quote is the site's own text: on the card for the merchant, never in the tool result
+    # read by a model that can publish (#182 review).
+    llm = ScriptedLLM(
+        ([], [call("build_agent", website="https://zinc.example/", description="")]),
+        (["Done."], []),
+    )
+    harness = Harness(llm)
+
+    events = await harness.turn(Session(id="s"), "Build it")
+
+    [message] = [m for m in llm.calls[-1]["history"] if m["role"] == "tool"]
+    result = json.loads(message["content"])
+    assert "facts" not in result
+    assert result["flags"] == [
+        {"title": "No cancellation policy on your site.", "detail": "Guests see none."}
+    ]
+    assert "6 personnes" not in message["content"]
+    [card] = [e for e in events if e.get("kind") == "profile"]
+    assert card["data"]["facts"][0]["quote"] == "jusqu'à 6 personnes"

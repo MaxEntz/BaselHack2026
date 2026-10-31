@@ -323,7 +323,10 @@ class AdminTools:
         session.link = link.fingerprint if link else None
         # The building browser may claim its owner cookie once, shortly after (#132).
         session.claimable_until = time.monotonic() + CLAIM_SECONDS if link else None
-        data = output.model_dump(mode="json", exclude={"tools"})
+        # Never the facts: their values and quotes are the crawled site's own words, which must
+        # not reach a model that holds write tools (ARCHITECTURE.md §4). It reads the flags,
+        # which code writes; the merchant sees the facts on the card.
+        data = output.model_dump(mode="json", exclude={"tools", "facts"})
         # On the card only: the secret link never goes to the model or the history.
         return Outcome(
             {"shown_to_merchant": "profile card", **data},
