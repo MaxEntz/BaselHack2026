@@ -107,7 +107,7 @@ uv sync --locked
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy --strict packages/core packages/agent
+uv run mypy --strict packages/core packages/agent packages/gateway
 npm --prefix web ci
 npm --prefix web run check:contracts
 ```

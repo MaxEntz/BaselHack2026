@@ -326,7 +326,7 @@ uv run python -m gateway                  # MCP server  → http://localhost:800
 uv run uvicorn platform.api:app --port 8002
 cd web && npm i && npm run dev            # merchant chat UI → http://localhost:5173
 uv run pytest                             # all tests (testcontainers starts Postgres)
-uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core
+uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway
 npx @modelcontextprotocol/inspector       # manual MCP testing against :8001/mcp
 ```
 

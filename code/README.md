@@ -52,7 +52,7 @@ Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_pr
 
 ```bash
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
-uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core
+uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway
 make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 ```
