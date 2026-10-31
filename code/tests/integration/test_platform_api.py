@@ -22,13 +22,14 @@ from core.models import (
     ChatEvent,
     DoneEvent,
     LiveEvent,
+    MerchantProfile,
     Reservation,
     TextEvent,
     ToolStartEvent,
     Via,
 )
 from merchant_platform.api import create_app
-from merchant_platform.assistant import Emit, RunTurn
+from merchant_platform.assistant import Emit, ProfileLookup, RunTurn
 from merchant_platform.events import LiveBus
 from merchant_platform.sessions import Session
 
@@ -227,6 +228,87 @@ async def test_dev_routes_can_be_turned_off() -> None:
         response = await http.post("/dev/reset-session", json={})
 
     assert response.status_code == 404
+
+
+# /session (#88)
+
+
+def registry(profiles: dict[str, MerchantProfile]) -> ProfileLookup:
+    async def lookup(slug: str) -> MerchantProfile | None:
+        return profiles.get(slug)
+
+    return lookup
+
+
+def onboards(slug: str) -> RunTurn:
+    async def assistant(session: Session, message: str, emit: Emit) -> None:
+        session.merchant_slug = slug
+        await emit(TextEvent(delta="Your agent is live."))
+
+    return assistant
+
+
+async def test_session_reports_no_merchant_while_onboarding(
+    demo_profiles: dict[str, MerchantProfile],
+) -> None:
+    app = create_app(settings(), profiles=registry(demo_profiles))
+    async with client(app) as http:
+        response = await http.get("/session", params={"session_id": "s"})
+
+    assert response.status_code == 200
+    assert response.json() == {"merchant": None}
+    # Read-only: asking doesn't create the session.
+    assert app.state.sessions.all() == []
+
+
+async def test_session_reports_the_platform_merchant_before_the_first_message(
+    demo_profiles: dict[str, MerchantProfile],
+) -> None:
+    app = create_app(settings(platform_merchant="le-petit-zinc"), profiles=registry(demo_profiles))
+    async with client(app) as http:
+        response = await http.get("/session", params={"session_id": "after-reload"})
+        default = await http.get("/session")
+
+    expected = {"merchant": {"slug": "le-petit-zinc", "name": "Le Petit Zinc"}}
+    assert response.json() == default.json() == expected
+
+
+async def test_session_reports_the_merchant_onboarded_in_it(
+    demo_profiles: dict[str, MerchantProfile],
+) -> None:
+    app = create_app(
+        settings(platform_merchant="le-petit-zinc"),
+        assistant=onboards("maison-albane"),
+        profiles=registry(demo_profiles),
+    )
+    async with client(app) as http:
+        await http.post("/chat", json={"session_id": "s", "message": "Build my agent"})
+        onboarded = await http.get("/session", params={"session_id": "s"})
+        other = await http.get("/session", params={"session_id": "other"})
+
+    assert onboarded.json()["merchant"]["slug"] == "maison-albane"
+    assert other.json()["merchant"]["slug"] == "le-petit-zinc"
+
+
+@pytest.mark.parametrize("registered", [True, False])
+async def test_session_without_a_registered_merchant_reports_none(
+    registered: bool, demo_profiles: dict[str, MerchantProfile]
+) -> None:
+    """An unknown PLATFORM_MERCHANT, or no registry at all."""
+    profiles = registry(demo_profiles) if registered else None
+    app = create_app(settings(platform_merchant="unknown-bistro"), profiles=profiles)
+    async with client(app) as http:
+        response = await http.get("/session", params={"session_id": "s"})
+
+    assert response.json() == {"merchant": None}
+
+
+async def test_session_rejects_a_long_session_id() -> None:
+    async with client(create_app(settings())) as http:
+        response = await http.get("/session", params={"session_id": "s" * 101})
+
+    assert response.status_code == 422
+    assert response.json()["error"] == "invalid_input"
 
 
 # Public booking API (showcase site form)

@@ -486,7 +486,13 @@ async def test_a_booking_racing_a_floor_plan_change_takes_a_table_that_still_fit
             lambda s, slug: s.update_tables(slug, [TableSpec(label="T1", seats=3_000_000_000)]),
             "at most",
         ),
-        (lambda s, slug: s.update_tables(slug, [TableSpec(label="T\x001", seats=2)]), "printable"),
+        # The model refuses it too (#79); the service keeps its own guard behind it.
+        (
+            lambda s, slug: s.update_tables(
+                slug, [TableSpec.model_construct(label="T\x001", seats=2)]
+            ),
+            "printable",
+        ),
         (lambda s, slug: s.list_reservations(slug, date.max), "out of range"),
     ],
     ids=["huge-party", "huge-table", "nul-label", "last-date"],
@@ -523,6 +529,70 @@ async def test_cancelling_a_finished_booking_sends_no_notice(
 
     assert cancelled.status == "cancelled"
     assert notices == []
+
+
+async def notices_for(engine: AsyncEngine, guest: str) -> int:
+    async with engine.connect() as conn:
+        count = await conn.scalar(
+            select(func.count())
+            .select_from(guest_notices_t)
+            .where(guest_notices_t.c.guest_name == guest)
+        )
+    return int(count or 0)
+
+
+async def test_a_merchant_cancellation_says_what_it_did(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    # The merchant is never told a guest will be notified when no notice was stored (#82).
+    slug = await make_merchant()
+    upcoming = await book(service, slug, "20:00", guest="Up Coming")
+    by_guest = await book(service, slug, "20:30", guest="Gone Guest")
+    await service.cancel_reservation(slug, by_guest.id, by="guest", guest_name="Gone Guest")
+    await insert_booking(engine, slug, NOW - timedelta(days=1), id="R-700", guest_name="Past Guest")
+
+    notified = await service.cancel_by_merchant(slug, upcoming.id)
+    again = await service.cancel_by_merchant(slug, upcoming.id)
+    guest_cancelled = await service.cancel_by_merchant(slug, by_guest.id)
+    ended = await service.cancel_by_merchant(slug, "R-700")
+
+    assert [c.outcome for c in (notified, again, guest_cancelled, ended)] == [
+        "notified",
+        "already_cancelled",
+        "guest_cancelled",
+        "ended",
+    ]
+    assert {c.reservation.status for c in (notified, again, guest_cancelled, ended)} == {
+        "cancelled"
+    }
+    assert [
+        await notices_for(engine, guest) for guest in ("Up Coming", "Gone Guest", "Past Guest")
+    ] == [1, 0, 0]
+
+
+@pytest.mark.parametrize(
+    ("start", "outcome", "notices"),
+    [
+        (NOW - timedelta(hours=1), "notified", 1),  # started, not over: the guest may still care
+        (NOW - timedelta(hours=2), "ended", 0),  # over exactly now
+    ],
+)
+async def test_a_booking_is_over_once_its_slot_ends(
+    service: PgAgentService,
+    engine: AsyncEngine,
+    make_merchant: MerchantFactory,
+    start: datetime,
+    outcome: str,
+    notices: int,
+) -> None:
+    slug = await make_merchant()
+    guest = f"Guest {uuid4().hex[:6]}"
+    await insert_booking(engine, slug, start, id="R-800", guest_name=guest)
+
+    cancelled = await service.cancel_by_merchant(slug, "R-800")
+
+    assert cancelled.outcome == outcome
+    assert await notices_for(engine, guest) == notices
 
 
 async def test_the_merchant_can_fix_its_agent_before_it_goes_live(

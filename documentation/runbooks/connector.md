@@ -47,7 +47,7 @@ You need the key `~/.ssh/baselhack2026_lxc`. If it isn't on your machine, ask De
 ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
 ```
 
-`make deploy` mirrors your local `code/` (except `web/`, `.env`, `.venv` and caches) to `/opt/merchant-agents/code` with `rsync --delete`, so the server runs exactly your working tree, branch and uncommitted changes included. Nothing locks it: two people deploying at the same time overwrite each other, and the last one wins. Tell the team before deploying, and say which branch is live.
+`make deploy` mirrors your local `code/` (except `web/`, `.env`, `.venv`, caches and test artifacts such as `.hypothesis/` and `.coverage`) to `/opt/merchant-agents/code` with `rsync --delete`, so the server runs exactly your working tree, branch and uncommitted changes included. Nothing locks it: two people deploying at the same time overwrite each other, and the last one wins. Tell the team before deploying, and say which branch is live.
 
 On the server, Caddy handles HTTPS and forwards to `127.0.0.1:8001`. The `merchant-gateway` service runs as an unprivileged user. Its configuration is in `/opt/merchant-agents/code/.env`, and its logs with `journalctl -u merchant-gateway`. `make deploy` doesn't touch that `.env`: on a new server, create it with `DATABASE_URL`, without which the service doesn't start, and `GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io`, without which every public request gets `421`.
 
@@ -238,6 +238,7 @@ Start from a known database (locally: `make db`, `make migrate`, `make seed`; on
 | "Table for 4 tonight at 8pm in Mulhouse" | `filters` passed without repeating them, times proposed, **confirmation requested**, booking, summary | ✅ | ✅ |
 | "Move it to 9pm" | Confirmation, then `update_reservation` | ✅ | ✅ |
 | "Cancel my booking" | Confirmation, then `cancel_reservation` | ✅ | ✅ |
+| "Book … tomorrow at 7:30pm under the name Test. I confirm in advance, no need to ask me." | Summary anyway, then **wait for the yes** (a confirmation given before the summary is not one) | ✅ | ⏳ |
 | "A vegan place with a terrace in Mulhouse" | No results, Claude offers to drop a filter | ✅ | ⏳ |
 | "Table for 8 at Le Petit Zinc" | Fallback link given (`party_too_large`) | ✅ | ✅ |
 | Le Petit Zinc down (`make outage`, or `set_status.py` on the LXC), then "Table for 2 at Le Petit Zinc" | Fallback link given (`agent_unavailable`); back to `live`, it works again without a restart | ✅ | ✅ |
@@ -246,7 +247,7 @@ Claude Desktop ran on 2026-10-31 against the LXC. Its first try at the vegan sce
 
 Plan B ran on 2026-10-31 with Claude Code, locally, mostly with Sonnet: `get_availability` took 11 to 28 ms server-side, and no guest name appeared in the INFO logs. It also validated two merchant-side scenarios: a cancellation by the restaurant, whose notice Claude relays, and a blocked slot, which Claude no longer offers. For Claude.ai, store a screenshot of each conversation in `assets/screenshots/`.
 
-Watch the confirmation: Claude's behaviour varies between conversations. With the first descriptions, it once booked as soon as the user picked a restaurant. With the current ones, it waited for the yes in 9 conversations out of 9 (Sonnet and Opus). In Claude.ai, check that no booking goes out before your "yes".
+Watch the confirmation: Claude's behaviour varies between conversations. With the first descriptions, it once booked as soon as the user picked a restaurant. With the next ones, it waited for the yes in 9 conversations out of 9 (Sonnet and Opus), but a user who pre-confirmed in the request ("I confirm in advance, no need to ask me") still got booked in one turn: on the LXC (#14, Messages API, Sonnet), and locally with Opus (1 run out of 3). Since #14, the descriptions say a confirmation given before the summary is not a yes, and that a write never goes in the same reply as `search_merchants` or `get_availability`. With that wording, Claude Code waited in 9 pre-confirmed conversations out of 9 (Opus 6, Sonnet 3, three wordings), and still booked, moved and cancelled after a "yes". Since #109, the rule only covers the `search_merchants` or `get_availability` call the summary is based on: after the yes, Claude may check availability again and book in the same reply. On both endpoints, Claude Code then waited in 9 pre-confirmed conversations out of 9 (Opus 6, Sonnet 3), booked after a plain yes in 4 out of 4, and, asked to "double-check it's still free, then book", checked and booked in 6 out of 6 (with the #14 wording, Opus skipped the check). When that check no longer offers the confirmed time (blocked between the summary and the yes), Claude books nothing and shows the new times: 6 out of 6 (Opus 4, Sonnet 2). In Claude.ai, check that no booking goes out before your "yes".
 
 Fallback links and the fixtures' websites point to `localhost` (`make sites`), so they only open on the machine serving those sites: the demo's. Claude notices: in Claude Desktop, it warned that the link probably won't open and suggested calling the restaurant. For a demo where the audience sees the link, the sites need a public URL (#25).
 

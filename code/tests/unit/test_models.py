@@ -315,3 +315,85 @@ def test_profile_schema_is_a_self_contained_tool_input(
     Draft202012Validator.check_schema(schema)
     # The fixture exercises every nested definition, resolving their local $refs.
     Draft202012Validator(schema).validate(profile_data)
+
+
+# Guest-side inputs that reached Postgres or date arithmetic and failed there (#79).
+
+BOOK = {
+    "merchant": "le-petit-zinc",
+    "starts_at": "2026-11-02T20:00:00+01:00",
+    "party_size": 2,
+    "guest_name": "Sam Dupont",
+    "idempotency_key": "book-1",
+}
+AMEND = {
+    "merchant": "le-petit-zinc",
+    "reservation_id": "R-002",
+    "guest_name": "Sam Dupont",
+    "party_size": 2,
+    "idempotency_key": "update-1",
+}
+
+
+@pytest.mark.parametrize(
+    ("model", "fields", "field"),
+    [
+        (models.CreateReservationInput, BOOK, "guest_name"),
+        (models.CreateReservationInput, BOOK, "idempotency_key"),
+        (models.UpdateReservationInput, AMEND, "reservation_id"),
+        (models.GetMyReservationsInput, {"guest_name": "Sam Dupont"}, "guest_name"),
+    ],
+)
+@pytest.mark.parametrize("control", ["\x00", "\x07", "\t", "\n", "\x7f", "\x85"])
+def test_text_fields_refuse_control_characters(
+    model: type[BaseModel], fields: dict[str, object], field: str, control: str
+) -> None:
+    with pytest.raises(ValidationError, match="control character"):
+        model.model_validate(fields | {field: f"Sam{control}Dupont"})
+
+
+@pytest.mark.parametrize("name", ["Anna\u00a0Weber", "Zoë Weiß", "李 小龙", "Ana-María O'Brien"])
+def test_guest_names_keep_letters_and_non_breaking_spaces(name: str) -> None:
+    assert models.GetMyReservationsInput(guest_name=name).guest_name == name
+
+
+@pytest.mark.parametrize("day", ["0001-01-01", "1999-12-31", "2100-01-01", "9999-12-31"])
+def test_availability_refuses_a_date_outside_the_booking_range(day: str) -> None:
+    with pytest.raises(ValidationError, match="between"):
+        models.GetAvailabilityInput(merchant="le-petit-zinc", date=day, party_size=2)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("day", [models.EARLIEST_BOOKING, models.LATEST_BOOKING])
+def test_availability_takes_both_ends_of_the_booking_range(day: date) -> None:
+    # Fixed bounds: the models never read the clock, the service's own clock decides the past.
+    models.GetAvailabilityInput(merchant="le-petit-zinc", date=day, party_size=2)
+
+
+@pytest.mark.parametrize(
+    ("model", "fields", "field"),
+    [
+        (models.CreateReservationInput, BOOK, "guest_name"),
+        (models.CreateReservationInput, BOOK, "idempotency_key"),
+        (models.UpdateReservationInput, AMEND, "reservation_id"),
+        (models.GetMyReservationsInput, {"guest_name": "Sam Dupont"}, "guest_name"),
+    ],
+)
+def test_guest_identity_fields_are_at_most_200_characters(
+    model: type[BaseModel], fields: dict[str, object], field: str
+) -> None:
+    # A 3 KB key overflows the unique index; a 2 MB name overflows a MATP frame.
+    model.model_validate(fields | {field: "a" * models.MAX_GUEST_TEXT})
+    with pytest.raises(ValidationError, match="at most 200"):
+        model.model_validate(fields | {field: "a" * (models.MAX_GUEST_TEXT + 1)})
+
+
+@pytest.mark.parametrize(
+    ("model", "fields"),
+    [(models.CreateReservationInput, BOOK), (models.UpdateReservationInput, AMEND)],
+)
+@pytest.mark.parametrize("starts_at", ["0001-01-01T00:00:00+01:00", "9999-12-31T23:30:00-05:00"])
+def test_a_booking_time_outside_the_booking_range_is_refused(
+    model: type[BaseModel], fields: dict[str, object], starts_at: str
+) -> None:
+    with pytest.raises(ValidationError, match="between"):
+        model.model_validate(fields | {"starts_at": starts_at})

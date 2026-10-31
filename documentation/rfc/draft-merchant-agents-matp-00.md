@@ -415,8 +415,13 @@ A write sent again after a lost session must not book twice.
   `party_size` and guest, MUST return status 200 with the reservation the
   first request created, and MUST NOT create another. If the params differ,
   it MUST answer status 400 with code `invalid_input`.
-- An AMEND sent again with the same params MUST leave the booking as the
-  first one left it, and return it.
+- For AMEND, the key is scoped to the merchant too. A node that receives an
+  AMEND with a key it already applied, for the same booking and the same
+  `starts_at` and `party_size`, MUST NOT change the booking again and MUST
+  return it as it is now, with status 200: a late retry never undoes a
+  later change. If the booking or the params differ, it MUST answer status
+  400 with code `invalid_input`. An AMEND that failed does not use up its
+  key.
 - CANCEL is idempotent without a key: cancelling a booking already
   cancelled by the guest returns it again, with status 200.
 

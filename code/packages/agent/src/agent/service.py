@@ -12,12 +12,14 @@ transaction never holds one table while waiting for another.
 
 import logging
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal, NoReturn, Protocol, overload
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Row, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import Range
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.sql import Executable
@@ -38,6 +40,7 @@ from core.db import (
     merchants_t,
     next_reservation_id,
     policy_t,
+    reservation_changes_t,
     reservations_t,
     tables_t,
 )
@@ -60,12 +63,25 @@ Clock = Callable[[], datetime]
 _Row = Row[*tuple[Any, ...]]
 
 EXCLUSION_VIOLATION = "23P01"
+UNIQUE_VIOLATION = "23505"
 IDEMPOTENCY_CONSTRAINT = "reservations_idempotency_key_key"
 # A notice comes back on every lookup for this long after the first one that returned it, so
 # that an answer lost on its way to the guest doesn't lose the notice (#91).
 NOTICE_WINDOW = timedelta(hours=24)
 
 Outcome = Literal["done", "taken", "key_taken"]
+
+
+MerchantCancelOutcome = admin.CancelOutcome
+
+
+@dataclass(frozen=True)
+class MerchantCancellation:
+    """The booking after a merchant's cancellation, and what was done: the merchant must never
+    be told the guest will be notified when no notice was stored (#82)."""
+
+    reservation: Reservation
+    outcome: MerchantCancelOutcome
 
 
 class AgentService(Protocol):
@@ -104,6 +120,8 @@ class AgentService(Protocol):
     async def cancel_reservation(
         self, slug: str, reservation_id: str, *, by: Literal["merchant"], guest_name: None = None
     ) -> Reservation: ...
+
+    async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation: ...
 
     async def find_guest_reservations(
         self, guest_name: str
@@ -160,7 +178,7 @@ def check_start(
         raise SlotUnavailable(
             f"{local:%H:%M} is not a start time on {local:%Y-%m-%d}; valid times: {valid or 'none'}"
         )
-    if start <= now:
+    if _utc(start) <= _utc(now):
         raise SlotUnavailable(f"{start.astimezone(tz):%Y-%m-%d %H:%M} is in the past")
 
 
@@ -204,7 +222,7 @@ async def _attempt(
     except DBAPIError as error:
         if _sqlstate(error) == EXCLUSION_VIOLATION:
             return "taken"
-        if _constraint(error) == IDEMPOTENCY_CONSTRAINT:
+        if _sqlstate(error) == UNIQUE_VIOLATION and _constraint(error) == IDEMPOTENCY_CONSTRAINT:
             return "key_taken"
         raise
     return "done"
@@ -272,7 +290,7 @@ class PgAgentService:
                 select(reservations_t.c.table_id, reservations_t.c.during).where(
                     reservations_t.c.status == "confirmed",
                     reservations_t.c.during.overlaps(
-                        Range(day_start, day_end + merchant.slot_length)
+                        Range(day_start, day_end.astimezone(UTC) + merchant.slot_length)
                     ),
                 )
             )
@@ -313,7 +331,7 @@ class PgAgentService:
             await self._check_new_start(conn, merchant, starts_at)
 
             reservation_id = await next_reservation_id(conn)
-            during = Range(starts_at, starts_at + merchant.slot_length, bounds="[)")
+            during = _during(starts_at, merchant.slot_length)
             for table in candidate_tables(merchant.tables, party_size):
                 outcome = await _attempt(
                     conn,
@@ -366,17 +384,22 @@ class PgAgentService:
         async with merchant_conn(self.engine, slug) as conn:
             merchant = await self._load(conn, slug)
             current = await self._own_booking(conn, reservation_id, guest_name)
+            # A key already applied returns the booking as it is now: a late retry of an
+            # older change must not undo a newer one (#78).
+            if not await self._claim_update_key(
+                conn, slug, idempotency_key, current.id, starts_at, party_size
+            ):
+                return self._from_row(slug, current)
             if current.status != "confirmed":
                 _not_found(reservation_id)
+            self._check_not_started(current)
             new_start = starts_at or current.during.lower
             new_party = party_size or current.party_size
             merchant.check_party(new_party)
-            if new_start != current.during.lower:
+            if _utc(new_start) != _utc(current.during.lower):
                 await self._check_new_start(conn, merchant, new_start)
-            elif new_start <= self.clock():
-                raise SlotUnavailable(f"Booking {current.id} has already started")
 
-            during = Range(new_start, new_start + merchant.slot_length, bounds="[)")
+            during = _during(new_start, merchant.slot_length)
             for table in candidate_tables(merchant.tables, new_party, current_id=current.table_id):
                 outcome = await _attempt(
                     conn,
@@ -402,7 +425,10 @@ class PgAgentService:
                     current.guest_name,
                     current.via,
                 )
-        raise SlotUnavailable(f"No table left at {merchant.name} at {_hhmm(new_start, self.tz)}")
+            # Inside the transaction: it rolls back, and the key claimed above with it.
+            raise SlotUnavailable(
+                f"No table left at {merchant.name} at {_hhmm(new_start, self.tz)}"
+            )
 
     @overload
     async def cancel_reservation(
@@ -423,13 +449,14 @@ class PgAgentService:
         guest_name: str | None = None,
     ) -> Reservation:
         if by == "merchant":
-            return await self._cancel_by_merchant(slug, reservation_id)
+            return (await self.cancel_by_merchant(slug, reservation_id)).reservation
         if guest_name is None:
             raise InvalidInput("guest_name is required to cancel a booking as the guest")
         async with merchant_conn(self.engine, slug) as conn:
             await self._load(conn, slug)
             current = await self._own_booking(conn, reservation_id, guest_name)
             if current.status == "confirmed":
+                self._check_not_started(current)
                 await conn.execute(
                     update(reservations_t)
                     .where(reservations_t.c.id == current.id)
@@ -448,6 +475,57 @@ class PgAgentService:
             current.guest_name,
             current.via,
         )
+
+    async def _claim_update_key(
+        self,
+        conn: AsyncConnection,
+        slug: str,
+        key: str,
+        reservation_id: str,
+        starts_at: datetime | None,
+        party_size: int | None,
+    ) -> bool:
+        """True if this update is new: its key is then stored, in the update's transaction.
+
+        A failed update rolls the key back with it. False if the key already applied this very
+        change; another change under the same key is `InvalidInput`, as for creations. The
+        booking's row lock, taken by `_own_booking`, queues two concurrent uses of one key.
+        """
+        claimed = await conn.scalar(
+            pg_insert(reservation_changes_t)
+            .values(
+                merchant_slug=slug,
+                idempotency_key=key,
+                reservation_id=reservation_id,
+                starts_at=starts_at,
+                party_size=party_size,
+            )
+            .on_conflict_do_nothing(index_elements=["merchant_slug", "idempotency_key"])
+            .returning(reservation_changes_t.c.idempotency_key)
+        )
+        if claimed is not None:
+            return True
+        applied = (
+            await conn.execute(
+                select(
+                    reservation_changes_t.c.reservation_id,
+                    reservation_changes_t.c.starts_at,
+                    reservation_changes_t.c.party_size,
+                ).where(
+                    reservation_changes_t.c.merchant_slug == slug,
+                    reservation_changes_t.c.idempotency_key == key,
+                )
+            )
+        ).one()
+        stored = (applied.reservation_id, _utc(applied.starts_at), applied.party_size)
+        if stored != (reservation_id, _utc(starts_at), party_size):
+            raise InvalidInput("idempotency_key reused with different parameters")
+        return False
+
+    def _check_not_started(self, booking: _Row) -> None:
+        """A guest changes a booking only before it starts: after, it's the merchant's (#79)."""
+        if _utc(booking.during.lower) <= _utc(self.clock()):
+            raise SlotUnavailable(f"Booking {booking.id} has already started")
 
     async def find_guest_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
         """Upcoming confirmed bookings at every live merchant, and the guest's notices.
@@ -555,14 +633,17 @@ class PgAgentService:
         log.info("floor plan updated", extra={"merchant": slug, "tables": len(plan)})
         return plan
 
-    async def _cancel_by_merchant(self, slug: str, reservation_id: str) -> Reservation:
+    async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation:
         async with merchant_conn(self.engine, slug) as conn:
             await self._load(conn, slug, merchant_side=True)
-            row = await admin.cancel_by_merchant(conn, slug, reservation_id, self.tz, self.clock())
+            row, outcome = await admin.cancel_by_merchant(
+                conn, slug, reservation_id, self.tz, self.clock()
+            )
         log.info(
-            "reservation cancelled by merchant", extra={"merchant": slug, "reservation": row.id}
+            "reservation cancelled by merchant",
+            extra={"merchant": slug, "reservation": row.id, "cancel_outcome": outcome},
         )
-        return self._from_row(slug, row)
+        return MerchantCancellation(reservation=self._from_row(slug, row), outcome=outcome)
 
     # Helpers
 
@@ -629,9 +710,8 @@ class PgAgentService:
     def _replayed(
         self, slug: str, row: _Row, starts_at: datetime, party_size: int, guest_name: str
     ) -> Reservation:
-        if (row.during.lower, row.party_size) != (starts_at, party_size) or not same_guest(
-            guest_name, row.guest_name
-        ):
+        same = (_utc(row.during.lower), row.party_size) == (_utc(starts_at), party_size)
+        if not same or not same_guest(guest_name, row.guest_name):
             raise InvalidInput("idempotency_key reused with different parameters")
         return self._from_row(slug, row)
 
@@ -669,6 +749,22 @@ class PgAgentService:
             guest_name=guest_name,
             via=via,
         )
+
+
+@overload
+def _utc(moment: datetime) -> datetime: ...
+@overload
+def _utc(moment: None) -> None: ...
+def _utc(moment: datetime | None) -> datetime | None:
+    """The same instant in UTC, so that comparisons hold in the hour that repeats (PEP 495)."""
+    return moment.astimezone(UTC) if moment is not None else None
+
+
+def _during(start: datetime, slot_length: timedelta) -> Range[datetime]:
+    """The range a booking holds its table: `slot_length` of real time, also across a clock
+    change, which wall-clock arithmetic on a `ZoneInfo` datetime would get wrong (#80)."""
+    start = start.astimezone(UTC)
+    return Range(start, start + slot_length, bounds="[)")
 
 
 def _not_found(reservation_id: str) -> NoReturn:

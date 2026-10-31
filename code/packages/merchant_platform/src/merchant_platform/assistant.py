@@ -7,7 +7,7 @@ crawled website text.
 import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from openai import AsyncOpenAI
@@ -55,7 +55,8 @@ Rules:
 copy their content into your reply: comment on it in one or two sentences.
 - Only state facts that come from tool results or from the merchant.
 - Dates: work out "tonight", "tomorrow" or "Saturday" from today's date below. Times are local \
-({tz}); pass them with their UTC offset.
+({tz}); pass them with the UTC offset given below for their date, never one you work out \
+yourself.
 """
 
 ONBOARDING_PROMPT = """\
@@ -77,17 +78,51 @@ Mode: operations. The merchant's agent is live.
 assumptions from its result (default values used) and ask the merchant to confirm or correct \
 them. Corrections go through update_policy or update_tables. Then wrap up with: "Your agent \
 is live: Claude users can now book you."
-- Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel \
-and say the guest will be notified.
+- Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel. \
+If its result says the guest won't be notified, say why in a few words.
 
 The merchant's validated profile:
 {profile}
 """
 
 
+# How far ahead the prompt looks for the next clock change.
+OFFSET_HORIZON_DAYS = 400
+
+
+def next_offset_change(now: datetime) -> datetime | None:
+    """Noon of the first local day, from today, whose UTC offset differs from `now`'s.
+
+    Today counts: before 03:00 on the night of a switch, tonight's services are already in
+    the new offset. None when the time zone keeps one offset over the horizon.
+    """
+    for days in range(OFFSET_HORIZON_DAYS + 1):
+        day = datetime.combine(now.date() + timedelta(days=days), time(12), now.tzinfo)
+        if day.utcoffset() != now.utcoffset():
+            return day
+    return None
+
+
+def clock_line(now: datetime) -> str:
+    """Today's date, time and UTC offset, and the next offset change (#83).
+
+    The admin tools take times with their offset; a model guessing it would send a summer
+    offset after the switch, and `block_slot` would block another hour without failing.
+    """
+    tz = str(now.tzinfo)
+    line = f"Today is {now:%A %Y-%m-%d}, it is {now:%H:%M} ({tz}, UTC{now:%:z})."
+    change = next_offset_change(now)
+    if change is not None:
+        line += (
+            f" The offset becomes UTC{change:%:z} on {change:%A %Y-%m-%d}: use it for times"
+            " from that date on."
+        )
+    return line + "\n"
+
+
 def system_prompt(now: datetime, profile: MerchantProfile | None) -> str:
     tz = str(now.tzinfo)
-    parts = [BASE_PROMPT.format(tz=tz), f"Today is {now:%A %Y-%m-%d}, it is {now:%H:%M} ({tz}).\n"]
+    parts = [BASE_PROMPT.format(tz=tz), clock_line(now)]
     if profile is None:
         parts.append(ONBOARDING_PROMPT)
     else:
@@ -131,6 +166,18 @@ def compact(history: Sequence[Message]) -> list[Message]:
     return compacted
 
 
+async def session_merchant(
+    session: Session | None, default: str | None, profiles: ProfileLookup
+) -> MerchantProfile | None:
+    """The merchant `session` works on, or will from its next message (#88).
+
+    A session without a merchant takes `default` (PLATFORM_MERCHANT) once it is registered,
+    so that a page reload or a seeded demo doesn't force a new onboarding (AGENTS.md §14).
+    """
+    slug = (session.merchant_slug if session else None) or default
+    return await profiles(slug) if slug else None
+
+
 class Assistant:
     """`RunTurn` implementation: answers one merchant message."""
 
@@ -151,9 +198,9 @@ class Assistant:
         self._clock = clock or (lambda: datetime.now(tz))
 
     async def __call__(self, session: Session, user_message: str, emit: Emit) -> None:
-        default = self._default_merchant
-        if session.merchant_slug is None and default and await self._profiles(default):
-            session.merchant_slug = default
+        if session.merchant_slug is None:
+            attached = await session_merchant(session, self._default_merchant, self._profiles)
+            session.merchant_slug = attached.slug if attached else None
         session.messages.append({"role": "user", "content": user_message})
 
         async def on_text(delta: str) -> None:

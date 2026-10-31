@@ -4,6 +4,7 @@
   "additionalProperties": false,
   "properties": {
     "guest_name": {
+      "maxLength": 200,
       "minLength": 1,
       "title": "Guest Name",
       "type": "string"

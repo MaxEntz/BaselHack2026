@@ -90,22 +90,22 @@ Table of Contents
    8.  Intents . . . . . . . . . . . . . . . . . . . . . . . . . . .  13
      8.1.  DISCOVER  . . . . . . . . . . . . . . . . . . . . . . . .  14
      8.2.  AVAILABILITY  . . . . . . . . . . . . . . . . . . . . . .  14
-     8.3.  BOOK  . . . . . . . . . . . . . . . . . . . . . . . . . .  14
+     8.3.  BOOK  . . . . . . . . . . . . . . . . . . . . . . . . . .  15
      8.4.  AMEND . . . . . . . . . . . . . . . . . . . . . . . . . .  15
      8.5.  CANCEL  . . . . . . . . . . . . . . . . . . . . . . . . .  15
-     8.6.  RECALL  . . . . . . . . . . . . . . . . . . . . . . . . .  15
-     8.7.  PING  . . . . . . . . . . . . . . . . . . . . . . . . . .  15
+     8.6.  RECALL  . . . . . . . . . . . . . . . . . . . . . . . . .  16
+     8.7.  PING  . . . . . . . . . . . . . . . . . . . . . . . . . .  16
    9.  Status Codes  . . . . . . . . . . . . . . . . . . . . . . . .  16
    10. Events  . . . . . . . . . . . . . . . . . . . . . . . . . . .  17
-   11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  17
+   11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  18
    12. Security Considerations . . . . . . . . . . . . . . . . . . .  18
    13. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  19
    14. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  19
    15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  20
      15.1.  Normative References . . . . . . . . . . . . . . . . . .  20
-     15.2.  Informative References . . . . . . . . . . . . . . . . .  20
-   Appendix A.  The MCP Bridge . . . . . . . . . . . . . . . . . . .  21
-   Appendix B.  Example Session  . . . . . . . . . . . . . . . . . .  22
+     15.2.  Informative References . . . . . . . . . . . . . . . . .  21
+   Appendix A.  The MCP Bridge . . . . . . . . . . . . . . . . . . .  22
+   Appendix B.  Example Session  . . . . . . . . . . . . . . . . . .  23
 
 
 
@@ -124,7 +124,7 @@ Internet-Draft                    MATP                      October 2026
      C.7.  AMEND params  . . . . . . . . . . . . . . . . . . . . . .  34
      C.8.  CANCEL params . . . . . . . . . . . . . . . . . . . . . .  35
      C.9.  RECALL params . . . . . . . . . . . . . . . . . . . . . .  36
-     C.10. RECALL result . . . . . . . . . . . . . . . . . . . . . .  36
+     C.10. RECALL result . . . . . . . . . . . . . . . . . . . . . .  37
      C.11. PING params and result  . . . . . . . . . . . . . . . . .  38
    Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  39
    Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  39
@@ -674,8 +674,13 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
-   *  An AMEND sent again with the same params MUST leave the booking as
-      the first one left it, and return it.
+   *  For AMEND, the key is scoped to the merchant too.  A node that
+      receives an AMEND with a key it already applied, for the same
+      booking and the same starts_at and party_size, MUST NOT change the
+      booking again and MUST return it as it is now, with status 200: a
+      late retry never undoes a later change.  If the booking or the
+      params differ, it MUST answer status 400 with code invalid_input.
+      An AMEND that failed does not use up its key.
 
    *  CANCEL is idempotent without a key: cancelling a booking already
       cancelled by the guest returns it again, with status 200.
@@ -695,6 +700,35 @@ Internet-Draft                    MATP                      October 2026
    clock), both in the merchant's local time zone.  The params and
    result of each intent are defined by the JSON Schemas of Appendix C;
    this section states their meaning and errors.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 13]
+
+Internet-Draft                    MATP                      October 2026
+
 
            +==============+==========+=========================+
            | Intent       | merchant | Purpose                 |
@@ -722,14 +756,6 @@ Internet-Draft                    MATP                      October 2026
 
                          Table 9: MATP 0.1 intents
 
-
-
-
-                           Expires 4 May 2027                  [Page 13]
-
-Internet-Draft                    MATP                      October 2026
-
-
 8.1.  DISCOVER
 
    Params: query (string), and optionally near (string), date, and
@@ -750,6 +776,15 @@ Internet-Draft                    MATP                      October 2026
 8.2.  AVAILABILITY
 
    Params: date, party_size (integer, at least 1), and optionally time.
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 14]
+
+Internet-Draft                    MATP                      October 2026
+
 
    Result: slots, at most 3, each with starts_at and table_label.  When
    time is given, the node returns the start times closest to it (the
@@ -777,15 +812,6 @@ Internet-Draft                    MATP                      October 2026
    for callers behind the reference bridge (Section 12).  A later
    version may add a value for other assistants.
 
-
-
-
-
-                           Expires 4 May 2027                  [Page 14]
-
-Internet-Draft                    MATP                      October 2026
-
-
    starts_at MUST be a start time the merchant offers; AVAILABILITY
    returns such times.  Errors: 400, 404, 409, 413, 503.
 
@@ -806,6 +832,15 @@ Internet-Draft                    MATP                      October 2026
    applies.  Result: reservation, with status "cancelled".
 
    Errors: 400, 404, 503.
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 15]
+
+Internet-Draft                    MATP                      October 2026
+
 
 8.6.  RECALL
 
@@ -828,19 +863,6 @@ Internet-Draft                    MATP                      October 2026
    Params: {}. Result: pong (true) and server_time, the node's clock.
 
    Errors: none defined.
-
-
-
-
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 15]
-
-Internet-Draft                    MATP                      October 2026
-
 
 9.  Status Codes
 
@@ -868,6 +890,14 @@ Internet-Draft                    MATP                      October 2026
      | 409    | slot_unavailable  | The time is       | no           |
      |        |                   | taken, blocked,   |              |
      |        |                   | in the past, or   |              |
+
+
+
+                           Expires 4 May 2027                  [Page 16]
+
+Internet-Draft                    MATP                      October 2026
+
+
      |        |                   | not one the       |              |
      |        |                   | merchant offers   |              |
      +--------+-------------------+-------------------+--------------+
@@ -890,14 +920,6 @@ Internet-Draft                    MATP                      October 2026
      | 503    | agent_unavailable | The merchant      | yes          |
      |        |                   | agent is down,    |              |
      |        |                   | failed, or timed  |              |
-
-
-
-                           Expires 4 May 2027                  [Page 16]
-
-Internet-Draft                    MATP                      October 2026
-
-
      |        |                   | out               |              |
      +--------+-------------------+-------------------+--------------+
 
@@ -925,6 +947,13 @@ Internet-Draft                    MATP                      October 2026
    reaches the guest as a notice returned by RECALL.  A 0.1 caller
    ignores them (Section 7.5).
 
+
+
+                           Expires 4 May 2027                  [Page 17]
+
+Internet-Draft                    MATP                      October 2026
+
+
 11.  Versioning and Extensibility
 
    A version is written major.minor:
@@ -944,15 +973,6 @@ Internet-Draft                    MATP                      October 2026
    (Section 7), a caller MUST NOT send params that the session's version
    does not define.  A caller MUST ignore result members it does not
    know.
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 17]
-
-Internet-Draft                    MATP                      October 2026
-
 
 12.  Security Considerations
 
@@ -982,6 +1002,14 @@ Internet-Draft                    MATP                      October 2026
       wrong.  A merchant SHOULD read via as "an assistant" until a later
       version names the calling agent in it.
 
+
+
+
+                           Expires 4 May 2027                  [Page 18]
+
+Internet-Draft                    MATP                      October 2026
+
+
    Writes without confirmation:  A misbehaving caller can book, amend or
       cancel without asking the guest.  The node cannot detect it.
       Idempotency keys prevent duplicate bookings on retries, not
@@ -1000,15 +1028,6 @@ Internet-Draft                    MATP                      October 2026
    Fallback URLs:  A caller passes fallback_url to a person.  A caller
       SHOULD only offer https URLs, and a node SHOULD only send URLs on
       the merchant's own website.
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 18]
-
-Internet-Draft                    MATP                      October 2026
-
 
 13.  Privacy Considerations
 
@@ -1040,6 +1059,13 @@ Internet-Draft                    MATP                      October 2026
       Port Number Registry; this document does not request it.
       Registration would follow the procedures of [RFC6335].
 
+
+
+                           Expires 4 May 2027                  [Page 19]
+
+Internet-Draft                    MATP                      October 2026
+
+
    URI scheme:  The matp scheme of Section 4 is not registered.  A later
       version would request provisional registration under [RFC7595]
       with this template:
@@ -1058,14 +1084,6 @@ Internet-Draft                    MATP                      October 2026
       *  References: this document
 
    URN namespace:  The urn:matp: identifiers used in examples are not a
-
-
-
-                           Expires 4 May 2027                  [Page 19]
-
-Internet-Draft                    MATP                      October 2026
-
-
       registered URN namespace ([RFC8141]).
 
 15.  References
@@ -1095,6 +1113,15 @@ Internet-Draft                    MATP                      October 2026
               DOI 10.17487/RFC5234, January 2008,
               <https://www.rfc-editor.org/rfc/rfc5234>.
 
+
+
+
+
+                           Expires 4 May 2027                  [Page 20]
+
+Internet-Draft                    MATP                      October 2026
+
+
    [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
               2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
               May 2017, <https://www.rfc-editor.org/rfc/rfc8174>.
@@ -1113,14 +1140,6 @@ Internet-Draft                    MATP                      October 2026
               <https://www.rfc-editor.org/rfc/rfc9846>.
 
 15.2.  Informative References
-
-
-
-
-                           Expires 4 May 2027                  [Page 20]
-
-Internet-Draft                    MATP                      October 2026
-
 
    [I-D.bhutton-json-schema]
               Wright, A., Andrews, H. H., Hutton, B., and G. Dennis,
@@ -1146,6 +1165,19 @@ Internet-Draft                    MATP                      October 2026
               Specification",
               <https://modelcontextprotocol.io/specification>.
 
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 21]
+
+Internet-Draft                    MATP                      October 2026
+
+
    [RFC6335]  Cotton, M., Eggert, L., Touch, J., Westerlund, M., and S.
               Cheshire, "Internet Assigned Numbers Authority (IANA)
               Procedures for the Management of the Service Name and
@@ -1168,15 +1200,6 @@ Appendix A.  The MCP Bridge
    node.  The reference bridge opens one session with agent.id
    urn:matp:agent:claude-gateway and agent.kind user-agent, and maps its
    tools to intents:
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 21]
-
-Internet-Draft                    MATP                      October 2026
-
 
    +=====================+==============+=============================+
    | MCP tool            | MATP intent  | Notes                       |
@@ -1203,6 +1226,14 @@ Internet-Draft                    MATP                      October 2026
       cancel_reservation, which is how the bridge meets the confirmation
       requirement of Section 7.
 
+
+
+
+                           Expires 4 May 2027                  [Page 22]
+
+Internet-Draft                    MATP                      October 2026
+
+
    *  The bridge answers each tool call within 2 seconds, including the
       round trip to the node.  A timeout, a lost session or a 503
       becomes an agent_unavailable tool error with the merchant's
@@ -1219,20 +1250,6 @@ Appendix B.  Example Session
    caller to the node, and lines starting with "N:" from the node to the
    caller.  Long frames are wrapped here for readability: on the wire,
    each is one line.
-
-
-
-
-
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 22]
-
-Internet-Draft                    MATP                      October 2026
-
 
 C: {"type": "hello", "matp": "0.1",
     "agent": {"id": "urn:matp:agent:claude-gateway",
@@ -1265,23 +1282,6 @@ N: {"type": "response", "id": "r-2", "status": 200,
 
       Figure 3: Opening the session, discovery and availability
 
-   The caller then books, and checks a larger party while the booking is
-   in flight: the second answer arrives first.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1289,6 +1289,9 @@ N: {"type": "response", "id": "r-2", "status": 200,
 
 Internet-Draft                    MATP                      October 2026
 
+
+   The caller then books, and checks a larger party while the booking is
+   in flight: the second answer arrives first.
 
 C: {"type": "request", "id": "r-3", "intent": "BOOK",
     "merchant": "le-petit-zinc",
@@ -1335,9 +1338,6 @@ C.1.  DISCOVER params
            "max_price": {
              "anyOf": [
                {
-                 "enum": [
-                   "€",
-                   "€€",
 
 
 
@@ -1346,6 +1346,9 @@ C.1.  DISCOVER params
 Internet-Draft                    MATP                      October 2026
 
 
+                 "enum": [
+                   "€",
+                   "€€",
                    "€€€",
                    "€€€€"
                  ],
@@ -1391,9 +1394,6 @@ Internet-Draft                    MATP                      October 2026
          "anyOf": [
            {
              "$ref": "#/$defs/SearchFilters"
-           },
-           {
-             "type": "null"
 
 
 
@@ -1402,6 +1402,9 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
+           },
+           {
+             "type": "null"
            }
          ],
          "default": null
@@ -1447,9 +1450,6 @@ C.2.  DISCOVER result
              "type": "integer"
            }
          },
-         "required": [
-           "drop",
-           "matches"
 
 
 
@@ -1458,6 +1458,9 @@ C.2.  DISCOVER result
 Internet-Draft                    MATP                      October 2026
 
 
+         "required": [
+           "drop",
+           "matches"
          ],
          "title": "FilterSuggestion",
          "type": "object"
@@ -1503,9 +1506,6 @@ Internet-Draft                    MATP                      October 2026
                  "vegan",
                  "halal",
                  "kosher",
-                 "terrace",
-                 "kid-friendly"
-               ],
 
 
 
@@ -1514,6 +1514,9 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
+                 "terrace",
+                 "kid-friendly"
+               ],
                "type": "string"
              },
              "title": "Tags",
@@ -1559,9 +1562,6 @@ Internet-Draft                    MATP                      October 2026
        },
        "suggestions": {
          "default": [],
-         "items": {
-           "$ref": "#/$defs/FilterSuggestion"
-         },
 
 
 
@@ -1570,6 +1570,9 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
+         "items": {
+           "$ref": "#/$defs/FilterSuggestion"
+         },
          "title": "Suggestions",
          "type": "array"
        }
@@ -1582,9 +1585,6 @@ Internet-Draft                    MATP                      October 2026
    }
 
 C.3.  AVAILABILITY params
-
-
-
 
 
 
@@ -1744,11 +1744,13 @@ Internet-Draft                    MATP                      October 2026
      "additionalProperties": false,
      "properties": {
        "guest_name": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Guest Name",
          "type": "string"
        },
        "idempotency_key": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Idempotency Key",
          "type": "string"
@@ -1784,8 +1786,6 @@ C.6.  BOOK, AMEND and CANCEL result
        "Reservation": {
          "additionalProperties": false,
          "properties": {
-           "guest_name": {
-             "title": "Guest Name",
 
 
 
@@ -1794,6 +1794,8 @@ C.6.  BOOK, AMEND and CANCEL result
 Internet-Draft                    MATP                      October 2026
 
 
+           "guest_name": {
+             "title": "Guest Name",
              "type": "string"
            },
            "id": {
@@ -1840,8 +1842,6 @@ Internet-Draft                    MATP                      October 2026
          "required": [
            "id",
            "merchant",
-           "starts_at",
-           "party_size",
 
 
 
@@ -1850,6 +1850,8 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
+           "starts_at",
+           "party_size",
            "table_label",
            "status",
            "guest_name",
@@ -1881,11 +1883,13 @@ C.7.  AMEND params
      "additionalProperties": false,
      "properties": {
        "guest_name": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Guest Name",
          "type": "string"
        },
        "idempotency_key": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Idempotency Key",
          "type": "string"
@@ -1894,10 +1898,6 @@ C.7.  AMEND params
          "anyOf": [
            {
              "exclusiveMinimum": 0,
-             "type": "integer"
-           },
-           {
-             "type": "null"
 
 
 
@@ -1906,12 +1906,17 @@ C.7.  AMEND params
 Internet-Draft                    MATP                      October 2026
 
 
+             "type": "integer"
+           },
+           {
+             "type": "null"
            }
          ],
          "default": null,
          "title": "Party Size"
        },
        "reservation_id": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Reservation Id",
          "type": "string"
@@ -1952,11 +1957,6 @@ C.8.  CANCEL params
 
 
 
-
-
-
-
-
                            Expires 4 May 2027                  [Page 35]
 
 Internet-Draft                    MATP                      October 2026
@@ -1968,11 +1968,13 @@ Internet-Draft                    MATP                      October 2026
      "additionalProperties": false,
      "properties": {
        "guest_name": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Guest Name",
          "type": "string"
        },
        "reservation_id": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Reservation Id",
          "type": "string"
@@ -1994,6 +1996,7 @@ C.9.  RECALL params
      "additionalProperties": false,
      "properties": {
        "guest_name": {
+         "maxLength": 200,
          "minLength": 1,
          "title": "Guest Name",
          "type": "string"
@@ -2006,9 +2009,6 @@ C.9.  RECALL params
      "type": "object"
    }
 
-C.10.  RECALL result
-
-
 
 
 
@@ -2017,6 +2017,8 @@ C.10.  RECALL result
 
 Internet-Draft                    MATP                      October 2026
 
+
+C.10.  RECALL result
 
    {
      "$comment": "Generated from core.models.GetMyReservationsOutput",
@@ -2064,8 +2066,6 @@ Internet-Draft                    MATP                      October 2026
                "claude",
                "merchant",
                "website"
-             ],
-             "title": "Via",
 
 
 
@@ -2074,6 +2074,8 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
+             ],
+             "title": "Via",
              "type": "string"
            }
          },
@@ -2118,8 +2120,6 @@ Internet-Draft                    MATP                      October 2026
    }
 
 C.11.  PING params and result
-
-
 
 
 

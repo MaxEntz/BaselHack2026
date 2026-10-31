@@ -219,7 +219,8 @@ def finalize(draft: ProfileDraft, crawl: CrawlResult) -> ExtractionResult:
     profile = MerchantProfile.model_validate(
         {
             "slug": slugify(draft.name, website),
-            "name": draft.name,
+            # One line: a name never holds a control character (#79).
+            "name": " ".join(draft.name.split()),
             "website": website,
             "vertical": "restaurant",
             "location": draft.location,

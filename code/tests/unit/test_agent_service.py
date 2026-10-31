@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -75,3 +75,14 @@ def test_pg_service_implements_the_contract() -> None:
     service: AgentService = PgAgentService(engine, tz=TZ)
 
     assert isinstance(service, PgAgentService)
+
+
+def test_check_start_compares_instants_in_the_repeated_hour() -> None:
+    # 02:30 CEST on 2026-10-25 is before 02:15 CET (second pass) in real time; two ZoneInfo
+    # datetimes compare by wall clock, so compare instants (#80).
+    night = [Service(start="00:00", end="04:00")]
+    start = datetime(2026, 10, 25, 2, 30, tzinfo=TZ)
+    now = datetime(2026, 10, 25, 1, 15, tzinfo=UTC).astimezone(TZ)
+
+    with pytest.raises(SlotUnavailable, match="in the past"):
+        check_start(night, start, now=now, tz=TZ)

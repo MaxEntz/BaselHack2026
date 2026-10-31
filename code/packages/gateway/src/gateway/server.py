@@ -14,7 +14,7 @@ from mcp.server import MCPServer
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
-from pydantic import AwareDatetime, Field, PositiveInt
+from pydantic import Field, PositiveInt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.applications import Starlette
@@ -28,10 +28,12 @@ from core.config import Settings
 from core.db import make_engine
 from core.models import (
     HHMM,
+    BookingDay,
+    BookingTime,
     CancelOutput,
     GetAvailabilityOutput,
     GetMyReservationsOutput,
-    NonEmptyStr,
+    GuestText,
     ReservationOutput,
     SearchFilters,
     SearchMerchantsOutput,
@@ -65,7 +67,12 @@ Find restaurants and book tables, on the user's behalf, at merchants connected t
 - Only propose times returned by get_availability. Times are in Europe/Zurich.
 - Before create_reservation, update_reservation or cancel_reservation, summarize the action and
   stop: call the tool only once the user's reply to that summary is an explicit yes. Choosing a
-  restaurant or a time is not a yes, even when the request looks complete.
+  restaurant or a time is not a yes, even when the request looks complete. Nor is a confirmation
+  given before the summary ("I confirm in advance", "book directly"): show the summary anyway.
+  So never call a write tool in the same reply as the search_merchants or get_availability call
+  your summary is based on. After the user's yes, checking availability again first is fine; if
+  that check no longer offers the confirmed time, don't book another one: show the new times and
+  ask again.
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page.
 - Relay the notices returned by get_my_reservations. A notice can come back for 24 hours: tell
@@ -94,20 +101,25 @@ CREATE_RESERVATION = """\
 Book a table. This takes two messages. First show the user a summary (restaurant, date, time, \
 party size, name), ask them to confirm, and stop. Call this tool only once their reply to that \
 summary is an explicit yes. Choosing a restaurant or a time is not a yes, even when the request \
-looks complete. Generate a fresh `idempotency_key` (UUID) per confirmed booking and reuse it if \
-you retry the same booking. Ask the guest's name if unknown. If the result contains \
+looks complete, and neither is a confirmation given before the summary ("I confirm in advance", \
+"book directly"): never call this tool in the same reply as the search_merchants or \
+get_availability call your summary is based on. After the yes, you may check availability again \
+before booking; if that check no longer offers the confirmed time, don't book another one: show \
+the new times and ask again. Generate a fresh `idempotency_key` (UUID) per confirmed booking and \
+reuse it if you retry the same booking. Ask the guest's name if unknown. If the result contains \
 `fallback_url`, give it to the user."""
 
 UPDATE_RESERVATION = """\
 Change the time or party size of a booking. First show the change, ask the user to confirm, and \
-stop; call this tool only once they reply yes. Requires the guest name used at booking. Generate \
-a fresh `idempotency_key` (UUID) per confirmed change and reuse it if you retry the same change. \
-If the result contains `fallback_url`, give it to the user."""
+stop; call this tool only once they reply yes to that summary, even if they confirmed in advance. \
+Requires the guest name used at booking. Generate a fresh `idempotency_key` (UUID) per confirmed \
+change and reuse it if you retry the same change. If the result contains `fallback_url`, give it \
+to the user."""
 
 CANCEL_RESERVATION = """\
 Cancel a booking. First ask the user to confirm, and stop; call this tool only once they reply \
-yes. Requires the guest name used at booking. If the result contains `fallback_url`, give it to \
-the user."""
+yes to that question, even if they confirmed in advance. Requires the guest name used at booking. \
+If the result contains `fallback_url`, give it to the user."""
 
 GET_MY_RESERVATIONS = """\
 List the user's upcoming bookings and any notices from restaurants (e.g. a cancellation by the \
@@ -124,17 +136,17 @@ DESTRUCTIVE = ToolAnnotations(
 
 Merchant = Annotated[Slug, Field(description="Restaurant slug returned by search_merchants.")]
 GuestName = Annotated[
-    NonEmptyStr, Field(description="Guest's full name, the same one for the whole booking.")
+    GuestText, Field(description="Guest's full name, the same one for the whole booking.")
 ]
 PartySize = Annotated[PositiveInt, Field(description="Number of guests.")]
 StartsAt = Annotated[
-    AwareDatetime,
+    BookingTime,
     Field(description="Start time with its UTC offset, exactly as returned by get_availability."),
 ]
 IdempotencyKey = Annotated[
-    NonEmptyStr, Field(description="UUID you generate; reuse it only to retry the same action.")
+    GuestText, Field(description="UUID you generate; reuse it only to retry the same action.")
 ]
-ReservationId = Annotated[NonEmptyStr, Field(description="Booking reference, e.g. R-001.")]
+ReservationId = Annotated[GuestText, Field(description="Booking reference, e.g. R-001.")]
 
 
 def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -> MCPServer:
@@ -180,7 +192,7 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
         merchant: Merchant,
-        date: Annotated[Date, Field(description="Requested day, YYYY-MM-DD.")],
+        date: Annotated[BookingDay, Field(description="Requested day, YYYY-MM-DD.")],
         party_size: PartySize,
         time: Annotated[
             HHMM | None, Field(description="Requested time (HH:MM), 24-hour clock.")
@@ -217,7 +229,7 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         guest_name: GuestName,
         idempotency_key: IdempotencyKey,
         starts_at: Annotated[
-            AwareDatetime | None,
+            BookingTime | None,
             Field(description="New start time with its UTC offset, from get_availability."),
         ] = None,
         party_size: Annotated[

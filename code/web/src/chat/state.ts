@@ -42,7 +42,9 @@ export type ChatAction =
   | { type: "send"; text: string }
   | { type: "chat"; event: ChatEvent }
   | { type: "live"; event: LiveEvent }
-  | { type: "failed"; message: string };
+  | { type: "failed"; message: string }
+  // The platform says which merchant the session works on (GET /session, #88).
+  | { type: "attached"; merchant: Merchant; welcome: string };
 
 export function initialChatState(
   welcome: string,
@@ -82,7 +84,18 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       );
     case "chat":
       return applyChatEvent(state, action.event);
+    case "attached":
+      return attach(state, action.merchant, action.welcome);
   }
+}
+
+// A reload keeps the server session but not the chat: before the first message,
+// the onboarding welcome gives way to the operations one.
+function attach(state: ChatState, merchant: Merchant, welcome: string): ChatState {
+  if (state.merchant?.slug === merchant.slug) return state;
+  const next: ChatState = { ...state, merchant, status: "live" };
+  if (state.turn > 0 || state.items[0]?.id !== "welcome") return next;
+  return replaceAt(next, 0, { id: "welcome", turn: 0, type: "assistant", text: welcome });
 }
 
 function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {

@@ -19,7 +19,23 @@ must not overlap. Booking timestamps require an explicit offset, such as
 `2026-10-31T20:00:00+01:00` (Europe/Zurich).
 
 `guest_name`, `idempotency_key` and `reservation_id` are stripped and must not be
-blank on tool inputs. `update_reservation` needs `starts_at` or `party_size`, and
+blank on tool inputs. Once stripped, no `NonEmptyStr` field holds a control character
+(Unicode category `Cc`: NUL, which Postgres can't store, tab, newline…); spaces, non-breaking
+ones included, and letters of any script are kept. On the guest side they are `GuestText`, at
+most 200 characters (a longer key overflows the unique index, a longer name a MATP frame). A
+guest's day (`get_availability.date`) and booking time (`starts_at` of a creation or an
+update, also on the platform's public booking API) lie between 2000-01-01 and 2099-12-31
+(`BookingDay`, `BookingTime`), so no date arithmetic can overflow; outside, the answer is
+`invalid_input`. These bounds are fixed: the models never read the clock, and the service
+refuses the past with its own. They hold at the boundaries (gateway tools, MATP node, platform
+API); the service trusts inputs that went through them. A guest can no longer move, resize or
+cancel a booking once it has started (`slot_unavailable`); after that it is the merchant's
+(#79). `update_reservation` needs `starts_at` or `party_size`, and its `idempotency_key` is
+stored with the change it applied (`public.reservation_changes`, #78): the same key for the
+same booking and parameters returns the booking as it is now without changing it, and the
+same key for anything else is `invalid_input`. A failed update doesn't use up its key. Like a
+creation replay, an update replay returns the booking even if it was cancelled since. Update
+and creation keys are separate namespaces. And
 `update_policy` needs `max_party_size` or `services`.
 
 A floor plan has at least one table and unique labels. The builder must fill a
@@ -50,7 +66,11 @@ non-breaking space is a space). Booking, update, cancel and `get_my_reservations
 notices) all use it, so a name that can book always finds its bookings and notices (#77).
 
 Guest updates and cancellations require `guest_name`; merchant cancellation uses
-`by="merchant"` on the service, which is why the admin tool input has no `by`.
+`by="merchant"` on the service, which is why the admin tool input has no `by`. The admin
+tool calls `AgentService.cancel_by_merchant`, which also says what was done (#82):
+`notified` (cancelled, guest notice stored), `ended` (cancelled, no notice: the booking is
+over), `guest_cancelled` or `already_cancelled` (nothing changed, no new notice). The confirmation card
+words each case, so the merchant is never told a notice was sent when none was stored.
 The protocol's overloads make `by="guest"` without a `guest_name` a type error.
 
 `MerchantProfile.model_json_schema()` is the source of the builder tool's `parameters`.
@@ -160,6 +180,12 @@ live booking also appears in tonight's reservations, on the same date.
   the `ChatEvent` stream above, always ending with exactly one `done`. A failing turn
   sends a generic `error` (details only in the logs) before `done`. `409` while the same
   session is still answering. A `null` session is the single POC merchant session.
+- `GET /session?session_id=<id>` (#88): `SessionOutput`, `{"merchant": {"slug", "name"} |
+  null}`, the merchant that session works on: the one it onboarded or attached, else
+  `PLATFORM_MERCHANT` when it is registered (the session's next message attaches it).
+  Read-only: an unknown session is not created. The web keeps its session id in
+  `sessionStorage` and calls this route at load and after each turn until it knows the
+  merchant, so that a reload subscribes to `/events` again. `session.json` is its mock.
 - `GET /events?merchant=<slug>`: `LiveEvent` stream, with an SSE comment every 15 s. Fed
   by `LISTEN reservations`: every committed INSERT/UPDATE on a registered merchant's
   `reservations` becomes `new_booking`, `updated` or `cancelled`, re-read from the
@@ -198,5 +224,5 @@ npm --prefix web run check:contracts
 ```
 
 The TypeScript check compiles the actual JSON mocks as literals with `satisfies`
-against `ChatEvent[]` or `LiveEvent`. Python tests validate the same mocks against
-the Pydantic `ChatEvent` and `LiveEvent`. Both checks run on pull requests.
+against `ChatEvent[]`, `LiveEvent` or `SessionOutput`. Python tests validate the same
+mocks against the Pydantic `ChatEvent`, `LiveEvent` and `SessionOutput`. Both checks run on pull requests.

@@ -31,6 +31,10 @@ class SessionStore:
             session = self._sessions[key] = Session(id=key)
         return session
 
+    def find(self, session_id: str | None) -> Session | None:
+        """The session for `session_id` if it exists, without creating it."""
+        return self._sessions.get(session_id or DEFAULT_SESSION)
+
     def all(self) -> list[Session]:
         return list(self._sessions.values())
 

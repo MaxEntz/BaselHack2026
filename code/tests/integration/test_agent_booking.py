@@ -12,7 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import set_status
 from agent.service import NOTICE_WINDOW, PgAgentService, same_guest
-from core.db import blocked_slots_t, guest_notices_t, merchant_conn, reservations_t
+from core.db import (
+    blocked_slots_t,
+    guest_notices_t,
+    merchant_conn,
+    reservation_changes_t,
+    reservations_t,
+)
 from core.errors import InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import Reservation
 
@@ -417,6 +423,117 @@ async def test_replaying_an_update_gives_the_same_state(
     assert again == first
 
 
+async def test_a_late_retry_of_an_update_does_not_undo_a_newer_one(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    # k1 moves to 20:00, k2 to 21:00, then k1 arrives again: the guest's newer request wins (#78).
+    slug = await make_merchant()
+    booked = await book(service, slug, at("19:00"))
+    await service.update_reservation(slug, booked.id, GUEST, "k1", starts_at=at("20:00"))
+    newer = await service.update_reservation(slug, booked.id, GUEST, "k2", starts_at=at("21:00"))
+
+    late = await service.update_reservation(slug, booked.id, GUEST, "k1", starts_at=at("20:00"))
+
+    assert late == newer
+    assert await stored(engine, slug, booked.id) == (at("21:00"), 2, "confirmed")
+
+
+@pytest.mark.parametrize(
+    "change", [{"starts_at": "21:00"}, {"party_size": 3}, {"starts_at": "20:00", "party_size": 3}]
+)
+async def test_an_update_key_reused_for_another_change_is_invalid_input(
+    engine: AsyncEngine,
+    service: PgAgentService,
+    make_merchant: MerchantFactory,
+    change: dict[str, object],
+) -> None:
+    slug = await make_merchant()
+    booked = await book(service, slug, at("19:00"))
+    await service.update_reservation(slug, booked.id, GUEST, "k1", starts_at=at("20:00"))
+    starts_at = change.get("starts_at")
+    party_size = change.get("party_size")
+
+    with pytest.raises(InvalidInput, match="reused with different parameters"):
+        await service.update_reservation(
+            slug,
+            booked.id,
+            GUEST,
+            "k1",
+            starts_at=at(str(starts_at)) if starts_at else None,
+            party_size=int(str(party_size)) if party_size else None,
+        )
+
+    assert await stored(engine, slug, booked.id) == (at("20:00"), 2, "confirmed")
+
+
+async def test_an_update_key_reused_on_another_booking_is_invalid_input(
+    service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    first = await book(service, slug, at("19:00"))
+    second = await book(service, slug, at("19:30"))
+    await service.update_reservation(slug, first.id, GUEST, "k1", starts_at=at("20:00"))
+
+    with pytest.raises(InvalidInput, match="reused with different parameters"):
+        await service.update_reservation(slug, second.id, GUEST, "k1", starts_at=at("20:00"))
+
+
+async def test_an_update_that_failed_does_not_use_up_its_key(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant(tables=ONE_TABLE, services=[{"start": "19:00", "end": "23:00"}])
+    await book(service, slug, at("19:00"))
+    later = await book(service, slug, at("21:00"))
+    with pytest.raises(SlotUnavailable):
+        await service.update_reservation(slug, later.id, GUEST, "k1", starts_at=at("20:00"))
+
+    moved = await service.update_reservation(slug, later.id, GUEST, "k1", starts_at=at("22:00"))
+
+    assert moved.starts_at == at("22:00")
+
+
+async def test_an_update_refused_after_its_claim_does_not_use_up_its_key(
+    service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    # The key is claimed before the status check: the refusal must roll it back.
+    slug = await make_merchant()
+    cancelled = await book(service, slug, at("19:00"))
+    await service.cancel_reservation(slug, cancelled.id, by="guest", guest_name=GUEST)
+    with pytest.raises(NotFound):
+        await service.update_reservation(slug, cancelled.id, GUEST, "k1", starts_at=at("20:00"))
+    other = await book(service, slug, at("19:30"))
+
+    moved = await service.update_reservation(slug, other.id, GUEST, "k1", starts_at=at("20:00"))
+
+    assert moved.starts_at == at("20:00")
+
+
+async def test_two_concurrent_updates_with_one_key_apply_one_change(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    booked = await book(service, slug, at("19:00"))
+
+    results = await asyncio.gather(
+        *(
+            service.update_reservation(slug, booked.id, GUEST, "k1", starts_at=at("20:00"))
+            for _ in range(2)
+        )
+    )
+
+    assert results[0] == results[1]
+    async with engine.connect() as conn:
+        changes = await conn.scalar(
+            select(func.count())
+            .select_from(reservation_changes_t)
+            .where(
+                reservation_changes_t.c.merchant_slug == slug,
+                reservation_changes_t.c.idempotency_key == "k1",
+            )
+        )
+    assert changes == 1
+
+
 @pytest.mark.parametrize("guest_name", ["Alex Martin", "Sam"])
 async def test_update_under_another_name_is_not_found(
     service: PgAgentService, make_merchant: MerchantFactory, guest_name: str
@@ -500,6 +617,95 @@ async def test_cancel_of_an_unknown_booking(
 
     with pytest.raises(NotFound):
         await service.cancel_reservation(slug, "R-999", by="guest", guest_name=GUEST)
+
+
+@pytest.mark.parametrize("now", ["20:00", "20:30", "23:00"])  # starting, started, over
+async def test_a_guest_can_neither_move_nor_cancel_a_booking_once_it_started(
+    engine: AsyncEngine,
+    service: PgAgentService,
+    make_merchant: MerchantFactory,
+    clock: Clock,
+    now: str,
+) -> None:
+    # Last night's dinner must not become tomorrow's booking, nor a cancellation (#79).
+    slug = await make_merchant()
+    booked = await book(service, slug, at("20:00"))
+    clock.now = at(now)
+
+    with pytest.raises(SlotUnavailable, match="already started"):
+        await service.update_reservation(
+            slug, booked.id, GUEST, str(uuid4()), starts_at=at("20:00", DAY + timedelta(days=1))
+        )
+    with pytest.raises(SlotUnavailable, match="already started"):
+        await service.update_reservation(slug, booked.id, GUEST, str(uuid4()), party_size=3)
+    with pytest.raises(SlotUnavailable, match="already started"):
+        await service.cancel_reservation(slug, booked.id, by="guest", guest_name=GUEST)
+
+    async with merchant_conn(engine, slug) as conn:
+        row = (
+            await conn.execute(
+                select(reservations_t.c.status, reservations_t.c.during).where(
+                    reservations_t.c.id == booked.id
+                )
+            )
+        ).one()
+    assert (row.status, row.during.lower) == ("confirmed", at("20:00"))
+
+
+async def test_cancelling_an_already_cancelled_past_booking_stays_idempotent(
+    service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
+) -> None:
+    slug = await make_merchant()
+    booked = await book(service, slug, at("20:00"))
+    await service.cancel_reservation(slug, booked.id, by="guest", guest_name=GUEST)
+    clock.now = at("23:00")
+
+    again = await service.cancel_reservation(slug, booked.id, by="guest", guest_name=GUEST)
+
+    assert again.status == "cancelled"
+
+
+@pytest.mark.parametrize("day", [date(2026, 3, 29), date(2026, 10, 25)])
+async def test_every_slot_offered_on_a_clock_change_night_can_be_booked(
+    engine: AsyncEngine,
+    service: PgAgentService,
+    make_merchant: MerchantFactory,
+    clock: Clock,
+    day: date,
+) -> None:
+    # Availability and the database must agree on how long a slot lasts that night (#80).
+    # Times go through ISO 8601, as from the gateway: a fixed offset, not a ZoneInfo.
+    clock.now = datetime(2026, 3, 1, 9, tzinfo=TZ)
+    slug = await make_merchant(tables=ONE_TABLE, services=[{"start": "00:00", "end": "04:00"}])
+    await book(service, slug, datetime.combine(day, time(3), tzinfo=TZ))
+
+    # Around 02:30: on 2026-10-25 that is the hour that repeats (02:00 and 02:30 CEST).
+    slots = await service.get_availability(slug, day, 2, "02:30")
+
+    assert slots
+    for slot in slots:
+        booked = await book(service, slug, datetime.fromisoformat(slot.starts_at.isoformat()))
+        async with merchant_conn(engine, slug) as conn:
+            during = await conn.scalar(
+                select(reservations_t.c.during).where(reservations_t.c.id == booked.id)
+            )
+        assert during.upper - during.lower == timedelta(hours=2)
+        await service.cancel_reservation(slug, booked.id, by="merchant")
+
+
+async def test_a_booking_made_with_local_time_lasts_two_real_hours_on_a_clock_change(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
+) -> None:
+    clock.now = datetime(2026, 3, 1, 9, tzinfo=TZ)
+    slug = await make_merchant(services=[{"start": "00:00", "end": "04:00"}])
+
+    booked = await book(service, slug, datetime.combine(date(2026, 3, 29), time(1), tzinfo=TZ))
+
+    async with merchant_conn(engine, slug) as conn:
+        during = await conn.scalar(
+            select(reservations_t.c.during).where(reservations_t.c.id == booked.id)
+        )
+    assert during.upper - during.lower == timedelta(hours=2)
 
 
 # find_guest_reservations

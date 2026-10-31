@@ -11,6 +11,7 @@ const mocks = {
   tonight: "ChatEvent[]",
   cards: "ChatEvent[]",
   notification: "LiveEvent",
+  session: "SessionOutput",
 };
 
 try {
@@ -25,7 +26,7 @@ try {
     // JSON imports widen string literals, so check the actual JSON as TS literals.
     await writeFile(
       file,
-      `import type { ChatEvent, LiveEvent } from ${JSON.stringify(types)};\n` +
+      `import type { ChatEvent, LiveEvent, SessionOutput } from ${JSON.stringify(types)};\n` +
         `export default ${data} satisfies ${type};\n`,
     );
     files.push(file);

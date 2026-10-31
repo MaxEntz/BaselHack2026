@@ -92,6 +92,13 @@ async def test_writes_tell_claude_to_confirm_first(name: str) -> None:
     description = (await list_tools())[name].description or ""
 
     assert "confirm" in description.lower() or "explicit yes" in description
+    # A user pre-confirming in their request still gets the summary first (#14).
+    assert "in advance" in description
+    if name == "create_reservation":
+        # Only the call the summary is based on can't come with the booking (#109).
+        assert "call your summary is based on" in description
+        assert "availability again" in description
+        assert "don't book another one" in description
     assert "fallback_url" in description
 
 
@@ -139,6 +146,11 @@ async def test_server_sends_its_rules_to_claude() -> None:
         instructions = client.instructions or ""
 
     assert "explicit yes" in instructions
+    assert "in advance" in instructions
+    # A check after the yes may come with the booking (#109).
+    assert "get_availability call\n  your summary is based on" in instructions
+    assert "availability again" in instructions
+    assert "don't book another one" in " ".join(instructions.split())
     assert "fallback_url" in instructions
 
 

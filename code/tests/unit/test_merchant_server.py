@@ -4,6 +4,7 @@ from typing import Any
 
 import seed
 
+from gateway import merchant_server
 from gateway.merchant_server import MAX_FREE_TEXT, describe, one_line
 
 GENERIC = "Generic guidance."
@@ -58,3 +59,24 @@ def test_name_and_city_are_one_bounded_line() -> None:
 def test_one_line_drops_control_and_format_characters() -> None:
     assert one_line("Le\u200b Petit\x00Zinc\u2028 ") == "Le Petit Zinc"
     assert one_line("short") == "short"
+
+
+def test_writes_wait_for_a_yes_even_when_the_user_confirmed_in_advance() -> None:
+    # Same rule as the shared endpoint (#14): a confirmation before the summary is not a yes.
+    for text in (
+        merchant_server.INSTRUCTIONS,
+        merchant_server.CREATE_RESERVATION,
+        merchant_server.UPDATE_RESERVATION,
+        merchant_server.CANCEL_RESERVATION,
+    ):
+        assert "in advance" in text
+
+
+def test_a_check_after_the_yes_needs_no_second_confirmation() -> None:
+    # Only the get_availability call the summary is based on can't come with the booking (#109).
+    for text in (merchant_server.INSTRUCTIONS, merchant_server.CREATE_RESERVATION):
+        flat = " ".join(text.split())
+        assert "get_availability call your summary is based on" in flat
+        assert "availability again" in flat
+        # ...but never a time the user didn't confirm (#112 review).
+        assert "don't book another one" in flat
