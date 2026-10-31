@@ -21,10 +21,12 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent import provisioning, service
 from core.config import get_settings
-from core.errors import AgentError, InvalidInput
+from core.db import make_engine
+from core.errors import AgentError
 from core.models import MerchantProfile, Via
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
@@ -78,13 +80,13 @@ def selected(args: argparse.Namespace) -> list[str]:
     return [slug for slug in MERCHANTS if args.excluded and slug not in args.excluded]
 
 
-async def seed_merchant(profile: MerchantProfile) -> None:
+async def seed_merchant(engine: AsyncEngine, profile: MerchantProfile) -> None:
     try:
-        await provisioning.provision(profile)
+        await provisioning.provision(profile, engine=engine)
         done = "provisioned"
-    except InvalidInput as error:  # already in the registry (#7)
+    except provisioning.SlugTaken as error:  # already in the registry: keep its data
         done = f"kept ({error})"
-    await provisioning.deploy(profile.slug)
+    await provisioning.deploy(profile.slug, engine=engine)
     print(f"{profile.slug}: {done}, live")
 
 
@@ -118,8 +120,12 @@ async def seed_bookings(now: datetime) -> int:
 
 
 async def run(args: argparse.Namespace) -> int:
-    for slug in selected(args):
-        await seed_merchant(load_profile(slug))
+    engine = make_engine()  # one pool for every provisioning call
+    try:
+        for slug in selected(args):
+            await seed_merchant(engine, load_profile(slug))
+    finally:
+        await engine.dispose()
     if not args.with_bookings:
         return 0
     now = datetime.now(ZoneInfo(get_settings().merchant_tz))
@@ -139,6 +145,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser().error("nothing to do: pass --all, --except SLUG or --with-bookings")
     try:
         return asyncio.run(run(args))
+    except AgentError as error:
+        print(f"{error.code}: {error}", file=sys.stderr)
+        return 1
     except DBAPIError as error:
         return database_error(error)
 

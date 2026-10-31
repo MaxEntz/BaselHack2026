@@ -16,25 +16,44 @@ from core.models import MerchantProfile, Reservation, Via
 ZURICH = ZoneInfo("Europe/Zurich")
 
 
+class SlugTaken(InvalidInput):
+    """`agent.provisioning.SlugTaken` (#36)."""
+
+
+class FakeEngine:
+    def __init__(self) -> None:
+        self.disposed = False
+
+    async def dispose(self) -> None:
+        self.disposed = True
+
+
 class FakeRegistry:
-    """`agent.provisioning` as #7 specifies it."""
+    """`agent.provisioning` as #36 implements it: the engine is an optional keyword."""
 
     def __init__(self) -> None:
+        self.engine = FakeEngine()
+        self.engines_used: set[object] = set()
         self.statuses: dict[str, str] = {}
         self.provisioned: list[str] = []
+        self.invalid: set[str] = set()
 
-    async def provision(self, profile: MerchantProfile) -> None:
+    async def provision(self, profile: MerchantProfile, *, engine: object = None) -> None:
+        self.engines_used.add(engine)
+        if profile.slug in self.invalid:
+            raise InvalidInput(f"Invalid profile for {profile.slug}")
         if profile.slug in self.statuses:
-            raise InvalidInput(f"{profile.slug} is already provisioned")
+            raise SlugTaken(f"Merchant {profile.slug!r} is already provisioned")
         self.provisioned.append(profile.slug)
         self.statuses[profile.slug] = "building"
 
-    async def deploy(self, slug: str) -> None:
+    async def deploy(self, slug: str, *, engine: object = None) -> None:
+        self.engines_used.add(engine)
         self.statuses[slug] = "live"
 
-    async def set_status(self, slug: str, status: str) -> None:
+    async def set_status(self, slug: str, status: str, *, engine: object = None) -> None:
         if slug not in self.statuses:
-            raise NotFound(f"Unknown merchant {slug}")
+            raise NotFound(f"Unknown merchant: {slug!r}")
         self.statuses[slug] = status
 
 
@@ -75,6 +94,8 @@ def registry(monkeypatch: pytest.MonkeyPatch) -> FakeRegistry:
     fake = FakeRegistry()
     for name in ("provision", "deploy", "set_status"):
         monkeypatch.setattr(provisioning, name, getattr(fake, name), raising=False)
+    monkeypatch.setattr(provisioning, "SlugTaken", SlugTaken, raising=False)
+    monkeypatch.setattr(seed, "make_engine", lambda: fake.engine)
     return fake
 
 
@@ -90,6 +111,8 @@ def test_demo_mode_seeds_every_merchant_but_le_petit_zinc(registry: FakeRegistry
 
     assert registry.provisioned == ["la-graine-verte", "maison-albane"]
     assert registry.statuses == {"la-graine-verte": "live", "maison-albane": "live"}
+    assert registry.engines_used == {registry.engine}
+    assert registry.engine.disposed
 
 
 def test_seeding_again_keeps_existing_merchants_and_sets_them_live(
@@ -101,6 +124,18 @@ def test_seeding_again_keeps_existing_merchants_and_sets_them_live(
 
     assert registry.provisioned == ["la-graine-verte", "maison-albane"]
     assert set(registry.statuses.values()) == {"live"}
+
+
+def test_a_provisioning_error_is_reported_not_taken_for_an_existing_merchant(
+    registry: FakeRegistry, capsys: pytest.CaptureFixture[str]
+) -> None:
+    registry.invalid.add("maison-albane")
+
+    assert seed.main(["--all"]) == 1
+
+    assert "maison-albane" not in registry.statuses
+    assert "invalid_input" in capsys.readouterr().err
+    assert registry.engine.disposed
 
 
 @pytest.mark.parametrize("argv", [[], ["--except", "chez-mimi"], ["--all", "--except", "x"]])
