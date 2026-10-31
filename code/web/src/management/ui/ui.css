@@ -74,9 +74,9 @@
 /* Field */
 .mg .field { display: grid; gap: 5px; align-content: start; min-width: 0; font-weight: 600; font-size: 16px; }
 .mg .field small { font-weight: 400; font-size: 15px; color: var(--mut); }
-.mg :is(input[type="text"], input[type="url"], input[type="number"], input[type="time"], select, textarea) { width: 100%; min-height: 40px; padding: 7px 16px; border: 1px solid var(--line-2); border-radius: min(22px, var(--radius)); background: var(--bg); font-weight: 400; font-size: 17px; }
+.mg :is(input[type="text"], input[type="url"], input[type="number"], input[type="time"], select, textarea) { width: 100%; min-height: 40px; padding: 7px 16px; border: 1px solid var(--line-2); border-radius: min(var(--field-radius, 22px), var(--radius)); background: var(--bg); font-weight: 400; font-size: 17px; }
 .mg dialog :is(input[type="text"], input[type="number"], select) { background: var(--cream); }
-.mg textarea { resize: vertical; border-radius: min(18px, var(--radius)); }
+.mg textarea { resize: vertical; --field-radius: 18px; }
 .mg :is(input, select, textarea):focus { outline: 2px solid var(--olive); outline-offset: 0; }
 .mg input[readonly] { background: transparent; color: var(--mut); }
 .mg .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; font-weight: 400; font-size: 16px; }
