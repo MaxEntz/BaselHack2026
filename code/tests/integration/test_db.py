@@ -11,7 +11,7 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Table, create_engine, delete, func, insert, inspect, select, text
+from sqlalchemy import Table, create_engine, delete, func, insert, inspect, select, text, update
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -19,9 +19,12 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 
 from core.db import (
     MERCHANT,
+    agent_requests_t,
+    as_merchant,
     guest_notices_t,
     merchant_conn,
     merchant_metadata,
+    merchant_owners_t,
     merchants_t,
     next_reservation_id,
     reservation_changes_t,
@@ -32,7 +35,13 @@ from core.db import (
 
 pytestmark = pytest.mark.integration
 
-PUBLIC_TABLES = {"merchants", "guest_notices", "reservation_changes"}
+PUBLIC_TABLES = {
+    "merchants",
+    "guest_notices",
+    "reservation_changes",
+    "agent_requests",
+    "merchant_owners",
+}
 MERCHANT_TABLES = {"tables", "policy", "blocked_slots", "reservations"}
 MIGRATED = {
     "tables": PUBLIC_TABLES,
@@ -115,7 +124,9 @@ def test_downgrade_refuses_while_a_merchant_schema_exists(
 
 
 @pytest.mark.parametrize(
-    "table", [merchants_t, guest_notices_t, reservation_changes_t], ids=lambda t: t.name
+    "table",
+    [merchants_t, guest_notices_t, reservation_changes_t, agent_requests_t, merchant_owners_t],
+    ids=lambda t: t.name,
 )
 async def test_public_tables_match_their_core_declarations(
     engine: AsyncEngine, table: Table
@@ -163,7 +174,7 @@ async def test_registry_rejects_values_outside_the_contract(
     assert sqlstate(raised.value) == "23514"  # check_violation
 
 
-async def test_registry_starts_in_building_and_cascades_to_notices_and_update_keys(
+async def test_registry_starts_in_building_and_cascades_to_notices_keys_and_requests(
     engine: AsyncEngine,
 ) -> None:
     slug = f"zinc-{uuid4().hex[:8]}"
@@ -181,6 +192,16 @@ async def test_registry_starts_in_building_and_cascades_to_notices_and_update_ke
                 merchant_slug=slug, idempotency_key="k1", reservation_id="R-001", party_size=2
             )
         )
+        await conn.execute(
+            insert(agent_requests_t).values(
+                merchant_slug=slug,
+                agent_name="Claude",
+                intent="PING",
+                status=200,
+                request={},
+                response={},
+            )
+        )
     async with engine.begin() as conn:
         await conn.execute(delete(merchants_t).where(merchants_t.c.slug == slug))
         notices = await conn.scalar(
@@ -193,9 +214,14 @@ async def test_registry_starts_in_building_and_cascades_to_notices_and_update_ke
             .select_from(reservation_changes_t)
             .where(reservation_changes_t.c.merchant_slug == slug)
         )
+        requests = await conn.scalar(
+            select(func.count())
+            .select_from(agent_requests_t)
+            .where(agent_requests_t.c.merchant_slug == slug)
+        )
 
     assert status == "building"
-    assert (notices, keys) == (0, 0)  # deprovision deletes the registry row (ADR-0013)
+    assert (notices, keys, requests) == (0, 0, 0)  # deprovision deletes the registry row (ADR-0013)
 
 
 @pytest.fixture
@@ -370,6 +396,30 @@ async def test_cancelled_reservations_free_the_table(
     assert confirmed == ["R-002"]
 
 
+async def test_a_merchant_operation_marks_its_notifications(
+    engine: AsyncEngine, libpq_database_url: str, two_merchants: tuple[str, str]
+) -> None:
+    """#134: `as_merchant` is transaction-local, so the next write is nobody's again."""
+    zinc = two_merchants[0]
+    table_id = await add_table(engine, zinc)
+    async with await psycopg.AsyncConnection.connect(
+        libpq_database_url, autocommit=True
+    ) as listener:
+        await listener.execute("LISTEN reservations")
+        async with merchant_conn(engine, zinc) as conn:
+            await as_merchant(conn)
+            await conn.execute(insert(reservations_t).values(booking("R-001", table_id)))
+        async with merchant_conn(engine, zinc) as conn:
+            await conn.execute(
+                update(reservations_t)
+                .where(reservations_t.c.id == "R-001")
+                .values(guest_name="Kim Weber")
+            )
+        received = [note async for note in listener.notifies(timeout=5, stop_after=2)]
+
+    assert [json.loads(note.payload)["actor"] for note in received] == ["merchant", None]
+
+
 async def test_reservation_writes_notify_the_reservations_channel(
     engine: AsyncEngine, libpq_database_url: str, two_merchants: tuple[str, str]
 ) -> None:
@@ -390,5 +440,6 @@ async def test_reservation_writes_notify_the_reservations_channel(
             "id": "R-001",
             "status": "confirmed",
             "via": "claude",
+            "actor": None,  # outside merchant operations (#134)
         }
     ]

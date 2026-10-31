@@ -6,7 +6,7 @@ import logging
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -14,7 +14,7 @@ from openai import AsyncOpenAI
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from agent.service import AgentService, MerchantCancellation, MerchantCancelOutcome
+from agent.service import AgentService, MerchantCancellation
 from builder.build import AlreadyProvisioned
 from builder.llm import (
     LLMClient,
@@ -34,14 +34,17 @@ from core.models import (
     BuildAgentOutput,
     ChatEvent,
     GeneratedTool,
+    MerchantCancelOutcome,
     MerchantProfile,
     Policy,
+    ProfileCard,
     Reservation,
     Service,
     Stats,
     StepEvent,
     TableSpec,
 )
+from merchant_platform.accounts import IssuedLink
 from merchant_platform.assistant import (
     INTERRUPTED,
     MAX_ITERATIONS,
@@ -53,7 +56,13 @@ from merchant_platform.assistant import (
     system_prompt,
 )
 from merchant_platform.sessions import Session
-from merchant_platform.tools import NOT_AVAILABLE, NOT_ONBOARDED, SITE_TAKEN, AdminTools
+from merchant_platform.tools import (
+    CANCELLED,
+    NOT_AVAILABLE,
+    NOT_ONBOARDED,
+    SITE_TAKEN,
+    AdminTools,
+)
 
 TZ = ZoneInfo("Europe/Zurich")
 NOW = datetime(2026, 10, 31, 18, 30, tzinfo=TZ)
@@ -726,6 +735,48 @@ def test_compact_cuts_long_tool_results_from_old_turns_only() -> None:
     assert history[1]["content"] == long  # the stored history is untouched
 
 
+# The owner's secret link after a build (#132)
+
+LINK = IssuedLink("https://sesame.example/api/login?token=s3cr3t", "fp-1")
+
+
+async def run_build(issue_link: Any) -> tuple[Session, Any, list[ChatEvent]]:
+    tools = AdminTools(None, fake_build, TZ, today=lambda: TODAY, issue_link=issue_link)
+    session = Session(id="s")
+    events: list[ChatEvent] = []
+
+    async def emit(event: ChatEvent) -> None:
+        events.append(event)
+
+    call_ = call("build_agent", website="http://localhost:8080/", description="Bistro.")
+    result = await tools.run(session, call_, emit)
+    return session, result, events
+
+
+async def test_a_build_shows_the_link_on_the_card_only() -> None:
+    async def issue_link(slug: str) -> IssuedLink:
+        return LINK
+
+    session, result, events = await run_build(issue_link)
+
+    cards = [e for e in events if isinstance(e, ProfileCard)]
+    assert [card.login_url for card in cards] == [LINK.url]
+    assert "s3cr3t" not in result.content  # the model reads the tool result: never the link
+    assert (session.merchant_slug, session.link) == (SLUG, "fp-1")
+    assert "s3cr3t" not in json.dumps(session.messages)
+
+
+async def test_a_link_that_cant_be_stored_leaves_the_session_unattached() -> None:
+    async def failing(slug: str) -> IssuedLink:
+        raise RuntimeError("database down")
+
+    session, result, events = await run_build(failing)
+
+    assert result.is_error
+    assert (session.merchant_slug, session.link) == (None, None)
+    assert not [e for e in events if isinstance(e, ProfileCard)]
+
+
 def test_block_slot_confirmation_names_the_day() -> None:
     tools = AdminTools(None, fake_build, TZ, today=lambda: TODAY)
     tomorrow_noon = datetime.combine(TODAY + timedelta(days=1), datetime.min.time(), TZ).replace(
@@ -855,3 +906,8 @@ def test_a_model_call_that_stops_sending_gives_up_after_60_s(
     assert kwargs["timeout"].read == 60
     assert kwargs["timeout"].connect == 5
     assert kwargs["max_retries"] == 0
+
+
+def test_every_cancellation_outcome_has_its_wording() -> None:
+    # A new outcome (own_booking, #129) must never reach the card as a KeyError.
+    assert set(CANCELLED) == set(get_args(MerchantCancelOutcome))

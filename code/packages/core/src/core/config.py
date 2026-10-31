@@ -35,10 +35,19 @@ class Settings(BaseSettings):
     platform_public_url: str = "http://localhost:8002"
     # Origins allowed to call the platform's public booking API (the showcase site's form).
     public_cors_origins: tuple[str, ...] = ("http://localhost:8080", "http://127.0.0.1:8080")
-    # Dev-only routes such as POST /dev/reset-session.
-    platform_dev_routes: bool = True
-    # Merchant the chat starts with, skipping onboarding (the web chat's VITE_MERCHANT_SLUG).
+    # Dev-only routes such as POST /dev/reset-session: off unless asked (`.env.example` sets it).
+    platform_dev_routes: bool = False
+    # Development only: the merchant the chat starts with, skipping onboarding (the web chat's
+    # VITE_MERCHANT_SLUG), whose pages and live events then open without its link (#132).
     platform_merchant: str | None = None
+    # Where merchants open the web app: the start of the secret links shown after a build.
+    platform_web_url: str = "http://localhost:5173"
+    # Signs the owner and invite cookies (#132). Unset: a random key per process, so cookies
+    # don't survive a restart.
+    platform_cookie_secret: SecretStr | None = None
+    # Needed to start a new build, so that strangers can't spend the OpenAI key. Unset (local
+    # development): nothing is asked.
+    platform_invite_code: SecretStr | None = None
     # Reasoning effort of the platform assistant: lower is faster to the first word.
     openai_reasoning_effort: str | None = "low"
     # Reasoning effort of the builder's extraction (spike #4: `none` is as accurate, faster).

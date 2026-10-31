@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.schema import CreateSchema, DropSchema
 
+from agent.management import ManagementService
 from agent.service import PgAgentService
 from core.db import (
     merchant_conn,
@@ -30,7 +31,7 @@ from core.db import (
     schema_for,
     tables_t,
 )
-from core.models import LiveEvent, Via
+from core.models import LiveEvent, MoveBookingInput, Via
 from merchant_platform.events import LiveBus, LiveListener
 
 pytestmark = pytest.mark.integration
@@ -427,3 +428,33 @@ async def test_the_listener_survives_an_unexpected_error(
         await listener.listening.wait()
     reservation_id = await book(engine, slug, at=EIGHT_PM + timedelta(hours=3))
     assert (await next_event(queue)).reservation.id == reservation_id
+
+
+async def test_a_move_from_the_management_site_sends_nothing(
+    engine: AsyncEngine, make_merchant: MerchantFactory, listener: LiveListener, bus: LiveBus
+) -> None:
+    """#134: the page that moved the booking already shows it; the guest's own changes still
+    reach the merchant."""
+    slug = await make_merchant()
+    queue = bus.subscribe(slug)
+    clock = datetime(2026, 10, 31, 9, tzinfo=TZ)
+    agent = PgAgentService(engine, tz=TZ, clock=lambda: clock)
+    manage = ManagementService(engine, agent, tz=TZ, clock=lambda: clock)
+    saturday = datetime(2026, 11, 7, 20, tzinfo=TZ)
+    booking = await agent.create_reservation(
+        slug, saturday, 2, "Sam Dupont", str(uuid4()), via="claude"
+    )
+    await next_event(queue)
+
+    await manage.move(
+        slug,
+        booking.id,
+        MoveBookingInput(starts_at=saturday + timedelta(minutes=30), idempotency_key="m-1"),
+    )
+    await agent.update_reservation(
+        slug, booking.id, "Sam Dupont", str(uuid4()), starts_at=saturday + timedelta(hours=1)
+    )
+
+    updated = await next_event(queue)
+    assert (updated.kind, updated.reservation.time) == ("updated", "21:00")
+    assert queue.empty()

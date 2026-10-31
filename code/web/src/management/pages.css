@@ -1,0 +1,45 @@
+/* Shared page styles: title, form cards, tables, the block dialog, from sesame-management.html. */
+.mg .ttl { display: grid; gap: 14px; justify-items: start; }
+.mg .ttl > p { font-size: 19px; }
+.mg .err { color: var(--red); font-weight: 600; font-size: 15px; }
+
+.mg .forms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+.mg .fs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; padding: 22px 24px; border-radius: 30px; background: var(--cream); }
+.mg .fs > h3 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 27px; line-height: 1.05; color: var(--olive); }
+.mg .fs > p { margin-top: -6px; font-size: 16px; color: var(--mut); }
+.mg .fs.tight { gap: 8px; }
+.mg .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+.mg .svs { display: grid; gap: 8px; }
+.mg .sv { display: grid; grid-template-columns: 72px minmax(0, 160px) minmax(0, 160px) minmax(0, 1fr); align-items: center; gap: 8px; }
+.mg .sv b { font-weight: 600; }
+.mg .sv small { font-size: 15px; color: var(--mut); }
+
+.mg .reads li { display: grid; gap: 1px; padding: 9px 0; border-top: 1px solid var(--line); }
+.mg .reads code { font: 600 14px var(--mono); }
+.mg .reads span { font-size: 16px; }
+
+.mg .none { padding: 26px 0; color: var(--mut); font-size: 19px; }
+.mg .tbl-wrap { overflow-x: auto; }
+.mg .tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.mg .tbl th { padding: 8px 14px 8px 0; font-weight: 600; font-size: 15px; color: var(--mut); text-align: left; white-space: nowrap; }
+.mg .tbl td { padding: 9px 14px 9px 0; border-top: 1px solid var(--line); white-space: nowrap; }
+.mg .tbl :is(button, b) { font-weight: 600; text-align: left; }
+.mg .tbl button:hover { color: var(--brick); }
+
+.mg .dlg-form { display: contents; }
+.mg fieldset { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+.mg legend { padding: 0 0 6px; font-weight: 700; }
+.mg .pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.mg .pick label { display: grid; place-items: center; min-height: 36px; border: 1px solid var(--olive); border-radius: 30px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; }
+.mg .pick input { position: absolute; opacity: 0; pointer-events: none; }
+.mg .pick label:has(input:checked) { background: var(--brick); border-color: var(--brick); color: var(--on); }
+.mg .pick label:has(input:focus-visible) { outline: 2px solid var(--brick); outline-offset: 2px; }
+.mg .note { padding: 9px 15px; border-radius: 18px; background: var(--cream); font-size: 16px; }
+.mg .note.bad { color: var(--red); font-weight: 600; }
+
+@container (max-width: 540px) {
+  .mg .sv { grid-template-columns: 62px minmax(0, 1fr) minmax(0, 1fr); }
+  .mg .sv small { grid-column: 2 / -1; margin-top: -4px; }
+  .mg .two { grid-template-columns: minmax(0, 1fr); }
+}

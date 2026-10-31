@@ -1,0 +1,13 @@
+/* Management site tokens, from documentation/design/poc-v10/sesame-management.html (#130).
+   Light only. Scoped to .mg so the chat at / keeps its own --bg and --mono. */
+.mg {
+  color-scheme: light;
+  --bg: #edebe2; --cream: #f8f6ef; --line: #d5d2c3; --line-2: #bfbcab;
+  --olive: #727f55; --olive-band: #6c744d; --ink: #47522f; --mut: #5f6a45;
+  --brick: #935046; --brick-deep: #7a4138; --stone: #bbb6a6; --red: #a3322a; --on: #f4f2ea;
+  --display: "Fraunces Soft", Georgia, serif;
+  --body: "Karla", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --leather: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.32' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .2 -.04'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23n)'/%3E%3C/svg%3E");
+  --stroke-brick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 36' preserveAspectRatio='none'%3E%3Cpath fill='%23935046' d='M2 22C70 11 170 5 297 6c3 0 3 3 0 3C200 11 120 16 42 26 20 29 0 27 2 22Z'/%3E%3Cpath fill='%23935046' d='M92 29c38-7 76-11 112-14 3 0 3 3 0 4-34 4-72 10-110 15-4 0-6-3-2-5Z'/%3E%3C/svg%3E");
+}

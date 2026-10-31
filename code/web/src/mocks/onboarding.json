@@ -14,6 +14,7 @@
   {
     "type": "card",
     "kind": "profile",
+    "login_url": "http://localhost:5173/api/login?token=demo-secret-link",
     "data": {
       "profile": {
         "slug": "le-petit-zinc",

@@ -28,6 +28,14 @@ from core.models import (
     ToolStartEvent,
     Via,
 )
+from merchant_platform.accounts import (
+    FINGERPRINT_CHARS,
+    OWNER_COOKIE,
+    Accounts,
+    MemoryOwnerStore,
+    Signer,
+    hash_token,
+)
 from merchant_platform.api import create_app
 from merchant_platform.assistant import Emit, ProfileLookup, RunTurn
 from merchant_platform.events import LiveBus
@@ -46,6 +54,10 @@ BOOKING = {
 def settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {"database_url": "postgresql+psycopg://u:p@localhost:5432/db"}
     return Settings(_env_file=None, **(values | overrides))  # type: ignore[call-arg]
+
+
+# PLATFORM_MERCHANT, the development merchant: its events open without a link (#132).
+OWNED = settings(platform_merchant="le-petit-zinc")
 
 
 def frames(body: str) -> list[dict[str, Any]]:
@@ -137,7 +149,7 @@ async def test_chat_streams_the_assistant_events_then_done() -> None:
 async def test_chat_sends_a_single_done_when_the_assistant_sends_one() -> None:
     assistant = scripted(TextEvent(delta="Hi"), DoneEvent())
     async with client(create_app(settings(), assistant=assistant)) as http:
-        response = await http.post("/chat", json={"message": "hello"})
+        response = await http.post("/chat", json={"session_id": "s", "message": "hello"})
 
     assert [frame["type"] for frame in frames(response.text)] == ["text", "done"]
 
@@ -163,9 +175,9 @@ async def test_chat_reports_a_failing_assistant_without_details() -> None:
         raise RuntimeError("connection to db-internal:5432 refused")
 
     async with client(create_app(settings(), assistant=failing)) as http:
-        response = await http.post("/chat", json={"message": "Tonight?"})
+        response = await http.post("/chat", json={"session_id": "s", "message": "Tonight?"})
         # The session is free again.
-        again = await http.post("/chat", json={"message": "Tonight?"})
+        again = await http.post("/chat", json={"session_id": "s", "message": "Tonight?"})
 
     events = frames(response.text)
     assert [event["type"] for event in events] == ["text", "error", "done"]
@@ -203,7 +215,7 @@ async def test_the_assistant_keeps_state_in_the_session() -> None:
         session.messages.append({"role": "user", "content": message})
         await emit(TextEvent(delta=str(len(session.messages))))
 
-    app = create_app(settings(), assistant=remember)
+    app = create_app(settings(platform_dev_routes=True), assistant=remember)
     async with client(app) as http:
         for _ in range(2):
             response = await http.post("/chat", json={"session_id": "s", "message": "hi"})
@@ -223,8 +235,8 @@ async def test_chat_rejects_long_messages_in_the_tool_error_format() -> None:
     assert "x" * 100 not in response.text
 
 
-async def test_dev_routes_can_be_turned_off() -> None:
-    async with client(create_app(settings(platform_dev_routes=False))) as http:
+async def test_dev_routes_are_off_unless_asked() -> None:
+    async with client(create_app(settings())) as http:
         response = await http.post("/dev/reset-session", json={})
 
     assert response.status_code == 404
@@ -240,9 +252,16 @@ def registry(profiles: dict[str, MerchantProfile]) -> ProfileLookup:
     return lookup
 
 
-def onboards(slug: str) -> RunTurn:
+# Owners in memory, for the fake onboardings below.
+OWNERS = Accounts(MemoryOwnerStore(), Signer(b"k" * 32))
+
+
+def onboards(slug: str, accounts: Accounts = OWNERS) -> RunTurn:
+    """A build's effect on the session: attached to the merchant, with its new link (#132)."""
+
     async def assistant(session: Session, message: str, emit: Emit) -> None:
-        session.merchant_slug = slug
+        token = await accounts.issue_link_token(slug)
+        session.merchant_slug, session.link = slug, hash_token(token)[:FINGERPRINT_CHARS]
         await emit(TextEvent(delta="Your agent is live."))
 
     return assistant
@@ -280,6 +299,7 @@ async def test_session_reports_the_merchant_onboarded_in_it(
         settings(platform_merchant="le-petit-zinc"),
         assistant=onboards("maison-albane"),
         profiles=registry(demo_profiles),
+        accounts=OWNERS,
     )
     async with client(app) as http:
         await http.post("/chat", json={"session_id": "s", "message": "Build my agent"})
@@ -431,10 +451,15 @@ async def wait_for(condition: Callable[[], bool]) -> None:
 async def test_events_streams_the_merchants_notifications(serve: Any) -> None:
     bus = LiveBus()
     notification = LiveEvent.model_validate_json(NOTIFICATION.read_text())
-    base_url = await serve(create_app(settings(), bus=bus))
+    accounts = Accounts(MemoryOwnerStore(), Signer(b"k" * 32))
+    owner = await accounts.owner_for_token(await accounts.issue_link_token("le-petit-zinc"))
+    assert owner is not None
+    base_url = await serve(create_app(settings(), bus=bus, accounts=accounts))
 
     async with (
-        httpx.AsyncClient(base_url=base_url, timeout=5) as http,
+        httpx.AsyncClient(
+            base_url=base_url, timeout=5, cookies={OWNER_COOKIE: accounts.owner_cookie(owner)}
+        ) as http,
         http.stream("GET", "/events", params={"merchant": "le-petit-zinc"}) as response,
     ):
         assert response.headers["content-type"].startswith("text/event-stream")
@@ -449,7 +474,7 @@ async def test_events_streams_the_merchants_notifications(serve: Any) -> None:
 
 
 async def test_events_sends_heartbeats(serve: Any) -> None:
-    base_url = await serve(create_app(settings(), heartbeat_seconds=0.1))
+    base_url = await serve(create_app(OWNED, heartbeat_seconds=0.1))
 
     async with (
         httpx.AsyncClient(base_url=base_url, timeout=5) as http,
@@ -463,7 +488,7 @@ async def test_events_sends_heartbeats(serve: Any) -> None:
 
 async def test_events_sends_its_first_bytes_as_soon_as_it_opens(serve: Any) -> None:
     # A long heartbeat, as in production: nothing else would be written for 15 s (#87).
-    base_url = await serve(create_app(settings(), heartbeat_seconds=15))
+    base_url = await serve(create_app(OWNED, heartbeat_seconds=15))
 
     async with (
         httpx.AsyncClient(base_url=base_url, timeout=5) as http,
@@ -473,6 +498,18 @@ async def test_events_sends_its_first_bytes_as_soon_as_it_opens(serve: Any) -> N
             first = await anext(response.aiter_lines())
 
     assert first == ": connected"
+
+
+@pytest.mark.parametrize(("development_merchant", "status"), [(None, 401), ("chez-mimi", 403)])
+async def test_events_carry_guest_names_for_their_owner_only(
+    development_merchant: str | None, status: int
+) -> None:
+    app = create_app(settings(platform_merchant=development_merchant))
+    async with client(app) as http:
+        response = await http.get("/events", params={"merchant": "le-petit-zinc"})
+
+    assert response.status_code == status
+    assert response.json()["error"] == {401: "not_signed_in", 403: "other_merchant"}[status]
 
 
 async def test_events_rejects_an_invalid_merchant() -> None:
@@ -502,3 +539,29 @@ async def test_a_client_leaving_mid_turn_cancels_it_and_frees_the_session(serve:
             assert (await next_frame(response.aiter_lines()))["type"] == "text"
         await asyncio.wait_for(cancelled.wait(), 2)
         await wait_for(lambda: not app.state.sessions.get("s").lock.locked())
+
+
+async def test_an_open_stream_ends_when_its_link_is_replaced(serve: Any) -> None:
+    """#132: a leaked link stops feeding guest names as soon as the owner asks for a new one."""
+    bus = LiveBus()
+    notification = LiveEvent.model_validate_json(NOTIFICATION.read_text())
+    accounts = Accounts(MemoryOwnerStore(), Signer(b"k" * 32))
+    owner = await accounts.owner_for_token(await accounts.issue_link_token("le-petit-zinc"))
+    assert owner is not None
+    app = create_app(settings(), bus=bus, accounts=accounts, heartbeat_seconds=0.1)
+    base_url = await serve(app)
+
+    async with (
+        httpx.AsyncClient(
+            base_url=base_url, timeout=5, cookies={OWNER_COOKIE: accounts.owner_cookie(owner)}
+        ) as http,
+        http.stream("GET", "/events", params={"merchant": "le-petit-zinc"}) as response,
+    ):
+        assert response.status_code == 200
+        await wait_for(lambda: bus.subscriber_count("le-petit-zinc") == 1)
+        await accounts.issue_link_token("le-petit-zinc")
+        await wait_for(lambda: bus.subscriber_count("le-petit-zinc") == 0)
+        bus.publish("le-petit-zinc", notification)
+        body = [line async for line in response.aiter_lines()]
+
+    assert not any(line.startswith("data:") for line in body)

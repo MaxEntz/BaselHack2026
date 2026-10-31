@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.sql import Executable
 
 from agent import admin
+from agent.guests import same_guest
 from core.availability import (
     BusyInterval,
     TableRow,
@@ -47,6 +48,8 @@ from core.db import (
 from core.errors import InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import (
     AdminReservationRow,
+    GuestRow,
+    MerchantCancelOutcome,
     Policy,
     Reservation,
     Service,
@@ -72,7 +75,8 @@ NOTICE_WINDOW = timedelta(hours=24)
 Outcome = Literal["done", "taken", "key_taken"]
 
 
-MerchantCancelOutcome = admin.CancelOutcome
+# What the merchant can switch its published agent to: paused (`down`) or `live` (#146).
+AgentStatus = Literal["live", "down"]
 
 
 @dataclass(frozen=True)
@@ -131,6 +135,8 @@ class AgentService(Protocol):
 
     async def get_stats(self, slug: str, day: date) -> Stats: ...
 
+    async def list_guests(self, slug: str, query: str = "") -> list[GuestRow]: ...
+
     async def block_slot(self, slug: str, starts_at: datetime) -> None: ...
 
     async def unblock_slot(self, slug: str, starts_at: datetime) -> None: ...
@@ -144,19 +150,9 @@ class AgentService(Protocol):
 
     async def update_tables(self, slug: str, tables: Sequence[TableSpec]) -> list[TableSpec]: ...
 
-
-def same_guest(given: str, booked: str) -> bool:
-    """Guest names match ignoring case and spacing: Claude may not repeat them verbatim.
-
-    The only definition of a guest: bookings, changes and lookups all use it (#77). Spacing is
-    any Unicode whitespace (a non-breaking space too), and case is `casefold` ("Weiß" is
-    "weiss"), which SQL's `lower` and `\\s` don't match.
-    """
-    return _normalize(given) == _normalize(booked)
-
-
-def _normalize(name: str) -> str:
-    return " ".join(name.split()).casefold()
+    async def set_status(self, slug: str, status: AgentStatus) -> None:
+        """Pause (`down`) or resume (`live`) the merchant's agent (#146)."""
+        ...
 
 
 def candidate_tables(
@@ -602,6 +598,11 @@ class PgAgentService:
             await self._load(conn, slug, merchant_side=True)
             return await admin.get_stats(conn, day, self.tz)
 
+    async def list_guests(self, slug: str, query: str = "") -> list[GuestRow]:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            return await admin.list_guests(conn, query, self.clock(), self.tz)
+
     async def block_slot(self, slug: str, starts_at: datetime) -> None:
         async with merchant_conn(self.engine, slug) as conn:
             merchant = await self._load(conn, slug, merchant_side=True)
@@ -632,6 +633,12 @@ class PgAgentService:
             plan = await admin.update_tables(conn, slug, tables, self.clock(), self.tz)
         log.info("floor plan updated", extra={"merchant": slug, "tables": len(plan)})
         return plan
+
+    async def set_status(self, slug: str, status: AgentStatus) -> None:
+        async with merchant_conn(self.engine, slug) as conn:
+            await self._load(conn, slug, merchant_side=True)
+            await admin.set_status(conn, slug, status)
+        log.info("agent paused" if status == "down" else "agent resumed", extra={"merchant": slug})
 
     async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation:
         async with merchant_conn(self.engine, slug) as conn:

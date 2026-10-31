@@ -39,11 +39,13 @@ MERCHANT = "merchant"
 _SLUG = TypeAdapter(Slug)
 
 
-def make_engine(url: str | None = None) -> AsyncEngine:
-    """Async engine on `url`, or DATABASE_URL (driver `postgresql+psycopg`). One per process."""
+def make_engine(url: str | None = None, **pool: int) -> AsyncEngine:
+    """Async engine on `url`, or DATABASE_URL (driver `postgresql+psycopg`). One per process,
+    plus a small one for a side job that must never take the main pool's connections (`pool`:
+    `pool_size`, `max_overflow`)."""
     # hide_parameters: a DB error never carries guest names into logs or messages.
     return create_async_engine(
-        url or get_settings().database_url, pool_pre_ping=True, hide_parameters=True
+        url or get_settings().database_url, pool_pre_ping=True, hide_parameters=True, **pool
     )
 
 
@@ -64,13 +66,23 @@ async def merchant_conn(engine: AsyncEngine, slug: str) -> AsyncIterator[AsyncCo
         yield await conn.execution_options(schema_translate_map=translate)
 
 
+# Who writes in a transaction, for the live events (#134): `notify_reservation()` passes it on
+# (migration 0005), and the listener sends the merchant only its guests' changes.
+ACTOR_SETTING = "sesame.actor"
+
+
+async def as_merchant(conn: AsyncConnection) -> None:
+    """Mark the transaction's reservation writes as the merchant's own (transaction-local)."""
+    await conn.execute(select(func.set_config(ACTOR_SETTING, "merchant", True)))
+
+
 def _one_of(name: str, values: tuple[str, ...]) -> CheckConstraint:
     """`name IN (...)` from the contract's Literal values (code constants, never input)."""
     allowed = ", ".join(f"'{value}'" for value in values)
     return CheckConstraint(f"{name} IN ({allowed})")
 
 
-# public: managed by Alembic (migration 0001), declared here to query it.
+# public: managed by Alembic (migrations 0001-0005), declared here to query it.
 
 public_metadata = MetaData(schema="public")
 
@@ -114,6 +126,35 @@ reservation_changes_t = Table(
     Column("reservation_id", Text, nullable=False),
     Column("starts_at", DateTime(timezone=True)),
     Column("party_size", Integer),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# What other agents asked each merchant's agent over BATP, with both frames, kept 7 days
+# (#146, migration 0003). Holds guest names: only the merchant's own session reads it.
+agent_requests_t = Table(
+    "agent_requests",
+    public_metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column(
+        "merchant_slug", Text, ForeignKey(merchants_t.c.slug, ondelete="CASCADE"), nullable=False
+    ),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("agent_name", Text, nullable=False),
+    Column("intent", Text, nullable=False),
+    Column("status", Integer, nullable=False),
+    Column("request", JSONB, nullable=False),
+    Column("response", JSONB, nullable=False),
+)
+
+merchant_owners_t = Table(
+    "merchant_owners",
+    public_metadata,
+    Column(
+        "merchant_slug", Text, ForeignKey(merchants_t.c.slug, ondelete="CASCADE"), primary_key=True
+    ),
+    Column("owner_name", Text),
+    # SHA-256 of the secret link's token (#132, migration 0004): the token is never stored.
+    Column("token_hash", Text, nullable=False, unique=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

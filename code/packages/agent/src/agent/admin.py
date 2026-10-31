@@ -21,6 +21,8 @@ from sqlalchemy import Row, delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from agent.guests import guest_key
+from core import forms
 from core.availability import bookable_starts, is_bookable_start
 from core.db import (
     blocked_slots_t,
@@ -31,13 +33,25 @@ from core.db import (
     tables_t,
 )
 from core.errors import InvalidInput, NotFound
-from core.models import AdminReservationRow, FloorPlan, Policy, Service, Services, Stats, TableSpec
+from core.models import (
+    AdminReservationRow,
+    FloorPlan,
+    GuestRow,
+    MerchantCancelOutcome,
+    Policy,
+    Service,
+    Services,
+    Stats,
+    TableSpec,
+)
 
 # Any row shape (SQLAlchemy 2.1 rows are variadic generics).
 _Row = Row[*tuple[Any, ...]]
 
 # Bounds for merchant input, well inside Postgres `integer`: a typo never reaches the DB.
-MAX_SEATS = 1000
+MAX_SEATS = forms.MAX_SEATS
+# The Guests page covers today and the 6 days after it.
+DAYS_AHEAD = 7
 
 _SERVICES = TypeAdapter(Services)
 _FLOOR_PLAN = TypeAdapter(FloorPlan)
@@ -113,6 +127,43 @@ async def get_stats(conn: AsyncConnection, day: date, tz: ZoneInfo) -> Stats:
     )
 
 
+async def list_guests(
+    conn: AsyncConnection, query: str, now: datetime, tz: ZoneInfo
+) -> list[GuestRow]:
+    """Guests with a live booking that hasn't started, from now to the end of the 7th day,
+    by name (#144). One row per `guest_key`, kept if `query` is part of it."""
+    _, end = _day_bounds(now.astimezone(tz).date() + timedelta(days=DAYS_AHEAD - 1), tz)
+    rows = await conn.execute(
+        select(
+            reservations_t.c.id,
+            _start_of.label("starts_at"),
+            reservations_t.c.guest_name,
+            reservations_t.c.party_size,
+            reservations_t.c.via,
+        )
+        .where(reservations_t.c.status == "confirmed", _start_of > now, _start_of < end)
+        .order_by(_start_of, reservations_t.c.id)
+    )
+    wanted = guest_key(query)
+    by_guest: dict[str, list[_Row]] = {}
+    for row in rows:
+        key = guest_key(row.guest_name)
+        if wanted in key:
+            by_guest.setdefault(key, []).append(row)
+    return [
+        GuestRow(
+            guest_name=visits[0].guest_name,
+            reservation_id=visits[0].id,
+            date=visits[0].starts_at.astimezone(tz).date(),
+            time=_hhmm(visits[0].starts_at, tz),
+            party_size=visits[0].party_size,
+            bookings=len(visits),
+            via=visits[0].via,
+        )
+        for _, visits in sorted(by_guest.items())
+    ]
+
+
 async def block_slot(
     conn: AsyncConnection, services: Sequence[Service], starts_at: datetime, tz: ZoneInfo
 ) -> None:
@@ -130,6 +181,19 @@ async def block_slot(
 
 async def unblock_slot(conn: AsyncConnection, starts_at: datetime) -> None:
     await conn.execute(delete(blocked_slots_t).where(blocked_slots_t.c.starts_at == starts_at))
+
+
+async def set_status(conn: AsyncConnection, slug: str, status: Literal["live", "down"]) -> None:
+    """Pause (`down`) or resume (`live`) a published agent. `down` sends other agents and Claude
+    to the merchant's booking page; its website keeps booking. A `building` merchant isn't
+    published yet: only `deploy` makes it `live`."""
+    result = await conn.execute(
+        update(merchants_t)
+        .where(merchants_t.c.slug == slug, merchants_t.c.status.in_(("live", "down")))
+        .values(status=status)
+    )
+    if result.rowcount == 0:
+        raise InvalidInput("This agent isn't published yet: publish it first")
 
 
 async def _update_profile(conn: AsyncConnection, slug: str, changes: dict[str, Any]) -> None:
@@ -283,9 +347,8 @@ async def _check_plan_change(
         )
 
 
-# What a merchant's cancellation did (#82): cancelled with a notice for the guest, cancelled
-# without one since it is over, or nothing, since the guest or the merchant already cancelled it.
-CancelOutcome = Literal["notified", "ended", "guest_cancelled", "already_cancelled"]
+# What a merchant's cancellation did (#82): see `core.models.MerchantCancelOutcome`.
+CancelOutcome = MerchantCancelOutcome
 
 
 async def cancel_by_merchant(
@@ -294,8 +357,9 @@ async def cancel_by_merchant(
     """Cancel a booking and leave the guest a notice, in the same transaction.
 
     Cancelling an already cancelled booking changes nothing and adds no second notice; a
-    booking that has already ended is cancelled without a notice. Returns the booking row
-    (with its table label), as it is after the cancellation, and what was done.
+    booking that has already ended, or that the merchant made itself, is cancelled without one.
+    Returns the booking row (with its table label), as it is after the cancellation, and what
+    was done.
     """
     wanted_id = reservation_id.strip().upper()
     if not wanted_id.isprintable():
@@ -317,8 +381,15 @@ async def cancel_by_merchant(
         .where(reservations_t.c.id == row.id)
         .values(status="cancelled", cancelled_by="merchant")
     )
-    notified = row.during.upper > now
-    if notified:
+    # A notice only for a booking a guest made, through an agent or the website (#134): the
+    # merchant who entered a booking itself has nobody to tell.
+    outcome: CancelOutcome
+    if row.during.upper <= now:
+        outcome = "ended"
+    elif row.via == "merchant":
+        outcome = "own_booking"
+    else:
+        outcome = "notified"
         await _notify_guest(conn, slug, row, tz)
     cancelled = (
         await conn.execute(
@@ -327,7 +398,7 @@ async def cancel_by_merchant(
             .where(reservations_t.c.id == row.id)
         )
     ).one()
-    return cancelled, "notified" if notified else "ended"
+    return cancelled, outcome
 
 
 async def _notify_guest(conn: AsyncConnection, slug: str, row: _Row, tz: ZoneInfo) -> None:
@@ -346,6 +417,33 @@ async def _notify_guest(conn: AsyncConnection, slug: str, row: _Row, tz: ZoneInf
             message=(
                 f"{merchant.name} cancelled your booking {row.id} on {start:%Y-%m-%d} at "
                 f"{start:%H:%M}. Please contact them at {merchant.website} or book again."
+            ),
+        )
+    )
+
+
+async def notify_move(
+    conn: AsyncConnection,
+    slug: str,
+    reservation_id: str,
+    guest_name: str,
+    start: datetime,
+    tz: ZoneInfo,
+) -> None:
+    """A guest's booking the merchant moved (#134): told like a cancellation, on the guest's
+    next `get_my_reservations`, so that nobody comes at the old time."""
+    merchant = (
+        await conn.execute(select(merchants_t.c.name).where(merchants_t.c.slug == slug))
+    ).one()
+    local = start.astimezone(tz)
+    await conn.execute(
+        insert(guest_notices_t).values(
+            guest_name=guest_name,
+            merchant_slug=slug,
+            reservation_id=reservation_id,
+            message=(
+                f"{merchant.name} moved your booking {reservation_id} on {local:%Y-%m-%d} to "
+                f"{local:%H:%M}."
             ),
         )
     )

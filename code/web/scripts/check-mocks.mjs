@@ -12,6 +12,8 @@ const mocks = {
   cards: "ChatEvent[]",
   notification: "LiveEvent",
   session: "SessionOutput",
+  // The management mock's data (#129, #131).
+  "../../../tests/fixtures/demo/la-graine-verte-management": "ManagementFixture",
 };
 
 try {
@@ -22,11 +24,11 @@ try {
       "utf8",
     );
     const data = JSON.stringify(JSON.parse(source), null, 2);
-    const file = join(directory, `${name}.ts`);
+    const file = join(directory, `${name.split("/").at(-1)}.ts`);
     // JSON imports widen string literals, so check the actual JSON as TS literals.
     await writeFile(
       file,
-      `import type { ChatEvent, LiveEvent, SessionOutput } from ${JSON.stringify(types)};\n` +
+      `import type { ChatEvent, LiveEvent, ManagementFixture, SessionOutput } from ${JSON.stringify(types)};\n` +
         `export default ${data} satisfies ${type};\n`,
     );
     files.push(file);
