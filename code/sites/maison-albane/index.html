@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Maison Albane · Restaurant gastronomique à Mulhouse</title>
+    <meta name="description" content="Maison Albane, table gastronomique à Mulhouse : menus dégustation, menu végétarien, terrasse sur jardin. Tous les soirs, 19h30–22h30.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23151413'/%3E%3Ctext x='32' y='44' fill='%23c8a96a' font-family='Georgia, serif' font-size='34' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
+    <style>
+      :root {
+        --bg: #151413;
+        --panel: #1e1c1a;
+        --ink: #efe9df;
+        --muted: #b3aa9c;
+        --line: #3a3530;
+        --gold: #c8a96a;
+        --serif: "Iowan Old Style", "Palatino Linotype", Palatino, P052, "URW Palladio L", Georgia, serif;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color-scheme: dark;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 1.0625rem/1.7 var(--sans); }
+      a { color: var(--gold); text-underline-offset: 0.2em; }
+      .wrap { width: min(100% - 2rem, 58rem); margin-inline: auto; }
+      header { padding-block: 2rem 0; text-align: center; }
+      .brand { font-family: var(--serif); font-size: 1rem; letter-spacing: 0.4em; text-transform: uppercase; color: var(--gold); }
+      .hero { padding-block: clamp(3rem, 9vw, 6.5rem); text-align: center; }
+      h1, h2 { margin: 0 0 0.6em; font-family: var(--serif); font-weight: 400; line-height: 1.15; text-wrap: balance; }
+      h1 { font-size: clamp(2.6rem, 6vw + 1rem, 4.8rem); }
+      h2 { font-size: 1.6rem; color: var(--gold); }
+      p { margin: 0 0 1em; }
+      .lead { max-width: 36rem; margin-inline: auto; color: var(--muted); font-size: 1.15rem; }
+      .rule { width: 4rem; height: 1px; margin: 2rem auto 0; background: var(--gold); }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1px; margin-bottom: 3rem; border: 1px solid var(--line); background: var(--line); }
+      .grid section { padding: 1.75rem; background: var(--panel); }
+      .grid p:last-child { margin-bottom: 0; }
+      .menu { display: flex; justify-content: space-between; gap: 1rem; font-family: var(--serif); font-size: 1.1rem; }
+      .menu span:last-child { white-space: nowrap; }
+      .book { margin-bottom: 3.5rem; padding: clamp(1.75rem, 5vw, 3rem); border: 1px solid var(--gold); text-align: center; }
+      .phone { font-family: var(--serif); font-size: clamp(1.7rem, 3vw + 1rem, 2.5rem); }
+      .muted { color: var(--muted); }
+      footer { padding-block: 1.5rem 2.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap brand">Maison Albane</div>
+    </header>
+
+    <main>
+      <section class="wrap hero">
+        <h1>Une table de saison, le soir seulement</h1>
+        <p class="lead">Une cuisine d'auteur autour des produits d'Alsace et de Franche-Comté, servie en menus dégustation dans une ancienne maison de maître. Menu végétarien sur demande. Aux beaux jours, le dîner se prend sur la terrasse, côté jardin.</p>
+        <div class="rule" aria-hidden="true"></div>
+      </section>
+
+      <div class="wrap grid">
+        <section aria-labelledby="menus">
+          <h2 id="menus">Menus</h2>
+          <p class="menu"><span>Menu en cinq temps</span><span>95 €</span></p>
+          <p class="menu"><span>Menu en sept temps</span><span>135 €</span></p>
+          <p class="menu"><span>Accords mets et vins</span><span>65 €</span></p>
+          <p class="muted">Menu végétarien sur demande, au prix des autres menus.</p>
+        </section>
+        <section aria-labelledby="horaires">
+          <h2 id="horaires">Horaires</h2>
+          <p>Tous les soirs, de 19h30 à 22h30.</p>
+          <p class="muted">Terrasse sur jardin en été.</p>
+        </section>
+        <section aria-labelledby="adresse">
+          <h2 id="adresse">Adresse</h2>
+          <p>3 cour des Glycines<br>68100 Mulhouse</p>
+          <p><a href="mailto:contact@maisonalbane.example">contact@maisonalbane.example</a></p>
+        </section>
+      </div>
+
+      <section id="reserver" class="wrap book" aria-labelledby="reserver-titre">
+        <h2 id="reserver-titre">Réservation</h2>
+        <p>Nous prenons les réservations par téléphone, tous les jours à partir de 15h :</p>
+        <p class="phone"><a href="tel:+33389000022">03 89 00 00 22</a></p>
+        <p class="muted">Pour les tables de plus de 6 personnes, contactez-nous. Annulation gratuite jusqu'à 24 heures avant le dîner.</p>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">Maison Albane est un restaurant fictif, créé pour une démonstration (BaselHack 2026). L'adresse, le téléphone et l'e-mail sont factices.</div>
+    </footer>
+  </body>
+</html>
