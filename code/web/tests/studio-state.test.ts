@@ -138,7 +138,8 @@ test("review: the model's text gives way to the fixed sentences", () => {
   assert.deepEqual(entries.map((entry) => entry.kind), ["user", "bot", "user", "steps", "review"]);
   const steps = entries[3];
   assert.equal(steps.kind === "steps" && steps.title, "Building La Graine Verte");
-  assert.equal(steps.kind === "steps" && steps.found, 7);
+  // The mockup's eight details, the look (#149) included.
+  assert.equal(steps.kind === "steps" && steps.found, 8);
   const review = entries[4];
   assert.equal(review.kind === "review" && review.pages, 1);
   assert.match((review.kind === "review" && review.loginUrl) || "", /token=/);
