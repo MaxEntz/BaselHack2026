@@ -28,7 +28,13 @@ from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from builder.crawl import CrawlResult, crawl
-from builder.extract import PROMPT_VERSION, ExtractionFailed, ExtractionResult, extract_profile
+from builder.extract import (
+    PROMPT_VERSION,
+    WEEKDAYS,
+    ExtractionFailed,
+    ExtractionResult,
+    extract_profile,
+)
 from builder.llm import OpenAIClient
 from core.models import MerchantProfile, StepEvent
 
@@ -56,6 +62,16 @@ def _last_seating_by(limit: str) -> Check:
     hours, minutes = map(int, limit.split(":"))
     latest = f"{hours + 1:02d}:{minutes:02d}"
     return lambda r: max(s.end for s in r.profile.services) <= latest
+
+
+def _closed(*days: str) -> Check:
+    """The weekly closing days named in the assumptions (#73): exactly `days`."""
+
+    def check(result: ExtractionResult) -> bool:
+        closing = " ".join(a for a in result.assumptions if a.startswith("Closed on"))
+        return {day for day in WEEKDAYS if day in closing} == set(days)
+
+    return check
 
 
 def _group_size(expected: int) -> Check:
@@ -88,6 +104,7 @@ SITES = (
             ),
             "group 6": _group_size(6),
             "fallback": lambda r: str(r.profile.fallback_url).endswith("/reservation.html"),
+            "open daily": _closed(),
         },
     ),
     Site(
@@ -100,6 +117,7 @@ SITES = (
                 == [("11:30", "14:30"), ("18:30", "21:30")]
             ),
             "fallback #": lambda r: str(r.profile.fallback_url).endswith("/#reserver"),
+            "open daily": _closed(),
         },
     ),
     Site(
@@ -111,6 +129,7 @@ SITES = (
                 [(s.start, s.end) for s in r.profile.services] == [("19:30", "22:30")]
             ),
             "fallback #": lambda r: str(r.profile.fallback_url).endswith("/#reserver"),
+            "open daily": _closed(),
         },
     ),
     Site(
@@ -124,6 +143,7 @@ SITES = (
             ),
             "group 8": _group_size(8),
             "fallback #": lambda r: str(r.profile.fallback_url).endswith("/#reservation"),
+            "closed Monday": _closed("Monday"),
         },
     ),
     Site(
@@ -132,13 +152,15 @@ SITES = (
         {
             "last seating ≤ 21:30": _last_seating_by("21:30"),
             "fallback": lambda r: str(r.profile.fallback_url) == "https://www.kronenhalle.com/",
+            "open daily": _closed(),
         },
     ),
     Site(
         "kunsthalle",
         "https://www.restaurant-kunsthalle.ch/",
-        # The site gives opening hours but no kitchen hours and no prices.
+        # Opening hours Monday to Saturday, no kitchen hours, no prices.
         {
+            "closed Sunday": _closed("Sunday"),
             "opening hours": lambda r: (
                 [(s.start, s.end) for s in r.profile.services] == [("11:30", "23:00")]
             ),

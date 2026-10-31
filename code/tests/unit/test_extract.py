@@ -11,13 +11,14 @@ import pytest
 from builder.crawl import CrawlResult, Page
 from builder.extract import (
     INSTRUCTIONS,
+    TOOL,
     TOOL_NAME,
     ExtractionFailed,
     extract_profile,
     slugify,
     user_message,
 )
-from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
+from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec, strict_schema
 from core.models import TableSpec
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())
@@ -294,6 +295,42 @@ async def test_the_retry_logs_the_invalid_fields_without_their_values(
 
 
 @pytest.mark.parametrize(
+    ("closed_days", "assumption"),
+    [
+        ([], None),
+        (["Sunday"], "Closed on Sunday: the agent can't skip a weekday yet, so Sunday bookings "),
+        # Week order, without duplicates.
+        (["Tuesday", "Monday", "Tuesday"], "Closed on Monday and Tuesday: "),
+        (["Sunday", "Monday", "Wednesday"], "Closed on Monday, Wednesday and Sunday: "),
+    ],
+)
+async def test_weekly_closing_days_become_an_assumption(
+    closed_days: list[str], assumption: str | None
+) -> None:
+    result = await extract_profile(CRAWL, "", FakeLLM(draft(closed_days=closed_days)))
+
+    closing = [a for a in result.assumptions if a.startswith("Closed on")]
+    if assumption is None:
+        assert closing == []
+    else:
+        [found] = closing
+        assert found.startswith(assumption)
+
+
+async def test_an_unknown_weekday_is_a_validation_error() -> None:
+    llm = FakeLLM(draft(closed_days=["Sonntag"]), draft())
+
+    await extract_profile(CRAWL, "", llm)
+
+    assert "closed_days.0" in llm.calls[1]["history"][-1]["content"]
+
+
+def test_the_model_must_fill_the_closing_days() -> None:
+    # The default only serves hand-written drafts: strict mode makes the field required.
+    assert "closed_days" in strict_schema(TOOL.parameters)["required"]
+
+
+@pytest.mark.parametrize(
     "rule",
     [
         # Price bands, with CHF counted like EUR (#74).
@@ -303,6 +340,8 @@ async def test_the_retry_logs_the_invalid_fields_without_their_values(
         "the kitchen hours when a source gives them",
         # A booking form's maximum is not the group size when groups must call.
         "A booking form's maximum doesn't count",
+        # Weekly closing days, until services carry weekdays (#73).
+        "closed_days are the weekdays a source says the restaurant is closed every week",
     ],
 )
 def test_the_instructions_keep_the_extraction_rules(rule: str) -> None:

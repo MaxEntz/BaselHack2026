@@ -76,6 +76,7 @@ async def test_builds_le_petit_zinc_from_its_website(
         assumptions = " ".join(output.assumptions).lower()
         assert "table" in assumptions
         assert profile.max_party_size == 6
+        assert "closed on" not in assumptions  # "tous les jours" (#73)
         assert str(profile.fallback_url).endswith("/reservation.html")
         assert [s.step for s in steps if s.status == "done"] == [
             "crawl",
