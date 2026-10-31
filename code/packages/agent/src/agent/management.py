@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from agent import activity, admin, dashboard
+from agent.guests import guest_key
 from agent.service import PgAgentService, _during, _utc
 from agent.writes import attempt, candidate_tables, check_start
 from core.availability import BusyInterval, TableRow, bookable_starts, pick_table
@@ -51,8 +52,9 @@ SEARCH_LIMIT = 8
 
 
 def _fold(text: str) -> str:
-    """`same_guest`'s comparison (agent/service.py), for substrings."""
-    return " ".join(text.split()).casefold()
+    """As the Guests page compares names (`guests.guest_key`: case, accents and spacing), so
+    that "zoe" finds Zoé Huber in both search boxes."""
+    return guest_key(text)
 
 
 _start_of = func.lower(reservations_t.c.during)
@@ -240,6 +242,9 @@ class ManagementService:
                     .where(reservations_t.c.id == current.id)
                     .values(table_id=table.id, during=during),
                 )
+                if outcome == "done" and _utc(body.starts_at) == _utc(current.during.lower):
+                    # Moved to where it was: nothing to tell or to log (#135).
+                    return (await self._managed(conn, reservations_t.c.id == current.id))[0]
                 if outcome == "done":
                     if current.via != "merchant":  # a guest made it: tell them
                         await admin.notify_move(
@@ -254,6 +259,7 @@ class ManagementService:
                         current.guest_name,
                         current.party_size,
                         body.starts_at,
+                        at=self.clock(),
                     )
                     log.info(
                         "reservation moved by merchant",

@@ -8,6 +8,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import demo_management
+import httpx
 import pytest
 import seed
 from sqlalchemy import event, insert, select
@@ -16,9 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.management import ManagementService
 from agent.service import PgAgentService
+from core.config import Settings
 from core.db import make_engine, merchant_activity_t, merchant_conn, reservations_t, tables_t
 from core.errors import InvalidInput, SlotUnavailable
 from core.models import Dashboard, MerchantBookingInput, MoveBookingInput, Service, TableSpec
+from merchant_platform.api import create_app
 
 pytestmark = pytest.mark.integration
 
@@ -329,7 +332,8 @@ async def test_the_dashboard_shows_the_mockups_numbers_after_the_demo_seed(
             sum(d.guests for d in board.next_days),
         )
 
-    before = totals(await manage.dashboard(demo_management.MERCHANT))
+    seeded = await manage.dashboard(demo_management.MERCHANT)
+    before = totals(seeded)
     await manage.agent.create_reservation(
         demo_management.MERCHANT,
         datetime.combine(day, time(20), TZ),
@@ -341,5 +345,126 @@ async def test_the_dashboard_shows_the_mockups_numbers_after_the_demo_seed(
     board = await manage.dashboard(demo_management.MERCHANT)
 
     assert before == (982, 597, 42, 17, 24, 146)
+    # The seed brings the mockup's feed too, worded by the server (#135 review).
+    assert [(a.kind, a.text) for a in seeded.activity[:2]] == [
+        ("blocked", "tomorrow 13:00"),
+        ("new_booking", "R-009, Sara Muller, 2 guests, today 18:30"),
+    ]
+    assert len(seeded.activity) == 6
     assert totals(board) == (984, 599, 42, 19, 24, 148)
+    # Lines carry the service's clock, frozen here like the seed's day: Kim's comes first.
     assert board.activity[0].text == "R-056, Kim Weber, 2 guests, today 20:00"
+
+
+async def test_changes_that_change_nothing_write_no_line(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    early = services(engine, now=at("09:00"))
+    agent = early.agent
+    guest = await agent.create_reservation(slug, at("20:00"), 2, "Sam", "n-1", via="claude")
+    own = await early.add(
+        slug,
+        MerchantBookingInput(
+            starts_at=at("19:00"), party_size=2, guest_name="Lou", idempotency_key="n-2"
+        ),
+    )
+    plan = [
+        TableSpec(label=f"T{n}", seats=6 if n > 10 else 4 if n > 4 else 2) for n in range(1, 13)
+    ]
+    await agent.update_tables(slug, plan)  # the plan it already has
+    before = await count_lines(engine, slug)
+
+    await agent.set_status(slug, "live")  # already live
+    await agent.update_policy(slug, max_party_size=6)  # the limit it already has
+    await agent.update_reservation(slug, guest.id, "Sam", "n-3", starts_at=at("20:00"))
+    await agent.update_reservation(slug, guest.id, "Sam", "n-3", starts_at=at("20:00"))  # replay
+    await early.move(slug, own.id, MoveBookingInput(starts_at=at("19:00"), idempotency_key="n-4"))
+    await agent.unblock_slot(slug, at("21:00"))  # wasn't blocked
+    await agent.cancel_reservation(slug, guest.id, by="guest", guest_name="Sam")
+    await agent.cancel_reservation(slug, guest.id, by="guest", guest_name="Sam")  # again
+    await agent.update_policy(
+        slug, max_party_size=4, services=[Service(start="18:00", end="22:00")]
+    )
+
+    assert [(kind, text) for kind, _, text in (await lines(engine, slug))[-3:]] == [
+        ("cancelled", f"{guest.id}, Sam, 2 guests, today 20:00"),
+        ("saved", "Booking rules"),
+        ("saved", "Opening hours"),  # both sections changed: one line each
+    ]
+    assert await count_lines(engine, slug) == before + 3
+
+
+async def test_a_guests_change_is_the_agents_whoever_made_the_booking(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    early = services(engine, now=at("09:00"))
+    own = await early.add(
+        slug,
+        MerchantBookingInput(
+            starts_at=at("19:00"), party_size=2, guest_name="Lou", idempotency_key="a-1"
+        ),
+    )
+
+    await early.agent.update_reservation(slug, own.id, "Lou", "a-2", starts_at=at("20:00"))
+    await early.agent.cancel_reservation(slug, own.id, by="guest", guest_name="Lou")
+
+    assert [(kind, source) for kind, source, _ in (await lines(engine, slug))[-2:]] == [
+        ("moved", "claude"),
+        ("cancelled", "claude"),
+    ]
+
+
+async def test_a_line_without_its_details_reads_as_its_reference(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    async with engine.begin() as conn:
+        await conn.execute(
+            insert(merchant_activity_t).values(
+                merchant_slug=slug, kind="new_booking", source="claude", reservation_id="R-404"
+            )
+        )
+
+    feed = (await services(engine).dashboard(slug)).activity
+
+    assert [(a.kind, a.text) for a in feed] == [("new_booking", "R-404")]
+
+
+async def test_search_ignores_accents_like_the_guests_page(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    manage = services(engine)
+    zoe = await manage.agent.create_reservation(
+        slug, at("20:00", TODAY + timedelta(days=1)), 2, "Zoé  Müller", "z-1", via="claude"
+    )
+
+    found = [await manage.search(slug, q) for q in ("zoe", "MULLER", "zoé müller")]
+
+    assert [[r.id for r in f.reservations] for f in found] == [[zoe.id]] * 3
+
+
+async def test_the_routes_answer_home_and_the_search(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    manage = services(engine)
+    await manage.agent.create_reservation(slug, at("20:00"), 2, "Kim Weber", "h-1", via="claude")
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        database_url="postgresql+psycopg://u:p@localhost:5432/db",
+        platform_merchant=slug,
+    )
+    app = create_app(settings, bookings=manage)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
+        home = await http.get(f"/merchants/{slug}/dashboard")
+        other_day = await http.get(f"/merchants/{slug}/dashboard", params={"date": "2026-11-03"})
+        found = await http.get(f"/merchants/{slug}/search", params={"q": "kim"})
+
+    assert Dashboard.model_validate(home.json()).room.guests == 2
+    assert (other_day.status_code, other_day.json()["error"]) == (422, "invalid_input")
+    assert [r["guest_name"] for r in found.json()["reservations"]] == ["Kim Weber"]

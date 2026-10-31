@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from core.db import merchant_activity_t
 from core.models import ActivityItem, ActivityKind, Via
 
+# Who a guest's own change comes from: an agent, since the website only books (#135).
+GUEST_SOURCE: Via = "claude"
 # What a "saved" line names (`details["what"]`).
 OPENING_HOURS = "Opening hours"
 BOOKING_RULES = "Booking rules"
@@ -33,16 +35,20 @@ async def record(
     *,
     reservation_id: str | None = None,
     details: dict[str, Any] | None = None,
+    at: datetime | None = None,
 ) -> None:
-    await conn.execute(
-        insert(merchant_activity_t).values(
-            merchant_slug=slug,
-            kind=kind,
-            source=source,
-            reservation_id=reservation_id,
-            details=details or {},
-        )
-    )
+    """`at` is the operation's clock (the service's, frozen in tests and demos); the
+    database's own time without it."""
+    values: dict[str, Any] = {
+        "merchant_slug": slug,
+        "kind": kind,
+        "source": source,
+        "reservation_id": reservation_id,
+        "details": details or {},
+    }
+    if at is not None:
+        values["at"] = at
+    await conn.execute(insert(merchant_activity_t).values(values))
 
 
 async def record_booking(
@@ -54,18 +60,25 @@ async def record_booking(
     guest_name: str,
     party_size: int,
     starts_at: datetime,
+    *,
+    at: datetime | None = None,
 ) -> None:
     """A booking's line: new, moved or cancelled, with the booking as it then stood."""
     details = {"guest": guest_name, "party": party_size, "starts_at": starts_at.isoformat()}
-    await record(conn, slug, kind, source, reservation_id=reservation_id, details=details)
+    await record(conn, slug, kind, source, reservation_id=reservation_id, details=details, at=at)
 
 
 async def record_times(
-    conn: AsyncConnection, slug: str, kind: ActivityKind, times: Sequence[datetime]
+    conn: AsyncConnection,
+    slug: str,
+    kind: ActivityKind,
+    times: Sequence[datetime],
+    *,
+    at: datetime | None = None,
 ) -> None:
     """Blocked or reopened start times, one line per change."""
     details = {"times": [moment.isoformat() for moment in sorted(times)]}
-    await record(conn, slug, kind, "merchant", details=details)
+    await record(conn, slug, kind, "merchant", details=details, at=at)
 
 
 async def latest(
@@ -106,7 +119,24 @@ def word(
     today: date,
     tz: ZoneInfo,
 ) -> str:
-    """The line Home shows: "R-009, Sara Muller, 2 guests, today 18:30"."""
+    """The line Home shows: "R-009, Sara Muller, 2 guests, today 18:30".
+
+    Never fails: a line without its details (an older writer, a hand-made row) reads as its
+    reference, so one bad row can't take Home down.
+    """
+    try:
+        return _word(kind, reservation_id, details, today, tz)
+    except (KeyError, TypeError, ValueError):
+        return reservation_id or ""
+
+
+def _word(
+    kind: ActivityKind,
+    reservation_id: str | None,
+    details: dict[str, Any],
+    today: date,
+    tz: ZoneInfo,
+) -> str:
     if kind in ("new_booking", "moved", "cancelled"):
         start = datetime.fromisoformat(details["starts_at"]).astimezone(tz)
         party = int(details["party"])

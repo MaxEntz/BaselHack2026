@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from agent import activity, admin
+from agent.activity import GUEST_SOURCE
 from agent.guests import same_guest
 from agent.writes import attempt as _attempt
 from agent.writes import candidate_tables, check_start
@@ -280,6 +281,7 @@ class PgAgentService:
                     guest_name,
                     party_size,
                     starts_at,
+                    at=self.clock(),
                 )
                 log.info(
                     "reservation created",
@@ -341,16 +343,24 @@ class PgAgentService:
                 )
                 if outcome != "done":
                     continue
-                await activity.record_booking(
-                    conn,
-                    slug,
-                    "moved",
-                    current.via,
-                    current.id,
-                    current.guest_name,
-                    new_party,
-                    new_start,
+                # A guest's change comes through an agent (the website only books), and an
+                # update that changes nothing writes no line (#135).
+                unchanged = (_utc(new_start), new_party) == (
+                    _utc(current.during.lower),
+                    current.party_size,
                 )
+                if not unchanged:
+                    await activity.record_booking(
+                        conn,
+                        slug,
+                        "moved",
+                        GUEST_SOURCE,
+                        current.id,
+                        current.guest_name,
+                        new_party,
+                        new_start,
+                        at=self.clock(),
+                    )
                 log.info(
                     "reservation updated",
                     extra={"merchant": slug, "reservation": current.id, "key": idempotency_key},
@@ -406,11 +416,12 @@ class PgAgentService:
                     conn,
                     slug,
                     "cancelled",
-                    current.via,
+                    GUEST_SOURCE,
                     current.id,
                     current.guest_name,
                     current.party_size,
                     current.during.lower,
+                    at=self.clock(),
                 )
                 log.info(
                     "reservation cancelled", extra={"merchant": slug, "reservation": current.id}
@@ -560,13 +571,15 @@ class PgAgentService:
     async def block_slot(self, slug: str, starts_at: datetime) -> None:
         async with merchant_conn(self.engine, slug) as conn:
             merchant = await self._load(conn, slug, merchant_side=True)
-            await admin.block_slot(conn, slug, merchant.services, starts_at, self.tz)
+            await admin.block_slot(
+                conn, slug, merchant.services, starts_at, self.tz, at=self.clock()
+            )
         log.info("slot blocked", extra={"merchant": slug, "starts_at": starts_at.isoformat()})
 
     async def unblock_slot(self, slug: str, starts_at: datetime) -> None:
         async with merchant_conn(self.engine, slug) as conn:
             await self._load(conn, slug, merchant_side=True)
-            await admin.unblock_slot(conn, slug, starts_at)
+            await admin.unblock_slot(conn, slug, starts_at, at=self.clock())
         log.info("slot unblocked", extra={"merchant": slug, "starts_at": starts_at.isoformat()})
 
     async def update_policy(
@@ -577,7 +590,9 @@ class PgAgentService:
     ) -> Policy:
         async with merchant_conn(self.engine, slug) as conn:
             await self._load(conn, slug, merchant_side=True)
-            policy = await admin.update_policy(conn, slug, max_party_size, services)
+            policy = await admin.update_policy(
+                conn, slug, max_party_size, services, at=self.clock()
+            )
         log.info("policy updated", extra={"merchant": slug})
         return policy
 
@@ -591,7 +606,7 @@ class PgAgentService:
     async def set_status(self, slug: str, status: AgentStatus) -> None:
         async with merchant_conn(self.engine, slug) as conn:
             await self._load(conn, slug, merchant_side=True)
-            await admin.set_status(conn, slug, status)
+            await admin.set_status(conn, slug, status, at=self.clock())
         log.info("agent paused" if status == "down" else "agent resumed", extra={"merchant": slug})
 
     async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation:

@@ -35,6 +35,7 @@ from core.db import (
 )
 from core.errors import InvalidInput, NotFound
 from core.models import (
+    ActivityKind,
     AdminReservationRow,
     FloorPlan,
     GuestRow,
@@ -171,6 +172,8 @@ async def block_slot(
     services: Sequence[Service],
     starts_at: datetime,
     tz: ZoneInfo,
+    *,
+    at: datetime | None = None,
 ) -> None:
     """No new booking may start at `starts_at`. Existing bookings stay (AGENTS.md §6)."""
     if not is_bookable_start(services, starts_at, tz):
@@ -186,31 +189,41 @@ async def block_slot(
         .returning(blocked_slots_t.c.starts_at)
     )
     if added is not None:  # already blocked: nothing changed, no line
-        await activity.record_times(conn, slug, "blocked", [starts_at])
+        await activity.record_times(conn, slug, "blocked", [starts_at], at=at)
 
 
-async def unblock_slot(conn: AsyncConnection, slug: str, starts_at: datetime) -> None:
+async def unblock_slot(
+    conn: AsyncConnection, slug: str, starts_at: datetime, *, at: datetime | None = None
+) -> None:
     removed = await conn.scalar(
         delete(blocked_slots_t)
         .where(blocked_slots_t.c.starts_at == starts_at)
         .returning(blocked_slots_t.c.starts_at)
     )
     if removed is not None:
-        await activity.record_times(conn, slug, "reopened", [starts_at])
+        await activity.record_times(conn, slug, "reopened", [starts_at], at=at)
 
 
-async def set_status(conn: AsyncConnection, slug: str, status: Literal["live", "down"]) -> None:
+async def set_status(
+    conn: AsyncConnection,
+    slug: str,
+    status: Literal["live", "down"],
+    *,
+    at: datetime | None = None,
+) -> None:
     """Pause (`down`) or resume (`live`) a published agent. `down` sends other agents and Claude
     to the merchant's booking page; its website keeps booking. A `building` merchant isn't
     published yet: only `deploy` makes it `live`."""
-    result = await conn.execute(
-        update(merchants_t)
-        .where(merchants_t.c.slug == slug, merchants_t.c.status.in_(("live", "down")))
-        .values(status=status)
+    current = await conn.scalar(
+        select(merchants_t.c.status).where(merchants_t.c.slug == slug).with_for_update()
     )
-    if result.rowcount == 0:
+    if current not in ("live", "down"):
         raise InvalidInput("This agent isn't published yet: publish it first")
-    await activity.record(conn, slug, "paused" if status == "down" else "resumed", "merchant")
+    if current == status:
+        return  # paused twice: nothing changed, no line (#135)
+    await conn.execute(update(merchants_t).where(merchants_t.c.slug == slug).values(status=status))
+    kind: ActivityKind = "paused" if status == "down" else "resumed"
+    await activity.record(conn, slug, kind, "merchant", at=at)
 
 
 async def _update_profile(conn: AsyncConnection, slug: str, changes: dict[str, Any]) -> None:
@@ -234,6 +247,8 @@ async def update_policy(
     slug: str,
     max_party_size: int | None,
     services: Sequence[Service] | None,
+    *,
+    at: datetime | None = None,
 ) -> Policy:
     """Change the group limit and/or the services. Existing bookings are never cancelled."""
     if max_party_size is None and services is None:
@@ -251,10 +266,18 @@ async def update_policy(
         except ValidationError as error:
             raise InvalidInput(f"Invalid services: {_reasons(error)}") from None
         values["services"] = [service.model_dump() for service in checked]
+    before = (await conn.execute(select(policy_t.c.max_party_size, policy_t.c.services))).one()
     row = (await conn.execute(update(policy_t).values(values).returning(policy_t))).one()
     await _update_profile(conn, slug, values)
-    what = activity.BOOKING_RULES if max_party_size is not None else activity.OPENING_HOURS
-    await activity.record(conn, slug, "saved", "merchant", details={"what": what})
+    # One line per section that changed: an identical save, or a retry, writes none (#135).
+    if "max_party_size" in values and values["max_party_size"] != before.max_party_size:
+        await activity.record(
+            conn, slug, "saved", "merchant", details={"what": activity.BOOKING_RULES}, at=at
+        )
+    if "services" in values and values["services"] != before.services:
+        await activity.record(
+            conn, slug, "saved", "merchant", details={"what": activity.OPENING_HOURS}, at=at
+        )
     return Policy(
         max_party_size=row.max_party_size,
         slot_length_min=row.slot_length_min,
@@ -312,7 +335,10 @@ async def update_tables(
             "seats": sum(table.seats for table in plan),
         },
     )
-    await activity.record(conn, slug, "saved", "merchant", details={"what": activity.FLOOR_PLAN})
+    if sorted((t.label, t.seats) for t in plan) != sorted((t.label, t.seats) for t in current):
+        await activity.record(
+            conn, slug, "saved", "merchant", details={"what": activity.FLOOR_PLAN}, at=now
+        )
     return plan
 
 
@@ -410,6 +436,7 @@ async def cancel_by_merchant(
         row.guest_name,
         row.party_size,
         row.during.lower,
+        at=now,
     )
     # A notice only for a booking a guest made, through an agent or the website (#134): the
     # merchant who entered a booking itself has nobody to tell.
