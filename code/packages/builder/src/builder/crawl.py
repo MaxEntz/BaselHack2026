@@ -84,7 +84,103 @@ class CrawlResult:
 
 
 class _Unreadable(Exception):
-    """The server answered, with an error status."""
+    """The page can't be read: an error status, too many redirects…"""
+
+
+class _Blocked(_Unreadable):
+    """A redirect leads to an address the guard refuses."""
+
+
+# Request filtering
+
+
+class HostGuard:
+    """Decides, per host and after DNS resolution, whether the browser may connect to it."""
+
+    def __init__(self, *, allow_private: bool, timeout_s: float) -> None:
+        self.allow_private = allow_private
+        self.timeout_s = timeout_s
+        self._verdicts: dict[str, Refusal | None] = {}
+
+    async def refusal(self, url: str) -> Refusal | None:
+        """Why `url` must not be loaded, or None when it may be."""
+        parts = urlsplit(url)
+        host = parts.hostname
+        if parts.scheme not in ("http", "https") or not host:
+            return "unreachable"
+        if host not in self._verdicts:
+            self._verdicts[host] = await self._resolve(host)
+        return self._verdicts[host]
+
+    async def allows(self, url: str) -> bool:
+        """Whether `url` may be loaded; a private address is logged."""
+        refusal = await self.refusal(url)
+        if refusal == "private":
+            log.warning("crawl_request_refused", extra={"url": url})
+        return refusal is None
+
+    async def _resolve(self, host: str) -> Refusal | None:
+        try:
+            infos = await asyncio.wait_for(
+                asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM),
+                self.timeout_s,
+            )
+        except (OSError, UnicodeError, TimeoutError):
+            return "unreachable"
+        # Every address must pass: the browser may connect to any of them.
+        if any(is_refused(str(info[4][0]), allow_private=self.allow_private) for info in infos):
+            return "private"
+        return None
+
+
+def is_refused(address: str, *, allow_private: bool) -> bool:
+    """Whether the crawler must not connect to this IP address."""
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address = ipaddress.ip_address(address)
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped  # ::ffff:127.0.0.1 is 127.0.0.1, which Python 3.12 doesn't see
+    if ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+        return True  # not even in dev: 169.254.169.254 is the cloud metadata endpoint
+    return not (ip.is_global or allow_private)
+
+
+async def _route(guard: HostGuard, timeout_ms: float, route: Route) -> None:
+    """Send a request through the guard, following its redirects here, hop by hop, and give
+    the browser only the final answer.
+
+    Chromium doesn't route the hops of a redirect it follows, so it must never get one: a
+    public page could otherwise redirect it to a private address.
+    """
+    request = route.request
+    try:
+        if request.resource_type in SKIPPED_RESOURCES:
+            await route.abort("blockedbyclient")
+            return
+        url = request.url
+        for _ in range(MAX_REDIRECTS + 1):
+            if not await guard.allows(url):
+                await route.abort("blockedbyclient")
+                return
+            response = await route.fetch(url=url, max_redirects=0, timeout=timeout_ms)
+            location = response.headers.get("location")
+            if response.status not in REDIRECT_STATUSES or not location:
+                await route.fulfill(response=response)
+                return
+            if request.method != "GET":
+                break  # pages are read with GET; not worth replaying a body
+            url = urljoin(url, location)
+        await route.abort("failed")  # too many redirects, or a redirected POST
+    except PlaywrightError as error:
+        log.debug("crawl_request_failed", extra={"url": request.url, "error": error.message})
+        with suppress(PlaywrightError):
+            await route.abort("failed")
+
+
+async def _refuse_web_socket(web_socket: WebSocketRoute) -> None:
+    """Never connected: `_route` doesn't see WebSockets, and the text never comes from them."""
+    await web_socket.close()
+
+
+# The crawl
 
 
 async def crawl(
@@ -152,9 +248,13 @@ async def _crawl(
         await context.route("**/*", partial(_route, guard, timeout_s * 1000))
         await context.route_web_socket("**/*", _refuse_web_socket)
         try:
-            home, links = await _read(context, website, timeout_s=timeout_s, max_chars=max_chars)
+            home, links = await _read(
+                context, guard, website, timeout_s=timeout_s, max_chars=max_chars
+            )
         except (PlaywrightError, TimeoutError, _Unreadable) as error:
-            if isinstance(error, PlaywrightError) and "ERR_BLOCKED_BY_CLIENT" in error.message:
+            if isinstance(error, _Blocked) or (
+                isinstance(error, PlaywrightError) and "ERR_BLOCKED_BY_CLIENT" in error.message
+            ):
                 raise InvalidInput(
                     f"I can't read {website}: it redirects to a private network address."
                 ) from None
@@ -164,7 +264,7 @@ async def _crawl(
         await on_event(StepEvent(step="crawl", status="running", detail="Read homepage"))
         pages = await asyncio.gather(
             *(
-                _read_page(context, link, on_event, timeout_s=timeout_s, max_chars=max_chars)
+                _read_page(context, guard, link, on_event, timeout_s=timeout_s, max_chars=max_chars)
                 for link in useful_links(links, home.url, max_pages)
             )
         )
@@ -172,10 +272,16 @@ async def _crawl(
 
 
 async def _read_page(
-    context: BrowserContext, url: str, on_event: StepEmitter, *, timeout_s: float, max_chars: int
+    context: BrowserContext,
+    guard: HostGuard,
+    url: str,
+    on_event: StepEmitter,
+    *,
+    timeout_s: float,
+    max_chars: int,
 ) -> Page | None:
     try:
-        page, _ = await _read(context, url, timeout_s=timeout_s, max_chars=max_chars)
+        page, _ = await _read(context, guard, url, timeout_s=timeout_s, max_chars=max_chars)
     except (PlaywrightError, TimeoutError, _Unreadable) as error:
         log.warning("crawl_page_skipped", extra={"url": url, "error": _reason(error, timeout_s)})
         return None
@@ -184,7 +290,7 @@ async def _read_page(
 
 
 async def _read(
-    context: BrowserContext, url: str, *, timeout_s: float, max_chars: int
+    context: BrowserContext, guard: HostGuard, url: str, *, timeout_s: float, max_chars: int
 ) -> tuple[Page, list[list[str]]]:
     """Load `url` in a new tab within `timeout_s`: the page and its links as (href, text)."""
     loop = asyncio.get_running_loop()
@@ -192,6 +298,7 @@ async def _read(
     tab = await context.new_page()
     try:
         async with asyncio.timeout_at(deadline):
+            url = await _landing(context, guard, url, timeout_s * 1000)
             response = await tab.goto(url, wait_until="domcontentloaded", timeout=timeout_s * 1000)
             if response is not None and not response.ok:
                 raise _Unreadable(f"error {response.status}")
@@ -215,6 +322,24 @@ async def _read(
     return page, raw["links"]
 
 
+async def _landing(context: BrowserContext, guard: HostGuard, url: str, timeout_ms: float) -> str:
+    """Where `url` lands after its redirects, each hop checked by the guard.
+
+    The tab then loads that address: the page keeps its real URL, which relative links resolve
+    from, and the browser never follows a redirect itself (see `_route`).
+    """
+    for _ in range(MAX_REDIRECTS + 1):
+        if not await guard.allows(url):
+            raise _Blocked("it redirects to a private network address")
+        response = await context.request.get(url, max_redirects=0, timeout=timeout_ms)
+        location = response.headers.get("location")
+        await response.dispose()
+        if response.status not in REDIRECT_STATUSES or not location:
+            return url
+        url = urljoin(url, location)
+    raise _Unreadable("too many redirects")
+
+
 def _reason(error: Exception, timeout_s: float) -> str:
     if isinstance(error, TimeoutError | PlaywrightTimeout):
         return f"no answer within {timeout_s:g} s"
@@ -228,96 +353,6 @@ def _reason(error: Exception, timeout_s: float) -> str:
 def _finished(status: Literal["done", "error"], detail: str, started: float) -> StepEvent:
     duration_ms = round((time.monotonic() - started) * 1000)
     return StepEvent(step="crawl", status=status, detail=detail, duration_ms=duration_ms)
-
-
-# Request filtering
-
-
-class HostGuard:
-    """Decides, per host and after DNS resolution, whether the browser may connect to it."""
-
-    def __init__(self, *, allow_private: bool, timeout_s: float) -> None:
-        self.allow_private = allow_private
-        self.timeout_s = timeout_s
-        self._verdicts: dict[str, Refusal | None] = {}
-
-    async def refusal(self, url: str) -> Refusal | None:
-        """Why `url` must not be loaded, or None when it may be."""
-        parts = urlsplit(url)
-        host = parts.hostname
-        if parts.scheme not in ("http", "https") or not host:
-            return "unreachable"
-        if host not in self._verdicts:
-            self._verdicts[host] = await self._resolve(host)
-        return self._verdicts[host]
-
-    async def _resolve(self, host: str) -> Refusal | None:
-        try:
-            infos = await asyncio.wait_for(
-                asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM),
-                self.timeout_s,
-            )
-        except (OSError, UnicodeError, TimeoutError):
-            return "unreachable"
-        # Every address must pass: the browser may connect to any of them.
-        if any(is_refused(str(info[4][0]), allow_private=self.allow_private) for info in infos):
-            return "private"
-        return None
-
-
-def is_refused(address: str, *, allow_private: bool) -> bool:
-    """Whether the crawler must not connect to this IP address."""
-    ip: ipaddress.IPv4Address | ipaddress.IPv6Address = ipaddress.ip_address(address)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped  # ::ffff:127.0.0.1 is 127.0.0.1, which Python 3.12 doesn't see
-    if ip.is_link_local or ip.is_multicast or ip.is_unspecified:
-        return True  # not even in dev: 169.254.169.254 is the cloud metadata endpoint
-    return not (ip.is_global or allow_private)
-
-
-async def _route(guard: HostGuard, timeout_ms: float, route: Route) -> None:
-    """Send a request through the guard, following its redirects here, hop by hop.
-
-    Chromium doesn't route the hops of a redirect, so without this a public page could
-    redirect the browser to a private address.
-    """
-    request = route.request
-    try:
-        if request.resource_type in SKIPPED_RESOURCES:
-            await route.abort("blockedbyclient")
-            return
-        url = request.url
-        for _ in range(MAX_REDIRECTS + 1):
-            if await guard.refusal(url):
-                log.warning("crawl_request_refused", extra={"url": url})
-                await route.abort("blockedbyclient")
-                return
-            response = await route.fetch(url=url, max_redirects=0, timeout=timeout_ms)
-            location = response.headers.get("location")
-            if response.status not in REDIRECT_STATUSES or not location:
-                break
-            if request.method != "GET":
-                await route.abort("failed")  # pages are read with GET; not worth replaying a body
-                return
-            url = urljoin(url, location)
-        else:
-            await route.abort("failed")  # too many redirects
-            return
-        if url != request.url and request.is_navigation_request():
-            # The browser follows this redirect without routing it, but only to the address just
-            # checked, which answered without redirecting: the page keeps its real URL.
-            await route.fulfill(status=302, headers={"location": url})
-        else:
-            await route.fulfill(response=response)
-    except PlaywrightError as error:
-        log.debug("crawl_request_failed", extra={"url": request.url, "error": error.message})
-        with suppress(PlaywrightError):
-            await route.abort("failed")
-
-
-async def _refuse_web_socket(web_socket: WebSocketRoute) -> None:
-    """Never connected: `_route` doesn't see WebSockets, and the text never comes from them."""
-    await web_socket.close()
 
 
 # Pure helpers
