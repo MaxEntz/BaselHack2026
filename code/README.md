@@ -30,7 +30,7 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 | `make site` | Demo restaurant website "Le Petit Zinc" (static, in French) | http://localhost:8080 |
 | `make sites` | The 3 demo websites: Le Petit Zinc, La Graine Verte, Maison Albane | http://localhost:8080, :8081, :8082 |
 
-Le Petit Zinc's booking form posts to `http://localhost:8002/public/le-petit-zinc/reservations` (#15). Open the site as `localhost`, not `127.0.0.1`: the platform accepts the form from that origin only (CORS). Without the platform, the form asks guests to call.
+Le Petit Zinc's booking form posts to `http://localhost:8002/public/le-petit-zinc/reservations` (#15). Open it at the `localhost` URL that `make site` prints, not at the `127.0.0.1` link `http.server` prints: the platform only accepts the form from the origins in its CORS list. Without the platform, the form asks guests to call.
 
 Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md).
 

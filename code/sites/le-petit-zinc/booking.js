@@ -152,7 +152,8 @@ function maxPartySize(message, partySize) {
 }
 
 function handleResponse(status, body, booking) {
-  if (status === 201) {
+  // 201 for a new booking; a replayed idempotency key may return the existing one with 200.
+  if (status >= 200 && status < 300) {
     const reservation = body.reservation ?? body;
     const startsAt = new Date(reservation.starts_at);
     pending = null;
