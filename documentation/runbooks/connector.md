@@ -1,12 +1,12 @@
-# Runbook: connect Claude to the MCP gateway
+# Runbook: connect Claude, or any AI assistant, to the MCP gateway
 
-Goal: book a table with the gateway's 6 tools from a Claude.ai conversation, through the team server.
+Goal: book a table with the gateway's 6 tools from a Claude.ai conversation, or from any MCP client (Codex, OpenCode, Claude Code…), through the team server.
 
 Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not from your browser, so it needs a public HTTPS URL. Ours is served by the team server (LXC `191.96.88.152`) behind Caddy ([ADR-0009](../adr/0009-serve-the-gateway-from-the-team-server-behind-caddy.md)):
 
 **Connector URL:** `https://191-96-88-152.sslip.io/mcp`
 
-⚠️ That URL only answers Anthropic's range ([ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)): from your machine, `curl`, MCP Inspector or Claude Code get `403 Forbidden`. Test on the server (step 2) or against a local gateway ([Plan B](#plan-b-without-the-team-server)).
+⚠️ The gateway always requires `GATEWAY_TOKEN` ([ADR-0019](../adr/0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md)). Claude.ai can't send it, so Caddy adds it to requests from Anthropic's range. From anywhere else, a request without `Authorization: Bearer <token>` gets `403 Forbidden` from Caddy, and one with a wrong token `401` from the gateway. With the token, any assistant on your machine can use the URL ([Other assistants](#other-assistants-codex-opencode-claude-code)).
 
 ## Validation status
 
@@ -17,6 +17,7 @@ Everything else in this runbook has been run end to end: deploy, HTTPS, Caddy's 
 | One restaurant's endpoint `/m/<slug>/mcp` from Claude.ai | 🔶 validated locally (e2e, in-process and over BATP), ⏳ Claude.ai (step 3) | [#23](https://github.com/MaxEntz/BaselHack2026/issues/23) |
 | Claude Desktop, §9 scenarios | 🔶 two scenarios still ⏳ in step 4: the pre-confirmed booking and the vegan search, both to retest with the current tool descriptions | [#14](https://github.com/MaxEntz/BaselHack2026/issues/14) |
 | ngrok tunnel | ⏳ never tested, plan B only | — |
+| Public URL with a token (ADR-0019): Claude.ai through Caddy's added token, another assistant with its own | 🔶 Caddy 2.6.2 rules checked in Docker, gateway in the tests; ⏳ on the server, after `make deploy` | #71 |
 
 ![Claude.ai calls ping and shows pong](img/connector-ping.png)
 
@@ -41,8 +42,9 @@ What it touches **outside** `/opt/merchant-agents`:
 
 - `/etc/systemd/system/merchant-node.service` and `merchant-gateway.service`.
 - `/etc/caddy/Caddyfile`, only when `code/deploy/Caddyfile` changed: it validates it, overwrites the file and restarts Caddy. **The server is shared**: any other site must also be declared in our Caddyfile.
+- `/etc/systemd/system/caddy.service.d/merchant-agents.conf` (`code/deploy/caddy-merchant-agents.conf`), a drop-in that gives Caddy `GATEWAY_TOKEN` from `/opt/merchant-agents/caddy.env`. `make deploy` writes that file from `code/.env` (`root:root 600`, read by systemd before Caddy drops its privileges) and restarts Caddy when it, the drop-in or the Caddyfile changed.
 
-It never touches `/opt/merchant-agents/code/.env`. On a new server, create it with:
+It never touches `/opt/merchant-agents/code/.env`, and refuses to go on without `GATEWAY_TOKEN` in it: Caddy forwards any request with a bearer token, so the gateway must check one. On a new server, create it with:
 
 ```bash
 DATABASE_URL=postgresql+psycopg://merchant:…@127.0.0.1:5432/merchant_agents   # without it, neither service starts
@@ -50,6 +52,7 @@ GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io   # no /mcp; without it, every
 BATP_TOKENS='{"urn:batp:agent:claude-gateway":"…"}' # node: one token per known agent, 16+ characters
 BATP_URL=batp://127.0.0.1:4710                      # gateway: go through the node
 BATP_TOKEN=…                                        # gateway: its token, the one listed in BATP_TOKENS
+GATEWAY_TOKEN=…                                     # every caller; Caddy adds it for Claude.ai (ADR-0019)
 ```
 
 Generate a token with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`, and restart both services after editing `.env`. On a new server, also create the database in UTF-8, or psycopg returns bytes and everything fails with `cannot use a string pattern on a bytes-like object`:
@@ -71,14 +74,18 @@ cd /opt/merchant-agents/code
 # gateway up and reaching Postgres
 .venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8001/health').read().decode())"
 
-# the 6 tools, through the gateway, the node and Postgres, without Caddy
+# the 6 tools, through the gateway, the node and Postgres, without Caddy (with the token)
 .venv/bin/python -c "
-import asyncio
+import asyncio, httpx2
+from core.config import get_settings
 from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
 
 async def main():
-    async with Client('http://127.0.0.1:8001/mcp') as client:
-        print([t.name for t in (await client.list_tools()).tools])
+    token = get_settings().gateway_token.get_secret_value()
+    async with httpx2.AsyncClient(headers={'Authorization': f'Bearer {token}'}) as http:
+        async with Client(streamable_http_client('http://127.0.0.1:8001/mcp', http_client=http)) as client:
+            print([t.name for t in (await client.list_tools()).tools])
 
 asyncio.run(main())"
 
@@ -99,10 +106,12 @@ Start the scenarios from a known state, still on the server:
 
 (`make seed`, `make demo-reset` and `make outage` act on your **local** database; `make demo-booking` on your local gateway.)
 
-From your machine, the public URL must refuse you and port 4710 must stay closed:
+From your machine, the public URL must refuse you without the token, let you through with it, and port 4710 must stay closed:
 
 ```bash
 curl -i https://191-96-88-152.sslip.io/mcp     # 403 Forbidden, only a `server: Caddy` header
+curl -i -X POST -H "Authorization: Bearer wrong" https://191-96-88-152.sslip.io/mcp   # 401, from the gateway
+curl -i -H "Authorization: Bearer <token>" https://191-96-88-152.sslip.io/health      # 200
 timeout 5 bash -c 'echo > /dev/tcp/191.96.88.152/4710' && echo OPEN || echo closed
 ```
 
@@ -148,15 +157,47 @@ Fallback links point to the demo sites on `localhost` (`make sites`), so they on
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `403 Forbidden`, only a `server: Caddy` header | Request from outside Anthropic's range | Expected from your machine: check on the server (step 2). If Claude.ai gets it, Anthropic's range changed ([docs](https://platform.claude.com/docs/en/api/ip-addresses)): update `code/deploy/Caddyfile` and deploy |
+| `403 Forbidden`, only a `server: Caddy` header | Request without `Authorization: Bearer …` from outside Anthropic's range | Send the token ([Other assistants](#other-assistants-codex-opencode-claude-code)). If Claude.ai gets it, Anthropic's range changed ([docs](https://platform.claude.com/docs/en/api/ip-addresses)): update `code/deploy/Caddyfile` and deploy |
 | `403 Invalid Origin header` | `Origin` outside `ALLOWED_ORIGINS` | Add it in `gateway/server.py`; the refused name is in the gateway's logs |
 | `421 Invalid Host header` | `GATEWAY_PUBLIC_URL` missing or wrong in `.env` | Fix it (no `/mcp`), `systemctl restart merchant-gateway` |
 | Every tool answers `agent_unavailable` with the fallback link | BATP node down or refusing the gateway | `journalctl -u merchant-node`: usually `DATABASE_URL` or `BATP_TOKENS` missing, or `BATP_TOKEN` not in `BATP_TOKENS`. The gateway recovers without a restart once the node is back |
 | `agent_unavailable` without a link, `/health` at `503` | Postgres down or unreachable, or not migrated | `systemctl status postgresql`, check `DATABASE_URL`, rerun `make deploy` (it migrates) |
 | A service doesn't start | `.env` missing or incomplete | `journalctl -u merchant-gateway` / `-u merchant-node`, then step 1's `.env` |
-| `401 Unauthorized` | `GATEWAY_TOKEN` set, header missing or without `Bearer ` | Fix the header, or empty `GATEWAY_TOKEN` (see [Token](#token-gateway_token)) |
+| `401 Unauthorized` | Wrong token, or header missing or without `Bearer ` (on a local gateway with `GATEWAY_TOKEN`) | Fix the header (see [Token](#token-gateway_token)) |
+| Claude.ai gets `401` | Caddy has no `GATEWAY_TOKEN`, or an old one: `caddy.env` or the drop-in missing, or Caddy not restarted | Rerun `make deploy`; on the server, `systemctl show caddy -p EnvironmentFiles` must list `/opt/merchant-agents/caddy.env` |
 | `307` to `/mcp` | URL entered with a trailing `/` | Use exactly `/mcp` |
 | "Couldn't reach" in Claude.ai | Network or Caddy | Check step 2 on the server; retest over a 4G/5G hotspot |
+
+## Other assistants (Codex, OpenCode, Claude Code)
+
+Any MCP client over Streamable HTTP works, with the server's `GATEWAY_TOKEN` (ask the team; it is in `/opt/merchant-agents/code/.env`, never in the repo). The URL is the same, `https://191-96-88-152.sslip.io/mcp`, or `/m/<slug>/mcp` for one restaurant.
+
+```bash
+# Claude Code
+claude mcp add --transport http merchant-agents https://191-96-88-152.sslip.io/mcp --header "Authorization: Bearer <token>"
+# Codex, which reads the token from an environment variable
+export MERCHANT_AGENTS_TOKEN=<token>
+codex mcp add merchant-agents --url https://191-96-88-152.sslip.io/mcp --bearer-token-env-var MERCHANT_AGENTS_TOKEN
+```
+
+OpenCode, in `opencode.json`:
+
+```json
+{
+  "mcp": {
+    "merchant-agents": {
+      "type": "remote",
+      "url": "https://191-96-88-152.sslip.io/mcp",
+      "oauth": false,
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+Codex 0.165 and OpenCode 2.0.32 booked, moved and cancelled this way against a local gateway with a token (#71). Word the request as a booking ("Book a table at a vegan place with a terrace in Mulhouse"): asked for "a vegan place", some assistants search the web instead of calling the tools. Bookings they make are stored with `via = "claude"` for now, like any booking through the gateway.
+
+A hosted assistant from another vendor that calls from its own cloud without a header would need its range added to the Caddyfile, like Anthropic's, or OAuth.
 
 ## Plan B: without the team server
 
@@ -187,7 +228,7 @@ Then step 3 with `https://<name>.ngrok-free.app/mcp`. Caddy's filter doesn't pro
 
 ## Token (`GATEWAY_TOKEN`)
 
-When set, `Authorization: Bearer <token>` is required on every request except `/health`. On Claude.ai, header authentication is a **beta limited to some organizations**: without a **Request headers** section in the connector dialog, a connector can't send it. If the section is there, leave **Authentication** on **No sign in**, choose `authorization` and enter `Bearer <token>` in full. Authentication can't be changed afterwards (delete and recreate the connector). Never put the token in the URL.
+When set, `Authorization: Bearer <token>` is required on every request except `/health`. On the team server it is always set (`make deploy` refuses otherwise), and Caddy adds it for Anthropic's range, replacing any `Authorization` the request carried. The gateway never trusts a client address: a process on the shared server that forges `X-Forwarded-For` still needs the token. To rotate it, edit `code/.env` on the server and rerun `make deploy` (it restarts the gateway and, since `caddy.env` changed, Caddy); give the new value to whoever uses another assistant. On Claude.ai, header authentication is a **beta limited to some organizations**: without a **Request headers** section in the connector dialog, a connector can't send it. If the section is there, leave **Authentication** on **No sign in**, choose `authorization` and enter `Bearer <token>` in full. Authentication can't be changed afterwards (delete and recreate the connector). Never put the token in the URL.
 
 ## References
 
@@ -196,4 +237,4 @@ When set, `Authorization: Bearer <token>` is required on every request except `/
 - [Connector authentication](https://claude.com/docs/connectors/building/authentication.md)
 - [Connector troubleshooting](https://claude.com/docs/connectors/building/troubleshooting.md)
 - [MCP SDK v2: Deploy & scale](https://py.sdk.modelcontextprotocol.io/run/deploy/)
-- Decisions: [ADR-0009](../adr/0009-serve-the-gateway-from-the-team-server-behind-caddy.md) (team server, `sslip.io`, loopback binding), [ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md) (IP filter), [ADR-0012](../adr/0012-one-mcp-server-for-every-merchant-endpoint.md) (per-restaurant endpoints)
+- Decisions: [ADR-0009](../adr/0009-serve-the-gateway-from-the-team-server-behind-caddy.md) (team server, `sslip.io`, loopback binding), [ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md) (IP filter), [ADR-0019](../adr/0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md) (a token for every caller), [ADR-0012](../adr/0012-one-mcp-server-for-every-merchant-endpoint.md) (per-restaurant endpoints)

@@ -254,6 +254,8 @@ def test_host_allowlist_when_public_url_is_configured(base_url: str, status: int
         ({"Authorization": "Bearer wrong"}, 401),
         ({"Authorization": "s3cret"}, 401),
         ({"Authorization": "Basic s3cret"}, 401),
+        # Caddy adds the token for Anthropic's range: an address never stands in for it (ADR-0019).
+        ({"X-Forwarded-For": "160.79.104.7"}, 401),
         ({"Authorization": "Bearer s3cret"}, 200),
         ({"Authorization": "bearer s3cret"}, 200),
     ],
