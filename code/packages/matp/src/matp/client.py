@@ -124,6 +124,8 @@ class MatpClient:
             writer = self._writer
         if writer is None:
             raise SessionLost(CLOSED)
+        if request_id in self._pending:
+            raise ValueError(f"Request id already in flight: {request_id!r}")
         future: asyncio.Future[Response] = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
         frame = Request(id=request_id, intent=intent, merchant=merchant, params=params)

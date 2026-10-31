@@ -24,7 +24,8 @@ from core.config import Settings
 from core.db import make_engine
 from gateway.server import create_app
 
-STARTUP_SECONDS = 10.0
+# A process importing everything for the first time, right after `uv sync`, can take a while.
+STARTUP_SECONDS = 30.0
 LOOPBACK = "127.0.0.1"
 
 

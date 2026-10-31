@@ -86,6 +86,19 @@ async def test_the_caller_can_name_its_request(
     assert [line["request"] for line in lines] == ["r-mine"]
 
 
+async def test_an_id_already_in_flight_is_refused(node: NodeServer) -> None:
+    async with client_for(node) as client:
+        first = asyncio.create_task(
+            client.request("PING", params={"delay": 0.2}, request_id="r-same")
+        )
+        await asyncio.sleep(0.05)
+
+        with pytest.raises(ValueError, match="r-same"):
+            await client.request("PING", request_id="r-same")
+
+        assert (await first)["pong"] is True
+
+
 async def test_a_wrong_token_is_rejected_with_401(node: NodeServer) -> None:
     with pytest.raises(MatpRejected) as rejected:
         async with client_for(node, token="wrong") as client:
