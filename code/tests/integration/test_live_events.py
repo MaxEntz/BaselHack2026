@@ -194,6 +194,28 @@ async def test_a_booking_just_after_midnight_utc_keeps_the_merchants_day(
     assert (event.date, event.reservation.time) == (date(2026, 11, 1), "00:30")
 
 
+async def test_the_merchants_own_changes_send_nothing(
+    engine: AsyncEngine, merchants: tuple[str, str], listener: LiveListener, bus: LiveBus
+) -> None:
+    slug = merchants[0]
+    queue = bus.subscribe(slug)
+    reservation_id = await book(engine, slug, via="claude")
+    await next_event(queue)
+
+    async with merchant_conn(engine, slug) as conn:
+        await conn.execute(
+            update(reservations_t)
+            .where(reservations_t.c.id == reservation_id)
+            .values(status="cancelled", cancelled_by="merchant")
+        )
+    await book(engine, slug, via="merchant", at=EIGHT_PM + timedelta(days=1))
+    guest_booking = await book(engine, slug, via="website", at=EIGHT_PM + timedelta(days=2))
+
+    # Notifications arrive in commit order: the merchant's two changes were skipped.
+    assert (await next_event(queue)).reservation.id == guest_booking
+    assert queue.empty()
+
+
 async def test_merchants_only_receive_their_own_events(
     engine: AsyncEngine, merchants: tuple[str, str], listener: LiveListener, bus: LiveBus
 ) -> None:
