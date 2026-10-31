@@ -69,6 +69,24 @@ def registry_records(engine: AsyncEngine) -> RegistryLookup:
     return lookup
 
 
+def look_store(engine: AsyncEngine) -> Callable[[str, Look], Awaitable[None]]:
+    """Saves the management site's look into the registry's stored profile (#152): the
+    profile's display copy, which `GET /merchants/{slug}` reads; no merchant schema change."""
+
+    async def save(slug: str, look: Look) -> None:
+        columns = merchants_t.c
+        async with engine.begin() as conn:
+            profile = await conn.scalar(select(columns.profile).where(columns.slug == slug))
+            if not isinstance(profile, dict):
+                return
+            stored = {**profile, "look": look.model_dump(mode="json")}
+            await conn.execute(
+                merchants_t.update().where(columns.slug == slug).values(profile=stored)
+            )
+
+    return save
+
+
 def stored_look(profile: Any) -> Look | None:
     """The stored profile's look (#149); None for a profile stored before it, or unreadable:
     the management site then uses the default look."""

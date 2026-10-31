@@ -126,6 +126,9 @@
 .st-diff { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 9px 14px; }
 .st-diff + .st-diff { border-top: 1px solid var(--line); }
 .st-diff b { font-weight: 700; }
+.st-diff s { color: var(--ink-2); }
+/* "See it" on a change (#152): opens the pane the change shows in. */
+.studio .st-see { margin-left: auto; padding: 0; border: 0; background: none; color: inherit; text-decoration: underline; text-underline-offset: 3px; font: inherit; cursor: pointer; }
 .st-tbl { width: 100%; border-collapse: collapse; font-size: .9375rem; font-variant-numeric: tabular-nums; }
 .st-tbl td { padding: 7px 8px; border-top: 1px solid var(--line); }
 .st-tbl td:first-child { padding-left: 14px; font-weight: 700; }
