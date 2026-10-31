@@ -26,11 +26,15 @@ METADATA = "http://169.254.169.254/latest/meta-data/"
 
 @dataclass
 class Site:
-    """A local site: its URL, the paths it was asked for, redirects and slow paths to serve."""
+    """A local site: its URL, the paths it was asked for, redirects and slow paths to serve.
+
+    `later_redirects` answers normally the first time, then redirects.
+    """
 
     url: str
     requests: list[str] = field(default_factory=list)
     redirects: dict[str, str] = field(default_factory=dict)
+    later_redirects: dict[str, str] = field(default_factory=dict)
     slow: set[str] = field(default_factory=set)
 
 
@@ -43,7 +47,10 @@ class _Handler(SimpleHTTPRequestHandler):
         self.site.requests.append(self.path)
         if self.path in self.site.slow:
             time.sleep(3)
-        if location := self.site.redirects.get(self.path):
+        location = self.site.redirects.get(self.path)
+        if self.path in self.site.later_redirects and self.site.requests.count(self.path) > 1:
+            location = self.site.later_redirects[self.path]
+        if location:
             self.send_response(302)
             self.send_header("Location", location)
             self.end_headers()
@@ -296,6 +303,23 @@ async def test_a_homepage_redirecting_to_the_metadata_endpoint_is_refused(
 
     with pytest.raises(InvalidInput, match="redirects to a private network address"):
         await crawl(site.url, Steps(), allow_private=True)
+
+
+async def test_a_redirect_only_the_browser_gets_is_still_refused(
+    serve: Callable[[Path], Site], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The server answers the check with a page, then the browser with a redirect."""
+    caplog.set_level(logging.WARNING, logger="builder.crawl")
+    site = serve(tmp_path)
+    site.redirects["/"] = "/a.html"
+    site.later_redirects["/a.html"] = METADATA
+    write(tmp_path, {"a.html": "Rien à voir"})
+
+    with pytest.raises(InvalidInput, match="redirects to a private network address"):
+        await crawl(site.url, Steps(), allow_private=True)
+
+    assert site.requests == ["/", "/a.html", "/a.html"]
+    assert logged(caplog, "crawl_request_refused") == [METADATA]
 
 
 async def test_reads_what_scripts_add_but_keeps_them_off_the_metadata_endpoint(
