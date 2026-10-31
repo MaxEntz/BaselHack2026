@@ -26,6 +26,7 @@ from core.models import (
     BuildAgentOutput,
     ErrorEvent,
     MerchantProfile,
+    MerchantStatus,
     TextEvent,
 )
 from merchant_platform.accounts import Accounts, IssuedLink, issued
@@ -36,6 +37,7 @@ log = logging.getLogger("merchant_platform.assistant")
 
 RunTurn = Callable[[Session, str, Emit], Awaitable[None]]
 ProfileLookup = Callable[[str], Awaitable[MerchantProfile | None]]
+StatusLookup = Callable[[str], Awaitable[MerchantStatus | None]]
 
 MAX_ITERATIONS = 8
 # Tool results older than this many merchant messages are cut down when long.
@@ -81,12 +83,13 @@ card shows what you assumed, and the merchant corrects it there.
 """
 
 OPERATIONS_PROMPT = """\
-Mode: operations. The merchant has an agent; until publish_agent it is hidden from guests.
-- Use the tools for bookings, figures, blocked times, the booking policy and the floor plan.
+Mode: operations. The merchant has an agent.
+{status}- Use the tools for bookings, figures, blocked times, the booking policy and the floor plan.
 - Right after build_agent in this conversation, the review card is shown: read out its flags \
 (each bold line and why) and ask the merchant to confirm or correct them. Corrections go \
-through update_policy or update_tables. Once the merchant says it's right, call publish_agent, \
-then wrap up with: "Your agent is live: Claude users can now book you."
+through update_policy or update_tables. Once the merchant says it's right, call publish_agent \
+(unless its status is already live), then wrap up with: "Your agent is live: Claude users can \
+now book you."
 - Before cancel_reservation, ask the merchant to confirm that booking explicitly, then cancel. \
 If its result says the guest won't be notified, say why in a few words.
 
@@ -94,6 +97,19 @@ The merchant's validated profile:
 {profile}
 """
 
+# The registry's status, read before every model call: the Publish button and the Agent page's
+# pause switch change it outside the conversation, so the history can be out of date (#198).
+STATUS_LINES: dict[MerchantStatus, str] = {
+    "building": "Status now: not published. Guests and their agents don't see it until "
+    "publish_agent.",
+    "live": "Status now: live. Claude users can book it; it needs no publishing.",
+    "down": "Status now: paused. Guests and their agents get the merchant's own booking page "
+    "instead; the pause switch on the Agent page resumes it, publish_agent doesn't.",
+}
+STATUS_RULE = (
+    "The status can change outside this conversation (the Publish button, the Agent page's "
+    "pause switch): this line is current and wins over anything said earlier."
+)
 
 # How far ahead the prompt looks for the next clock change.
 OFFSET_HORIZON_DAYS = 400
@@ -129,13 +145,18 @@ def clock_line(now: datetime) -> str:
     return line + "\n"
 
 
-def system_prompt(now: datetime, profile: MerchantProfile | None) -> str:
+def system_prompt(
+    now: datetime, profile: MerchantProfile | None, status: MerchantStatus | None = None
+) -> str:
     tz = str(now.tzinfo)
     parts = [BASE_PROMPT.format(tz=tz), clock_line(now)]
     if profile is None:
         parts.append(ONBOARDING_PROMPT)
     else:
-        parts.append(OPERATIONS_PROMPT.format(profile=profile.model_dump_json(indent=1)))
+        line = f"{STATUS_LINES[status]} {STATUS_RULE}\n" if status else ""
+        parts.append(
+            OPERATIONS_PROMPT.format(status=line, profile=profile.model_dump_json(indent=1))
+        )
     return "\n".join(parts)
 
 
@@ -197,12 +218,14 @@ class Assistant:
         profiles: ProfileLookup,
         tz: ZoneInfo,
         *,
+        statuses: StatusLookup,
         default_merchant: str | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._llm = llm
         self._tools = tools
         self._profiles = profiles
+        self._statuses = statuses
         self._default_merchant = default_merchant
         self._clock = clock or (lambda: datetime.now(tz))
 
@@ -216,11 +239,14 @@ class Assistant:
             await emit(TextEvent(delta=delta))
 
         for _ in range(MAX_ITERATIONS):
-            # Rebuilt every iteration: build_agent switches onboarding to operations mid-turn.
-            profile = await self._profiles(session.merchant_slug) if session.merchant_slug else None
+            # Rebuilt every iteration: build_agent switches onboarding to operations mid-turn,
+            # and the status may have changed since the last call (#198).
+            slug = session.merchant_slug
+            profile = await self._profiles(slug) if slug else None
+            status = await self._statuses(slug) if slug and profile else None
             try:
                 reply = await self._llm.respond(
-                    instructions=system_prompt(self._clock(), profile),
+                    instructions=system_prompt(self._clock(), profile, status),
                     tools=SPECS,
                     history=compact(close_dangling_calls(session.messages)),
                     on_text=on_text,
@@ -257,6 +283,19 @@ def registry_profiles(engine: AsyncEngine) -> ProfileLookup:
         if stored is None:
             return None
         return MerchantProfile.model_validate_json(json.dumps(stored))
+
+    return lookup
+
+
+def registry_statuses(engine: AsyncEngine) -> StatusLookup:
+    """The merchant's status in the registry, or None for an unknown merchant."""
+
+    async def lookup(slug: str) -> MerchantStatus | None:
+        async with engine.connect() as conn:
+            status: MerchantStatus | None = await conn.scalar(
+                select(merchants_t.c.status).where(merchants_t.c.slug == slug)
+            )
+        return status
 
     return lookup
 
@@ -315,5 +354,10 @@ def default_assistant(
         publish=publish_agent,
     )
     return Assistant(
-        llm, tools, registry_profiles(engine), tz, default_merchant=settings.platform_merchant
+        llm,
+        tools,
+        registry_profiles(engine),
+        tz,
+        statuses=registry_statuses(engine),
+        default_merchant=settings.platform_merchant,
     )

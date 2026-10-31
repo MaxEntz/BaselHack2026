@@ -38,6 +38,7 @@ from core.models import (
     GeneratedTool,
     MerchantCancelOutcome,
     MerchantProfile,
+    MerchantStatus,
     Policy,
     ProfileCard,
     Reservation,
@@ -50,6 +51,8 @@ from merchant_platform.accounts import IssuedLink
 from merchant_platform.assistant import (
     INTERRUPTED,
     MAX_ITERATIONS,
+    STATUS_LINES,
+    STATUS_RULE,
     TOO_MANY_STEPS,
     UNAVAILABLE,
     Assistant,
@@ -229,6 +232,8 @@ class Harness:
         self.events: list[ChatEvent] = []
         self.provisioned: set[str] = set()
         self.published: list[str] = []
+        # The registry's status, which the Publish button and the pause switch also change.
+        self.status: MerchantStatus = "building"
         tools = AdminTools(
             cast(AgentService, agent) if agent else None,
             self._build,
@@ -236,7 +241,9 @@ class Harness:
             today=lambda: TODAY,
             publish=self._publish if can_publish else None,
         )
-        self.assistant = Assistant(llm, tools, self._profiles, TZ, clock=lambda: NOW)
+        self.assistant = Assistant(
+            llm, tools, self._profiles, TZ, statuses=self._statuses, clock=lambda: NOW
+        )
 
     async def _build(self, arguments: BuildAgentInput, emit: Any) -> BuildAgentOutput:
         output = await fake_build(arguments, emit)
@@ -246,10 +253,14 @@ class Harness:
     async def _publish(self, slug: str, emit: Any) -> None:
         await emit(StepEvent(step="deploy", status="running"))
         self.published.append(slug)
+        self.status = "live"
         await emit(StepEvent(step="deploy", status="done", detail="Your agent is live."))
 
     async def _profiles(self, slug: str) -> MerchantProfile | None:
         return PROFILE if slug in self.provisioned else None
+
+    async def _statuses(self, slug: str) -> MerchantStatus | None:
+        return self.status if slug in self.provisioned else None
 
     async def emit(self, event: ChatEvent) -> None:
         self.events.append(event)
@@ -697,6 +708,14 @@ def test_the_prompt_carries_the_date_time_zone_and_mode() -> None:
     assert PROFILE.name in operations
 
 
+@pytest.mark.parametrize("status", get_args(MerchantStatus))
+def test_the_prompt_gives_the_status_and_says_it_wins(status: MerchantStatus) -> None:
+    prompt = system_prompt(NOW, PROFILE, status)
+
+    assert f"{STATUS_LINES[status]} {STATUS_RULE}" in prompt
+    assert "Status now" not in system_prompt(NOW, None)
+
+
 @pytest.mark.parametrize(
     ("now", "today", "change"),
     [
@@ -891,6 +910,27 @@ async def test_live_cancel_asks_for_confirmation_first() -> None:
 
 
 @pytest.mark.llm
+async def test_live_knows_a_publish_from_the_button() -> None:
+    """The history says it's hidden; the Publish button has since put it live (#198)."""
+    harness = Harness(real_llm(), agent=FakeAgent())
+    harness.provisioned.add(SLUG)
+    session = onboarded()
+    session.messages += [
+        {"role": "user", "content": "Can guests book me yet?"},
+        {"role": "assistant", "content": "Not yet: your agent is hidden until you publish it."},
+    ]
+    harness.status = "live"
+    since = len(session.messages)
+
+    await harness.turn(session, "Is my agent live now?")
+
+    assert "publish_agent" not in [name for name, _ in tools_called(session, since)]
+    reply = session.messages[-1]["content"].lower()
+    assert "live" in reply
+    assert not any(no in reply for no in ("not live", "isn't live", "not yet", "until you publish"))
+
+
+@pytest.mark.llm
 async def test_live_onboarding_asks_then_builds() -> None:
     harness, session = await live_turns("Hi!", onboarded_already=False)
     assert tools_called(session) == []
@@ -951,6 +991,37 @@ async def test_publish_agent_publishes_the_sessions_merchant() -> None:
     assert harness.published == [SLUG]
     assert kinds(events) == ["tool_start", "step", "step", "confirmation", "text"]
     assert events[3]["data"]["text"] == "Your agent is live: Claude users can now book you."
+
+
+async def test_a_publish_outside_the_chat_reaches_the_next_prompt() -> None:
+    """Studio's Publish button and the Agent page's switch change the status, not the
+    history (#198)."""
+    llm = ScriptedLLM((["Check the flags, then publish."], []), (["Yes."], []), (["Paused."], []))
+    harness = Harness(llm)
+    harness.provisioned.add(SLUG)
+    session = onboarded()
+
+    await harness.turn(session, "What's left to do?")
+    harness.status = "live"  # POST /merchants/{slug}/publish
+    await harness.turn(session, "Is my agent live?")
+    harness.status = "down"  # the Agent page's pause switch
+    await harness.turn(session, "And now?")
+
+    building, live, paused = (call["instructions"] for call in llm.calls)
+    assert STATUS_LINES["building"] in building
+    assert STATUS_LINES["live"] in live
+    assert STATUS_LINES["down"] in paused
+
+
+async def test_the_status_is_read_again_after_publish_agent() -> None:
+    llm = ScriptedLLM(([], [call("publish_agent")]), (["Done."], []))
+    harness = Harness(llm)
+    harness.provisioned.add(SLUG)
+
+    await harness.turn(onboarded(), "Looks right, publish it.")
+
+    assert STATUS_LINES["building"] in llm.calls[0]["instructions"]
+    assert STATUS_LINES["live"] in llm.calls[1]["instructions"]
 
 
 async def test_publish_agent_needs_a_merchant_and_a_platform_that_publishes() -> None:
