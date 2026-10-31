@@ -27,7 +27,7 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy packages/core packages/agent
+      - run: uv run mypy packages/core packages/agent packages/gateway
       # Docker is available on ubuntu-latest, so testcontainers works for integration tests.
       - run: uv run pytest
 

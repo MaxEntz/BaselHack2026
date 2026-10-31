@@ -65,7 +65,7 @@ flowchart TB
 >   - the web chat;
 >   - the demo data.
 > - **Not built yet:**
->   - the gateway's user tools (#11–#14);
+>   - the gateway's user tools and its timeout/fallback layer (#11, #13, #14). Its discovery rules are built (#12);
 >   - the `AgentService` implementation (#8, #9);
 >   - the merchant assistant (#17);
 >   - the builder (#21, #22).
@@ -134,7 +134,7 @@ Paths are relative to `code/`.
 | DB layer | `packages/core/src/core/db.py`, `migrations/versions/0001_public_schema.py` | Engine; `schema_for(slug)`; merchant tables declared once, with the exclusion constraint, the notify trigger, and a trigger that skips updates that change nothing (an idempotent replay sends no notification); `merchant_conn` (one transaction, schema translation); registry and guest notices in `public` | No business rules; no migrations for merchant schemas (drop + re-provision) | ✅ #6 |
 | Provisioning | `packages/agent/src/agent/provisioning.py`, `packages/agent/src/agent/templates/restaurant.json` | `MerchantProfile` → merchant schema, floor plan, policy, registry row (all or nothing); `deploy` / `set_status` / `deprovision`; default floor plan; generated tool descriptions | Never calls an LLM, never builds SQL from profile text, never takes bookings | ✅ #7 |
 | Agent service | `packages/agent/src/agent/service.py` (`PgAgentService`) | Bookings (availability, create, update, cancel), merchant operations (list, stats, block, policy, tables), guest notices | Knows nothing of MCP or HTTP; no authentication | 🚧 #8, #9 |
-| Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `discovery.py`, `fallback.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, optional bearer token, the 6 user tools, preference filtering, 2 s timeout and `fallback_url` | Never stores preferences; never exposes admin tools; never returns a stack trace | ✅ `ping` (#3); 🚧 tools #11–#14 |
+| Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `discovery.py`, `fallback.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, optional bearer token, the 6 user tools, preference filtering, 2 s timeout and `fallback_url` | Never stores preferences; never exposes admin tools; never returns a stack trace | ✅ `ping` (#3), discovery rules (#12); 🚧 tools #11, #13, #14 |
 | Builder | `packages/builder/src/builder/crawl.py`, `extract.py`, `build.py` | Website + description → validated `MerchantProfile` → provision → deploy, streamed as steps; cache for the demo | Never writes SQL or code; never decides a value the schema doesn't allow | 🚧 #21, #22 (extraction validated by the spike, `scripts/spike_extract.py`) |
 | Platform API | `packages/merchant_platform/src/merchant_platform/api.py`, `sessions.py`, `logs.py` | Endpoints: `POST /chat` (SSE stream of `ChatEvent`, one turn at a time per session), `GET /events?merchant=` (SSE `LiveEvent`), `POST /public/{slug}/reservations` (the showcase site's form, CORS-limited), `/health`, dev-only `/dev/reset-session`. Also: in-memory sessions, JSON logs | No business logic: delegates to the assistant and the `AgentService`. Until #8 plugs the service in, the public booking API answers `agent_unavailable` | ✅ #15 |
 | Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py` | OpenAI tool-use loop over the admin tools; onboarding questions | Never formats results itself (cards come from tool results); never reachable by Claude users | 🚧 #17 (placeholder `run_turn` answers "not connected yet") |

@@ -75,7 +75,7 @@ test:
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy packages/core
+	uv run mypy packages/core packages/agent packages/gateway
 
 fmt:
 	uv run ruff check --fix .
