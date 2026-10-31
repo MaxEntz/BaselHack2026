@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useNow } from "../../../clock.ts";
 import type {
@@ -49,18 +49,23 @@ export type HomeProps = {
 type HomeData = { merchant: MerchantOverview; dashboard: Dashboard; day: ReservationDay };
 
 /** Ids that appeared since the previous read: their rows get the `.fresh` highlight. */
+// Computed while rendering (React's "adjust state on a prop change"), so a new row is
+// highlighted on the same render that shows it, never one frame later.
+type FreshState = { key: string | null; seen: Set<string> | null; fresh: Set<string> };
+
 function useFresh(ids: readonly string[] | null): Set<string> {
-  const seen = useRef<Set<string> | null>(null);
-  const [fresh, setFresh] = useState<Set<string>>(new Set());
   const key = ids?.join("\n") ?? null;
-  useEffect(() => {
-    if (key === null) return;
-    const current = key === "" ? [] : key.split("\n");
-    const before = seen.current;
-    seen.current = new Set(current);
-    setFresh(before ? new Set(current.filter((id) => !before.has(id))) : new Set());
-  }, [key]);
-  return fresh;
+  const [state, setState] = useState<FreshState>({ key: null, seen: null, fresh: new Set() });
+  if (key === null || key === state.key) return state.fresh;
+  const current = key === "" ? [] : key.split("\n");
+  const before = state.seen;
+  const next: FreshState = {
+    key,
+    seen: new Set(current),
+    fresh: before ? new Set(current.filter((id) => !before.has(id))) : new Set(),
+  };
+  setState(next);
+  return next.fresh;
 }
 
 function useHomeData(slug: string, client: ManagementClient, version: number) {
