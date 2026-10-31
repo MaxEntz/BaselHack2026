@@ -1,95 +1,101 @@
-# Runbook : connecter Claude au gateway MCP
+# Runbook: connect Claude to the MCP gateway
 
-Issues [#3](https://github.com/MaxEntz/BaselHack2026/issues/3), [#11](https://github.com/MaxEntz/BaselHack2026/issues/11) et [#14](https://github.com/MaxEntz/BaselHack2026/issues/14). Objectif : dans une conversation Claude, réserver une table avec les 6 outils de notre serveur.
+Issues [#3](https://github.com/MaxEntz/BaselHack2026/issues/3), [#11](https://github.com/MaxEntz/BaselHack2026/issues/11) and [#14](https://github.com/MaxEntz/BaselHack2026/issues/14). Goal: book a table with our server's 6 tools from a Claude conversation.
 
-Claude.ai appelle les connecteurs **depuis le cloud d'Anthropic** (`160.79.104.0/21`), pas depuis ton navigateur. `localhost` ne suffit donc pas : il faut une URL HTTPS publique. Cela vaut aussi pour Claude Desktop. Seul Claude Code peut viser `localhost` directement.
+Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not from your browser. So `localhost` is not enough: you need a public HTTPS URL. The same goes for Claude Desktop. Only Claude Code can target `localhost` directly.
 
-**URL du connecteur :** `https://191-96-88-152.sslip.io/mcp`. Elle est servie par notre LXC (`191.96.88.152`), sans tunnel. Passe directement à l'étape 5.
+**Connector URL:** `https://191-96-88-152.sslip.io/mcp`. It is served by our LXC (`191.96.88.152`), with no tunnel. Go straight to step 5.
 
-⚠️ Cette URL ne répond qu'à la plage d'Anthropic (`160.79.104.0/21`) : depuis ta machine, `curl`, MCP Inspector ou Claude Code reçoivent `403 Forbidden`. Pour tester, vise un gateway local, ou lance le client du SDK sur le serveur par SSH (voir [Protéger l'URL publique](#protéger-lurl-publique)).
+⚠️ This URL only answers Anthropic's range (`160.79.104.0/21`): from your machine, `curl`, MCP Inspector or Claude Code get `403 Forbidden`. To test, target a local gateway, or run the SDK client on the server over SSH (see [Protect the public URL](#protect-the-public-url)).
 
-## État de validation
+## Validation status
 
-| Maillon | État | Comment |
+| Link | Status | How |
 |---|---|---|
-| HTTPS sur l'URL publique | ✅ validé | spike #3 : client du SDK depuis l'extérieur, certificat Let's Encrypt valide |
-| URL stable après redémarrage du LXC | ✅ validé | spike #3 : même URL après reboot |
-| `allowed_hosts`, `Origin`, bearer token, redirection `https` | ✅ validé en local | vrai serveur, en-têtes simulés avec curl |
-| Claude Code (plan B), token | ✅ validé | spike #3 : appel réel en local, avec et sans token |
-| Claude Code (plan B), scénarios du §9 | ✅ validé | les 6 outils en local, voir « Scénarios utilisateur » |
-| Client MCP (e2e, en CI) | ✅ validé | `tests/e2e/test_gateway_mcp.py`, vrai serveur et vrai Postgres |
-| Serveur déployé, 6 outils | ✅ validé | client du SDK lancé sur le LXC, sur `http://127.0.0.1:8001/mcp` : réservation, déplacement, annulation, groupe trop grand, panne et retour |
-| Appels d'Anthropic à travers le filtre | ✅ validé | un `POST /mcp` de `160.79.106.173` en `200` dans les logs, avec un filtre sur la même plage ; aucun outil appelé à ce moment-là |
-| Claude.ai, connexion | ✅ validé | spike #3 : l'ancien outil `ping` appelé depuis une conversation, capture ci-dessous |
-| Claude.ai, scénarios du §9 | ⏳ à faire | à la main, voir « Scénarios utilisateur » |
-| Appels de Claude.ai acceptés par le serveur | ✅ validé | venus de `160.79.106.x`, en `200`, aucun `Host` ni `Origin` rejeté dans les logs |
-| Filtre IP de Caddy (#45) : `403` hors de `160.79.104.0/21` | ✅ validé | `403` et `server: Caddy` sur `/mcp`, `/health` et `/.env` depuis l'extérieur, sur le LXC |
-| Tunnel SSH (`ssh -L`) | ❌ refusé | `AllowTcpForwarding no` dans le durcissement SSH du serveur |
-| MCP Inspector | ✅ validé | `tools/list` en local : les 6 outils, leurs schémas et leurs annotations |
-| Tunnel ngrok (étapes 1 à 3) | ⏳ non testé | alternative si le LXC n'est plus disponible |
+| HTTPS on the public URL | ✅ validated | Spike #3: SDK client from outside, valid Let's Encrypt certificate |
+| Same URL after an LXC reboot | ✅ validated | Spike #3: same URL after a reboot |
+| `allowed_hosts`, `Origin`, bearer token, `https` redirect | ✅ validated locally | real server, headers simulated with curl |
+| Claude Code (plan B), token | ✅ validated | Spike #3: real call, locally, with and without token |
+| Claude Code (plan B), §9 scenarios | ✅ validated | the 6 tools, locally, see [User scenarios](#user-scenarios) |
+| MCP client (e2e, in CI) | ✅ validated | `tests/e2e/test_gateway_mcp.py`, real server and real Postgres |
+| Deployed server, 6 tools | ✅ validated | SDK client run on the LXC, on `http://127.0.0.1:8001/mcp`: booking, move, cancellation, party too large, outage and restore |
+| Claude.ai, connection | ✅ validated | Spike #3: the former `ping` tool called from a conversation, screenshot below |
+| Claude.ai, §9 scenarios | ⏳ to do | by hand, see [User scenarios](#user-scenarios) |
+| Claude.ai's calls accepted by the server | ✅ validated | coming from `160.79.106.x`, all `200`, no `Host` or `Origin` rejected in the logs |
+| Anthropic's calls through the filter | ✅ validated | one `POST /mcp` from `160.79.106.173` got `200` in the logs, with a filter on the same range; no tool was called at that moment |
+| Caddy IP filter (#45): `403` outside `160.79.104.0/21` | ✅ validated | `403` and `server: Caddy` on `/mcp`, `/health` and `/.env` from outside, on the LXC |
+| SSH tunnel (`ssh -L`) | ❌ refused | `AllowTcpForwarding no` in the server's SSH hardening |
+| MCP Inspector | ✅ validated | `tools/list` locally: the 6 tools, their schemas and annotations |
+| ngrok tunnel (steps 1 to 3) | ⏳ not tested | alternative if the LXC is no longer available |
 
-![Claude.ai appelle ping et affiche pong (spike #3, outil retiré depuis)](img/connector-ping.png)
+![Claude.ai calls ping and shows pong](img/connector-ping.png)
 
-## Déployer une modification sur le LXC
+*Spike #3: Claude.ai calls the former `ping` tool and shows `pong` with the server time (the conversation is in French). The tool has since been removed.*
+
+## Deploy a change to the LXC
 
 ```bash
 cd code
 make deploy
 ```
 
-Il faut la clé `~/.ssh/baselhack2026_lxc`. Si elle n'est pas sur la machine, demande-la à Del, qui peut l'avoir. Un coéquipier peut aussi faire ajouter sa clé publique au LXC, puis lancer `make deploy DEPLOY_SSH="ssh -i <sa-clé> -o IdentitiesOnly=yes"`. Une clé privée ne se commite jamais.
+You need the key `~/.ssh/baselhack2026_lxc`. If it isn't on your machine, ask Del, who may have it. A teammate can also have their public key added to the LXC, then run `make deploy DEPLOY_SSH="ssh -i <their-key> -o IdentitiesOnly=yes"`. A private key is never committed.
 
 ```bash
 ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
 ```
 
-Sur le serveur, Caddy gère le HTTPS et renvoie vers `127.0.0.1:8001`. Le service `merchant-gateway` tourne sous un utilisateur sans droits. Sa configuration est dans `/opt/merchant-agents/code/.env`, et ses logs avec `journalctl -u merchant-gateway`. `make deploy` ne touche pas à ce `.env` : sur un nouveau serveur, il faut le créer avec `DATABASE_URL`, sans laquelle le service ne démarre pas, et `GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io`, sans laquelle toute requête publique répond `421`. Pour savoir si le gateway tourne et s'il joint Postgres, lance sur le serveur (`curl` n'y est pas installé) :
+`make deploy` mirrors your local `code/` (except `web/`, `.env`, `.venv` and caches) to `/opt/merchant-agents/code` with `rsync --delete`, so the server runs exactly your working tree, branch and uncommitted changes included. Nothing locks it: two people deploying at the same time overwrite each other, and the last one wins. Tell the team before deploying, and say which branch is live.
+
+On the server, Caddy handles HTTPS and forwards to `127.0.0.1:8001`. The `merchant-gateway` service runs as an unprivileged user. Its configuration is in `/opt/merchant-agents/code/.env`, and its logs with `journalctl -u merchant-gateway`. `make deploy` doesn't touch that `.env`: on a new server, create it with `DATABASE_URL`, without which the service doesn't start, and `GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io`, without which every public request gets `421`.
+
+To check that the gateway is running and reaches Postgres, run this on the server (`curl` isn't installed there):
 
 ```bash
 cd /opt/merchant-agents/code
 .venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8001/health').read().decode())"
 ```
 
-## Postgres sur le LXC
+⚠️ **The LXC is shared, it doesn't only run the gateway.** Ask before rebooting it, stopping a service or touching anything outside `/opt/merchant-agents`. When `code/deploy/Caddyfile` changed, `make deploy` validates it, overwrites `/etc/caddy/Caddyfile` and restarts Caddy: any other site must also be declared there. The firewall (`/etc/nftables.conf`) only opens ports 22, 80 and 443 inbound, and refuses new outbound connections to private networks.
 
-`postgresql-16` tourne sur le LXC, en écoute sur localhost uniquement. `make deploy` applique les migrations, mais ne touche pas aux données. Les commandes `make seed` et `make outage` visent ta base locale. Pour le serveur :
+## Postgres on the LXC
+
+`postgresql-16` runs on the LXC, listening on localhost only. `make deploy` applies the migrations but doesn't touch the data. `make seed` and `make outage` act on your local database. For the server's:
 
 ```bash
 ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
 cd /opt/merchant-agents/code
-.venv/bin/python scripts/seed.py --all --with-bookings            # les 3 restaurants, et les réservations du soir
-.venv/bin/python scripts/set_status.py le-petit-zinc down         # panne (puis `live`)
+.venv/bin/python scripts/demo_reset.py --all --with-bookings      # known state: the 3 restaurants and tonight's bookings
+.venv/bin/python scripts/set_status.py le-petit-zinc down         # outage (then `live`)
 ```
 
-Sur un nouveau serveur, crée la base en UTF-8 : sans locale, Postgres prend `SQL_ASCII`, psycopg renvoie alors des bytes et tout plante avec `cannot use a string pattern on a bytes-like object`.
+On a new server, create the database in UTF-8. Without a locale, Postgres picks `SQL_ASCII`: psycopg then returns bytes, and everything fails with `cannot use a string pattern on a bytes-like object`.
 
 ```sql
 CREATE DATABASE merchant_agents OWNER merchant ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0;
 ```
 
-⚠️ **Le LXC est partagé, il ne sert pas qu'au gateway.** Demande avant de le redémarrer, d'arrêter un service ou de toucher à quoi que ce soit hors de `/opt/merchant-agents`. Si `code/deploy/Caddyfile` a changé, `make deploy` le valide, écrase `/etc/caddy/Caddyfile` et redémarre Caddy : tout autre site doit aussi y être déclaré. Le pare-feu (`/etc/nftables.conf`) n'ouvre que les ports 22, 80 et 443 en entrée, et refuse les nouvelles connexions sortantes vers les réseaux privés.
+## Prerequisites
 
-## Prérequis
+- A Claude account that can add a custom connector: Free (only 1), Pro, Max, Ultra, Team or Enterprise. On Team, only an Owner or Primary Owner can add it. On Enterprise, also a custom role with *Manage access to Libraries*.
+- Only for the ngrok alternative: `uv`, `ngrok` and an ngrok account (free).
 
-- Un compte Claude qui peut ajouter un connecteur custom : Free (1 seul), Pro, Max, Ultra, Team ou Enterprise. En Team, seul un Owner ou Primary Owner peut l'ajouter. En Enterprise, aussi un rôle custom avec *Manage access to Libraries*.
-- Uniquement pour l'alternative ngrok : `uv`, `ngrok` et un compte ngrok (gratuit).
+## Step by step
 
-## Pas à pas
+Steps 1 to 3 are only needed without the LXC, to expose a local server through a tunnel. With the LXC:
 
-Les étapes 1 à 3 ne servent que sans le LXC, pour exposer un serveur local par tunnel. Avec le LXC :
+- step 4: the public URL answers `403` outside Anthropic's range. Test a local gateway, or run the SDK client on the server (see [Protect the public URL](#protect-the-public-url));
+- step 5: replace `<name>.ngrok-free.app` with `191-96-88-152.sslip.io`.
 
-- étape 4 : l'URL publique répond `403` hors de la plage d'Anthropic. Teste un gateway local, ou lance le client du SDK sur le serveur (voir [Protéger l'URL publique](#protéger-lurl-publique)) ;
-- étape 5 : remplace `<nom>.ngrok-free.app` par `191-96-88-152.sslip.io`.
-
-### 1. Configurer ngrok (une seule fois)
+### 1. Set up ngrok (once)
 
 ```bash
 ngrok config add-authtoken <token>   # https://dashboard.ngrok.com/get-started/your-authtoken
 ```
 
-Récupère ton domaine statique gratuit sur https://dashboard.ngrok.com/domains. C'est lui qui garde la même URL après un redémarrage : le connecteur n'a pas à être recréé.
+Get your free static domain at https://dashboard.ngrok.com/domains. It keeps the same URL after a restart, so the connector doesn't have to be recreated.
 
-### 2. Configurer le projet
+### 2. Set up the project
 
 ```bash
 cd code
@@ -97,35 +103,35 @@ uv sync
 test -f .env || cp .env.example .env
 ```
 
-Dans `.env`, sans `/mcp` à la fin :
+In `.env`, without `/mcp` at the end:
 
 ```bash
-GATEWAY_PUBLIC_URL=https://<nom>.ngrok-free.app
+GATEWAY_PUBLIC_URL=https://<name>.ngrok-free.app
 GATEWAY_TOKEN=
 ```
 
-### 3. Lancer le serveur et le tunnel
+### 3. Start the server and the tunnel
 
 ```bash
 make gateway   # terminal 1
 make tunnel    # terminal 2
 ```
 
-Vérifie depuis un autre réseau si possible (partage 4G/5G) :
+Check from another network if possible (4G/5G hotspot):
 
 ```bash
-curl -i https://<nom>.ngrok-free.app/mcp
+curl -i https://<name>.ngrok-free.app/mcp
 ```
 
-Un `400` montre que la requête atteint bien le serveur (`401` si `GATEWAY_TOKEN` est rempli). Un `421` veut dire que `GATEWAY_PUBLIC_URL` est faux ou que le serveur n'a pas été relancé.
+A `400` shows that the request does reach the server (`401` if `GATEWAY_TOKEN` is set). A `421` means `GATEWAY_PUBLIC_URL` is wrong or the server wasn't restarted.
 
-### 4. Tester avec MCP Inspector
+### 4. Test with MCP Inspector
 
 ```bash
-npx -y @modelcontextprotocol/inspector --cli https://<nom>.ngrok-free.app/mcp --transport http --method tools/list
+npx -y @modelcontextprotocol/inspector --cli https://<name>.ngrok-free.app/mcp --transport http --method tools/list
 ```
 
-Sans Node, le client du SDK fait le même test :
+Without Node, the SDK client runs the same test:
 
 ```bash
 uv run python -c '
@@ -133,92 +139,92 @@ import asyncio
 from mcp import Client
 
 async def main():
-    async with Client("https://<nom>.ngrok-free.app/mcp") as client:
+    async with Client("https://<name>.ngrok-free.app/mcp") as client:
         print(await client.list_tools())
 
 asyncio.run(main())'
 ```
 
-### 5. Ajouter le connecteur dans Claude.ai
+### 5. Add the connector in Claude.ai
 
 **Pro, Max, Free, Ultra**
 
-1. Va dans **Customize > Connectors** (https://claude.ai/customize/connectors).
-2. Clique sur **+ Add**, puis **Add custom connector**.
-3. Renseigne le nom `merchant-agents` et l'URL `https://<nom>.ngrok-free.app/mcp`. Le chemin `/mcp` est obligatoire.
-4. Pour **Authentication**, choisis **No sign in**.
-5. Clique sur **Add**.
+1. Go to **Customize > Connectors** (https://claude.ai/customize/connectors).
+2. Click **+ Add**, then **Add custom connector**.
+3. Enter the name `merchant-agents` and the URL `https://<name>.ngrok-free.app/mcp`. The `/mcp` path is required.
+4. For **Authentication**, choose **No sign in**.
+5. Click **Add**.
 
 **Team, Enterprise**
 
-1. Un Owner va dans **Organization settings > Connectors** (https://claude.ai/admin-settings/connectors).
-2. Il clique sur **Add**, survole **Custom**, puis choisit **Web**.
-3. Chaque membre clique ensuite sur **Connect** dans **Customize > Connectors**.
+1. An Owner goes to **Organization settings > Connectors** (https://claude.ai/admin-settings/connectors).
+2. They click **Add**, hover over **Custom**, then choose **Web**.
+3. Each member then clicks **Connect** in **Customize > Connectors**.
 
-La présentation de la boîte de dialogue varie selon les organisations.
+The dialog's layout varies between organizations.
 
-**Dans une conversation**
+**In a conversation**
 
-1. Ouvre **+ > Connectors** et active `merchant-agents`.
-2. Demande : « Table for 4 tonight at 8pm in Mulhouse ».
-3. Approuve les appels si Claude le demande. Il doit proposer des créneaux, puis demander confirmation avant de réserver.
+1. Open **+ > Connectors** and enable `merchant-agents`.
+2. Ask: "Table for 4 tonight at 8pm in Mulhouse".
+3. Approve the calls if Claude asks. It must propose times, then ask for confirmation before booking.
 
-## Plan B : Claude Code
+## Plan B: Claude Code
 
-Pas besoin de tunnel. Une fois `make gateway` lancé :
+No tunnel needed. Once `make gateway` is running:
 
 ```bash
 claude mcp add --transport http merchant-agents http://localhost:8001/mcp
-# avec GATEWAY_TOKEN :
+# with GATEWAY_TOKEN:
 claude mcp add --transport http merchant-agents http://localhost:8001/mcp --header "Authorization: Bearer <token>"
 ```
 
-Lance `/mcp` dans une session pour vérifier la connexion, puis déroule les scénarios ci-dessous.
+Run `/mcp` in a session to check the connection, then play the scenarios below.
 
-Claude Code ne peut pas viser le gateway du LXC : l'URL publique lui répond `403`, et le serveur refuse les tunnels SSH (voir [Protéger l'URL publique](#protéger-lurl-publique)).
+Claude Code can't target the LXC's gateway: the public URL answers it with `403`, and the server refuses SSH tunnels (see [Protect the public URL](#protect-the-public-url)).
 
-Claude Desktop n'est **pas** un plan B indépendant : son connecteur custom passe lui aussi par le cloud d'Anthropic, donc si le tunnel tombe, il tombe aussi.
+Claude Desktop is **not** an independent plan B: its custom connector also goes through Anthropic's cloud, so if the tunnel goes down, it goes down too.
 
-## Scénarios utilisateur
+## User scenarios
 
-Préparer une base connue (en local : `make db`, `make migrate`, `make seed` ; le LXC est déjà prêt) et, dans Claude, ces préférences personnelles : *« I'm vegetarian. My budget is mid-range (max €€). My name is Alex Martin. »*
+Start from a known database (locally: `make db`, `make migrate`, `make seed`; on the LXC: `demo_reset.py`, see [Postgres on the LXC](#postgres-on-the-lxc)). In Claude, set these personal preferences: *"I'm vegetarian. My budget is mid-range (max €€). My name is Alex Martin."*
 
-| Message | Attendu | Plan B (Claude Code) | Claude.ai |
+| Message | Expected | Plan B (Claude Code) | Claude.ai |
 |---|---|---|---|
-| « Table for 4 tonight at 8pm in Mulhouse » | `filters` passés sans le redire, créneaux proposés, **confirmation demandée**, réservation, récapitulatif | ✅ | ⏳ |
-| « Move it to 9pm » | Confirmation puis `update_reservation` | ✅ | ⏳ |
-| « Cancel my booking » | Confirmation puis `cancel_reservation` | ✅ | ⏳ |
-| « A vegan place with a terrace » | Aucun résultat, Claude propose d'enlever un filtre | ✅ | ⏳ |
-| « Table for 8 at Le Petit Zinc » | Lien de secours donné (`party_too_large`) | ✅ | ⏳ |
-| Panne de Le Petit Zinc (`make outage`, ou `set_status.py` sur le LXC), puis « Table for 2 at Le Petit Zinc » | Lien de secours donné (`agent_unavailable`) ; le retour à `live` rétablit sans redémarrer | ✅ | ⏳ |
+| "Table for 4 tonight at 8pm in Mulhouse" | `filters` passed without repeating them, times proposed, **confirmation requested**, booking, summary | ✅ | ⏳ |
+| "Move it to 9pm" | Confirmation, then `update_reservation` | ✅ | ⏳ |
+| "Cancel my booking" | Confirmation, then `cancel_reservation` | ✅ | ⏳ |
+| "A vegan place with a terrace" | No results, Claude offers to drop a filter | ✅ | ⏳ |
+| "Table for 8 at Le Petit Zinc" | Fallback link given (`party_too_large`) | ✅ | ⏳ |
+| Le Petit Zinc down (`make outage`, or `set_status.py` on the LXC), then "Table for 2 at Le Petit Zinc" | Fallback link given (`agent_unavailable`); back to `live`, it works again without a restart | ✅ | ⏳ |
 
-Le plan B a tourné le 2026-10-31 avec Claude Code en local, surtout avec le modèle Sonnet : `get_availability` entre 11 et 28 ms côté serveur, aucun nom de client dans les logs à INFO. Il a aussi validé deux scénarios marchand : une annulation par le restaurant, dont Claude relaie la notice, et un créneau bloqué, qu'il ne propose plus. Pour Claude.ai, ranger une capture de chaque conversation dans `assets/screenshots/`.
+Plan B ran on 2026-10-31 with Claude Code, locally, mostly with Sonnet: `get_availability` took 11 to 28 ms server-side, and no guest name appeared in the INFO logs. It also validated two merchant-side scenarios: a cancellation by the restaurant, whose notice Claude relays, and a blocked slot, which Claude no longer offers. For Claude.ai, store a screenshot of each conversation in `assets/screenshots/`.
 
-La confirmation est le point à surveiller, car le comportement de Claude varie d'une conversation à l'autre. Avec les premières descriptions, il a réservé une fois dès que l'utilisateur a choisi un restaurant. Avec les descriptions actuelles, il a attendu le oui dans 9 conversations sur 9 (Sonnet et Opus). Dans Claude.ai, vérifie qu'aucune réservation ne part avant ton « yes ».
+Watch the confirmation: Claude's behaviour varies between conversations. With the first descriptions, it once booked as soon as the user picked a restaurant. With the current ones, it waited for the yes in 9 conversations out of 9 (Sonnet and Opus). In Claude.ai, check that no booking goes out before your "yes".
 
-Les liens de secours et les sites des fixtures pointent vers `localhost` (`make sites`) : ils ne s'ouvrent que sur la machine qui sert ces sites, donc celle de la démo.
+Fallback links and the fixtures' websites point to `localhost` (`make sites`), so they only open on the machine serving those sites: the demo's.
 
-Pour simuler un agent lent : `CHAOS_DELAY_MS=3000` (et `CHAOS_MERCHANTS=le-petit-zinc` pour ne viser qu'un marchand) déclenche le délai de 2 s, puis le lien de secours.
+To simulate a slow agent, `CHAOS_DELAY_MS=3000` (with `CHAOS_MERCHANTS=le-petit-zinc` to target one merchant) triggers the 2 s timeout, then the fallback link.
 
-## Protéger l'URL publique
+## Protect the public URL
 
-### Sur le LXC : filtre IP dans Caddy
+### On the LXC: IP filter in Caddy
 
-Claude.ai appelle les connecteurs depuis la plage sortante d'Anthropic, `160.79.104.0/21` ([doc officielle](https://platform.claude.com/docs/en/api/ip-addresses)). Dans `code/deploy/Caddyfile`, le site `191-96-88-152.sslip.io` ne renvoie vers le gateway que les requêtes venues de cette plage (matcher `remote_ip`) et répond `403 Forbidden` à toutes les autres, sans qu'elles atteignent uvicorn ([ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)). Le connecteur reste sur **No sign in**.
+Claude.ai calls connectors from Anthropic's outbound range, `160.79.104.0/21` ([official docs](https://platform.claude.com/docs/en/api/ip-addresses)). In `code/deploy/Caddyfile`, the `191-96-88-152.sslip.io` site only forwards requests from that range to the gateway (`remote_ip` matcher) and answers `403 Forbidden` to all others, before they reach uvicorn ([ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)). The connector stays on **No sign in**.
 
-Vérifier après `make deploy` :
+Check after `make deploy`:
 
 ```bash
-curl -i https://191-96-88-152.sslip.io/mcp   # depuis ta machine : 403 Forbidden, en-tête server: Caddy seul
-ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152 'journalctl -u merchant-gateway --since "-5min"'   # aucune ligne pour ta requête
+curl -i https://191-96-88-152.sslip.io/mcp   # from your machine: 403 Forbidden, only a server: Caddy header
+ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152 'journalctl -u merchant-gateway --since "-5min"'   # no line for your request
 ```
 
-Puis, depuis une conversation Claude.ai, le connecteur doit toujours lister ses outils (étape 5).
+Then, from a Claude.ai conversation, the connector must still list its tools (step 5).
 
-Pour tester sans ouvrir l'URL, deux options :
+To test without opening the URL, two options:
 
-- **Gateway local** : `make gateway`, puis Claude Code (plan B), MCP Inspector ou le client du SDK sur `http://localhost:8001/mcp`.
-- **Gateway du LXC, depuis le serveur** : il faut la clé du serveur. Le client du SDK, dans le venv du déploiement, appelle le gateway sur `127.0.0.1`, sans passer par Caddy :
+- **Local gateway**: `make gateway`, then Claude Code (plan B), MCP Inspector or the SDK client on `http://localhost:8001/mcp`.
+- **The LXC's gateway, from the server**: you need the server's key. The SDK client, in the deployment's venv, calls the gateway on `127.0.0.1`, without going through Caddy:
 
   ```bash
   ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152 \
@@ -233,57 +239,57 @@ Pour tester sans ouvrir l'URL, deux options :
   asyncio.run(main())"'
   ```
 
-  Un tunnel SSH (`ssh -L 8001:127.0.0.1:8001 …`) serait plus pratique pour Inspector ou Claude Code, mais `/etc/ssh/sshd_config.d/00-hardening.conf` impose `AllowTcpForwarding no` (`administratively prohibited`). Le LXC est partagé : ne pas changer ce réglage sans accord.
+  An SSH tunnel (`ssh -L 8001:127.0.0.1:8001 …`) would be handier for Inspector or Claude Code, but `/etc/ssh/sshd_config.d/00-hardening.conf` sets `AllowTcpForwarding no` (`administratively prohibited`). The LXC is shared: don't change that setting without agreement.
 
-⚠️ Si Anthropic change sa plage, le connecteur casse avec un `403` : revérifie la doc ci-dessus et mets à jour le Caddyfile. Le filtre ne protège pas une URL ngrok (plan B) : pour elle, voir ci-dessous.
+⚠️ If Anthropic changes its range, the connector breaks with a `403`: recheck the docs above and update the Caddyfile. The filter doesn't protect an ngrok URL (plan B): for that, see below.
 
 ### Token (`GATEWAY_TOKEN`)
 
-`GATEWAY_TOKEN` exige `Authorization: Bearer <token>` sur toutes les requêtes, sauf `/health`. Vide, le serveur est ouvert à quiconque connaît l'URL.
+`GATEWAY_TOKEN` requires `Authorization: Bearer <token>` on every request except `/health`. Empty, the server is open to anyone who knows the URL.
 
-⚠️ Côté Claude.ai, l'authentification par en-tête est **en bêta, réservée à certaines organisations**. Sans section **Request headers** dans la boîte de dialogue, il n'y a pas accès : si `GATEWAY_TOKEN` est rempli, le connecteur ne pourra pas se connecter.
+⚠️ On the Claude.ai side, header authentication is **in beta, limited to some organizations**. Without a **Request headers** section in the dialog, you don't have access: if `GATEWAY_TOKEN` is set, the connector won't be able to connect.
 
-Si la section est présente :
+If the section is there:
 
-1. Laisse **Authentication** sur **No sign in**.
-2. Dans **Request headers**, choisis `authorization`.
-3. Saisis la valeur complète `Bearer <token>`. Claude n'ajoute aucun préfixe.
+1. Leave **Authentication** on **No sign in**.
+2. In **Request headers**, choose `authorization`.
+3. Enter the full value `Bearer <token>`. Claude adds no prefix.
 
-On ne peut pas changer l'authentification après coup : il faut supprimer le connecteur et le recréer. Ne pas passer le token dans l'URL (`?token=`), la doc le déconseille.
+Authentication can't be changed afterwards: delete the connector and create it again. Don't pass the token in the URL (`?token=`), the docs advise against it.
 
-Avec ngrok et sans accès à la bêta, deux options :
+With ngrok and without access to the beta, two options:
 
-- Couper le tunnel en dehors des tests et de la démo. C'est la solution simple.
-- Filtrer `160.79.104.0/21` avec une traffic policy ngrok (`--traffic-policy-file`). Non testé. Inspector et `curl` depuis ta machine seraient alors bloqués.
+- Stop the tunnel outside tests and the demo. This is the simple solution.
+- Filter `160.79.104.0/21` with an ngrok traffic policy (`--traffic-policy-file`). Not tested. Inspector and `curl` from your machine would then be blocked.
 
-## Erreurs possibles
+## Possible errors
 
-| Symptôme | Cause | Solution |
+| Symptom | Cause | Fix |
 |---|---|---|
-| `421 Invalid Host header` | Domaine du tunnel absent de `allowed_hosts` | Corriger `GATEWAY_PUBLIC_URL`, relancer `make gateway` |
-| `403 Forbidden` (en-tête `server: Caddy` seul) | Requête hors de la plage d'Anthropic, refusée par Caddy sur le LXC | Normal depuis ta machine : gateway local, ou client du SDK sur le serveur. Si Claude.ai la reçoit, revérifier la plage d'Anthropic et le Caddyfile |
-| `403 Invalid Origin header` | `Origin` envoyé hors de `ALLOWED_ORIGINS` | L'ajouter dans `gateway/server.py`. Le nom refusé est dans les logs du serveur |
-| `agent_unavailable` sans lien, `/health` en `503` | Postgres injoignable : `DATABASE_URL` faux, ou base non migrée | Corriger `.env`, lancer les migrations |
-| `401 Unauthorized` | Token absent, faux, ou sans préfixe `Bearer ` | Corriger l'en-tête, ou vider `GATEWAY_TOKEN` |
-| `make tunnel` : `GATEWAY_PUBLIC_URL is empty` | `.env` absent ou incomplet | Étape 2 |
-| `make gateway` : `database_url Field required` | `.env` absent | Étape 2 |
-| `307` vers `/mcp` | URL saisie avec un `/` final | Utiliser exactement `/mcp` |
-| `RuntimeError: Task group is not initialized` | App MCP montée dans une autre app sans lifespan | Entrer `mcp.session_manager.run()` dans le lifespan de l'app hôte. Sans objet aujourd'hui : l'app n'est pas montée |
-| « Couldn't reach » ou connexion bloquée | Wi-Fi du hackathon, ou blocage réseau | Retester en partage 4G/5G |
+| `421 Invalid Host header` | Tunnel domain missing from `allowed_hosts` | Fix `GATEWAY_PUBLIC_URL`, restart `make gateway` |
+| `403 Forbidden` (only a `server: Caddy` header) | Request from outside Anthropic's range, refused by Caddy on the LXC | Expected from your machine: local gateway, or SDK client on the server. If Claude.ai gets it, recheck Anthropic's range and the Caddyfile |
+| `403 Invalid Origin header` | `Origin` sent outside `ALLOWED_ORIGINS` | Add it in `gateway/server.py`. The refused name is in the server logs |
+| `agent_unavailable` without a link, `/health` at `503` | Postgres unreachable: wrong `DATABASE_URL`, or database not migrated | Fix `.env`, run the migrations |
+| `401 Unauthorized` | Token missing, wrong, or without the `Bearer ` prefix | Fix the header, or empty `GATEWAY_TOKEN` |
+| `make tunnel`: `GATEWAY_PUBLIC_URL is empty` | `.env` missing or incomplete | Step 2 |
+| `make gateway`: `database_url Field required` | `.env` missing | Step 2 |
+| `307` to `/mcp` | URL entered with a trailing `/` | Use exactly `/mcp` |
+| `RuntimeError: Task group is not initialized` | MCP app mounted in another app without lifespan | Enter `mcp.session_manager.run()` in the host app's lifespan. Not relevant today: the app isn't mounted |
+| "Couldn't reach" or blocked connection | Hackathon Wi-Fi, or network blocking | Retest over a 4G/5G hotspot |
 
-## Décisions
+## Decisions
 
-- **SDK v2 conservé** (`mcp` 2.3.0), pas de repli sur `mcp<2`. Validé depuis Claude.ai et Claude Code.
-- **LXC public plutôt que tunnel** : URL fixe, et la démo ne dépend ni d'un Mac ni du Wi-Fi du hackathon. En contrepartie, une modification doit être déployée pour que Claude.ai la voie. ngrok reste l'alternative documentée.
-- **Filtre IP plutôt que token sur le LXC** : Claude.ai ne peut pas envoyer `GATEWAY_TOKEN` sans la bêta. Seule la plage d'Anthropic passe Caddy ; les scans s'arrêtent avant uvicorn ([ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)).
-- **`sslip.io`** : un nom public gratuit pour obtenir un certificat, sans acheter de domaine. C'est un service tiers : un vrai domaine serait plus sûr pour la démo.
-- **Écoute sur `127.0.0.1`** : seul Caddy joint le serveur, qui n'est pas exposé directement. L'issue #11 prévoit `0.0.0.0`, à ne reprendre que si un conteneur l'exige.
-- **Un seul worker uvicorn** : les sessions des clients sur l'ancien protocole (avant 2026-07-28) vivent en mémoire d'un process.
+- **SDK v2 kept** (`mcp` 2.3.0), no fallback to `mcp<2`. Validated from Claude.ai and Claude Code.
+- **Public LXC rather than a tunnel**: a fixed URL, and the demo depends neither on a Mac nor on the hackathon Wi-Fi. In return, a change must be deployed before Claude.ai sees it. ngrok stays the documented alternative.
+- **IP filter rather than token on the LXC**: Claude.ai can't send `GATEWAY_TOKEN` without the beta. Only Anthropic's range gets past Caddy; scans stop before uvicorn ([ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)).
+- **`sslip.io`**: a free public name to get a certificate, without buying a domain. It's a third-party service: a real domain would be safer for the demo.
+- **Bound to `127.0.0.1`**: only Caddy reaches the server, which isn't exposed directly. Issue #11 plans `0.0.0.0`; only switch if a container requires it.
+- **A single uvicorn worker**: sessions of clients on the older protocol (before 2026-07-28) live in one process's memory.
 
-## Références
+## References
 
 - [Custom connectors (support)](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)
-- [Ajouter un connecteur custom](https://claude.com/docs/connectors/custom/add-unlisted)
-- [Authentification des connecteurs](https://claude.com/docs/connectors/building/authentication.md)
-- [Dépannage des connecteurs](https://claude.com/docs/connectors/building/troubleshooting.md)
-- [SDK MCP v2 : Deploy & scale](https://py.sdk.modelcontextprotocol.io/run/deploy/)
+- [Add a custom connector](https://claude.com/docs/connectors/custom/add-unlisted)
+- [Connector authentication](https://claude.com/docs/connectors/building/authentication.md)
+- [Connector troubleshooting](https://claude.com/docs/connectors/building/troubleshooting.md)
+- [MCP SDK v2: Deploy & scale](https://py.sdk.modelcontextprotocol.io/run/deploy/)
