@@ -44,7 +44,7 @@ from core.db import (
     reservations_t,
     tables_t,
 )
-from core.errors import InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
+from core.errors import BookingStarted, InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import (
     AdminReservationRow,
     AgentRequest,
@@ -494,7 +494,7 @@ class PgAgentService:
     def _check_not_started(self, booking: _Row) -> None:
         """A guest changes a booking only before it starts: after, it's the merchant's (#79)."""
         if _utc(booking.during.lower) <= _utc(self.clock()):
-            raise SlotUnavailable(f"Booking {booking.id} has already started")
+            raise BookingStarted(booking.id)
 
     async def find_guest_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
         """Upcoming confirmed bookings at every live merchant, and the guest's notices.

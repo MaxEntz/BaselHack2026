@@ -20,6 +20,17 @@ class SlotUnavailable(AgentError):
     code: ClassVar[ErrorCode] = "slot_unavailable"
 
 
+# The end of `BookingStarted`'s message: the request log words the refusal from it (#188).
+STARTED = "has already started"
+
+
+class BookingStarted(SlotUnavailable):
+    """A change or cancellation of a booking that has already started (#79)."""
+
+    def __init__(self, reservation_id: str) -> None:
+        super().__init__(f"Booking {reservation_id} {STARTED}")
+
+
 class NotFound(AgentError):
     code: ClassVar[ErrorCode] = "not_found"
 

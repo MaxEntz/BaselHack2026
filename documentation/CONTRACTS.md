@@ -127,7 +127,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
   - `AVAILABILITY` 200: "{agent} checked {time} for {n} guests" / "{day}. Your agent offered the closest free times." ("free times" without a time);
   - `BOOK` 200: "{guest} booked through {agent}" / "{day}, {time}, {n} guests, table {T}."; `AMEND` 200: "{guest} changed their booking through {agent}"; `CANCEL` 200: "{guest} cancelled through {agent}";
   - 413: "A group of {n} was sent to your booking page" / "Your limit is {max}, so the guest got your link instead." (the limit now; "No table fits them" when the group is within it);
-  - 409: "{guest} asked for a time that had just gone" / "{agent} offered them another one." (`CANCEL`: "tried to cancel a booking that had started");
+  - 409: "{guest} asked for a time that had just gone" / "{agent} offered them another one."; `CANCEL`: "{guest} tried to cancel a booking that had started" / "Bookings can only be changed before they start."; `AMEND` of a booking that had started (the error message ends with `core.errors.STARTED`): "{guest} tried to change a booking that had started", same text; `AMEND` without `starts_at` (more guests at the same time): "{guest} asked for more seats than were free" / "Their booking stays as it was." ([#188](https://github.com/MaxEntz/BaselHack2026/issues/188));
   - 404, 503 and 400 have their own sentences; anything else is "{agent}: {intent}, answered {status}".
   - `{day}` is the mockup's short day, "Sat 31 Oct", in English whatever the server's locale. The demo fixture's rows are worded exactly as the server words them (`test_agent_requests_wording.py`), and `export_management_fixture.py` words them with `describe`, not the mockup.
 
