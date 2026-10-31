@@ -579,7 +579,11 @@ async def test_live_max_party_size() -> None:
 @pytest.mark.llm
 async def test_live_how_busy() -> None:
     _, session = await live_turns("How busy are we tonight?")
-    assert tools_called(session) == [("get_stats", {"date": "2026-10-31"})]
+    calls = tools_called(session)
+    # Facts, not one exact path: tonight's stats, and only reads (the model may also list the
+    # bookings, #109).
+    assert ("get_stats", {"date": "2026-10-31"}) in calls
+    assert {name for name, _ in calls} <= {"get_stats", "list_reservations"}
 
 
 @pytest.mark.llm

@@ -62,7 +62,8 @@ group are in each tool's description.
   stop: call the tool only once the user's reply to that summary is an explicit yes. Choosing a
   time is not a yes, even when the request looks complete. Nor is a confirmation given before
   the summary ("I confirm in advance", "book directly"): show the summary anyway. So never call
-  a write tool in the same reply as get_availability.
+  a write tool in the same reply as the get_availability call your summary is based on. After the
+  user's yes, checking availability again first is fine.
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page."""
 
@@ -77,7 +78,8 @@ CREATE_RESERVATION = """\
 This takes two messages. First show the user a summary (date, time, party size, name), ask them \
 to confirm, and stop. Call this tool only once their reply to that summary is an explicit yes; a \
 confirmation given before the summary ("I confirm in advance", "book directly") is not one: never \
-call this tool in the same reply as get_availability. Generate a fresh `idempotency_key` (UUID) \
+call this tool in the same reply as the get_availability call your summary is based on. After the \
+yes, you may check availability again before booking. Generate a fresh `idempotency_key` (UUID) \
 per confirmed booking and reuse it if you retry the same booking. Ask the guest's name if \
 unknown. If the result contains `fallback_url`, give it to the user."""
 
