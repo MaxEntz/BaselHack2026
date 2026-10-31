@@ -358,6 +358,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | The request log words an `AMEND` 409 by its cause: a booking that had started (`core.errors.BookingStarted`, its message ends with `STARTED`), more guests at the same time (no `starts_at`), else a time taken | #188 |
 | 2026-10-31 | Where a management-site operation goes: the forms' reads and saves (#133), like pause and resume (#146), are on the `AgentService` protocol, delegated to `agent.admin`; the bookings and Home (#134, #135) are on `ManagementService` (`agent/management.py`) | The forms change the policy, the floor plan and the registry that the assistant's admin tools also change, so they share `agent.admin` and its registry sync; the bookings need the management site's own shapes (`ReservationDay`, `DaySlots`, `Dashboard`) and the guests' write path. A new form or merchant setting goes on `AgentService`; a new booking view goes on `ManagementService` |
 | 2026-10-31 | The assistant's prompt gives the merchant's status (`building`, `live`, `down`) from the registry, read before every model call, and says it wins over the history | #198 |
+| 2026-10-31 | `update_rules` keeps the stored cancellation policy when the form sends back the paragraph `get_rules` served; `update_policy` stores services by start | #201 |
 
 ## 15. Out of scope (POC)
 

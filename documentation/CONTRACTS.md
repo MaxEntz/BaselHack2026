@@ -287,7 +287,8 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 - Each save runs in one `merchant_conn` transaction and keeps the registry's columns and
   `profile` in step with the merchant's rows, so the gateway's discovery, the fallback link and
   the tool descriptions on `/m/<slug>/mcp` follow at the next call, with no restart.
-- `GET /hours` lists services by start; `PUT /hours` is `update_policy(services=…)`.
+- `GET /hours` lists services by start; `PUT /hours` is `update_policy(services=…)`, which stores
+  them by start too, so the same hours in another order are no change ([#201](https://github.com/MaxEntz/BaselHack2026/issues/201)).
 - `GET /tables` answers the plan in the order it was last saved. `PUT /tables` is
   `update_tables`: tables are matched by label (a rename is a removal plus an addition). It refuses
   to remove a table a booking refers to (`table_in_use`, upcoming or past) or to shrink one below an
@@ -296,7 +297,8 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 - `PUT /rules` saves `max_party_size`, `fallback_url` and `cancellation_policy` together. The
   booking page must stay on the merchant's website: same host (`www.` aside) and same port, else
   `booking_page_off_site`. `slot_length_min` stays read-only. A stored policy reads as one
-  paragraph of at most 500 characters (`agent.provisioning.one_line`).
+  paragraph of at most 500 characters (`agent.provisioning.one_line`); saved back as it was read,
+  it keeps its full stored text and writes no activity line ([#201](https://github.com/MaxEntz/BaselHack2026/issues/201)).
 - `PUT /settings` saves name, city, price and tags (duplicates dropped); the website stays.
 - `PUT /blocked?date=` sets the day's blocked starts still to come, the ones `GET /blocked`
   lists. Every time must be one of the day's starts (`invalid_input` otherwise, nothing changed);
