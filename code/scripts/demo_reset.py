@@ -55,7 +55,8 @@ async def wipe(conn: AsyncConnection) -> list[str]:
         await conn.execute(DropSchema(schema, cascade=True))
     await conn.execute(
         text(
-            "TRUNCATE public.reservation_changes, public.guest_notices, public.merchants"
+            "TRUNCATE public.agent_requests, public.reservation_changes, public.guest_notices,"
+            " public.merchants"
             " RESTART IDENTITY"
         )
     )

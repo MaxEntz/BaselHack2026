@@ -117,6 +117,23 @@ reservation_changes_t = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# What other agents asked each merchant's agent over BATP, with both frames, kept 7 days
+# (#146, migration 0003). Holds guest names: only the merchant's own session reads it.
+agent_requests_t = Table(
+    "agent_requests",
+    public_metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column(
+        "merchant_slug", Text, ForeignKey(merchants_t.c.slug, ondelete="CASCADE"), nullable=False
+    ),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("agent_name", Text, nullable=False),
+    Column("intent", Text, nullable=False),
+    Column("status", Integer, nullable=False),
+    Column("request", JSONB, nullable=False),
+    Column("response", JSONB, nullable=False),
+)
+
 # Merchant schema: created by provisioning (`merchant_metadata.create_all` on a translated
 # connection), one copy per merchant.
 
