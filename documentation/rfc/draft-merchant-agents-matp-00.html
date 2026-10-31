@@ -25,7 +25,7 @@ acts as a bridge for assistants that only speak MCP.
 <meta content="draft-merchant-agents-matp-00" name="ietf.draft">
 <!-- Generator version information:
   xml2rfc 3.35.0
-    Python 3.12.16
+    Python 3.12.13
     ConfigArgParse 1.9.0
     google-i18n-address 3.1.1
     intervaltree 3.2.1
@@ -2527,8 +2527,11 @@ applies. Result: <code>reservation</code>, with <code>status</code> "cancelled".
 <p id="section-8.6-1">Params: <code>guest_name</code>.<a href="#section-8.6-1" class="pilcrow">¶</a></p>
 <p id="section-8.6-2">Result: <code>reservations</code>, the guest's upcoming confirmed bookings at every
 live merchant of the node, and <code>notices</code>, messages for the guest (for
-example, that a merchant cancelled a booking). A notice is returned once:
-the node <span class="bcp14">MUST NOT</span> return it again in a later RECALL.<a href="#section-8.6-2" class="pilcrow">¶</a></p>
+example, that a merchant cancelled a booking). A node <span class="bcp14">MUST</span> return a notice
+in every RECALL for the guest during 24 hours after the first RECALL that
+returned it, and <span class="bcp14">MUST NOT</span> return it after that. An answer lost on its way
+to the caller therefore loses no notice if the next RECALL comes within
+those 24 hours, and a caller <span class="bcp14">MAY</span> send a RECALL again. A caller <span class="bcp14">SHOULD NOT</span> show the guest a notice it already showed them.<a href="#section-8.6-2" class="pilcrow">¶</a></p>
 <p id="section-8.6-3">Errors: 400, 503.<a href="#section-8.6-3" class="pilcrow">¶</a></p>
 </section>
 </div>
@@ -2776,7 +2779,9 @@ a guest.<a href="#section-13-1.4.1" class="pilcrow">¶</a></p>
 <dt id="section-13-1.5">Recall:</dt>
         <dd style="margin-left: 1.5em" id="section-13-1.6">
           <p id="section-13-1.6.1">As <a href="#security" class="auto internal xref">Section 12</a> says, RECALL returns the bookings of any name it is
-given. Callers <span class="bcp14">SHOULD</span> only send the name of the guest they act for.<a href="#section-13-1.6.1" class="pilcrow">¶</a></p>
+given, and for 24 hours the notices too: a notice names the merchant,
+the booking and its date. Callers <span class="bcp14">SHOULD</span> only send the name of the
+guest they act for.<a href="#section-13-1.6.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 <dt id="section-13-1.7">Agent identity:</dt>

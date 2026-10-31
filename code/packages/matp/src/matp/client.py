@@ -5,9 +5,9 @@ it. At most `IN_FLIGHT_LIMIT` requests it still waits on are in flight; the othe
 free slot. A request whose caller gave up may still run on the node, which then can answer a
 429 to a later one: that request fails as `AgentUnavailable`, like any status it can't use.
 
-When the session is lost under a request, a read-only intent is sent again once; a write is
-never retried, since it may have gone through (BOOK and AMEND carry an idempotency key, so the
-caller can retry them safely).
+When the session is lost under a request, an intent that is safe to resend is sent again once.
+A write is never resent, since it may have gone through (BOOK and AMEND carry an idempotency
+key, so the caller can retry them safely).
 """
 
 import asyncio
@@ -36,7 +36,8 @@ from matp.status import raise_for
 UNREACHABLE = "The MATP node is unreachable"
 CLOSED = "The MATP session was closed before the answer"
 UNREADABLE = "The MATP node sent an answer this client can't read"
-READ_ONLY: frozenset[Intent] = frozenset({"PING", "DISCOVER", "AVAILABILITY", "RECALL"})
+# RECALL marks notices delivered, but returns them again for a day: resending it loses none (#91).
+SAFE_TO_RESEND: frozenset[Intent] = frozenset({"PING", "DISCOVER", "AVAILABILITY", "RECALL"})
 
 
 class SessionLost(AgentUnavailable):
@@ -111,7 +112,7 @@ class MatpClient:
             try:
                 response = await self._exchange(frame_id, intent, merchant, frame_params)
             except SessionLost:
-                if intent not in READ_ONLY:
+                if intent not in SAFE_TO_RESEND:
                     raise
                 response = await self._exchange(frame_id, intent, merchant, frame_params)
         raise_for(response)

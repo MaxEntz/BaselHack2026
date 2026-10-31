@@ -19,7 +19,7 @@ from core.models import (
     UpdateReservationInput,
 )
 from gateway.agent_client import AgentClient
-from gateway.server import allowed_hosts, create_app, create_server
+from gateway.server import INSTRUCTIONS, allowed_hosts, create_app, create_server
 
 PUBLIC_URL = "https://merchant-agents.example.com"
 LOCAL_URL = "http://localhost:8001"
@@ -108,6 +108,10 @@ async def test_get_my_reservations_tells_claude_to_relay_notices() -> None:
     description = (await list_tools())["get_my_reservations"].description or ""
 
     assert "relay notices" in description
+    # A notice comes back for a day (#91): once per conversation, in both texts Claude reads.
+    assert "24 hours" in description
+    assert "don't repeat one whose text you already gave" in description
+    assert "once per conversation" in INSTRUCTIONS
 
 
 async def test_annotations_describe_each_tool() -> None:

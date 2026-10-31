@@ -68,7 +68,8 @@ Find restaurants and book tables, on the user's behalf, at merchants connected t
   restaurant or a time is not a yes, even when the request looks complete.
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page.
-- Always relay the notices returned by get_my_reservations."""
+- Relay the notices returned by get_my_reservations. A notice can come back for 24 hours: tell
+  the user each one once per conversation, matching notices by their text."""
 
 SEARCH_MERCHANTS = """\
 Find restaurants that can be booked through this connector. Use this tool first whenever the \
@@ -110,7 +111,8 @@ the user."""
 
 GET_MY_RESERVATIONS = """\
 List the user's upcoming bookings and any notices from restaurants (e.g. a cancellation by the \
-restaurant). Always relay notices to the user: each one is only returned once."""
+restaurant). Always relay notices to the user. A notice keeps coming back for 24 hours after it \
+is first returned: don't repeat one whose text you already gave the user in this conversation."""
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 IDEMPOTENT_WRITE = ToolAnnotations(

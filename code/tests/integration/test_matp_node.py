@@ -229,3 +229,26 @@ async def test_a_declared_kind_does_not_change_who_booked(
 async def test_discover_refuses_oversized_filters(client: MatpClient) -> None:
     with pytest.raises(InvalidInput, match="at most 32 tags"):
         await client.request("DISCOVER", params={"query": "x", "filters": {"tags": ["vegan"] * 33}})
+
+
+async def test_a_notice_whose_recall_answer_was_lost_comes_back_on_the_next_recall(
+    client: MatpClient, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    # The node handled the first RECALL, but its answer never reached the guest (#91).
+    slug = await make_merchant()
+    guest = f"Guest {uuid4().hex[:6]}"
+    booking = {
+        "starts_at": at("20:00"),
+        "party_size": 2,
+        "guest_name": guest,
+        "idempotency_key": str(uuid4()),
+    }
+    booked = (await client.request("BOOK", slug, booking))["reservation"]
+    merchant = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
+    await merchant.cancel_reservation(slug, booked["id"], by="merchant")
+
+    lost = await client.request("RECALL", params={"guest_name": guest})
+    recalled = await client.request("RECALL", params={"guest_name": guest})
+
+    assert len(lost["notices"]) == 1
+    assert recalled["notices"] == lost["notices"]

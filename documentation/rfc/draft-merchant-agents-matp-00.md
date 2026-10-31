@@ -518,8 +518,11 @@ Params: `guest_name`.
 
 Result: `reservations`, the guest's upcoming confirmed bookings at every
 live merchant of the node, and `notices`, messages for the guest (for
-example, that a merchant cancelled a booking). A notice is returned once:
-the node MUST NOT return it again in a later RECALL.
+example, that a merchant cancelled a booking). A node MUST return a notice
+in every RECALL for the guest during 24 hours after the first RECALL that
+returned it, and MUST NOT return it after that. An answer lost on its way
+to the caller therefore loses no notice if the next RECALL comes within
+those 24 hours, and a caller MAY send a RECALL again. A caller SHOULD NOT show the guest a notice it already showed them.
 
 Errors: 400, 503.
 
@@ -651,7 +654,9 @@ Preferences:
 
 Recall:
 : As {{security}} says, RECALL returns the bookings of any name it is
-  given. Callers SHOULD only send the name of the guest they act for.
+  given, and for 24 hours the notices too: a notice names the merchant,
+  the booking and its date. Callers SHOULD only send the name of the
+  guest they act for.
 
 Agent identity:
 : `agent.id` identifies software, not a person. A caller SHOULD NOT put

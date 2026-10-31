@@ -391,7 +391,7 @@ async def test_merchant_cancellation_leaves_one_notice_for_the_guest(
         f"Le Petit Zinc cancelled your booking {booking.id} on 2026-11-02 at 20:00. "
         "Please contact them at http://localhost:8080/ or book again."
     ]
-    assert notices_again == []
+    assert notices_again == notices  # again within the day, in case the first answer was lost
     async with engine.connect() as conn:
         count = await conn.scalar(
             select(func.count())
