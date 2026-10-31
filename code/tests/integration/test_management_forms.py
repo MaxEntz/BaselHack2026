@@ -113,6 +113,21 @@ async def test_hours_come_by_start_and_a_save_changes_the_starts(
     assert slots[0].starts_at == at("18:00")
 
 
+async def test_the_same_hours_in_another_order_are_no_change(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    """Stored by start, as served: no activity line, and /m/<slug>/mcp words them alike (#201)."""
+    slug = await make_merchant()
+
+    await service.update_policy(
+        slug, services=[Service(start="19:00", end="22:00"), Service(start="12:00", end="14:00")]
+    )
+
+    row = await registry(engine, slug)
+    assert [s["start"] for s in row.profile["services"]] == ["12:00", "19:00"]
+    assert await activity(engine, slug) == []
+
+
 # Floor plan
 
 
@@ -290,6 +305,29 @@ async def test_a_long_stored_policy_reads_as_one_paragraph_the_form_can_save_bac
     assert "\n" not in rules.cancellation_policy
     assert len(rules.cancellation_policy) <= 500
     assert rules.cancellation_policy.startswith("Call us. Really.")
+
+
+async def test_an_unchanged_save_of_a_long_policy_keeps_its_text_and_writes_no_line(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    """The form shows the stored policy cut to one paragraph; sent back as it was shown, the
+    full text stays (#201). Another text still replaces it."""
+    long = "Call us.\n\n" + "Really. " * 100
+    slug = await make_merchant(cancellation_policy=long)
+    shown = await service.get_rules(slug)
+    page = str(shown.fallback_url)
+
+    saved = await service.update_rules(slug, 6, page, shown.cancellation_policy)
+
+    assert saved == shown
+    assert (await registry(engine, slug)).profile["cancellation_policy"] == long
+    assert await activity(engine, slug) == []
+
+    await service.update_rules(slug, 6, page, "Free cancellation until noon.")
+
+    row = await registry(engine, slug)
+    assert row.profile["cancellation_policy"] == "Free cancellation until noon."
+    assert await activity(engine, slug) == [("saved", {"what": "Booking rules"})]
 
 
 async def test_rules_over_http(
