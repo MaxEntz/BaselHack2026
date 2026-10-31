@@ -17,6 +17,11 @@ class Session:
     # build attaches it, checked on each request, so a new link or a deletion ends it. None for
     # the development merchant (PLATFORM_MERCHANT).
     link: str | None = None
+    # Once a cookie bound the session, or the build's browser claimed its cookie, every message
+    # needs that cookie: the session id alone no longer acts for the merchant.
+    needs_cookie: bool = False
+    # Until when the browser that built the merchant may claim its owner cookie, once (#132).
+    claimable_until: float | None = None
     # Held for the whole turn: one turn at a time per session.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # The running turn, kept referenced so it isn't garbage-collected mid-flight.

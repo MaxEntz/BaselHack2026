@@ -72,7 +72,7 @@ from merchant_platform.logs import configure_logging
 from merchant_platform.management import NotBuiltYet
 from merchant_platform.management import router as management_router
 from merchant_platform.overview import RegistryLookup, registry_records
-from merchant_platform.sessions import Session, SessionStore
+from merchant_platform.sessions import DEFAULT_SESSION, Session, SessionStore
 
 log = logging.getLogger("merchant_platform.api")
 
@@ -96,7 +96,7 @@ class _Body(BaseModel):
 
 
 class ChatRequest(_Body):
-    session_id: Annotated[str, Field(max_length=100)] | None = None
+    session_id: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     message: Annotated[str, Field(min_length=1, max_length=MAX_MESSAGE_LENGTH)]
 
 
@@ -217,7 +217,7 @@ def create_app(
 
     @app.post("/chat", response_class=EventSourceResponse)
     async def chat(request: Request, body: ChatRequest) -> EventSourceResponse:
-        if body.session_id is None and settings.platform_merchant is None:
+        if body.session_id in (None, DEFAULT_SESSION) and settings.platform_merchant is None:
             # The shared default session is the development merchant's only (#132).
             raise InvalidInput("session_id is required")
         owner = await cookie_owner(request)
@@ -270,8 +270,14 @@ def create_app(
             if session.merchant_slug not in (None, owner.slug):
                 raise OtherMerchant(OTHER_MERCHANT)
             session.merchant_slug, session.link = owner.slug, owner.fingerprint
+            session.needs_cookie = True
             return
+        if session.needs_cookie:
+            raise NotSignedIn(NOT_SIGNED_IN)
         if not await _acts_for_its_merchant(session):
+            # A running turn holds the old session: stop it with the session.
+            if session.turn and not session.turn.done():
+                session.turn.cancel()
             sessions.reset(session.id)
             raise NotSignedIn(NOT_SIGNED_IN)
 
@@ -279,12 +285,15 @@ def create_app(
     async def claim(request: Request, body: ClaimRequest) -> Response:
         """The building browser's owner cookie, so that its live events open at once.
 
-        Only for a session a build attached in this process, while its link is current: the
-        session id is then as good as the link it was given with.
+        Once, within minutes of the build that attached the session in this process, while its
+        link is current. The session then needs that cookie, like any signed-in one.
         """
         session = sessions.find(body.session_id)
-        if session is None or session.link is None or not await _acts_for_its_merchant(session):
+        claimable = session is not None and (session.claimable_until or 0) > time.monotonic()
+        if session is None or not claimable or not await _acts_for_its_merchant(session):
             raise NotSignedIn(NOT_SIGNED_IN)
+        session.claimable_until = None
+        session.needs_cookie = True
         owner = await owners.owner(session.merchant_slug or "")
         if owner is None:
             raise NotSignedIn(NOT_SIGNED_IN)

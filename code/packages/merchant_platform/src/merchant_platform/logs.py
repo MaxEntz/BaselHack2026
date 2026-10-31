@@ -5,8 +5,9 @@ import re
 
 from core.logs import json_handler
 
-# The secret link's token (`GET /login?token=`, #132) must never reach a log line.
-TOKEN = re.compile(r"(token=)[^&\s\"]+")
+# The secret link's token (`GET /login?token=`) and a chat session's id (`GET /session?
+# session_id=`), which acts for its merchant, must never reach a log line (#132).
+TOKEN = re.compile(r"((?:token|session_id)=)[^&\s\"]+")
 
 
 class RedactTokens(logging.Filter):

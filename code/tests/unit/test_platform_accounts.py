@@ -1,6 +1,7 @@
 """Merchant accounts over HTTP (#132): the secret link, the owner cookie, the invite code."""
 
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -253,22 +254,51 @@ def remembering_app(owners: Accounts) -> FastAPI:
     return create_app(settings(), accounts=owners, assistant=assistant, profiles=profiles(SLUG))
 
 
-async def test_a_new_link_ends_the_chat_sessions_of_the_old_one() -> None:
+def building_app(owners: Accounts) -> FastAPI:
+    """An assistant that builds SLUG on the first message, as `tools._build` attaches it."""
+
+    async def assistant(session: Session, message: str, emit: Emit) -> None:
+        if session.merchant_slug is None:
+            token = await owners.issue_link_token(SLUG)
+            session.merchant_slug, session.link = SLUG, hash_token(token)[:FINGERPRINT_CHARS]
+            session.claimable_until = time.monotonic() + 60
+        session.messages.append({"role": "user", "content": message})
+        await emit(TextEvent(delta=f"merchant={session.merchant_slug}"))
+
+    return create_app(settings(), accounts=owners, assistant=assistant, profiles=profiles(SLUG))
+
+
+async def test_a_cookie_bound_session_needs_its_cookie() -> None:
     owners = accounts()
     app = remembering_app(owners)
     cookie = await signed_in(owners)
 
     async with client(app) as http:
         first = await chat(http, **cookie)
-        without_cookie = await chat(http)
+        without = await chat(http)
+        again = await chat(http, **cookie)
         await owners.issue_link_token(SLUG)  # the owner asked for a new link
-        revoked = await chat(http)
-        renewed = await chat(http, **(await signed_in(owners)))
+        stale = await chat(http, **cookie)
 
     assert "turns=1" in first.text
-    assert "turns=2" in without_cookie.text  # the session alone still acts for its owner
-    assert (revoked.status_code, revoked.json()["error"]) == (401, "not_signed_in")
-    assert "turns=1" in renewed.text  # forgotten with its history, which held guest names
+    assert (without.status_code, without.json()["error"]) == (401, "not_signed_in")
+    assert "turns=2" in again.text
+    assert stale.status_code == 401
+
+
+async def test_a_new_link_ends_the_session_that_built_the_merchant() -> None:
+    owners = accounts()
+    app = building_app(owners)
+
+    async with client(app) as http:
+        built = await chat(http, session_id="builder")
+        before = await chat(http, session_id="builder")  # before its cookie is claimed
+        await owners.issue_link_token(SLUG)
+        revoked = await chat(http, session_id="builder")
+
+    assert f"merchant={SLUG}" in built.text and before.status_code == 200
+    assert revoked.status_code == 401
+    assert app.state.sessions.find("builder") is None  # forgotten with its history
 
 
 async def test_a_deleted_merchant_ends_its_chat_sessions() -> None:
@@ -382,24 +412,74 @@ async def test_another_merchants_cookie_is_refused_on_every_page() -> None:
 # The building browser gets its cookie
 
 
-async def test_the_session_that_built_a_merchant_claims_its_cookie() -> None:
+async def test_the_browser_that_built_a_merchant_claims_its_cookie_once() -> None:
     owners = accounts()
+    app = building_app(owners)
 
-    async def builds(session: Session, message: str, emit: Emit) -> None:
-        token = await owners.issue_link_token(SLUG)
-        session.merchant_slug, session.link = SLUG, hash_token(token)[:FINGERPRINT_CHARS]
-
-    app = create_app(settings(), accounts=owners, assistant=builds, profiles=profiles(SLUG))
     async with client(app) as http:
         await chat(http, session_id="builder")
         claimed = await http.post("/session/claim", json={"session_id": "builder"})
         page = await http.get(f"/merchants/{SLUG}/hours")
+        again = await http.post("/session/claim", json={"session_id": "builder"})
+        http.cookies.clear()
+        bare = await chat(http, session_id="builder")
         stranger = await http.post("/session/claim", json={"session_id": "nobody"})
 
     assert claimed.status_code == 204
     assert OWNER_COOKIE in claimed.headers["set-cookie"]
     assert page.status_code == 501  # past the owner check, with the claimed cookie
+    assert again.status_code == 401  # once
+    assert bare.status_code == 401  # the session now needs that cookie
     assert stranger.status_code == 401
+
+
+async def test_a_session_signed_in_by_cookie_claims_nothing() -> None:
+    owners = accounts()
+    app = remembering_app(owners)
+    cookie = await signed_in(owners)
+
+    async with client(app) as http:
+        await chat(http, session_id="tab", **cookie)
+        http.cookies.clear()
+        claimed = await http.post("/session/claim", json={"session_id": "tab"})
+
+    assert claimed.status_code == 401
+
+
+async def test_a_revoked_build_claims_nothing() -> None:
+    owners = accounts()
+    app = building_app(owners)
+
+    async with client(app) as http:
+        await chat(http, session_id="builder")
+        await owners.issue_link_token(SLUG)
+        claimed = await http.post("/session/claim", json={"session_id": "builder"})
+
+    assert claimed.status_code == 401
+
+
+@pytest.mark.parametrize("session_id", ["", "default"])
+async def test_no_client_reaches_the_shared_session(session_id: str) -> None:
+    async with client(create_app(settings(), accounts=accounts())) as http:
+        response = await http.post("/chat", json={"session_id": session_id, "message": "hi"})
+
+    assert (response.status_code, response.json()["error"]) == (422, "invalid_input")
+
+
+def test_the_access_log_masks_session_ids() -> None:
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:5000", "GET", "/session?session_id=3f2a-77&x=1", "1.1", 200),
+        None,
+    )
+
+    RedactTokens().filter(record)
+
+    assert "3f2a-77" not in record.getMessage()
 
 
 async def test_a_development_session_claims_nothing() -> None:

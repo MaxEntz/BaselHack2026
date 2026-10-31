@@ -162,6 +162,8 @@ SPECS = tuple(ToolSpec(t.name, t.description, t.input.model_json_schema()) for t
 _BY_NAME = {tool.name: tool for tool in TOOLS}
 
 
+# How long after a build its browser may claim the owner cookie (`POST /session/claim`).
+CLAIM_SECONDS = 300
 # The secret link of a merchant just built, for its owner (#132).
 IssueLink = Callable[[str], Awaitable[IssuedLink]]
 
@@ -300,6 +302,8 @@ class AdminTools:
         link = await self._issue_link(output.profile.slug) if self._issue_link else None
         session.merchant_slug = output.profile.slug
         session.link = link.fingerprint if link else None
+        # The building browser may claim its owner cookie once, shortly after (#132).
+        session.claimable_until = time.monotonic() + CLAIM_SECONDS if link else None
         data = output.model_dump(mode="json", exclude={"tools"})
         # On the card only: the secret link never goes to the model or the history.
         return Outcome(
