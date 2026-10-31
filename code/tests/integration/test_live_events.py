@@ -1,12 +1,12 @@
 """LISTEN/NOTIFY → LiveBus on a real Postgres 16: what the merchant chat sees live.
 
-Reservations are written straight to the merchant's table: the trigger fires the same
-whoever writes them (the agent service, #8, isn't merged yet).
+Most reservations are written straight to the merchant's table: the trigger fires the
+same whoever writes them. The §9 "Cancel R-001" scenario goes through `PgAgentService`.
 """
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.schema import CreateSchema, DropSchema
 
+from agent.service import PgAgentService
 from core.db import (
     merchant_conn,
     merchant_metadata,
@@ -33,6 +34,8 @@ from core.models import LiveEvent, Via
 from merchant_platform.events import LiveBus, LiveListener
 
 pytestmark = pytest.mark.integration
+
+MerchantFactory = Callable[..., Awaitable[str]]  # the `make_merchant` fixture
 
 TZ = ZoneInfo("Europe/Zurich")
 EIGHT_PM = datetime(2026, 10, 31, 20, tzinfo=TZ)
@@ -213,6 +216,36 @@ async def test_the_merchants_own_changes_send_nothing(
 
     # Notifications arrive in commit order: the merchant's two changes were skipped.
     assert (await next_event(queue)).reservation.id == guest_booking
+    assert queue.empty()
+
+
+async def test_cancel_r_001_from_the_merchant_chat_is_not_reported_as_the_guests(
+    engine: AsyncEngine, make_merchant: MerchantFactory, listener: LiveListener, bus: LiveBus
+) -> None:
+    """AGENTS.md §9 "Cancel R-001", with the service the gateway and the platform call."""
+    slug = await make_merchant()
+    queue = bus.subscribe(slug)
+    service = PgAgentService(engine, tz=TZ, clock=lambda: datetime(2026, 10, 31, 9, tzinfo=TZ))
+    saturday = datetime(2026, 11, 7, 20, tzinfo=TZ)
+
+    claude = await service.create_reservation(
+        slug, saturday, 2, "Sam Dupont", str(uuid4()), via="claude"
+    )
+    website = await service.create_reservation(
+        slug, saturday, 2, "Ada Lovelace", str(uuid4()), via="website"
+    )
+    assert [(await next_event(queue)).reservation.id for _ in range(2)] == [
+        claude.id,
+        website.id,
+    ]
+
+    await service.cancel_reservation(slug, claude.id, by="merchant")
+    await service.cancel_reservation(slug, website.id, by="guest", guest_name="Ada Lovelace")
+
+    cancelled = await next_event(queue)
+    assert cancelled.kind == "cancelled"
+    assert cancelled.reservation.id == website.id
+    assert (cancelled.via, cancelled.date) == ("website", date(2026, 11, 7))
     assert queue.empty()
 
 
