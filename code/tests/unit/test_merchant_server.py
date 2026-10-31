@@ -78,3 +78,5 @@ def test_a_check_after_the_yes_needs_no_second_confirmation() -> None:
         flat = " ".join(text.split())
         assert "get_availability call your summary is based on" in flat
         assert "availability again" in flat
+        # ...but never a time the user didn't confirm (#112 review).
+        assert "don't book another one" in flat
