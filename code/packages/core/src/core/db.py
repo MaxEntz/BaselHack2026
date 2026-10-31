@@ -41,7 +41,10 @@ _SLUG = TypeAdapter(Slug)
 
 def make_engine(url: str | None = None) -> AsyncEngine:
     """Async engine on `url`, or DATABASE_URL (driver `postgresql+psycopg`). One per process."""
-    return create_async_engine(url or get_settings().database_url, pool_pre_ping=True)
+    # hide_parameters: a DB error never carries guest names into logs or messages.
+    return create_async_engine(
+        url or get_settings().database_url, pool_pre_ping=True, hide_parameters=True
+    )
 
 
 def schema_for(slug: str) -> str:
