@@ -128,7 +128,7 @@ data: {"type":"done"}
 both together. `code/web/src/mocks/onboarding.json`, `tonight.json` and `cards.json`
 are ordered arrays of chat events. `notification.json` is one live event. The
 onboarding profile matches the Python fixture and the 44-seat plan from #10; the
-live booking also appears in tonight's reservations.
+live booking also appears in tonight's reservations, on the same date.
 
 ## Platform HTTP API
 
@@ -142,7 +142,12 @@ live booking also appears in tonight's reservations.
   by `LISTEN reservations`: every committed INSERT/UPDATE on a registered merchant's
   `reservations` becomes `new_booking`, `updated` or `cancelled`, re-read from the
   merchant's schema. An UPDATE that changes nothing (an idempotent replay) is skipped by
-  the `reservations_skip_noop` trigger and sends nothing. The listener reconnects after 1, 2, 4 then 10 s; each open stream
+  the `reservations_skip_noop` trigger and sends nothing. Only guests' changes are sent:
+  a cancellation by the merchant (`cancelled_by = 'merchant'`) or a booking it entered
+  itself (`via = 'merchant'`) sends nothing, as its chat already confirms it (#81). An
+  update is always the guest's, since no admin tool moves a booking. `via` is the channel
+  the booking was made through, not the one a change came from; `date` is the booking's
+  day in `MERCHANT_TZ`, since `reservation.time` only has the hour. The listener reconnects after 1, 2, 4 then 10 s; each open stream
   keeps at most 100 pending events (oldest dropped).
 - `POST /public/{slug}/reservations` (the showcase site's form) with `{starts_at,
   party_size, guest_name, idempotency_key}`: `201` + `{"reservation": Reservation}`
