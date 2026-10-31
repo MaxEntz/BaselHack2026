@@ -24,6 +24,7 @@ Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not f
 | Claude.ai's calls accepted by the server | ✅ validated | coming from `160.79.106.x`, all `200`, no `Host` or `Origin` rejected in the logs |
 | Anthropic's calls through the filter | ✅ validated | Claude Desktop's tool calls came from `160.79.106.x`, all `200`, with the deployed Caddyfile |
 | Caddy IP filter (#45): `403` outside `160.79.104.0/21` | ✅ validated | `403` and `server: Caddy` on `/mcp`, `/health` and `/.env` from outside, on the LXC |
+| One restaurant's endpoint `/m/<slug>/mcp` (#23) | 🔶 locally | e2e, in-process and over MATP: 4 tools described from the profile, booking without `merchant`, `404`, `down`, new merchant without restart, older protocol. Claude.ai: ⏳ step 6 |
 | MATP node on the LXC (#62) | ✅ validated | SDK client on the LXC, over MATP: booking, move, cancellation, party too large, outage and restore. `127.0.0.1:4710` only, closed from outside. Node stopped: the gateway stays up, gives the fallback link, and recovers without a restart |
 | SSH tunnel (`ssh -L`) | ❌ refused | `AllowTcpForwarding no` in the server's SSH hardening |
 | MCP Inspector | ✅ validated | `tools/list` locally: the 6 tools, their schemas and annotations |
@@ -202,6 +203,16 @@ The dialog's layout varies between organizations.
 2. Ask: "Table for 4 tonight at 8pm in Mulhouse".
 3. Approve the calls if Claude asks. It must propose times, then ask for confirmation before booking.
 
+### 6. One restaurant's own connector (optional)
+
+Each live restaurant also has its own endpoint, `/m/<slug>/mcp` (#23, ADR-0012), with only its 4 booking tools, no `search_merchants`, and descriptions naming the restaurant, its hours and its largest group. The profile card shows it under **This restaurant only**.
+
+1. Add a connector as in step 5, named after the restaurant, with the URL `https://191-96-88-152.sslip.io/m/le-petit-zinc/mcp`.
+2. In a conversation, enable only that connector and ask: "Table for 2 tomorrow at 8pm".
+3. Claude must call `get_availability` directly, without a search, and confirm before booking.
+
+An unknown restaurant or one still being built answers `404`; a `down` one keeps its endpoint and gives its fallback link. A restaurant onboarded after the gateway started has its endpoint at once, without `make deploy`.
+
 ## Plan B: Claude Code
 
 No tunnel needed. Once `make gateway` is running:
@@ -212,7 +223,7 @@ claude mcp add --transport http merchant-agents http://localhost:8001/mcp
 claude mcp add --transport http merchant-agents http://localhost:8001/mcp --header "Authorization: Bearer <token>"
 ```
 
-Run `/mcp` in a session to check the connection, then play the scenarios below.
+Run `/mcp` in a session to check the connection, then play the scenarios below. For one restaurant's own endpoint: `claude mcp add --transport http le-petit-zinc http://localhost:8001/m/le-petit-zinc/mcp`.
 
 Claude Code can't target the LXC's gateway: the public URL answers it with `403`, and the server refuses SSH tunnels (see [Protect the public URL](#protect-the-public-url)).
 

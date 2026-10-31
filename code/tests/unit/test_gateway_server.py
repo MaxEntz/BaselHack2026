@@ -248,6 +248,22 @@ def test_bearer_token_is_enforced_when_configured(headers: dict[str, str], statu
     assert post_initialize(LOCAL_URL, settings, headers).status_code == status
 
 
+def test_bearer_token_also_guards_each_merchants_endpoint() -> None:
+    settings = make_settings(gateway_token="s3cret")
+    with TestClient(create_app(settings), base_url=LOCAL_URL) as client:
+        response = client.post("/m/le-petit-zinc/mcp", json=INITIALIZE, headers=MCP_HEADERS)
+
+    assert response.status_code == 401
+
+
+def test_a_malformed_merchant_endpoint_is_not_found_without_the_database() -> None:
+    settings = make_settings(database_url="postgresql+psycopg://u:p@127.0.0.1:1/db")
+    with TestClient(create_app(settings), base_url=LOCAL_URL) as client:
+        response = client.post("/m/Not_A_Slug/mcp", json=INITIALIZE, headers=MCP_HEADERS)
+
+    assert response.status_code == 404
+
+
 def test_bearer_token_accepts_non_ascii() -> None:
     settings = make_settings(gateway_token="pässword")
     headers = {"Authorization": "Bearer pässword".encode()}
