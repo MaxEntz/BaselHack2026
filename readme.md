@@ -1,20 +1,20 @@
 # Merchant Agents
 
-> Let Claude book with any merchant, straight from their website.
+> Let any AI assistant book with any merchant, straight from their website.
 
-A restaurant owner gives us their website and describes how they work. We generate their booking agent. Anyone can then book a table by asking Claude, through a single MCP server that applies their preferences and sends them back to the restaurant's own site whenever the agent can't help. The owner runs everything by chatting with our platform, onboarding included, and sees bookings made through Claude appear live.
+A restaurant owner gives us their website and describes how they work. We generate their booking agent. Anyone can then book a table by asking their AI assistant (Claude, Codex, OpenCode or any other MCP client), through a single MCP server that applies their preferences and sends them back to the restaurant's own site whenever the agent can't help. The owner runs everything by chatting with our platform, onboarding included, and sees bookings made through Claude appear live.
 
 Built at BaselHack 2026, and still being built. §4 of the architecture document shows which components are merged, and issue [#26](https://github.com/MaxEntz/BaselHack2026/issues/26) tracks the plan.
 
-![The merchant chat: tonight's bookings and a live "New booking via Claude" notification](documentation/img/merchant-chat-mock.png)
+![The merchant chat: tonight's bookings and a live "New booking via AI assistant" notification](documentation/img/merchant-chat-mock.png)
 
 *The merchant chat in mock mode (`VITE_MOCK=1`), with fictional guests. Claude.ai calling our MCP gateway is shown in [this screenshot](documentation/runbooks/img/connector-ping.png).*
 
 ## How it works
 
-- **User side.** Claude.ai calls our **gateway**, a remote MCP server, which routes the call to the merchant's **agent**. Each merchant's data lives in its own Postgres schema, and the database itself makes double booking impossible. On failure, the gateway returns the merchant's own booking page.
+- **User side.** An AI assistant calls our **gateway**, a remote MCP server, which routes the call to the merchant's **agent**. Each merchant's data lives in its own Postgres schema, and the database itself makes double booking impossible. On failure, the gateway returns the merchant's own booking page.
 - **Merchant side.** The merchant uses a **web chat**, backed by the **platform API**. There, an **assistant** answers through admin tools ("What bookings do I have tonight?", "Block 21:00"), and the **builder** turns the merchant's website into a validated profile, then provisions the agent. The LLM only fills that profile; it never writes code or SQL.
-- **Agent network.** Behind the gateway, the merchant agents form a network reserved for AI agents, with its own protocol: **MATP**, on TCP port 4710. Every session names the calling agent, and every request names its intent and merchant. Claude only speaks MCP, so the gateway is its bridge to MATP. The spec is an RFC-style Internet-Draft, [`draft-merchant-agents-matp-00`](documentation/rfc/draft-merchant-agents-matp-00.txt), summarized in [`documentation/PROTOCOL.md`](documentation/PROTOCOL.md); the node and the bridge are in progress (#60, #61).
+- **Agent network.** Behind the gateway, the merchant agents form a network reserved for AI agents, with its own protocol: **MATP**, on TCP port 4710. Every session names the calling agent, and every request names its intent and merchant. Assistants speak MCP, so the gateway is their bridge to MATP. The spec is an RFC-style Internet-Draft, [`draft-merchant-agents-matp-00`](documentation/rfc/draft-merchant-agents-matp-00.txt), summarized in [`documentation/PROTOCOL.md`](documentation/PROTOCOL.md); the node and the bridge are in progress (#60, #61).
 - **Live.** A committed booking fires Postgres `NOTIFY`, which is pushed to the merchant's chat over SSE. The target is under 2 seconds.
 
 ➡️ **[documentation/ARCHITECTURE.md](documentation/ARCHITECTURE.md)** has the diagrams, the main flow step by step, every component and what it does *not* do, and the stack with its [decision records](documentation/adr/README.md).
@@ -30,7 +30,7 @@ make test                                # unit + integration tests (needs Docke
 VITE_MOCK=1 make web                     # merchant chat on mock data -> http://localhost:5173
 ```
 
-All the commands are in [`code/README.md`](code/README.md). To connect Claude.ai to the gateway, see [`documentation/runbooks/connector.md`](documentation/runbooks/connector.md).
+All the commands are in [`code/README.md`](code/README.md). To connect an AI assistant to the gateway, see [`documentation/runbooks/connector.md`](documentation/runbooks/connector.md).
 
 ## Repository layout
 

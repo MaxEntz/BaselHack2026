@@ -1,6 +1,6 @@
 # AGENTS.md — Merchant Agents
 
-> Let Claude book with any merchant, straight from their website.
+> Let any AI assistant book with any merchant, straight from their website.
 
 This file is the single source of truth for this repository. Read it fully before writing code. When something is not specified here, follow **§13 Default decisions** instead of asking, and record any new decision in **§14 Decision log**.
 
@@ -18,22 +18,23 @@ Architecture overview, component boundaries and decision records: [`documentatio
 - **DB access (`core/db.py`, ADR-0001)**: Alembic manages only `public` (migration `0001`). Merchant tables (and the `reservations_notify` trigger) are declared once in SQLAlchemy Core under the placeholder schema `merchant`, so `merchant_metadata.create_all` on a translated connection builds a whole merchant schema; always query them through `merchant_conn(engine, slug)` (`schema_translate_map` → `m_<slug>`) with Core constructs, never `text()`, which is not translated. Turn a slug into a schema only with `schema_for(slug)`. Reservation IDs come from `next_reservation_id(conn)`. SQL changes vs §7.2: `merchants.status` defaults to `building` (`deploy` sets `live`), `notify_reservation()` lives in `public`, is shared by every merchant trigger and also sends `via`; `reservations.during` must not be empty (an empty range would slip past the exclusion constraint).
 - **Provisioning (`agent/provisioning.py`)**: `provision(profile)` (one transaction: schema, tables, policy, registry row in `building`), `deploy(slug)` / `set_status(slug, "live"|"down")`, `deprovision(slug)` (idempotent). Each takes an optional keyword `engine=`: long-running processes pass theirs; scripts omit it and get a short-lived engine on `DATABASE_URL`. A slug already in use (or racing another `provision`) raises `SlugTaken` (an `InvalidInput`). After provisioning, the merchant's `tables` and `policy` rows are authoritative; the registry's `profile` jsonb is a display copy that `update_policy` / `update_tables` must keep in sync (#9). `default_tables(seats)` and `generated_tools(profile)` are pure; `templates/restaurant.json` is validated at import (unknown `{placeholder}` = crash at startup).
 - **Merchant operations (`agent/admin.py`, #9)**: `PgAgentService.list_reservations` / `get_stats` / `block_slot` / `unblock_slot` / `update_policy` / `update_tables` / `cancel_reservation(by="merchant")` delegate to `agent.admin`, one `merchant_conn` transaction each, so the merchant schema and the registry's `profile` change together. They load the merchant with `merchant_side=True`: a `building` merchant is editable by its owner while hidden from guests. Input outside the database's range is `InvalidInput`, never a raw DB error.
-- **MATP, our agent protocol (ADR-0011, `documentation/PROTOCOL.md`)**: TCP on port 4710, one JSON frame per line, `HELLO` with the agent's identity, intent requests typed by `core.models`. The library is `code/packages/matp/` (no dependency beyond `core`, so the gateway can import its client); the node is `code/packages/merchant_node/` (`make node`). Change the protocol in `PROTOCOL.md`, the library and its tests together. The MCP gateway stays as Claude's bridge.
+- **MATP, our agent protocol (ADR-0011, `documentation/PROTOCOL.md`)**: TCP on port 4710, one JSON frame per line, `HELLO` with the agent's identity, intent requests typed by `core.models`. The library is `code/packages/matp/` (no dependency beyond `core`, so the gateway can import its client); the node is `code/packages/merchant_node/` (`make node`). Change the protocol in `PROTOCOL.md`, the library and its tests together. The MCP gateway stays as the bridge for assistants that speak MCP.
 - **Tool contract changes vs §8**: `update_reservation` and `cancel_reservation` also take `guest_name` (checked against the booking); `search_merchants` also returns `suggestions` and `ignored_filters`; admin tool `update_tables` added; table `public.guest_notices` added to the §7.2 SQL; `search_merchants` merchants also carry `website`; `Reservation` also carries `merchant`, `guest_name` and `via`; the admin `cancel_reservation` input has no `by` (the tool is merchant-only, the service receives `by="merchant"`).
 - **Gateway (`gateway/`)**: tools take flat typed arguments (same fields and types as the `*Input` models of `core/models.py`) and return `<Result> | ToolError`; only `fallback.py` turns failures into `ToolError`, and arguments the SDK rejects before a tool runs also answer `invalid_input`. `search_merchants` answers `agent_unavailable` + `fallback_url` when its query names a `down` merchant and no live one. Fault injection: `CHAOS_DELAY_MS`, `CHAOS_MERCHANTS`. With `MATP_URL`, the gateway is a bridge to the MATP node; without it, the agent runs in its process (development, tests). Each merchant also has its own endpoint `/m/<slug>/mcp` (`gateway/merchant_server.py`, #23): the 4 booking tools without `merchant`, the slug read from the request path, descriptions from `generated_tools(profile)` rewritten at each `tools/list` (ADR-0012). Details in `documentation/CONTRACTS.md`.
-- **Backend LLM calls use OpenAI**, not Anthropic (§14): the builder's `extract` step and the platform assistant use the OpenAI Python SDK (Responses API), with `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-6.1-terra`). The sections below are updated. Claude stays the **user-side** client (Claude.ai connects to the gateway).
+- **Any AI assistant on the user side (ADR-0013)**: Claude, Codex, OpenCode or any other MCP client. Say "assistant" in code and docs, and name Claude only for what is specific to it: Claude.ai connectors, Anthropic's address range. `CLAUDE.md` and Claude Code stay, as development tools. Bookings are `via="assistant"`, and the gateway's MATP agent is `urn:matp:agent:mcp-gateway`.
+- **Backend LLM calls use OpenAI**, not Anthropic (§14): the builder's `extract` step and the platform assistant use the OpenAI Python SDK (Responses API), with `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-6.1-terra`). The sections below are updated. On the user side, the client is any MCP-capable AI assistant, whatever model it runs.
 - Work is tracked in GitHub issues (milestones M0–M4, Demo); the tracking issue #26 lists every issue and these corrections.
 
 ### Team server (LXC)
 
-We have a server: use it to test anything Claude.ai must reach, instead of opening a tunnel.
+We have a server: use it to test anything a hosted assistant such as Claude.ai must reach, instead of opening a tunnel.
 
 - **Host:** `root@191.96.88.152`, Ubuntu 24.04. SSH by key only, passwords are refused.
 - **SSH key:** `~/.ssh/baselhack2026_lxc` on the user's machine. If it isn't there, **ask the user**, they may have it. Never commit a private key or paste it in a conversation.
   ```bash
   ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
   ```
-- **Gateway:** `https://191-96-88-152.sslip.io/mcp`, deployed with `make deploy` from `code/`. Code in `/opt/merchant-agents/code`, service `merchant-gateway`, HTTPS by Caddy. Caddy only lets Anthropic's outbound range (`160.79.104.0/21`) through and answers `403` to everyone else (ADR-0010): test with a local gateway, or run the SDK client on the server over SSH against `http://127.0.0.1:8001/mcp`, not with the public URL (SSH port forwarding is disabled on the server). Details in `documentation/runbooks/connector.md`.
+- **Gateway:** `https://191-96-88-152.sslip.io/mcp`, deployed with `make deploy` from `code/`. Code in `/opt/merchant-agents/code`, service `merchant-gateway`, HTTPS by Caddy. Caddy lets through Anthropic's outbound range (`160.79.104.0/21`, for Claude.ai) and any request with a bearer token, which the gateway checks against `GATEWAY_TOKEN`; everyone else gets `403` (ADR-0010, ADR-0013). Other assistants use the public URL with that token, or a local gateway; the SDK client can also run on the server over SSH against `http://127.0.0.1:8001/mcp` (SSH port forwarding is disabled on the server). Details in `documentation/runbooks/connector.md`.
 - **MATP node:** service `merchant-node` (`code/deploy/merchant-node.service`), installed and restarted by `make deploy` with the gateway, bound to `127.0.0.1:4710` only; the gateway reaches it through `MATP_URL=matp://127.0.0.1:4710`. Port 4710 is never opened without asking (TLS + firewall rule on the shared server). Logs: `journalctl -u merchant-node`.
 - **The server is shared, it doesn't only run the gateway.** Ask the user before rebooting it, stopping a service or changing anything outside `/opt/merchant-agents`. When `code/deploy/Caddyfile` changed, `make deploy` validates it, overwrites `/etc/caddy/Caddyfile` and restarts Caddy, so any other site must also be declared there.
 - **Firewall (`/etc/nftables.conf`):** only ports 22, 80 and 443 are open inbound, and new outbound connections to private networks are refused. A new service needs a rule there. `fail2ban` bans IPs that repeatedly fail SSH logins.
@@ -47,8 +48,8 @@ A merchant (first vertical: **restaurants**) brings **their existing website** a
 
 Two conversational experiences sit on top:
 
-1. **User side, in Claude.** A user asks Claude: *"Table for 4 tonight at 8pm."* Claude calls our **protocol** (one remote MCP server, added once as a connector). The protocol applies the user's **preferences** as filters, finds the merchant, and routes the call to the merchant's agent, which books. **If the agent fails, the protocol returns a fallback URL to the merchant's original website.**
-2. **Merchant side, on our platform.** The merchant manages everything **by chatting with a platform assistant**: onboarding (give the URL, describe the business, the agent gets built), then day-to-day operations (*"What bookings do I have tonight?"*, *"Block 21:00 tonight"*, *"Set max party size to 6"*, *"Cancel R-001"*). New bookings made through Claude show up **live** in the merchant's conversation.
+1. **User side, in any AI assistant.** A user asks their assistant (Claude, Codex, OpenCode or any other MCP client): *"Table for 4 tonight at 8pm."* The assistant calls our **protocol** (one remote MCP server, added once). The protocol applies the user's **preferences** as filters, finds the merchant, and routes the call to the merchant's agent, which books. **If the agent fails, the protocol returns a fallback URL to the merchant's original website.**
+2. **Merchant side, on our platform.** The merchant manages everything **by chatting with a platform assistant**: onboarding (give the URL, describe the business, the agent gets built), then day-to-day operations (*"What bookings do I have tonight?"*, *"Block 21:00 tonight"*, *"Set max party size to 6"*, *"Cancel R-001"*). New bookings made through an assistant show up **live** in the merchant's conversation.
 
 There is **no form-based UI** on either side: everything is a conversation. Structured results (booking card, reservations table, agent profile) are rendered as rich messages inside the chat.
 
@@ -56,7 +57,7 @@ There is **no form-based UI** on either side: everything is a conversation. Stru
 
 | Term | Meaning |
 |---|---|
-| **Protocol / Gateway** | The public remote MCP server Claude connects to. Discovery, preference filtering, routing, fallback. |
+| **Protocol / Gateway** | The public remote MCP server AI assistants connect to. Discovery, preference filtering, routing, fallback. |
 | **Merchant agent** | The per-merchant booking logic and data. Logically one per merchant; physically one multi-tenant service in the POC (§13). |
 | **Builder** | Pipeline that turns *website + description* into a validated `MerchantProfile`, then provisions the agent. |
 | **Platform assistant** | The LLM assistant merchants chat with on our platform. Uses admin tools on the merchant's agent. |
@@ -68,9 +69,9 @@ There is **no form-based UI** on either side: everything is a conversation. Stru
 ```mermaid
 flowchart LR
   subgraph USER[User side · every request]
-    User -->|1 prompt| Claude
-    Claude -->|2 preferences| Claude
-    Claude <-->|3 MCP: user tools| Gateway[Protocol / Gateway<br/>remote MCP server]
+    User -->|1 prompt| Assistant[AI assistant]
+    Assistant -->|2 preferences| Assistant
+    Assistant <-->|3 MCP: user tools| Gateway[Protocol / Gateway<br/>remote MCP server]
   end
 
   subgraph CORE[Our backend]
@@ -140,7 +141,7 @@ merchant-agents/
 | Area | Choice | Why | Rejected |
 |---|---|---|---|
 | Language | **Python 3.12**, managed with **uv** | Most mature MCP SDK; Playwright and OpenAI SDK in the same language; fast iteration. | Go/Rust gateway — revisit only if latency/load require it. |
-| MCP | Official **`mcp` SDK (FastMCP)**, **Streamable HTTP** transport | Claude supports remote MCP servers as connectors; no custom client. | Custom REST API re-exposed as tools. |
+| MCP | Official **`mcp` SDK (FastMCP)**, **Streamable HTTP** transport | MCP is how AI assistants reach remote tools (Claude, Codex, OpenCode…); no custom client. | Custom REST API re-exposed as tools. |
 | API | **FastAPI** + **Pydantic v2** | Typed schemas shared with MCP tools; native SSE support via streaming responses. | Flask, Django. |
 | DB | **PostgreSQL 16**, **SQLAlchemy 2.0**, **Alembic** | `EXCLUDE` constraint on time ranges makes double booking impossible; `LISTEN/NOTIFY` gives live events for free. | SQLite (no exclusion constraint, weak concurrency). |
 | Crawl | **Playwright** (Chromium) | Handles JS-rendered restaurant sites. | requests + BeautifulSoup (misses JS content). |
@@ -157,7 +158,7 @@ merchant-agents/
 - Table assignment: smallest table with `seats >= party_size` that has **no overlapping reservation** and whose start time is **not blocked**.
 - `party_size > max_party_size` → error `party_too_large` + `fallback_url`.
 - Availability search returns up to **3 slots**, closest to the requested time, sorted by time.
-- **Every write initiated from Claude requires explicit user confirmation** in the conversation before `create_reservation` / `update_reservation` / `cancel_reservation` is called. This is enforced by tool descriptions (instructing Claude to confirm) and by the protocol requiring an `idempotency_key`.
+- **Every write initiated from an assistant requires explicit user confirmation** in the conversation before `create_reservation` / `update_reservation` / `cancel_reservation` is called. This is enforced by tool descriptions (instructing the assistant to confirm) and by the protocol requiring an `idempotency_key`.
 - A merchant cancelling a booking must **notify the guest** (POC: stored notice surfaced on the user's next `get_my_reservations`; see §13).
 - Blocking a slot never removes existing bookings; it only prevents new ones at that start time.
 
@@ -235,7 +236,7 @@ CREATE TABLE reservations (
   guest_name       text NOT NULL,
   party_size       int  NOT NULL CHECK (party_size > 0),
   during           tstzrange NOT NULL,
-  via              text NOT NULL CHECK (via IN ('claude','merchant','website')),
+  via              text NOT NULL CHECK (via IN ('assistant','merchant','website')),
   status           text NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed','cancelled')),
   cancelled_by     text CHECK (cancelled_by IN ('guest','merchant')),
   idempotency_key  text UNIQUE,
@@ -259,7 +260,7 @@ FOR EACH ROW EXECUTE FUNCTION notify_reservation();
 
 All tool inputs/outputs are Pydantic models in `core/models.py`; JSON shown for readability. Times are ISO 8601 with the merchant's timezone (POC: `Europe/Zurich`).
 
-### 8.1 User tools — exposed by the **gateway** to Claude
+### 8.1 User tools — exposed by the **gateway** to AI assistants
 
 | Tool | Input | Output |
 |---|---|---|
@@ -270,9 +271,9 @@ All tool inputs/outputs are Pydantic models in `core/models.py`; JSON shown for 
 | `cancel_reservation` | `{ merchant, reservation_id }` | `{ status: "cancelled" }` |
 | `get_my_reservations` | `{ guest_name }` | `{ reservations: [...], notices: [str] }` |
 
-Tool descriptions must tell Claude: *confirm with the user before any create/update/cancel; pass the user's dietary/budget preferences as `filters`; if a result contains `fallback_url`, give it to the user.*
+Tool descriptions must tell the assistant: *confirm with the user before any create/update/cancel; pass the user's dietary/budget preferences as `filters`; if a result contains `fallback_url`, give it to the user.*
 
-### 8.2 Admin tools — used by the **platform assistant** (merchant side, never exposed to Claude users)
+### 8.2 Admin tools — used by the **platform assistant** (merchant side, never exposed to guests' assistants)
 
 | Tool | Input | Output |
 |---|---|---|
@@ -305,21 +306,21 @@ Every tool error is `{ "error": <code>, "message": str, "fallback_url"?: str }`.
 
 ## 9. Conversations to support (acceptance scenarios)
 
-**User ↔ Claude (via gateway)**
-- "Table for 4 tonight at 8pm" → `search_merchants` with preference filters → `get_availability` → Claude proposes slots → user picks → Claude asks to confirm → `create_reservation` → booking card.
+**User ↔ AI assistant (via gateway)**
+- "Table for 4 tonight at 8pm" → `search_merchants` with preference filters → `get_availability` → the assistant proposes slots → user picks → the assistant asks to confirm → `create_reservation` → booking card.
 - "Move it to 9pm" → `update_reservation`. "Cancel my booking" → `cancel_reservation`.
-- Vegan preference on, merchant not tagged vegan → no match, Claude offers to drop the filter.
-- "Table for 8" when max is 6 → `party_too_large` → Claude gives the fallback link.
-- Agent down → `agent_unavailable` → Claude gives the fallback link.
+- Vegan preference on, merchant not tagged vegan → no match, the assistant offers to drop the filter.
+- "Table for 8" when max is 6 → `party_too_large` → the assistant gives the fallback link.
+- Agent down → `agent_unavailable` → the assistant gives the fallback link.
 
 **Merchant ↔ platform assistant**
 - Onboarding: assistant asks for the website → asks for the description → calls `build_agent` → shows step progress → shows the agent profile card.
 - "What bookings do I have tonight?" → `list_reservations` → table message.
-- "Block 21:00 tonight" → `block_slot`; Claude users no longer get 21:00.
+- "Block 21:00 tonight" → `block_slot`; assistants no longer get 21:00.
 - "Set max party size to 6" → `update_policy`.
 - "How busy are we tonight?" → `get_stats`.
 - "Cancel R-001" → `cancel_reservation(by="merchant")` → guest notice created.
-- A booking made through Claude appears in the merchant chat as a **"New booking via Claude"** notification within 2 s (SSE).
+- A booking made through an assistant appears in the merchant chat as a **"New booking via AI assistant"** notification within 2 s (SSE).
 
 ## 10. Commands
 
@@ -347,7 +348,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 **M2 — Gateway (user side)**
 - FastMCP server with §8.1 tools, preference filtering, 2 s timeout, error mapping §8.4.
 - Tested with MCP Inspector; e2e test calling tools through an MCP client.
-- Connected to Claude as a custom connector (needs `GATEWAY_PUBLIC_URL`, e.g. via a tunnel); manual run of the §9 user scenarios.
+- Connected to an AI assistant, starting with a Claude custom connector (needs `GATEWAY_PUBLIC_URL`, e.g. via a tunnel); manual run of the §9 user scenarios.
 
 **M3 — Platform assistant + live events (merchant side)**
 - FastAPI `/chat` running an OpenAI tool-use loop with §8.2 admin tools; `/events` SSE fed by `LISTEN/NOTIFY`.
@@ -357,7 +358,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 - Crawl + extraction + validation + provisioning, streamed as steps into the merchant chat.
 - Demo on **3 real restaurant websites**; store their generated profiles as fixtures.
 
-**Definition of done (POC):** the full §9 scenario list runs end to end — merchant onboards by chat, user books from Claude, merchant sees it live and blocks a slot, outage triggers fallback.
+**Definition of done (POC):** the full §9 scenario list runs end to end — merchant onboards by chat, user books from their AI assistant, merchant sees it live and blocks a slot, outage triggers fallback.
 
 ## 12. Conventions
 
@@ -374,10 +375,10 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 
 - **One agent per merchant** is a logical boundary: implemented as one multi-tenant `AgentService` keyed by merchant slug, data isolated by Postgres schema. No per-merchant processes in the POC.
 - **Gateway and agent runtime** run in the same process in the POC, behind an `AgentClient` interface so they can be split later.
-- **Auth:** none in M1–M2 local dev; for the Claude connector in M2, add OAuth 2.1 (as the MCP spec describes) only if the connector requires it, otherwise a static bearer token via env. Merchant platform: single hard-coded merchant session in the POC.
-- **Guest identity:** the `guest_name` Claude passes; no accounts.
-- **Guest notices** (merchant cancellations): stored per guest name and returned by `get_my_reservations`; no push to Claude.
-- **Fallback depth:** return the URL only; Claude does not drive the website.
+- **Auth:** none in M1–M2 local dev; for the public connector in M2, add OAuth 2.1 (as the MCP spec describes) only if the connector requires it, otherwise a static bearer token via env. Merchant platform: single hard-coded merchant session in the POC.
+- **Guest identity:** the `guest_name` the assistant passes; no accounts.
+- **Guest notices** (merchant cancellations): stored per guest name and returned by `get_my_reservations`; no push to the assistant.
+- **Fallback depth:** return the URL only; the assistant does not drive the website.
 - **Timezone:** `Europe/Zurich` everywhere; store `timestamptz`.
 - **Location/discovery:** single city, filter by tags and price only; no ranking beyond name order.
 - **Preferences** are never stored server-side; they only arrive as `filters`.
@@ -423,6 +424,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | `update_policy` returns no warning about existing bookings above a lowered `max_party_size` | `Policy` is a frozen contract without such a field; the assistant can call `list_reservations` |
 | 2026-10-31 | The crawler checks every browser request after DNS resolution, follows redirects itself hop by hop and never lets the browser follow one (each page's redirects are resolved before loading it); it never loads WebSockets, images, fonts or media; link-local addresses (169.254.169.254) stay refused with `CRAWL_ALLOW_PRIVATE=1`; DNS rebinding is not covered | Chromium doesn't route redirect hops, so a public page could otherwise reach the team server's local services, even by answering the check and the browser differently; only text is read (#21) |
 | 2026-10-31 | The crawl's link filter (§8.3) also matches German (`karte`, `zeiten`, `kontakt`), accents ignored; crawl failures are `InvalidInput` with the message shown in the `crawl` step | Most Basel restaurant sites are in German (tested on kronenhalle.com); the merchant can fix the address (#21) |
+| 2026-10-31 | The user side is any AI assistant, not only Claude: `via="assistant"`, gateway agent `urn:matp:agent:mcp-gateway`, and the public URL also accepts a bearer token ([ADR-0013](documentation/adr/0013-open-the-user-side-to-any-ai-assistant.md)) | Nothing but the address filter and the naming tied the protocol to Claude; Codex and OpenCode book through it unchanged |
 
 ## 15. Out of scope (POC)
 
@@ -433,7 +435,7 @@ Payments/deposits/no-show fees · other verticals · sync with existing booking/
 - How to rank merchants when many match (distance, availability, preferences)?
 - How to verify that the person onboarding owns the website?
 - Merchants already on a booking tool: integrate it, or make our DB the source of truth?
-- Should Claude complete the website flow itself on fallback (browser) instead of returning a link?
+- Should the assistant complete the website flow itself on fallback (browser) instead of returning a link?
 - One template per vertical, or a generic template?
 - Business model: per booking, subscription, or free at first?
 

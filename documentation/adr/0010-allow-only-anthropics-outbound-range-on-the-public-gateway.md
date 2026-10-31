@@ -1,6 +1,6 @@
 # ADR-0010 — Allow only Anthropic's outbound range on the public gateway
 
-- **Status**: Accepted
+- **Status**: Accepted (extended by [ADR-0013](0013-open-the-user-side-to-any-ai-assistant.md): a bearer token also gets through)
 - **Date**: 2026-10-31
 - **Supersedes**: the access-restriction consequence of [ADR-0009](0009-serve-the-gateway-from-the-team-server-behind-caddy.md) ("before the write tools land (#11), restrict access …")
 

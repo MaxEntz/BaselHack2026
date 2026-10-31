@@ -153,9 +153,9 @@ Internet-Draft                    MATP                      October 2026
 
 1.2.  Relation to MCP
 
-   Assistants such as Claude connect to remote tools through MCP [MCP].
-   An MCP server can act as a bridge: each of its tools maps to one MATP
-   intent (Appendix A).  Any other agent can speak MATP directly.
+   Assistants connect to remote tools through MCP [MCP].  An MCP server
+   can act as a bridge: each of its tools maps to one MATP intent
+   (Appendix A).  Any other agent can speak MATP directly.
 
 
 
@@ -770,14 +770,14 @@ Internet-Draft                    MATP                      October 2026
    ("confirmed"), guest_name and via.
 
    via is the booking channel, as the merchant sees it.  Version 0.1
-   defines "claude", "merchant" and "website"; "website" is never set by
-   MATP.  A node MUST record "merchant" when the caller's agent.kind is
-   merchant-agent, and "claude" when it is user-agent, whatever
-   assistant the caller is.  So in this version, via is only accurate
-   for callers behind the reference bridge (Section 12).  A later
-   version may add a value for other assistants.
+   defines "assistant", "merchant" and "website"; "website" is never set
+   by MATP.  A node MUST record "merchant" when the caller's agent.kind
+   is merchant-agent, and "assistant" when it is user-agent, whatever
+   assistant the caller is.  It does not say which one: agent.id does,
+   in the node's logs (Section 12).
 
-
+   starts_at MUST be a start time the merchant offers; AVAILABILITY
+   returns such times.  Errors: 400, 404, 409, 413, 503.
 
 
 
@@ -785,9 +785,6 @@ Internet-Draft                    MATP                      October 2026
 
 Internet-Draft                    MATP                      October 2026
 
-
-   starts_at MUST be a start time the merchant offers; AVAILABILITY
-   returns such times.  Errors: 400, 404, 409, 413, 503.
 
 8.4.  AMEND
 
@@ -834,6 +831,9 @@ Internet-Draft                    MATP                      October 2026
      | 400    | invalid_input     | Invalid params,   | no           |
      |        |                   | unknown intent,   |              |
      |        |                   | missing or        |              |
+     |        |                   | unexpected        |              |
+     |        |                   | merchant          |              |
+     +--------+-------------------+-------------------+--------------+
 
 
 
@@ -842,9 +842,6 @@ Internet-Draft                    MATP                      October 2026
 Internet-Draft                    MATP                      October 2026
 
 
-     |        |                   | unexpected        |              |
-     |        |                   | merchant          |              |
-     +--------+-------------------+-------------------+--------------+
      | 401    | none              | hello refused (in | no           |
      |        |                   | reject only)      |              |
      +--------+-------------------+-------------------+--------------+
@@ -888,6 +885,9 @@ Internet-Draft                    MATP                      October 2026
    The status values 400 and 413 also appear in error frames
    (Section 7.5), which carry no error.code; there, 413 means a frame
    above the size limit.
+
+
+
 
 
 
@@ -967,10 +967,9 @@ Internet-Draft                    MATP                      October 2026
       of buffering it.
 
    Booking channel:  In version 0.1, a node records every user-agent
-      booking with via "claude" (Section 8), and the merchant is told
-      the booking came through Claude.  With other assistants, that is
-      wrong.  A merchant SHOULD read via as "an assistant" until a later
-      version names the calling agent in it.
+      booking with via "assistant" (Section 8).  The merchant learns
+      that an assistant made the booking, not which one.  A later
+      version may name the calling agent in it.
 
    Writes without confirmation:  A misbehaving caller can book, amend or
       cancel without asking the guest.  The node cannot detect it.
@@ -1002,6 +1001,7 @@ Internet-Draft                    MATP                      October 2026
    Preferences:  DISCOVER filters can reveal diet or religion (vegan,
       halal, kosher).  A node MUST NOT store them beyond the request or
       link them to a guest.
+
 
 
 
@@ -1158,7 +1158,7 @@ Appendix A.  The MCP Bridge
 
    An MCP server can let an assistant that only speaks MCP use a MATP
    node.  The reference bridge opens one session with agent.id
-   urn:matp:agent:claude-gateway and agent.kind user-agent, and maps its
+   urn:matp:agent:mcp-gateway and agent.kind user-agent, and maps its
    tools to intents:
 
 
@@ -1235,8 +1235,8 @@ Internet-Draft                    MATP                      October 2026
 
 
 C: {"type": "hello", "matp": "0.1",
-    "agent": {"id": "urn:matp:agent:claude-gateway",
-              "name": "Claude via the merchant-agents gateway",
+    "agent": {"id": "urn:matp:agent:mcp-gateway",
+              "name": "AI assistants via the merchant-agents gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
 N: {"type": "welcome", "matp": "0.1",
@@ -1308,7 +1308,7 @@ N: {"type": "response", "id": "r-3", "status": 200,
       "merchant": "le-petit-zinc",
       "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
       "table_label": "T5", "status": "confirmed",
-      "guest_name": "Ada Martin", "via": "claude"}}}
+      "guest_name": "Ada Martin", "via": "assistant"}}}
 C: {"type": "request", "id": "r-5", "intent": "PING", "params": {}}
 N: {"type": "response", "id": "r-5", "status": 200,
     "result": {"pong": true,
@@ -1829,7 +1829,7 @@ Internet-Draft                    MATP                      October 2026
            },
            "via": {
              "enum": [
-               "claude",
+               "assistant",
                "merchant",
                "website"
              ],
@@ -2061,7 +2061,7 @@ Internet-Draft                    MATP                      October 2026
            },
            "via": {
              "enum": [
-               "claude",
+               "assistant",
                "merchant",
                "website"
              ],

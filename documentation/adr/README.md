@@ -5,9 +5,10 @@ write a new one and mark the old one `Superseded by ADR-NNNN`.
 
 | ADR | Decision | Status | Date |
 |---|---|---|---|
+| [0013](0013-open-the-user-side-to-any-ai-assistant.md) | Open the user side to any AI assistant, not only Claude | Accepted | 2026-10-31 |
 | [0012](0012-one-mcp-server-for-every-merchant-endpoint.md) | Serve every merchant's own MCP endpoint from one server, routed by the path | Accepted | 2026-10-31 |
 | [0011](0011-our-own-agent-protocol-matp-with-mcp-as-bridge.md) | Define our own agent protocol (MATP) on a dedicated port, with MCP as Claude's bridge | Accepted | 2026-10-31 |
-| [0010](0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md) | Allow only Anthropic's outbound range on the public gateway | Accepted | 2026-10-31 |
+| [0010](0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md) | Allow only Anthropic's outbound range on the public gateway | Accepted (extended by 0013: a bearer token also gets through) | 2026-10-31 |
 | [0009](0009-serve-the-gateway-from-the-team-server-behind-caddy.md) | Serve the gateway from the team server behind Caddy | Accepted (access restriction superseded by 0010) | 2026-10-31 |
 | [0008](0008-deviations-from-the-original-tool-contracts.md) | Deviate from the AGENTS.md §8 tool contracts where they were unsafe or incomplete | Accepted | 2026-10-31 |
 | [0007](0007-builder-cache-for-a-replayable-demo.md) | Cache builder results so the demo can be replayed offline | Accepted (implementation: #22) | 2026-10-31 |

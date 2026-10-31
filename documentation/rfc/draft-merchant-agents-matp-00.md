@@ -85,7 +85,7 @@ platform.
 
 ## Relation to MCP
 
-Assistants such as Claude connect to remote tools through MCP {{MCP}}. An
+Assistants connect to remote tools through MCP {{MCP}}. An
 MCP server can act as a bridge: each of its tools maps to one MATP intent
 ({{mcp-bridge}}). Any other agent can speak MATP directly.
 
@@ -484,12 +484,11 @@ Result: `reservation`, with `id` (the merchant's reference, for example
 ("confirmed"), `guest_name` and `via`.
 
 `via` is the booking channel, as the merchant sees it. Version 0.1 defines
-"claude", "merchant" and "website"; "website" is never set by MATP. A node
-MUST record "merchant" when the caller's `agent.kind` is `merchant-agent`,
-and "claude" when it is `user-agent`, whatever assistant the caller is. So
-in this version, `via` is only accurate for callers behind the reference
-bridge ({{security}}). A later version may add a value for other
-assistants.
+"assistant", "merchant" and "website"; "website" is never set by MATP. A
+node MUST record "merchant" when the caller's `agent.kind` is
+`merchant-agent`, and "assistant" when it is `user-agent`, whatever
+assistant the caller is. It does not say which one: `agent.id` does, in the
+node's logs ({{security}}).
 
 `starts_at` MUST be a start time the merchant offers; AVAILABILITY returns
 such times. Errors: 400, 404, 409, 413, 503.
@@ -610,10 +609,8 @@ Limits and denial of service:
 
 Booking channel:
 : In version 0.1, a node records every `user-agent` booking with `via`
-  "claude" ({{intents}}), and the merchant is told the booking came
-  through Claude. With other assistants, that is wrong. A merchant SHOULD
-  read `via` as "an assistant" until a later version names the calling
-  agent in it.
+  "assistant" ({{intents}}). The merchant learns that an assistant made the
+  booking, not which one. A later version may name the calling agent in it.
 
 Writes without confirmation:
 : A misbehaving caller can book, amend or cancel without asking the guest.
@@ -691,7 +688,7 @@ URN namespace:
 
 An MCP server can let an assistant that only speaks MCP use a MATP node.
 The reference bridge opens one session with `agent.id`
-`urn:matp:agent:claude-gateway` and `agent.kind` `user-agent`, and maps its
+`urn:matp:agent:mcp-gateway` and `agent.kind` `user-agent`, and maps its
 tools to intents:
 
 | MCP tool | MATP intent | Notes |
@@ -726,8 +723,8 @@ line.
 
 ~~~
 C: {"type": "hello", "matp": "0.1",
-    "agent": {"id": "urn:matp:agent:claude-gateway",
-              "name": "Claude via the merchant-agents gateway",
+    "agent": {"id": "urn:matp:agent:mcp-gateway",
+              "name": "AI assistants via the merchant-agents gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
 N: {"type": "welcome", "matp": "0.1",
@@ -778,7 +775,7 @@ N: {"type": "response", "id": "r-3", "status": 200,
       "merchant": "le-petit-zinc",
       "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
       "table_label": "T5", "status": "confirmed",
-      "guest_name": "Ada Martin", "via": "claude"}}}
+      "guest_name": "Ada Martin", "via": "assistant"}}}
 C: {"type": "request", "id": "r-5", "intent": "PING", "params": {}}
 N: {"type": "response", "id": "r-5", "status": 200,
     "result": {"pong": true,

@@ -15,13 +15,13 @@ person (a user's assistant) or a business (a restaurant's agent). On HTTP, that 
 like any web traffic. MATP gives it a dedicated channel, with its own port, that says on every
 frame **which agent is talking, what it intends to do, and to which merchant**.
 
-Claude.ai only speaks MCP. So the MCP gateway stays, as a **bridge**. Claude calls the gateway's
-tools, and the gateway speaks MATP to the node that serves the merchant agents. Any other agent
+AI assistants such as Claude.ai, Codex or OpenCode speak MCP. So the MCP gateway stays, as a
+**bridge**. An assistant calls the gateway's tools, and the gateway speaks MATP to the node that serves the merchant agents. Any other agent
 can speak MATP directly.
 
 ```mermaid
 flowchart LR
-  C["Claude.ai"] -->|"MCP (HTTPS)"| GW["MCP gateway<br/>bridge"]
+  C["AI assistant"] -->|"MCP (HTTPS)"| GW["MCP gateway<br/>bridge"]
   O["Other agent"] -->|"MATP"| N
   GW -->|"MATP, port 4710"| N["MATP node<br/>serves the merchant agents"]
   N --> DB[("PostgreSQL<br/>one schema per merchant")]
@@ -59,7 +59,7 @@ The caller speaks first. Until the node answers `WELCOME`, any other frame close
 
 ```json
 {"type": "hello", "matp": "0.1",
- "agent": {"id": "urn:matp:agent:claude-gateway", "name": "Claude via the merchant-agents gateway",
+ "agent": {"id": "urn:matp:agent:mcp-gateway", "name": "AI assistants via the merchant-agents gateway",
            "kind": "user-agent", "operator": "merchant-agents"},
  "token": "…"}
 ```
@@ -115,7 +115,7 @@ The node answers with one of these:
 |---|---|---|---|---|
 | `DISCOVER` | — | `SearchMerchantsInput` | `SearchMerchantsOutput` | `gateway.discovery.search` |
 | `AVAILABILITY` | required | `GetAvailabilityInput` without `merchant` | `GetAvailabilityOutput` | `AgentService.get_availability` |
-| `BOOK` | required | `CreateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.create_reservation` with `via = claude`: MATP bookings come from guests' agents, and the `kind` a caller declares is not trusted |
+| `BOOK` | required | `CreateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.create_reservation` with `via = assistant`: MATP bookings come from guests' agents, and the `kind` a caller declares is not trusted |
 | `AMEND` | required | `UpdateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.update_reservation` |
 | `CANCEL` | required | `CancelReservationInput` without `merchant` | `ReservationOutput` | `AgentService.cancel_reservation(by="guest")` |
 | `RECALL` | — | `GetMyReservationsInput` | `GetMyReservationsOutput` | `AgentService.find_guest_reservations` |
@@ -165,7 +165,7 @@ through the guest notice returned by `RECALL`.
 ## 11. Example session
 
 ```text
-→ {"type":"hello","matp":"0.1","agent":{"id":"urn:matp:agent:claude-gateway","name":"…","kind":"user-agent","operator":"merchant-agents"}}
+→ {"type":"hello","matp":"0.1","agent":{"id":"urn:matp:agent:mcp-gateway","name":"…","kind":"user-agent","operator":"merchant-agents"}}
 ← {"type":"welcome","matp":"0.1","node":{"id":"urn:matp:node:merchant-agents","name":"Merchant Agents"},"intents":["DISCOVER",…],"session":"s-1"}
 → {"type":"request","id":"r-1","intent":"DISCOVER","params":{"query":"table for 4 tonight","filters":{"tags":["vegetarian"],"max_price":"€€"}}}
 ← {"type":"response","id":"r-1","status":200,"result":{"merchants":[…],"suggestions":[],"ignored_filters":[]}}
@@ -225,5 +225,5 @@ parallel and still differs on three points, to be aligned in a follow-up:
   not with the session-level `error` frame of §3.
 - **In-flight limit:** the node answers `400 invalid_input` beyond 32 requests, not
   `429 too_many_requests`.
-- **`via`:** the node records every MATP booking as `claude`, whatever `kind` the caller
+- **`via`:** the node records every MATP booking as `assistant`, whatever `kind` the caller
   declares (§7). The draft's BOOK section still says `merchant` for a `merchant-agent`.

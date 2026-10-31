@@ -1,12 +1,12 @@
-# Runbook: connect Claude to the MCP gateway
+# Runbook: connect an AI assistant to the MCP gateway
 
-Issues [#3](https://github.com/MaxEntz/BaselHack2026/issues/3), [#11](https://github.com/MaxEntz/BaselHack2026/issues/11) and [#14](https://github.com/MaxEntz/BaselHack2026/issues/14). Goal: book a table with our server's 6 tools from a Claude conversation.
+Issues [#3](https://github.com/MaxEntz/BaselHack2026/issues/3), [#11](https://github.com/MaxEntz/BaselHack2026/issues/11) and [#14](https://github.com/MaxEntz/BaselHack2026/issues/14). Goal: book a table with our server's 6 tools from a conversation with any AI assistant.
 
-Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not from your browser. So `localhost` is not enough: you need a public HTTPS URL. The same goes for Claude Desktop. Only Claude Code can target `localhost` directly.
+Any MCP client works: Claude, Codex, OpenCode… What changes is where it calls from. Claude.ai and Claude Desktop call connectors **from Anthropic's cloud** (`160.79.104.0/21`), not from your browser, so `localhost` is not enough: they need a public HTTPS URL. Assistants running on your machine (Claude Code, Codex, OpenCode) can target `localhost` directly, or the public URL with a token.
 
-**Connector URL:** `https://191-96-88-152.sslip.io/mcp`. It is served by our LXC (`191.96.88.152`), with no tunnel. Go straight to step 5.
+**Connector URL:** `https://191-96-88-152.sslip.io/mcp`. It is served by our LXC (`191.96.88.152`), with no tunnel. For Claude.ai, go straight to step 5. For an assistant on your machine, see [Assistants on your machine](#assistants-on-your-machine).
 
-⚠️ This URL only answers Anthropic's range (`160.79.104.0/21`): from your machine, `curl`, MCP Inspector or Claude Code get `403 Forbidden`. To test, target a local gateway, or run the SDK client on the server over SSH (see [Protect the public URL](#protect-the-public-url)).
+⚠️ On this URL, only Anthropic's range (`160.79.104.0/21`) may call without a token. From anywhere else, `curl`, MCP Inspector or any assistant get `403 Forbidden` unless they send `Authorization: Bearer <GATEWAY_TOKEN>`. To test without it, target a local gateway, or run the SDK client on the server over SSH (see [Protect the public URL](#protect-the-public-url)).
 
 ## Validation status
 
@@ -20,6 +20,8 @@ Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not f
 | MCP client (e2e, in CI) | ✅ validated | `tests/e2e/test_gateway_mcp.py`, real server and real Postgres |
 | Deployed server, 6 tools | ✅ validated | SDK client run on the LXC, on `http://127.0.0.1:8001/mcp`: booking, move, cancellation, party too large, outage and restore |
 | Claude.ai, connection | ✅ validated | Spike #3: the former `ping` tool called from a conversation, screenshot below |
+| Codex and OpenCode, booking | ✅ validated locally | real clients, gateway with a token, over MATP, see [User scenarios](#user-scenarios) |
+| Public URL with a token | ⏳ to do | needs the deployment below; Caddy's rules checked on 2.6.2 in Docker, gateway's in the tests |
 | Claude Desktop, §9 scenarios | 🔶 5 of 6 | by hand, through the connector, see [User scenarios](#user-scenarios) |
 | Claude.ai's calls accepted by the server | ✅ validated | coming from `160.79.106.x`, all `200`, no `Host` or `Origin` rejected in the logs |
 | Anthropic's calls through the filter | ✅ validated | Claude Desktop's tool calls came from `160.79.106.x`, all `200`, with the deployed Caddyfile |
@@ -50,6 +52,13 @@ ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
 `make deploy` mirrors your local `code/` (except `web/`, `.env`, `.venv` and caches) to `/opt/merchant-agents/code` with `rsync --delete`, so the server runs exactly your working tree, branch and uncommitted changes included. Nothing locks it: two people deploying at the same time overwrite each other, and the last one wins. Tell the team before deploying, and say which branch is live.
 
 On the server, Caddy handles HTTPS and forwards to `127.0.0.1:8001`. The `merchant-gateway` service runs as an unprivileged user. Its configuration is in `/opt/merchant-agents/code/.env`, and its logs with `journalctl -u merchant-gateway`. `make deploy` doesn't touch that `.env`: on a new server, create it with `DATABASE_URL`, without which the service doesn't start, and `GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io`, without which every public request gets `421`.
+
+`make deploy` first checks that the server's `.env` has `GATEWAY_TOKEN` and `GATEWAY_TOKENLESS_NETWORKS` (Caddy forwards any request with a bearer token, so the gateway must have one to check it) and, with `MATP_URL`, the gateway's identity in `MATP_TOKENS`:
+
+```bash
+GATEWAY_TOKEN=…                                   # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+GATEWAY_TOKENLESS_NETWORKS='["160.79.104.0/21"]'  # same list as the Caddyfile
+```
 
 To check that the gateway is running and reaches Postgres, run this on the server (`curl` isn't installed there):
 
@@ -84,7 +93,7 @@ The MATP node ([`PROTOCOL.md`](../PROTOCOL.md)) serves the merchant agents. It r
 `make deploy` installs, enables and restarts `merchant-node` along with `merchant-gateway`. Both read `/opt/merchant-agents/code/.env`, which `make deploy` doesn't touch. On the server, it needs:
 
 ```bash
-MATP_TOKENS='{"urn:matp:agent:claude-gateway":"…"}'   # node: JSON, one token per known agent, 16 characters or more
+MATP_TOKENS='{"urn:matp:agent:mcp-gateway":"…"}'   # node: JSON, one token per known agent, 16 characters or more
 MATP_URL=matp://127.0.0.1:4710    # gateway: speak MATP to the node; without it, the gateway calls the agents in-process
 MATP_TOKEN=…                      # gateway: its own token, the one listed in MATP_TOKENS
 ```
@@ -118,7 +127,7 @@ If the node is down, the gateway's tools answer `agent_unavailable` with each re
 
 Steps 1 to 3 are only needed without the LXC, to expose a local server through a tunnel. With the LXC:
 
-- step 4: the public URL answers `403` outside Anthropic's range. Test a local gateway, or run the SDK client on the server (see [Protect the public URL](#protect-the-public-url));
+- step 4: the public URL answers `403` outside Anthropic's range without a token. Send the token, test a local gateway, or run the SDK client on the server (see [Protect the public URL](#protect-the-public-url));
 - step 5: replace `<name>.ngrok-free.app` with `191-96-88-152.sslip.io`.
 
 ### 1. Set up ngrok (once)
@@ -213,9 +222,9 @@ Each live restaurant also has its own endpoint, `/m/<slug>/mcp` (#23, ADR-0012),
 
 An unknown restaurant or one still being built answers `404`; a `down` one keeps its endpoint and gives its fallback link. A restaurant onboarded after the gateway started has its endpoint at once, without `make deploy`.
 
-## Plan B: Claude Code
+## Assistants on your machine
 
-No tunnel needed. Once `make gateway` is running:
+No tunnel needed. Once `make gateway` is running, with **Claude Code** (plan B for the demo):
 
 ```bash
 claude mcp add --transport http merchant-agents http://localhost:8001/mcp
@@ -225,7 +234,32 @@ claude mcp add --transport http merchant-agents http://localhost:8001/mcp --head
 
 Run `/mcp` in a session to check the connection, then play the scenarios below. For one restaurant's own endpoint: `claude mcp add --transport http le-petit-zinc http://localhost:8001/m/le-petit-zinc/mcp`.
 
-Claude Code can't target the LXC's gateway: the public URL answers it with `403`, and the server refuses SSH tunnels (see [Protect the public URL](#protect-the-public-url)).
+With **Codex**, which reads the token from an environment variable:
+
+```bash
+codex mcp add merchant-agents --url http://localhost:8001/mcp
+# with GATEWAY_TOKEN:
+codex mcp add merchant-agents --url http://localhost:8001/mcp --bearer-token-env-var MERCHANT_AGENTS_TOKEN
+```
+
+With **OpenCode**, in `opencode.json`:
+
+```json
+{
+  "mcp": {
+    "merchant-agents": {
+      "type": "remote",
+      "url": "http://localhost:8001/mcp",
+      "oauth": false,
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+Any other MCP client works the same way: Streamable HTTP, that URL, and the header when there is a token.
+
+To reach the merchants on the LXC instead of a local copy, use `https://191-96-88-152.sslip.io/mcp` with the server's `GATEWAY_TOKEN` (see [Protect the public URL](#protect-the-public-url)). A hosted assistant from another vendor, calling from its own cloud without a header, needs its range added in both places listed there.
 
 Claude Desktop is **not** an independent plan B: its custom connector also goes through Anthropic's cloud, so if the tunnel goes down, it goes down too.
 
@@ -238,25 +272,31 @@ Start from a known database (locally: `make db`, `make migrate`, `make seed`; on
 | "Table for 4 tonight at 8pm in Mulhouse" | `filters` passed without repeating them, times proposed, **confirmation requested**, booking, summary | ✅ | ✅ |
 | "Move it to 9pm" | Confirmation, then `update_reservation` | ✅ | ✅ |
 | "Cancel my booking" | Confirmation, then `cancel_reservation` | ✅ | ✅ |
-| "A vegan place with a terrace in Mulhouse" | No results, Claude offers to drop a filter | ✅ | ⏳ |
+| "Book a table at a vegan place with a terrace in Mulhouse" | No results, the assistant offers to drop a filter | ✅ (earlier wording) | ⏳ |
 | "Table for 8 at Le Petit Zinc" | Fallback link given (`party_too_large`) | ✅ | ✅ |
 | Le Petit Zinc down (`make outage`, or `set_status.py` on the LXC), then "Table for 2 at Le Petit Zinc" | Fallback link given (`agent_unavailable`); back to `live`, it works again without a restart | ✅ | ✅ |
 
-Claude Desktop ran on 2026-10-31 against the LXC. Its first try at the vegan scenario, worded "A vegan place with a terrace", never called the connector: Claude used its own place search and proposed restaurants in Basel, where it located the user. The `search_merchants` description now asks Claude to call it first; that wording is what the ⏳ retests. Name the city in demo prompts anyway: the demo restaurants are in Mulhouse.
+Claude Desktop ran on 2026-10-31 against the LXC, before the bridge to MATP. A booking through the bridge then passed on the LXC from Anthropic's cloud, with the Messages API connector rather than the Claude.ai app.
+
+Codex 0.165 and OpenCode 2.0.32 (with a free model that is neither Claude nor OpenAI's) ran the same day, against a local gateway with a token, over MATP. Both used the tools with no change to them: filters passed without being repeated, a summary and a question before each write, `via = assistant` in the database. Codex booked, moved a booking and got the fallback link for a table for 8. OpenCode booked and cancelled.
+
+Word the request as a booking. Asked for "A vegan place with a terrace", Claude Desktop and OpenCode searched on their own, and Codex asked for a city, then did the same. "Book a table at a vegan place with a terrace in Mulhouse" sent Codex to the connector, with no results and an offer to drop a filter. The Messages API connector used the tools with either wording. Name the city in demo prompts anyway: the demo restaurants are in Mulhouse.
 
 Plan B ran on 2026-10-31 with Claude Code, locally, mostly with Sonnet: `get_availability` took 11 to 28 ms server-side, and no guest name appeared in the INFO logs. It also validated two merchant-side scenarios: a cancellation by the restaurant, whose notice Claude relays, and a blocked slot, which Claude no longer offers. For Claude.ai, store a screenshot of each conversation in `assets/screenshots/`.
 
 Watch the confirmation: Claude's behaviour varies between conversations. With the first descriptions, it once booked as soon as the user picked a restaurant. With the current ones, it waited for the yes in 9 conversations out of 9 (Sonnet and Opus). In Claude.ai, check that no booking goes out before your "yes".
 
-Fallback links and the fixtures' websites point to `localhost` (`make sites`), so they only open on the machine serving those sites: the demo's. Claude notices: in Claude Desktop, it warned that the link probably won't open and suggested calling the restaurant. For a demo where the audience sees the link, the sites need a public URL (#25).
+Fallback links and the fixtures' websites point to `localhost` (`make sites`), so they only open on the machine serving those sites: the demo's. Assistants notice: in Claude Desktop, Claude warned that the link probably won't open and suggested calling the restaurant. For a demo where the audience sees the link, the sites need a public URL (#25).
 
 To simulate a slow agent, `CHAOS_DELAY_MS=3000` (with `CHAOS_MERCHANTS=le-petit-zinc` to target one merchant) triggers the 2 s timeout, then the fallback link.
 
 ## Protect the public URL
 
-### On the LXC: IP filter in Caddy
+### On the LXC: Caddy's filter
 
-Claude.ai calls connectors from Anthropic's outbound range, `160.79.104.0/21` ([official docs](https://platform.claude.com/docs/en/api/ip-addresses)). In `code/deploy/Caddyfile`, the `191-96-88-152.sslip.io` site only forwards requests from that range to the gateway (`remote_ip` matcher) and answers `403 Forbidden` to all others, before they reach uvicorn ([ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)). The connector stays on **No sign in**.
+Claude.ai calls connectors from Anthropic's outbound range, `160.79.104.0/21` ([official docs](https://platform.claude.com/docs/en/api/ip-addresses)), and can't send a token without the beta below. In `code/deploy/Caddyfile`, the `191-96-88-152.sslip.io` site forwards to the gateway requests from that range (`remote_ip` matcher) and requests with a bearer token, which the gateway checks. It answers `403 Forbidden` to all others, before they reach uvicorn ([ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md), [ADR-0013](../adr/0013-open-the-user-side-to-any-ai-assistant.md)). The Claude.ai connector stays on **No sign in**.
+
+The list of networks lives in two places, which must stay the same: the Caddyfile and `GATEWAY_TOKENLESS_NETWORKS` in the server's `.env`.
 
 Check after `make deploy`:
 
@@ -265,11 +305,11 @@ curl -i https://191-96-88-152.sslip.io/mcp   # from your machine: 403 Forbidden,
 ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152 'journalctl -u merchant-gateway --since "-5min"'   # no line for your request
 ```
 
-Then, from a Claude.ai conversation, the connector must still list its tools (step 5).
+Then, from a Claude.ai conversation, the connector must still list its tools (step 5). From your machine, with the server's token, `curl -i -H "Authorization: Bearer <token>" https://191-96-88-152.sslip.io/health` must answer `200`.
 
-To test without opening the URL, two options:
+To test without the token, two options:
 
-- **Local gateway**: `make gateway`, then Claude Code (plan B), MCP Inspector or the SDK client on `http://localhost:8001/mcp`.
+- **Local gateway**: `make gateway`, then any assistant on your machine, MCP Inspector or the SDK client on `http://localhost:8001/mcp`.
 - **The LXC's gateway, from the server**: you need the server's key. The SDK client, in the deployment's venv, calls the gateway on `127.0.0.1`, without going through Caddy:
 
   ```bash
@@ -285,15 +325,15 @@ To test without opening the URL, two options:
   asyncio.run(main())"'
   ```
 
-  An SSH tunnel (`ssh -L 8001:127.0.0.1:8001 …`) would be handier for Inspector or Claude Code, but `/etc/ssh/sshd_config.d/00-hardening.conf` sets `AllowTcpForwarding no` (`administratively prohibited`). The LXC is shared: don't change that setting without agreement.
+  An SSH tunnel (`ssh -L 8001:127.0.0.1:8001 …`) would be handier for Inspector or an assistant, but `/etc/ssh/sshd_config.d/00-hardening.conf` sets `AllowTcpForwarding no` (`administratively prohibited`). The LXC is shared: don't change that setting without agreement.
 
 ⚠️ If Anthropic changes its range, the connector breaks with a `403`: recheck the docs above and update the Caddyfile. The filter doesn't protect an ngrok URL (plan B): for that, see below.
 
 ### Token (`GATEWAY_TOKEN`)
 
-`GATEWAY_TOKEN` requires `Authorization: Bearer <token>` on every request except `/health`. Empty, the server is open to anyone who knows the URL.
+`GATEWAY_TOKEN` requires `Authorization: Bearer <token>` on every request except `/health`. Empty, the server is open to anyone who knows the URL. `GATEWAY_TOKENLESS_NETWORKS` (a JSON list) lets callers from those networks omit the header; a token they do send is still checked. Without `GATEWAY_TOKEN`, the gateway refuses to start with that list.
 
-⚠️ On the Claude.ai side, header authentication is **in beta, limited to some organizations**. Without a **Request headers** section in the dialog, you don't have access: if `GATEWAY_TOKEN` is set, the connector won't be able to connect.
+⚠️ On the Claude.ai side, header authentication is **in beta, limited to some organizations**. Without a **Request headers** section in the dialog, you don't have access: if `GATEWAY_TOKEN` is set, the connector can only connect from a network in `GATEWAY_TOKENLESS_NETWORKS`.
 
 If the section is there:
 
@@ -313,7 +353,7 @@ With ngrok and without access to the beta, two options:
 | Symptom | Cause | Fix |
 |---|---|---|
 | `421 Invalid Host header` | Tunnel domain missing from `allowed_hosts` | Fix `GATEWAY_PUBLIC_URL`, restart `make gateway` |
-| `403 Forbidden` (only a `server: Caddy` header) | Request from outside Anthropic's range, refused by Caddy on the LXC | Expected from your machine: local gateway, or SDK client on the server. If Claude.ai gets it, recheck Anthropic's range and the Caddyfile |
+| `403 Forbidden` (only a `server: Caddy` header) | Request without a bearer token from outside Anthropic's range, refused by Caddy on the LXC | Expected from your machine: send the token, or use a local gateway, or the SDK client on the server. If Claude.ai gets it, recheck Anthropic's range and the Caddyfile |
 | `403 Invalid Origin header` | `Origin` sent outside `ALLOWED_ORIGINS` | Add it in `gateway/server.py`. The refused name is in the server logs |
 | `agent_unavailable` without a link, `/health` at `503` | Postgres unreachable: wrong `DATABASE_URL`, or database not migrated | Fix `.env`, run the migrations |
 | `401 Unauthorized` | Token missing, wrong, or without the `Bearer ` prefix | Fix the header, or empty `GATEWAY_TOKEN` |
@@ -326,8 +366,8 @@ With ngrok and without access to the beta, two options:
 ## Decisions
 
 - **SDK v2 kept** (`mcp` 2.3.0), no fallback to `mcp<2`. Validated from Claude.ai and Claude Code.
-- **Public LXC rather than a tunnel**: a fixed URL, and the demo depends neither on a Mac nor on the hackathon Wi-Fi. In return, a change must be deployed before Claude.ai sees it. ngrok stays the documented alternative.
-- **IP filter rather than token on the LXC**: Claude.ai can't send `GATEWAY_TOKEN` without the beta. Only Anthropic's range gets past Caddy; scans stop before uvicorn ([ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)).
+- **Public LXC rather than a tunnel**: a fixed URL, and the demo depends neither on a Mac nor on the hackathon Wi-Fi. In return, a change must be deployed before hosted assistants see it. ngrok stays the documented alternative.
+- **IP filter plus token on the LXC**: Claude.ai can't send `GATEWAY_TOKEN` without the beta, so its range passes without one. Every other assistant sends the token. Scans without one stop before uvicorn ([ADR-0010](../adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md), [ADR-0013](../adr/0013-open-the-user-side-to-any-ai-assistant.md)).
 - **`sslip.io`**: a free public name to get a certificate, without buying a domain. It's a third-party service: a real domain would be safer for the demo.
 - **Bound to `127.0.0.1`**: only Caddy reaches the server, which isn't exposed directly. Issue #11 plans `0.0.0.0`; only switch if a container requires it.
 - **A single uvicorn worker**: sessions of clients on the older protocol (before 2026-07-28) live in one process's memory.

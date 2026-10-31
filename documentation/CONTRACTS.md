@@ -34,7 +34,7 @@ Optional profile and location fields default to `None`. Serialize card payloads
 with `model_dump(mode="json")`, preserving nullable fields for the TypeScript
 output types. Search filters deliberately accept unknown tag strings so discovery
 can report them in `ignored_filters`; unknown filter names are rejected, because
-Claude reads the tool's schema.
+the assistant reads the tool's schema.
 
 `BuildAgentInput.website` accepts any HTTP(S) URL, including `localhost` for the
 demo site. The crawler refuses private addresses unless `CRAWL_ALLOW_PRIVATE=1` (#21),
@@ -57,7 +57,7 @@ but rejects `format: uri` (from `HttpUrl`) and any property missing from `requir
 
 ## Gateway tools
 
-Each tool returns `<Result> | ToolError`, as a normal result that Claude can read, so that it
+Each tool returns `<Result> | ToolError`, as a normal result that the assistant can read, so that it
 sees `fallback_url`. A `ToolError` never arrives as a protocol error or an `isError` result.
 Because the return type is a union, the SDK wraps `structuredContent` as `{"result": ...}`; the
 text content is the plain JSON object.
@@ -68,7 +68,7 @@ text content is the plain JSON object.
   merchant, it answers `agent_unavailable` with that merchant's `fallback_url`. Otherwise a
   request for that restaurant would silently propose others.
 - Without the registry there is no URL to give: `agent_unavailable` has no `fallback_url`.
-- A timeout on a write may hit after the COMMIT, so its message asks Claude to check
+- A timeout on a write may hit after the COMMIT, so its message asks the assistant to check
   `get_my_reservations` before retrying.
 - Each call logs one JSON line: `{"event": "tool_call", "tool", "merchant", "latency_ms",
   "outcome"}`, where `outcome` is `ok` or the error code. Guest names never appear at INFO.
@@ -143,7 +143,7 @@ live booking also appears in tonight's reservations.
 - `POST /public/{slug}/reservations` (the showcase site's form) with `{starts_at,
   party_size, guest_name, idempotency_key}`: `201` + `{"reservation": Reservation}`
   booked `via="website"`. A merchant still `building` is `not_found`; a `down` one keeps
-  taking bookings here (the outage only stops Claude, at the gateway). Errors use the
+  taking bookings here (the outage only stops assistants, at the gateway). Errors use the
   `ToolError` body with `404` (`not_found`), `409`
   (`slot_unavailable`), `422` (`party_too_large`, `invalid_input`), `503`
   (`agent_unavailable`). CORS allows `PUBLIC_CORS_ORIGINS` only (default
