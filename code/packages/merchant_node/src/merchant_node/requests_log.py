@@ -13,10 +13,10 @@ with a warning, when too many are already waiting.
 import logging
 from datetime import timedelta
 
-from sqlalchemy import delete, func, insert, literal, select
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Text, delete, func, insert, literal, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from batp.codec import encode
 from batp.messages import AgentIdentity, Request, Response
 from core.db import agent_requests_t, make_engine, merchants_t
 
@@ -63,8 +63,8 @@ class RequestLog:
             literal(agent.name),
             literal(request.intent),
             literal(response.status),
-            literal(_frame(request), JSONB),
-            literal(_frame(response), JSONB),
+            literal(_frame(request), Text),
+            literal(_frame(response), Text),
         ).where(merchants_t.c.slug == request.merchant, merchants_t.c.status.in_(PUBLISHED))
         columns = ["merchant_slug", "agent_name", "intent", "status", "request", "response"]
         async with self.engine.begin() as conn:
@@ -75,6 +75,7 @@ class RequestLog:
             )
 
 
-def _frame(message: Request | Response) -> dict[str, object]:
-    """The frame as it was on the wire (`batp.codec.encode`)."""
-    return message.model_dump(mode="json", exclude_none=True)
+def _frame(message: Request | Response) -> str:
+    """The frame's line, without its LF: the response exactly as sent, the request as the node
+    read it (`batp.codec.encode`: compact, unknown fields left out)."""
+    return encode(message).decode().removesuffix("\n")

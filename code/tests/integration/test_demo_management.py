@@ -1,5 +1,6 @@
 """La Graine Verte's management data on a real Postgres (#131): Home's numbers, once."""
 
+import json
 from collections.abc import AsyncIterator
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -100,7 +101,8 @@ async def test_a_seed_shows_the_mockups_numbers_once_and_the_live_booking_is_r_0
         ("2026-11-14T11:04:00+01:00", "AVAILABILITY", 413),
         ("2026-11-14T13:37:00+01:00", "BOOK", 409),
     ]
-    assert refused[1].request["params"]["starts_at"] == "2026-11-14T20:30:00+01:00"
+    # Frames are stored as the text that was on the wire (#146), shifted to the seed's days.
+    assert json.loads(refused[1].request)["params"]["starts_at"] == "2026-11-14T20:30:00+01:00"
 
     agent = PgAgentService(engine, tz=ZURICH, clock=lambda: NOW)
     kim = await agent.create_reservation(

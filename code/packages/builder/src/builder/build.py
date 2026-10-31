@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -40,11 +41,15 @@ STEP_FAILED = "Something went wrong while creating your agent."
 class BeingBuilt(InvalidInput):
     """The website has an agent waiting to be published, less than `ABANDONED_AFTER` old."""
 
-    def __init__(self, slug: str, website: str, free_at: datetime) -> None:
+    def __init__(
+        self, slug: str, website: str, free_at: datetime, tz: ZoneInfo | None = None
+    ) -> None:
+        # On the merchant's clock, as everything else they read (AGENTS.md §13, #184).
+        local = free_at.astimezone(tz or UTC)
+        when = f"{local:%Y-%m-%d %H:%M}" + ("" if tz else " UTC")
         super().__init__(
             f"{website} already has an agent waiting to be published ({slug}). Its owner can "
-            f"finish it from their private link; anyone else can build it again after "
-            f"{free_at:%Y-%m-%d %H:%M} UTC."
+            f"finish it from their private link; anyone else can build it again after {when}."
         )
         self.slug = slug
 
@@ -79,6 +84,7 @@ class Builder:
         cache: BuildCache | None = None,
         crawl: Crawl = crawl,
         generated_dir: Path | None = GENERATED_DIR,
+        tz: ZoneInfo | None = None,
     ) -> None:
         self._llm = llm
         self._engine = engine
@@ -87,6 +93,7 @@ class Builder:
         self._cache = cache or BuildCache()
         self._crawl = crawl
         self._generated_dir = generated_dir
+        self._tz = tz  # the merchants' zone, for the times they read; None: UTC
 
     async def build_agent(
         self, website: str, description: str, on_event: StepEmitter
@@ -164,7 +171,7 @@ class Builder:
     async def _extract_steps(
         self, site: str, crawled: CrawlResult, description: str, on_event: StepEmitter
     ) -> ExtractionResult:
-        key = extraction_key(site, description, self._model, PROMPT_VERSION)
+        key = extraction_key(crawled, description, self._model, PROMPT_VERSION)
         cached = self._cache.get_extraction(key)
         log.info("builder_cache", extra={"stage": "extract", "hit": cached is not None})
         current: list[tuple[StepName, float]] = [("extract", time.monotonic())]
@@ -247,7 +254,7 @@ class Builder:
                 raise AlreadyProvisioned(slug, site)
             free_at = created_at + ABANDONED_AFTER
             if datetime.now(UTC) < free_at:
-                raise BeingBuilt(slug, site, free_at)
+                raise BeingBuilt(slug, site, free_at, self._tz)
             log.info("build_replaced", extra={"merchant": slug})
             await deprovision(slug, engine=self._engine)
 

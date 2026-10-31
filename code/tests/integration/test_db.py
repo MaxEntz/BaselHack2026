@@ -207,8 +207,8 @@ async def test_registry_starts_in_building_and_cascades_to_notices_keys_and_requ
                 agent_name="Claude",
                 intent="PING",
                 status=200,
-                request={},
-                response={},
+                request="{}",
+                response="{}",
             )
         )
     async with engine.begin() as conn:

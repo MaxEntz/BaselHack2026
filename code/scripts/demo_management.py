@@ -284,8 +284,8 @@ async def seed_management(engine: AsyncEngine, today: date) -> str:
                 "agent_name": r["agent_name"],
                 "intent": r["intent"],
                 "status": r["status"],
-                "request": json.loads(moved(r["request"], shift, tz)),
-                "response": json.loads(moved(r["response"], shift, tz)),
+                "request": moved(r["request"], shift, tz),
+                "response": moved(r["response"], shift, tz),
             }
             for r in reversed(data["agent_requests"])  # oldest first, so ids follow time
         ]
