@@ -126,18 +126,19 @@ export type ActivityKind =
   | "paused"
   | "resumed";
 export type ProblemCode =
+  | "no_services"
+  | "service_incomplete"
   | "service_too_short"
   | "services_overlap"
   | "no_tables"
   | "duplicate_table"
   | "table_without_seats"
+  | "too_many_seats"
   | "table_in_use"
   | "table_too_small"
   | "group_too_small"
   | "name_required"
   | "booking_page_off_site";
-
-export type Owner = { name: string; first_name: string };
 
 // GET /merchants/<slug>
 export type MerchantOverview = {
@@ -151,8 +152,11 @@ export type MerchantOverview = {
   timezone: string;
   agent_address: string;
   mcp_url: string;
+  // Absolute: https://<web host>/manage/<slug>.
   management_url: string;
-  owner: Owner | null;
+  // What the owner asked to be called; null until known.
+  owner_name: string | null;
+  // Built from one of the demo sites (code/sites/).
   demo: boolean;
 };
 
@@ -180,11 +184,12 @@ export type DayGuests = { date: string; guests: number };
 export type ChannelCount = { via: Via; bookings: number };
 export type RoomTable = { label: string; seats: number; booked: boolean };
 export type Room = {
-  service: Service | null;
+  service: Service;
   seats: number;
   guests: number;
   tables: RoomTable[];
   party_size: number;
+  // Never a blocked start.
   next_free: string | null;
   largest_group: number;
 };
@@ -192,12 +197,13 @@ export type ActivityItem = {
   id: number;
   at: string;
   kind: ActivityKind;
+  // Worded by the server when read, relative to the dashboard's date.
   text: string;
   source: Via;
   reservation_id: string | null;
 };
 
-// GET /merchants/<slug>/dashboard?date=
+// GET /merchants/<slug>/dashboard?date=, `date` being the merchant's today.
 export type Dashboard = {
   date: string;
   history: DayHistory[];
@@ -211,6 +217,8 @@ export type Dashboard = {
 export type ReservationDay = {
   date: string;
   services: Service[];
+  // Every start of the day on the grid, past ones included.
+  starts: string[];
   slot_length_min: number;
   largest_group: number;
   blocked: string[];
@@ -254,9 +262,14 @@ export type GuestRow = {
 export type GuestsOutput = { guests: GuestRow[] };
 export type SearchOutput = { reservations: ManagedReservation[] };
 
-// GET/PUT …/hours, …/tables, …/rules, …/settings
+// GET/PUT …/hours, …/tables, …/rules, …/settings. The form bodies are
+// structural: the server checks their rules and answers the `Problem`.
 export type Hours = { services: Service[] };
+export type ServiceDraft = { start?: string | null; end?: string | null };
+export type HoursInput = { services: ServiceDraft[] };
 export type FloorPlanOutput = { tables: TableSpec[] };
+export type TableDraft = { label: string; seats: number };
+export type FloorPlanInput = { tables: TableDraft[] };
 export type Rules = {
   max_party_size: number;
   slot_length_min: number;
@@ -304,13 +317,19 @@ export type AgentRequest = {
 };
 export type AgentRequests = { requests: AgentRequest[] };
 
-// The error body of every /merchants/<slug> route.
+// The error body of every /merchants/<slug> route: the tools' codes (§8.4)
+// and the management site's own.
 export type ErrorCode =
   | "agent_unavailable"
   | "party_too_large"
   | "slot_unavailable"
   | "not_found"
   | "invalid_input";
+export type ManagementErrorCode =
+  | ErrorCode
+  | "not_signed_in"
+  | "other_merchant"
+  | "not_built_yet";
 export type Problem = {
   code: ProblemCode;
   services?: number[];
@@ -319,7 +338,7 @@ export type Problem = {
   seats?: number | null;
 };
 export type ManagementError = {
-  error: ErrorCode;
+  error: ManagementErrorCode;
   message: string;
   fallback_url?: string | null;
   problem?: Problem | null;

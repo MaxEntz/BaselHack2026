@@ -1,3 +1,4 @@
+import type { LiveHandlers } from "../chat/client.ts";
 import {
   ManagementRequestError,
   type ManagementClient,
@@ -7,12 +8,13 @@ import type {
   ActivityKind,
   DaySlot,
   ErrorCode,
+  GeneratedTool,
   ManagedReservation,
   ManagementFixture,
   Problem,
   Room,
   Service,
-  TableSpec,
+  Tag,
   Via,
 } from "../types.ts";
 
@@ -26,25 +28,57 @@ const ROOM_PARTY = 4;
 const SEARCH_LIMIT = 8;
 const REQUESTS_LIMIT = 10;
 const ACTIVITY_LIMIT = 6;
+// The bounds of core/models.py and core/forms.py.
+const MAX_GUEST_TEXT = 200;
+const MAX_SHORT_TEXT = 80;
+const MAX_POLICY_TEXT = 500;
+const MAX_TABLE_LABEL = 20;
+const MAX_SERVICES = 8;
+const MAX_TABLES = 100;
+const MAX_DAY_STARTS = 48;
+const MAX_SEATS = 1000;
+const TAGS: readonly Tag[] = [
+  "gluten-free",
+  "vegetarian",
+  "vegan",
+  "halal",
+  "kosher",
+  "terrace",
+  "kid-friendly",
+];
+const PRICES = ["€", "€€", "€€€", "€€€€"];
+// gateway/merchant_server.py: an AI agent never reads the merchant's own policy.
+const POLICY_ELSEWHERE = "see the restaurant's own website";
+const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+// Unicode category Cc, which core/models.py refuses in any text.
+// oxlint-disable-next-line no-control-regex -- finding them is the point
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 const NOT_FOUND = "No booking with that reference.";
 const TAKEN = "That time is no longer free.";
 
+type Options = { latencyMs?: number; liveBookingDelayMs?: number };
+
 // The management site against the demo fixture, with no platform (VITE_MOCK=1).
 // It applies the server's rules (#133, #134), not the mockup's: past times are
-// refused. The clock starts at `fixture.now` and runs; local times keep the
-// offset of `fixture.now`, as the demo week has no change of clock.
+// refused, bodies hold only their input's fields, forms answer the `Problem`.
+// The clock starts at `fixture.now` and runs; local times keep the offset of
+// `fixture.now`, as the demo week has no change of clock.
 export function createMockManagementClient(
   fixture: ManagementFixture,
-  { latencyMs = LATENCY_MS, liveBookingDelayMs = LIVE_BOOKING_DELAY_MS } = {},
+  { latencyMs = LATENCY_MS, liveBookingDelayMs = LIVE_BOOKING_DELAY_MS }: Options = {},
 ): ManagementClient {
+  const offset = fixture.now.match(/[+-]\d{2}:\d{2}$/)?.[0];
+  if (!offset) throw new Error("fixture.now needs a ±HH:MM offset");
   const started = Date.now();
-  const offset = fixture.now.slice(-6);
   const today = fixture.now.slice(0, 10);
   let data = structuredClone(fixture);
   let lastActivity = Math.max(0, ...data.activity.map((item) => item.id));
-  const keys = new Map<string, string>();
+  const keys = new Map<string, { payload: string; id: string }>();
   const baseline = liveByVia(today);
-  let notified = false;
+  const listeners = new Set<LiveHandlers>();
+  let liveTimer: ReturnType<typeof setTimeout> | undefined;
+  let delivered = false;
 
   const now = () => new Date(Date.parse(fixture.now) + Date.now() - started);
   const instant = (date: string, time: string) => `${date}T${time}:00${offset}`;
@@ -59,28 +93,58 @@ export function createMockManagementClient(
     return new Promise((resolve) => setTimeout(() => resolve(copy), latencyMs));
   }
 
-  function fail(
-    status: number,
-    error: ErrorCode,
-    message: string,
-    problem?: Problem,
-  ): never {
+  function fail(status: number, error: ErrorCode, message: string, problem?: Problem): never {
     const fallback =
       error === "party_too_large" ? { fallback_url: data.rules.fallback_url } : {};
-    throw new ManagementRequestError(status, { error, message, ...fallback, problem });
+    const details = problem ? { problem } : {};
+    throw new ManagementRequestError(status, { error, message, ...fallback, ...details });
   }
 
-  function invalid(code: Problem["code"], message: string, extra: Partial<Problem> = {}): never {
-    return fail(422, "invalid_input", message, { code, ...extra });
+  function invalid(message: string): never {
+    return fail(422, "invalid_input", message);
   }
 
-  function log(kind: ActivityKind, text: string, source: Via, reservation: string | null = null) {
+  function problem(message: string, details: Problem): never {
+    return fail(422, "invalid_input", message, details);
+  }
+
+  // The platform's models forbid unknown fields.
+  function exact(body: object, allowed: readonly string[]) {
+    const extra = Object.keys(body).filter((key) => !allowed.includes(key));
+    if (extra.length) invalid(`${extra.join(", ")}: Extra inputs are not permitted`);
+  }
+
+  // A stripped text without a control character; blank is null unless required.
+  function text(value: unknown, field: string, max: number, required: boolean): string | null {
+    if (value === null || value === undefined) {
+      return required ? invalid(`${field}: Field required`) : null;
+    }
+    if (typeof value !== "string") return invalid(`${field}: a string is required`);
+    const trimmed = value.trim();
+    if (CONTROL.test(trimmed)) invalid(`${field}: must not contain a control character`);
+    if (trimmed.length > max) invalid(`${field}: at most ${max} characters`);
+    if (!trimmed && required) invalid(`${field}: must not be blank`);
+    return trimmed || null;
+  }
+
+  function required(value: unknown, field: string, max: number): string {
+    return text(value, field, max, true) ?? invalid(`${field}: Field required`);
+  }
+
+  function aware(value: unknown): string {
+    if (typeof value !== "string" || !INSTANT.test(value) || Number.isNaN(Date.parse(value))) {
+      return invalid("starts_at: a time with its UTC offset is required");
+    }
+    return value;
+  }
+
+  function log(kind: ActivityKind, line: string, source: Via, reservation: string | null = null) {
     lastActivity += 1;
     const item: ActivityItem = {
       id: lastActivity,
       at: nowIso(),
       kind,
-      text,
+      text: line,
       source,
       reservation_id: reservation,
     };
@@ -98,7 +162,23 @@ export function createMockManagementClient(
   }
 
   function largestGroup(): number {
-    return Math.min(data.rules.max_party_size, Math.max(...data.tables.map((table) => table.seats)));
+    const largestTable = Math.max(...data.tables.map((table) => table.seats));
+    return Math.min(data.rules.max_party_size, largestTable);
+  }
+
+  function services(): Service[] {
+    return data.hours.services.toSorted((a, b) => a.start.localeCompare(b.start));
+  }
+
+  function startsOf(): string[] {
+    const starts: string[] = [];
+    for (const service of services()) {
+      const last = minutes(service.end) - LAST_SEATING_MIN;
+      for (let start = minutes(service.start); start <= last; start += STEP_MIN) {
+        starts.push(hhmm(start));
+      }
+    }
+    return starts;
   }
 
   function slotsOf(date: string, partySize: number, ignore?: string): DaySlot[] {
@@ -107,20 +187,17 @@ export function createMockManagementClient(
     const live = data.reservations.filter(
       (b) => b.date === date && b.status === "confirmed" && b.id !== ignore,
     );
-    // Smallest fitting table first (AGENTS.md §6), in floor-plan order among equals.
+    // Smallest fitting table, then label (core/availability.py `pick_table`).
     const fitting =
       partySize > data.rules.max_party_size
         ? []
         : data.tables
             .filter((table) => table.seats >= partySize)
-            .toSorted((a, b) => a.seats - b.seats);
-    const slots: DaySlot[] = [];
-    for (const service of data.hours.services) {
-      const last = minutes(service.end) - LAST_SEATING_MIN;
-      for (let start = minutes(service.start); start <= last; start += STEP_MIN) {
-        const time = hhmm(start);
-        const startsAt = instant(date, time);
-        if (isPast(startsAt)) continue;
+            .toSorted((a, b) => a.seats - b.seats || (a.label < b.label ? -1 : 1));
+    return startsOf()
+      .filter((time) => !isPast(instant(date, time)))
+      .map((time) => {
+        const start = minutes(time);
         const table = fitting.find(
           (candidate) =>
             !live.some(
@@ -130,36 +207,32 @@ export function createMockManagementClient(
                 start < minutes(b.time) + length,
             ),
         );
-        slots.push({
-          starts_at: startsAt,
+        return {
+          starts_at: instant(date, time),
           time,
           until: hhmm(start + length),
           table: table ?? null,
           blocked: blocked.has(time),
-        });
-      }
-    }
-    return slots;
+        };
+      });
   }
 
   function room(): Room {
     const clock = local(now(), data.merchant.timezone);
-    const services = data.hours.services.toSorted((a, b) => a.start.localeCompare(b.start));
+    const sorted = services();
     const service =
-      services.find((s) => minutes(s.end) > minutes(clock.time)) ?? services.at(-1) ?? null;
-    const within = (time: string, s: Service) =>
-      minutes(time) >= minutes(s.start) && minutes(time) < minutes(s.end);
-    const live = service
-      ? data.reservations.filter(
-          (b) => b.date === clock.date && b.status === "confirmed" && within(b.time, service),
-        )
-      : [];
+      sorted.find((s) => minutes(s.end) > minutes(clock.time)) ?? sorted[sorted.length - 1];
+    const within = (time: string) =>
+      minutes(time) >= minutes(service.start) && minutes(time) < minutes(service.end);
+    const live = data.reservations.filter(
+      (b) => b.date === clock.date && b.status === "confirmed" && within(b.time),
+    );
     const booked = new Set(live.map((b) => b.table_label));
     const largest = largestGroup();
     const partySize = Math.min(ROOM_PARTY, largest);
-    const next = service
-      ? slotsOf(clock.date, partySize).find((s) => !s.blocked && s.table && within(s.time, service))
-      : undefined;
+    const next = slotsOf(clock.date, partySize).find(
+      (s) => !s.blocked && s.table && within(s.time),
+    );
     return {
       service,
       seats: data.tables.reduce((sum, table) => sum + table.seats, 0),
@@ -169,6 +242,30 @@ export function createMockManagementClient(
       next_free: next?.time ?? null,
       largest_group: largest,
     };
+  }
+
+  // What an AI agent reads first on /m/<slug>/mcp (agent/templates/restaurant.json).
+  function tools(): GeneratedTool[] {
+    const { name, city } = data.settings;
+    const hours = services()
+      .map((s) => `${s.start}-${s.end}`)
+      .join(", ");
+    const groups = data.rules.max_party_size;
+    return [
+      {
+        name: "get_availability",
+        description: `Check free tables at ${name} (${city ?? "unknown city"}). Services: ${hours}. Groups up to ${groups}.`,
+      },
+      {
+        name: "create_reservation",
+        description: `Book a table at ${name}. Always confirm with the guest first.`,
+      },
+      { name: "update_reservation", description: `Move or resize a booking at ${name}.` },
+      {
+        name: "cancel_reservation",
+        description: `Cancel a booking at ${name}. Policy: ${POLICY_ELSEWHERE}.`,
+      },
+    ];
   }
 
   function find(id: string): ManagedReservation {
@@ -188,8 +285,10 @@ export function createMockManagementClient(
     return `${booking.id}, ${booking.guest_name}, ${guests(booking.party_size)}, ${day} ${booking.time}`;
   }
 
+  // The live booking's reference stays free until it arrives.
   function nextId(): string {
-    const last = Math.max(0, ...data.reservations.map((b) => Number(b.id.slice(2))));
+    const ids = [...data.reservations.map((b) => b.id), data.live_booking.reservation.id];
+    const last = Math.max(0, ...ids.map((id) => Number(id.slice(2))));
     return `R-${String(last + 1).padStart(3, "0")}`;
   }
 
@@ -200,64 +299,43 @@ export function createMockManagementClient(
       .toSorted((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
   }
 
-  function checkServices(services: Service[]) {
-    if (services.length === 0) fail(422, "invalid_input", "Keep at least one service.");
-    services.forEach((service, index) => {
-      if (minutes(service.end) - minutes(service.start) < LAST_SEATING_MIN) {
-        invalid("service_too_short", "A service lasts at least an hour.", { services: [index] });
-      }
-    });
-    services.forEach((a, i) =>
-      services.forEach((b, j) => {
-        if (i < j && a.start < b.end && b.start < a.end) {
-          invalid("services_overlap", "Services must not overlap.", { services: [i, j] });
-        }
-      }),
-    );
-  }
-
-  function checkTables(tables: TableSpec[]) {
-    if (tables.length === 0) invalid("no_tables", "At least one table is required.");
-    const labels = new Set<string>();
-    for (const table of tables) {
-      if (labels.has(table.label)) {
-        invalid("duplicate_table", "Table labels must be unique.", { table: table.label });
-      }
-      labels.add(table.label);
-      if (!(table.seats >= 1)) {
-        invalid("table_without_seats", "Every table needs a seat.", { table: table.label });
-      }
-    }
-    for (const booking of data.reservations) {
-      const kept = tables.find((table) => table.label === booking.table_label);
-      const guest = booking.guest_name;
-      if (!kept) {
-        invalid("table_in_use", "A booking refers to this table.", {
-          table: booking.table_label,
-          guest,
-        });
-      }
-      const ahead = booking.status === "confirmed" && !isPast(instant(booking.date, booking.time));
-      if (ahead && kept.seats < booking.party_size) {
-        invalid("table_too_small", "A booking needs more seats at this table.", {
-          table: kept.label,
-          guest,
-          seats: booking.party_size,
-        });
-      }
-    }
-  }
-
   function blockedAhead() {
     return data.blocked
       .filter((b) => !isPast(b.starts_at))
       .toSorted((a, b) => a.starts_at.localeCompare(b.starts_at));
   }
 
+  function withTools() {
+    data = { ...data, rules: { ...data.rules, tools: tools() } };
+  }
+
+  // The agent's booking of the demo, once for every listener: the table is
+  // picked again if the merchant took it meanwhile.
+  function deliverLiveBooking() {
+    delivered = true;
+    const event = data.live_booking;
+    const { reservation } = event;
+    const slot = slotsOf(event.date, reservation.party_size).find(
+      (s) => s.time === reservation.time,
+    );
+    if (!slot?.table || slot.blocked) return;
+    const booked = { ...event, reservation: { ...reservation, table_label: slot.table.label } };
+    const booking: ManagedReservation = {
+      ...booked.reservation,
+      date: booked.date,
+      cancelled_by: null,
+      created_at: nowIso(),
+    };
+    data = { ...data, reservations: [...data.reservations, booking] };
+    log("new_booking", summary(booking), booked.via, booking.id);
+    for (const listener of listeners) listener.onEvent(structuredClone(booked));
+  }
+
   return {
     merchant: () => respond(data.merchant),
 
-    dashboard() {
+    async dashboard(_slug, date) {
+      if (date !== today) invalid("date: must be the merchant's today");
       const current = liveByVia(today);
       const vias = new Set<Via>([...data.channels.map((c) => c.via), ...current.keys()]);
       const channels = [...vias].map((via) => ({
@@ -267,8 +345,8 @@ export function createMockManagementClient(
           (current.get(via) ?? 0) -
           (baseline.get(via) ?? 0),
       }));
-      const day = (date: string) => data.reservations.filter((b) => b.date === date);
-      const live = (date: string) => day(date).filter((b) => b.status === "confirmed");
+      const day = (d: string) => data.reservations.filter((b) => b.date === d);
+      const live = (d: string) => day(d).filter((b) => b.status === "confirmed");
       const sum = (bookings: ManagedReservation[]) =>
         bookings.reduce((total, b) => total + b.party_size, 0);
       const history = data.history.map((entry) =>
@@ -277,14 +355,14 @@ export function createMockManagementClient(
               date: today,
               bookings: live(today).length,
               guests: sum(live(today)),
-              agent_guests: sum(live(today).filter((b) => b.via === "claude")),
+              agent_guests: sum(live(today).filter((b) => throughAgent(b.via))),
               cancelled: day(today).length - live(today).length,
             }
           : entry,
       );
       const nextDays = Array.from({ length: DAYS_AHEAD }, (_, index) => {
-        const date = addDays(today, index);
-        return { date, guests: sum(live(date)) };
+        const d = addDays(today, index);
+        return { date: d, guests: sum(live(d)) };
       });
       return respond({
         date: today,
@@ -299,33 +377,49 @@ export function createMockManagementClient(
     reservations: (_slug, date) =>
       respond({
         date,
-        services: data.hours.services,
+        services: services(),
+        starts: startsOf(),
         slot_length_min: data.rules.slot_length_min,
         largest_group: largestGroup(),
-        blocked: data.blocked.filter((b) => b.date === date).map((b) => b.time),
+        blocked: data.blocked
+          .filter((b) => b.date === date)
+          .map((b) => b.time)
+          .toSorted(),
         reservations: data.reservations
           .filter((b) => b.date === date)
           .toSorted((a, b) => a.time.localeCompare(b.time) || a.id.localeCompare(b.id)),
       }),
 
-    async addBooking(_slug, { starts_at, party_size, guest_name, idempotency_key }) {
-      const replayed = keys.get(idempotency_key);
-      if (replayed) return respond(find(replayed));
-      const name = guest_name.trim();
-      if (!name) fail(422, "invalid_input", "Add the guest's name.");
-      if (!(party_size >= 1)) invalid("group_too_small", "A booking needs at least one guest.");
-      if (party_size > largestGroup()) {
+    async addBooking(_slug, body) {
+      exact(body, ["starts_at", "party_size", "guest_name", "idempotency_key"]);
+      const startsAt = aware(body.starts_at);
+      const name = required(body.guest_name, "guest_name", MAX_GUEST_TEXT);
+      const key = required(body.idempotency_key, "idempotency_key", MAX_GUEST_TEXT);
+      const partySize = body.party_size;
+      if (!Number.isInteger(partySize) || partySize < 1) {
+        invalid("party_size: Input should be greater than 0");
+      }
+      const payload = JSON.stringify([startsAt, partySize, name]);
+      const replayed = keys.get(key);
+      if (replayed) {
+        if (replayed.payload !== payload) {
+          invalid("idempotency_key reused with different parameters");
+        }
+        return respond(find(replayed.id));
+      }
+      if (isPast(startsAt)) fail(409, "slot_unavailable", "That time has passed.");
+      if (partySize > largestGroup()) {
         fail(422, "party_too_large", `Groups of up to ${largestGroup()} can book here.`);
       }
-      const { date, time } = local(new Date(starts_at), data.merchant.timezone);
-      const slot = slotsOf(date, party_size).find((s) => s.time === time);
+      const { date, time } = local(new Date(startsAt), data.merchant.timezone);
+      const slot = slotsOf(date, partySize).find((s) => s.time === time);
       if (!slot?.table || slot.blocked) fail(409, "slot_unavailable", TAKEN);
       const booking: ManagedReservation = {
         id: nextId(),
         date,
         time,
         guest_name: name,
-        party_size,
+        party_size: partySize,
         table_label: slot.table.label,
         via: "merchant",
         status: "confirmed",
@@ -333,16 +427,24 @@ export function createMockManagementClient(
         created_at: nowIso(),
       };
       data = { ...data, reservations: [...data.reservations, booking] };
-      keys.set(idempotency_key, booking.id);
+      keys.set(key, { payload, id: booking.id });
       log("new_booking", summary(booking), "merchant", booking.id);
       return respond(booking);
     },
 
-    async moveBooking(_slug, id, { starts_at }) {
+    async moveBooking(_slug, id, body) {
+      exact(body, ["starts_at", "idempotency_key"]);
+      const startsAt = aware(body.starts_at);
+      required(body.idempotency_key, "idempotency_key", MAX_GUEST_TEXT);
       const booking = find(id);
-      if (booking.status === "cancelled") fail(409, "slot_unavailable", "This booking is cancelled.");
-      const { date, time } = local(new Date(starts_at), data.merchant.timezone);
-      if (date !== booking.date) fail(422, "invalid_input", "A booking moves within its day.");
+      if (booking.status === "cancelled") {
+        fail(409, "slot_unavailable", "This booking is cancelled.");
+      }
+      if (isPast(instant(booking.date, booking.time))) {
+        fail(409, "slot_unavailable", "This booking has already started.");
+      }
+      const { date, time } = local(new Date(startsAt), data.merchant.timezone);
+      if (date !== booking.date) invalid("A booking moves within its day.");
       const slot = slotsOf(date, booking.party_size, booking.id).find((s) => s.time === time);
       if (!slot?.table || slot.blocked) fail(409, "slot_unavailable", TAKEN);
       const moved = { ...booking, time, table_label: slot.table.label };
@@ -357,7 +459,8 @@ export function createMockManagementClient(
         const outcome = booking.cancelled_by === "guest" ? "guest_cancelled" : "already_cancelled";
         return respond({ reservation: booking, outcome });
       }
-      const ends = Date.parse(instant(booking.date, booking.time)) + data.rules.slot_length_min * 60_000;
+      const ends =
+        Date.parse(instant(booking.date, booking.time)) + data.rules.slot_length_min * 60_000;
       const outcome =
         ends <= now().getTime() ? "ended" : booking.via === "merchant" ? "own_booking" : "notified";
       const cancelled: ManagedReservation = {
@@ -382,9 +485,12 @@ export function createMockManagementClient(
         const key = fold(booking.guest_name);
         if (!key.includes(wanted)) continue;
         const row = rows.get(key);
-        rows.set(key, row ? { ...row, bookings: row.bookings + 1 } : { first: booking, bookings: 1 });
+        rows.set(
+          key,
+          row ? { ...row, bookings: row.bookings + 1 } : { first: booking, bookings: 1 },
+        );
       }
-      const guests = [...rows.values()]
+      const found = [...rows.values()]
         .map(({ first, bookings }) => ({
           guest_name: first.guest_name,
           reservation_id: first.id,
@@ -395,7 +501,7 @@ export function createMockManagementClient(
           via: first.via,
         }))
         .toSorted((a, b) => a.guest_name.localeCompare(b.guest_name));
-      return respond({ guests });
+      return respond({ guests: found });
     },
 
     search(_slug, q) {
@@ -408,19 +514,95 @@ export function createMockManagementClient(
       return respond({ reservations: found.slice(0, SEARCH_LIMIT) });
     },
 
-    hours: () => respond(data.hours),
+    hours: () => respond({ services: services() }),
 
-    async saveHours(_slug, { services }) {
-      checkServices(services);
-      data = { ...data, hours: { services } };
+    async saveHours(_slug, body) {
+      exact(body, ["services"]);
+      const drafts = body.services;
+      if (drafts.length > MAX_SERVICES) invalid(`services: at most ${MAX_SERVICES}`);
+      if (drafts.length === 0) problem("Keep at least one service.", { code: "no_services" });
+      const saved = drafts.map((draft, index): Service => {
+        exact(draft, ["start", "end"]);
+        const { start, end } = draft;
+        if (!start || !end) {
+          return problem("A service needs a start and an end.", {
+            code: "service_incomplete",
+            services: [index],
+          });
+        }
+        if (!HHMM.test(start) || !HHMM.test(end)) invalid(`services.${index}: HH:MM times`);
+        if (minutes(end) - minutes(start) < LAST_SEATING_MIN) {
+          problem("A service lasts at least 60 minutes.", {
+            code: "service_too_short",
+            services: [index],
+          });
+        }
+        return { start, end };
+      });
+      saved.forEach((a, i) =>
+        saved.forEach((b, j) => {
+          if (i < j && a.start < b.end && b.start < a.end) {
+            problem("Services must not overlap.", { code: "services_overlap", services: [i, j] });
+          }
+        }),
+      );
+      data = { ...data, hours: { services: saved } };
+      withTools();
       log("saved", "Opening hours", "merchant");
-      return respond(data.hours);
+      return respond({ services: services() });
     },
 
     tables: () => respond({ tables: data.tables }),
 
-    async saveTables(_slug, tables) {
-      checkTables(tables);
+    async saveTables(_slug, body) {
+      exact(body, ["tables"]);
+      const drafts = body.tables;
+      if (drafts.length > MAX_TABLES) invalid(`tables: at most ${MAX_TABLES}`);
+      if (drafts.length === 0) problem("Keep at least one table.", { code: "no_tables" });
+      const labels = new Set<string>();
+      const tables = drafts.map((draft) => {
+        exact(draft, ["label", "seats"]);
+        const label = required(draft.label, "label", MAX_TABLE_LABEL);
+        if (labels.has(label)) {
+          problem("Table labels must be unique.", { code: "duplicate_table", table: label });
+        }
+        labels.add(label);
+        if (!Number.isInteger(draft.seats)) invalid("seats: an integer is required");
+        if (draft.seats < 1) {
+          problem("Every table needs at least 1 seat.", {
+            code: "table_without_seats",
+            table: label,
+          });
+        }
+        if (draft.seats > MAX_SEATS) {
+          problem(`A table has at most ${MAX_SEATS} seats.`, {
+            code: "too_many_seats",
+            table: label,
+            seats: MAX_SEATS,
+          });
+        }
+        return { label, seats: draft.seats };
+      });
+      for (const booking of data.reservations) {
+        const guest = booking.guest_name;
+        const kept =
+          tables.find((table) => table.label === booking.table_label) ??
+          problem("A booking refers to this table.", {
+            code: "table_in_use",
+            table: booking.table_label,
+            guest,
+          });
+        const ahead =
+          booking.status === "confirmed" && !isPast(instant(booking.date, booking.time));
+        if (ahead && kept.seats < booking.party_size) {
+          problem("A booking needs more seats at this table.", {
+            code: "table_too_small",
+            table: kept.label,
+            guest,
+            seats: booking.party_size,
+          });
+        }
+      }
       data = { ...data, tables };
       log("saved", "Floor plan", "merchant");
       return respond({ tables: data.tables });
@@ -428,26 +610,53 @@ export function createMockManagementClient(
 
     rules: () => respond(data.rules),
 
-    async saveRules(_slug, { max_party_size, fallback_url, cancellation_policy = null }) {
-      if (!(max_party_size >= 1)) invalid("group_too_small", "The largest group is at least 1.");
-      if (new URL(fallback_url).host !== new URL(data.merchant.website).host) {
-        invalid("booking_page_off_site", "The booking page stays on your website.");
+    async saveRules(_slug, body) {
+      exact(body, ["max_party_size", "fallback_url", "cancellation_policy"]);
+      const largest = body.max_party_size;
+      if (!Number.isInteger(largest)) invalid("max_party_size: an integer is required");
+      if (largest < 1) problem("The largest group is at least 1.", { code: "group_too_small" });
+      if (largest > MAX_SEATS) {
+        problem(`The largest group is at most ${MAX_SEATS}.`, {
+          code: "too_many_seats",
+          seats: MAX_SEATS,
+        });
       }
-      data = { ...data, rules: { ...data.rules, max_party_size, fallback_url, cancellation_policy } };
+      const page = parseUrl(body.fallback_url) ?? invalid("fallback_url: a URL is required");
+      if (page.host !== new URL(data.merchant.website).host) {
+        problem("The booking page stays on your website.", { code: "booking_page_off_site" });
+      }
+      const policy = text(body.cancellation_policy, "cancellation_policy", MAX_POLICY_TEXT, false);
+      data = {
+        ...data,
+        rules: {
+          ...data.rules,
+          max_party_size: largest,
+          fallback_url: body.fallback_url,
+          cancellation_policy: policy,
+        },
+      };
+      withTools();
       log("saved", "Booking rules", "merchant");
       return respond(data.rules);
     },
 
     settings: () => respond(data.settings),
 
-    async saveSettings(_slug, { name, city = null, price_level, tags }) {
-      if (!name.trim()) invalid("name_required", "Your restaurant needs a name.");
-      const changes = { name: name.trim(), city: city?.trim() || null, price_level, tags };
+    async saveSettings(_slug, body) {
+      exact(body, ["name", "city", "price_level", "tags"]);
+      const name =
+        text(body.name, "name", MAX_SHORT_TEXT, false) ??
+        problem("The restaurant needs a name.", { code: "name_required" });
+      const city = text(body.city, "city", MAX_SHORT_TEXT, false);
+      if (!PRICES.includes(body.price_level)) invalid("price_level: one of €, €€, €€€, €€€€");
+      if (body.tags.some((tag) => !TAGS.includes(tag))) invalid("tags: unknown tag");
+      const changes = { name, city, price_level: body.price_level, tags: [...new Set(body.tags)] };
       data = {
         ...data,
         settings: { ...data.settings, ...changes },
         merchant: { ...data.merchant, ...changes },
       };
+      withTools();
       log("saved", "Settings", "merchant");
       return respond(data.settings);
     },
@@ -455,14 +664,19 @@ export function createMockManagementClient(
     blocked: () => respond({ blocked: blockedAhead() }),
 
     async setBlocked(_slug, date, times) {
+      if (times.length > MAX_DAY_STARTS) invalid(`times: at most ${MAX_DAY_STARTS}`);
+      if (times.some((time) => !HHMM.test(time))) invalid("times: HH:MM times");
       const before = new Set(data.blocked.filter((b) => b.date === date).map((b) => b.time));
       const after = new Set(times);
-      const label = (time: string) => `${dayWord(date, today)} ${time}`;
-      for (const time of after) if (!before.has(time)) log("blocked", label(time), "merchant");
-      for (const time of before) if (!after.has(time)) log("reopened", label(time), "merchant");
+      const added = [...after].filter((time) => !before.has(time)).toSorted();
+      const removed = [...before].filter((time) => !after.has(time)).toSorted();
+      // One activity line per save (#133).
+      const day = dayWord(date, today);
+      if (added.length) log("blocked", `${day} ${added.join(", ")}`, "merchant");
+      else if (removed.length) log("reopened", `${day} ${removed.join(", ")}`, "merchant");
       const kept = data.blocked.filter((b) => b.date !== date);
-      const added = [...after].map((time) => ({ starts_at: instant(date, time), date, time }));
-      data = { ...data, blocked: [...kept, ...added] };
+      const set = [...after].map((time) => ({ starts_at: instant(date, time), date, time }));
+      data = { ...data, blocked: [...kept, ...set] };
       return respond({ blocked: blockedAhead() });
     },
 
@@ -473,6 +687,8 @@ export function createMockManagementClient(
     },
 
     async resumeAgent() {
+      // A merchant still building goes live by publishing it (#136), not here.
+      if (data.merchant.status === "building") invalid("Publish your agent first.");
       data = { ...data, merchant: { ...data.merchant, status: "live" } };
       log("resumed", "Your agent takes bookings again.", "merchant");
       return respond({ status: data.merchant.status });
@@ -485,28 +701,35 @@ export function createMockManagementClient(
           .slice(0, REQUESTS_LIMIT),
       }),
 
-    subscribe(_slug, { onEvent, onConnection }) {
-      const timers = [setTimeout(() => onConnection(true), latencyMs)];
-      if (!notified) {
-        timers.push(
-          setTimeout(() => {
-            notified = true;
-            const event = data.live_booking;
-            const booking: ManagedReservation = {
-              ...event.reservation,
-              date: event.date,
-              cancelled_by: null,
-              created_at: nowIso(),
-            };
-            data = { ...data, reservations: [...data.reservations, booking] };
-            log("new_booking", summary(booking), event.via, booking.id);
-            onEvent(structuredClone(event));
-          }, liveBookingDelayMs),
-        );
+    subscribe(_slug, handlers) {
+      listeners.add(handlers);
+      const connected = setTimeout(() => handlers.onConnection(true), latencyMs);
+      if (!delivered && liveTimer === undefined) {
+        liveTimer = setTimeout(deliverLiveBooking, liveBookingDelayMs);
       }
-      return () => timers.forEach((timer) => clearTimeout(timer));
+      return () => {
+        clearTimeout(connected);
+        listeners.delete(handlers);
+        if (listeners.size === 0 && !delivered) {
+          clearTimeout(liveTimer);
+          liveTimer = undefined;
+        }
+      };
     },
   };
+}
+
+// "Through an agent": any channel but the merchant itself and the website.
+function throughAgent(via: Via): boolean {
+  return via !== "merchant" && via !== "website";
+}
+
+function parseUrl(value: unknown): URL | null {
+  try {
+    return typeof value === "string" ? new URL(value) : null;
+  } catch {
+    return null;
+  }
 }
 
 function minutes(time: string): number {
@@ -540,10 +763,13 @@ function local(moment: Date, timeZone: string): { date: string; time: string } {
       .formatToParts(moment)
       .map((part) => [part.type, part.value]),
   );
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
 }
 
-// "today", "tomorrow", else "Tue 3 Nov", as the server writes activity texts.
+// "today", "tomorrow", else "Tue 3 Nov", as the server words activity lines.
 function dayWord(date: string, today: string): string {
   if (date === today) return "today";
   if (date === addDays(today, 1)) return "tomorrow";
@@ -563,6 +789,6 @@ function guests(count: number): string {
 }
 
 // `same_guest`'s comparison (agent/service.py): runs of spaces are one, case folded.
-function fold(text: string): string {
-  return text.trim().split(/\s+/).join(" ").toLowerCase();
+function fold(value: string): string {
+  return value.trim().split(/\s+/).join(" ").toLowerCase();
 }

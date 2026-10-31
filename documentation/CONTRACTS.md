@@ -220,60 +220,122 @@ live booking also appears in tonight's reservations, on the same date.
 
 The management site's routes sit under `/merchants/{slug}` (`merchant_platform/management.py`).
 Their shapes are frozen here and in `web/src/types.ts`, so that pages are built against the
-mock while the backend lands: until then, each route answers `501` with a `ManagementError`
-naming its issue. Every route will need the owner's session (#132): `401` without it, `403`
-for another merchant.
+mock while the backend lands: until then, each route answers `501` `not_built_yet` naming its
+issue, after checking its input (a form that breaks a rule already answers its `problem`).
+
+Every route depends on `auth.owner_of_path`, so none can ship open: `401` `not_signed_in` without
+the merchant's owner, `403` `other_merchant` for another merchant, before the body is read. Until
+#132, only the development merchant (`PLATFORM_MERCHANT`) has one.
 
 | Route | Body | Answer | Issue |
 |---|---|---|---|
-| `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the agent's BATP address, its MCP URL, the management URL, the owner, `demo` | #132 |
+| `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo` | #132 |
 | `GET /dashboard?date=` | | `Dashboard`: `history` (30 days ending `date`), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
-| `GET /reservations?date=` | | `ReservationDay`: the day's services, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |
+| `GET /reservations?date=` | | `ReservationDay`: the day's services, every start of its grid, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |
 | `POST /reservations` | `MerchantBookingInput` | `201` + `ManagedReservation`, `via="merchant"` | #134 |
-| `PATCH /reservations/{id}` | `MoveBookingInput` | `ManagedReservation`: same day, table picked again | #134 |
+| `PATCH /reservations/{id}` | `MoveBookingInput` | `ManagedReservation` | #134 |
 | `POST /reservations/{id}/cancel` | | `MerchantCancelOutput`: the booking and `outcome` | #134 |
 | `GET /slots?date=&party_size=&ignore=` | | `DaySlots`: every start of the day that hasn't passed, with the table it would get (or none) and whether it is blocked; `ignore` leaves a booking out, for a move | #134 |
 | `GET /guests?q=` | | `GuestsOutput`: guests with a live booking in the next 7 days, by name | #144 |
 | `GET /search?q=` | | `SearchOutput`: up to 8 bookings of the next 7 days by guest name or reference | #135 |
 | `GET`/`PUT /hours` | `HoursInput` | `Hours` | #133 |
-| `GET`/`PUT /tables` | `UpdateTablesInput` | `FloorPlanOutput` | #133 |
-| `GET`/`PUT /rules` | `RulesInput` | `Rules`, with the tool descriptions an AI agent reads | #133 |
+| `GET`/`PUT /tables` | `FloorPlanInput` | `FloorPlanOutput` | #133 |
+| `GET`/`PUT /rules` | `RulesInput` | `Rules`, with the sentence each tool's description starts with on `/m/<slug>/mcp` | #133 |
 | `GET`/`PUT /settings` | `SettingsInput` | `MerchantSettings` | #133 |
 | `GET /blocked`, `PUT /blocked?date=` | `BlockedDayInput` (`PUT` only) | `BlockedTimes`: the blocked times to come | #133 |
-| `POST /agent/pause`, `POST /agent/resume` | | `AgentStatusOutput` (`down`, `live`) | #146 |
+| `POST /agent/pause`, `POST /agent/resume` | | `AgentStatusOutput` (`down`, `live`); resuming a `building` merchant is `invalid_input` (it is published, #136) | #146 |
 | `GET /agent/requests?date=&refused=` | | `AgentRequests`: newest first, at most 10 | #146 |
 
-- Days are `YYYY-MM-DD` and times `HH:MM`, local to the merchant (`MerchantOverview.timezone`);
-  instants (`starts_at`, `created_at`, `at`) carry their offset. Booking inputs take
-  `BookingTime` and `GuestText`, as on the guest side. `PUT /blocked` takes the day's whole set
-  as local `HH:MM`, so that the web never computes an offset (#83).
-- `GET /dashboard`: `DayHistory.bookings` counts a day's live bookings, `guests` and
-  `agent_guests` the guests in them (through an agent: `via="claude"`), `cancelled` the day's
-  cancelled bookings. `channels` counts bookings, so its percentage and its caption agree. `room`
-  describes today's current or next service (its last one once they are over): `seats` of the
-  floor plan, `guests` booked in it, which tables have a live booking, the next free start in
-  it for `party_size` (4, or the largest group when smaller) and `largest_group`,
-  `min(max_party_size, largest table)`.
-- `ActivityItem.text` is written by the server ("R-009, Sara Muller, 2 guests, today 18:30");
-  `source` is the channel that made the change (`merchant` for the merchant's own).
-- `MerchantCancelOutcome` adds `own_booking` to #82's outcomes: cancelled without a notice,
-  since the merchant made the booking itself (#134). The admin tool's card words it too.
+**Days, times and text**
+- Days are `YYYY-MM-DD` and times `HH:MM`, local to the merchant (`MerchantOverview.timezone`).
+  Instants (`starts_at`, `created_at`, `at`) carry their offset.
+- Booking inputs take `BookingTime` and `GuestText`, as on the guest side. References, `ignore`
+  and `q` refuse control characters and stay within 200 characters (#79).
+- `PUT /blocked` takes the day's whole set as local `HH:MM` (at most 48), so the web never
+  computes an offset (#83). The last write wins.
+- Merchant text refuses control characters. Name and city (`ShortText`) are at most 80
+  characters, and blank means none for the city. The cancellation policy (`PolicyText`) is one
+  paragraph of at most 500 characters: the web turns new lines into spaces. Table labels are at
+  most 20 characters.
+- A form holds at most 8 services and 100 tables. A table, like the largest group, has at most
+  1000 seats.
+
+**Forms answer the rule they break**
+- Form bodies (`HoursInput` of `ServiceDraft`, `FloorPlanInput` of `TableDraft`, `RulesInput`,
+  `SettingsInput`) are structural. `core.forms` checks their rules and raises a `FormProblem`,
+  which the API answers as `422` `invalid_input` with `problem`. A validating type would only
+  give a generic 422, with no rule and no row.
+- Problem codes:
+  - `no_services`;
+  - `service_incomplete`, `service_too_short` (`services: [i]`);
+  - `services_overlap` (`[i, j]`, `i < j`);
+  - `no_tables`, `duplicate_table`, `table_without_seats` (`table`);
+  - `too_many_seats` (`table`, `seats`: the most allowed);
+  - `group_too_small`, `name_required`.
+- Indices refer to the list as sent. Answers list services by start.
+- Three rules need the merchant's data, so the service (#133) checks them with the same codes:
+  - `table_in_use` (`table`, `guest`): a booking refers to a removed table;
+  - `table_too_small` (`table`, `guest`, `seats`);
+  - `booking_page_off_site`.
+- Bodies hold only their input's fields. `PUT /rules` with the `Rules` that `GET /rules`
+  answered is `422`.
+
+**Errors**
+- Errors are a `ManagementError`: a `ToolError`'s fields, `problem`, and `error` as one of the
+  §8.4 codes or the management site's own (`not_signed_in`, `other_merchant`, `not_built_yet`).
+  `ErrorCode` stays the list the tools answer. Statuses otherwise are those of the public
+  booking API.
+
+**Bookings**
+- A merchant moves a booking only before it starts, within its day, and the table is picked
+  again (`slot_unavailable` otherwise). `MerchantCancelOutcome` adds `own_booking` to #82's
+  outcomes: cancelled without a notice, since the merchant made the booking itself (#134). The
+  admin tool's card words it too.
+
+**Dashboard**
+- `date` must be the merchant's today by the server's clock; another day is `invalid_input`.
+- `DayHistory`:
+  - `bookings` counts a day's live bookings;
+  - `guests` and `agent_guests` count the guests in them, through an agent meaning any `via`
+    but `merchant` and `website`;
+  - `cancelled` counts the day's cancelled bookings.
+- `channels` counts bookings, so its percentage and its caption agree.
+- `room` describes today's current or next service, or its last one once they are over:
+  - `seats` of the floor plan, `guests` booked in it, and which tables have a live booking;
+  - the next free start in it that isn't blocked, for `party_size` (4, or the largest group
+    when smaller);
+  - `largest_group`: `min(max_party_size, largest table)`.
+- `GuestRow.bookings` counts the live bookings that haven't started.
+- `ActivityItem.text` is worded by the server when read, relative to `date` ("R-009, Sara
+  Muller, 2 guests, today 18:30"). `source` is the channel that made the change (`merchant` for
+  the merchant's own). One line per change; a `PUT /blocked` is one change.
+
+**Other fields**
+- `MerchantOverview`:
+  - addresses are absolute (`management_url` is `<PLATFORM_WEB_URL>/manage/<slug>`);
+  - `owner_name` is what the owner asked to be called, or `null` until known;
+  - `demo` says the merchant was built from one of the demo sites in `code/sites/`.
+- `Rules.tools` is `generated_tools(described_profile(profile))`: what an AI agent reads, so the
+  cancellation policy reads "see the restaurant's own website".
 - `AgentRequest.request` and `.response` are the BATP frames as sent, JSON strings; never a
   `HELLO` or its token. `refused` is `status >= 400`.
-- Errors are a `ManagementError`: a `ToolError`, plus `problem` when a form broke a rule the web
-  words itself (#133). `problem.code` is one of `service_too_short` (`services: [i]`),
-  `services_overlap` (`[i, j]`, indices in the submitted list), `no_tables`, `duplicate_table`,
-  `table_without_seats`, `table_in_use` (`table`, `guest`: a booking refers to a removed
-  table), `table_too_small` (`table`, `guest`, `seats`), `group_too_small`, `name_required`,
-  `booking_page_off_site`. Statuses are those of the public booking API.
 - No answer exposes the registry's stored `profile`.
 
-`web/src/management/client.ts` has one call per route (`ManagementClient`), throwing
-`ManagementRequestError` with the status and the `ManagementError`. With `VITE_MOCK=1`,
-`managementClient` (`web/src/management/index.ts`) is the mock: it serves the demo fixture,
-`code/tests/fixtures/demo/la-graine-verte-management.json` (#131 fills it from the mockup), with
-the server's rules (no past start, smallest free table, the problems above), and sends the
-fixture's `live_booking` 6 s after a subscription. Its clock starts at the fixture's `now`.
+**Web client and mock**
+- `web/src/management/client.ts` has one call per route (`ManagementClient`), throwing
+  `ManagementRequestError` with the status and the `ManagementError`.
+- With `VITE_MOCK=1`, `managementClient` (`web/src/management/index.ts`) is the mock. It
+  serves the demo fixture, `code/tests/fixtures/demo/la-graine-verte-management.json`, which
+  #131 fills from the mockup.
+- The mock applies the server's rules, as listed above:
+  - no past start, the smallest free table then its label, unknown fields refused;
+  - a reused key with other parameters refused;
+  - the problems, the tool descriptions rewritten.
+- It sends the fixture's `live_booking` once, 6 s after the first subscription, to every
+  subscriber. Its reference stays free until then, and its table is picked again if taken.
+- Its clock starts at the fixture's `now`, which needs a `±HH:MM` offset.
+- The management shell subscribes through `ManagementClient`. The chat mock's own notification
+  belongs to the chat page.
 
 ## Checks
 
@@ -293,5 +355,7 @@ The TypeScript check compiles the actual JSON mocks as literals with `satisfies`
 against `ChatEvent[]`, `LiveEvent`, `SessionOutput` or, for the management fixture,
 `ManagementFixture`. Python tests validate the same mocks against the Pydantic `ChatEvent`,
 `LiveEvent`, `SessionOutput` and the management models, and check that the fixture is La Graine
-Verte's (floor plan, hours, rules), that today's history matches its bookings, and that no two
-live bookings overlap on a table. Both checks run on pull requests.
+Verte's (floor plan, hours, rules, tool descriptions), that today's history matches its
+bookings, and that no two live bookings overlap on a table. `test_mocks.py` also checks that
+each management model and its web type have the same fields, optional ones included. Both
+checks run on pull requests.

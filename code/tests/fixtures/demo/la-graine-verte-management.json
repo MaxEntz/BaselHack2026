@@ -15,11 +15,8 @@
     "timezone": "Europe/Zurich",
     "agent_address": "batp://191-96-88-152.sslip.io/la-graine-verte",
     "mcp_url": "https://191-96-88-152.sslip.io/m/la-graine-verte/mcp",
-    "management_url": "/manage/la-graine-verte",
-    "owner": {
-      "name": "Léa Moreau",
-      "first_name": "Léa"
-    },
+    "management_url": "http://localhost:5173/manage/la-graine-verte",
+    "owner_name": "Léa",
     "demo": true
   },
   "hours": {
@@ -92,7 +89,7 @@
       },
       {
         "name": "cancel_reservation",
-        "description": "Cancel a booking at La Graine Verte. Policy: Free cancellation up to 1 hour before the booking."
+        "description": "Cancel a booking at La Graine Verte. Policy: see the restaurant's own website."
       }
     ]
   },

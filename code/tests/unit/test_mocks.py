@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, time, timedelta
 from itertools import combinations
 from pathlib import Path
@@ -8,7 +9,9 @@ from zoneinfo import ZoneInfo
 import pytest
 from pydantic import AwareDatetime, BaseModel, ConfigDict, TypeAdapter
 
+from agent.provisioning import generated_tools
 from batp.messages import Request, Response
+from core import models as core_models
 from core.availability import bookable_starts
 from core.models import (
     ActivityItem,
@@ -30,6 +33,7 @@ from core.models import (
     SessionOutput,
     TableSpec,
 )
+from gateway.merchant_server import described_profile
 
 MOCKS = Path(__file__).parents[2] / "web" / "src" / "mocks"
 CHAT_EVENTS: TypeAdapter[list[ChatEvent]] = TypeAdapter(list[ChatEvent])
@@ -131,6 +135,8 @@ def test_management_fixture_is_la_graine_verte(management: ManagementFixture) ->
     assert management.rules.max_party_size == profile.max_party_size
     assert management.rules.fallback_url == profile.fallback_url
     assert management.settings.website == management.merchant.website == profile.website
+    # What an AI agent reads on /m/<slug>/mcp, as the merchant endpoint words it.
+    assert management.rules.tools == tuple(generated_tools(described_profile(profile)))
 
 
 def test_management_history_is_the_30_days_ending_today(management: ManagementFixture) -> None:
@@ -206,3 +212,63 @@ def test_management_blocked_times_and_frames_are_consistent(
         assert (sent.intent, answer.id, answer.status) == (request.intent, sent.id, request.status)
         assert request.refused == (request.status >= 400)
         assert "token" not in request.request
+
+
+# Python and TypeScript drift (#129): the management models and their web types have the same
+# fields. The fixture checks values; this checks the shapes no fixture holds.
+TYPES = Path(__file__).parents[2] / "web" / "src" / "types.ts"
+MIRRORED = [
+    "MerchantOverview",
+    "ManagedReservation",
+    "DayHistory",
+    "DayGuests",
+    "ChannelCount",
+    "RoomTable",
+    "Room",
+    "ActivityItem",
+    "Dashboard",
+    "ReservationDay",
+    "MerchantBookingInput",
+    "MoveBookingInput",
+    "MerchantCancelOutput",
+    "DaySlot",
+    "DaySlots",
+    "GuestRow",
+    "GuestsOutput",
+    "SearchOutput",
+    "Hours",
+    "ServiceDraft",
+    "HoursInput",
+    "FloorPlanOutput",
+    "TableDraft",
+    "FloorPlanInput",
+    "Rules",
+    "RulesInput",
+    "MerchantSettings",
+    "SettingsInput",
+    "BlockedTime",
+    "BlockedTimes",
+    "AgentStatusOutput",
+    "AgentRequest",
+    "AgentRequests",
+    "Problem",
+    "ManagementError",
+]
+
+
+def ts_fields(name: str) -> dict[str, bool]:
+    """Field name -> optional (`?`), for a flat `export type Name = { … };` of types.ts."""
+    match = re.search(rf"^export type {name} = \{{(.*?)\}};", TYPES.read_text(), re.M | re.S)
+    assert match, f"{name} is not a flat object type in types.ts"
+    body = re.sub(r"//[^\n]*", "", match.group(1))  # comments may hold "word:"
+    fields = re.findall(r"(\w+)(\??):", body)
+    return {field: bool(optional) for field, optional in fields}
+
+
+@pytest.mark.parametrize("name", MIRRORED)
+def test_management_models_and_web_types_have_the_same_fields(name: str) -> None:
+    model = getattr(core_models, name)
+
+    python = {field: not info.is_required() for field, info in model.model_fields.items()}
+
+    assert ts_fields(name) == python

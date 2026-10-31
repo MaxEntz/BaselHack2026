@@ -4,7 +4,7 @@ import unicodedata
 from datetime import date as Date
 from datetime import datetime
 from itertools import pairwise
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, get_args
 
 from pydantic import (
     AfterValidator,
@@ -362,6 +362,33 @@ class SessionOutput(_Model):
 # Management site (#129): the `/merchants/{slug}` routes of the platform. Keep in sync with
 # web/src/types.ts. Local days and times are the merchant's (`MerchantOverview.timezone`).
 
+# Merchant text typed in a form: no control character (#79), bounded like the free text a tool
+# description may show (gateway.merchant_server.MAX_FREE_TEXT).
+MAX_SHORT_TEXT = 80
+MAX_POLICY_TEXT = 500
+MAX_TABLE_LABEL = 20
+ShortText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, max_length=MAX_SHORT_TEXT),
+    AfterValidator(_no_control_characters),
+]
+# One paragraph: the web turns new lines into spaces.
+PolicyText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, max_length=MAX_POLICY_TEXT),
+    AfterValidator(_no_control_characters),
+]
+SearchText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, max_length=MAX_GUEST_TEXT),
+    AfterValidator(_no_control_characters),
+]
+TableLabel = Annotated[NonEmptyStr, StringConstraints(max_length=MAX_TABLE_LABEL)]
+# Bounds of the forms: a day has at most 48 half-hour starts.
+MAX_SERVICES = 8
+MAX_TABLES = 100
+MAX_DAY_STARTS = 48
+
 MerchantStatus = Literal["building", "live", "down"]
 CancelledBy = Literal["guest", "merchant"]
 # What a merchant's cancellation did (#82): cancelled with a notice for the guest; cancelled
@@ -376,22 +403,22 @@ ActivityKind = Literal[
 # A form rule the server refused, precise enough for the web to word it (#133). `services`
 # holds indices in the submitted list.
 ProblemCode = Literal[
+    "no_services",
+    "service_incomplete",  # services: [i], a start or an end is missing
     "service_too_short",  # services: [i]
-    "services_overlap",  # services: [i, j]
+    "services_overlap",  # services: [i, j], i < j
     "no_tables",
     "duplicate_table",  # table
     "table_without_seats",  # table
+    "too_many_seats",  # table, seats: the most a table may have
     "table_in_use",  # table, guest: a booking refers to a removed table
     "table_too_small",  # table, guest, seats: a booking needs more seats than it keeps
     "group_too_small",
     "name_required",
     "booking_page_off_site",  # the booking page must stay on the merchant's host
 ]
-
-
-class Owner(_Model):
-    name: str
-    first_name: str
+# `ErrorCode` stays the §8.4 list the tools answer; the management site adds its own.
+ManagementErrorCode = ErrorCode | Literal["not_signed_in", "other_merchant", "not_built_yet"]
 
 
 class MerchantOverview(_Model):
@@ -407,9 +434,9 @@ class MerchantOverview(_Model):
     timezone: str
     agent_address: str  # batp://<host>/<slug>
     mcp_url: str  # https://<host>/m/<slug>/mcp
-    management_url: str  # /manage/<slug>
-    owner: Owner | None
-    demo: bool
+    management_url: str  # https://<web host>/manage/<slug>
+    owner_name: str | None  # what the owner asked to be called; None until known
+    demo: bool  # built from one of the demo sites (code/sites/)
 
 
 class ManagedReservation(_Model):
@@ -454,12 +481,12 @@ class RoomTable(_Model):
 class Room(_Model):
     """Today's current or next service, else its last one."""
 
-    service: Service | None  # None on a day without services
+    service: Service
     seats: int
     guests: int
     tables: tuple[RoomTable, ...]
     party_size: int  # the group `next_free` is for: 4, or the largest group when smaller
-    next_free: HHMM | None
+    next_free: HHMM | None  # never a blocked start
     largest_group: int  # min(max_party_size, largest table)
 
 
@@ -467,13 +494,15 @@ class ActivityItem(_Model):
     id: int
     at: AwareDatetime
     kind: ActivityKind
-    text: str  # written by the server: "R-009, Sara Muller, 2 guests, today 18:30"
+    # Worded by the server when read, relative to `Dashboard.date`:
+    # "R-009, Sara Muller, 2 guests, today 18:30".
+    text: str
     source: Via  # who made the change: an agent, the website or the merchant
     reservation_id: str | None
 
 
 class Dashboard(_Model):
-    """`GET /dashboard?date=`: Home. `date` is today."""
+    """`GET /dashboard?date=`: Home. `date` must be the merchant's today by the server's clock."""
 
     date: Date
     history: tuple[DayHistory, ...]  # the 30 days ending `date`, oldest first
@@ -487,7 +516,8 @@ class ReservationDay(_Model):
     """`GET /reservations?date=`: everything the Reservations page shows for one day."""
 
     date: Date
-    services: tuple[Service, ...]
+    services: tuple[Service, ...]  # by start
+    starts: tuple[HHMM, ...]  # every start of the day on the grid, past ones included
     slot_length_min: int
     largest_group: int
     blocked: tuple[HHMM, ...]
@@ -504,7 +534,8 @@ class MerchantBookingInput(_Model):
 
 
 class MoveBookingInput(_Model):
-    """`PATCH /reservations/{id}`: same day only; the table is picked again."""
+    """`PATCH /reservations/{id}`: a booking that hasn't started, to a start of the same day;
+    the table is picked again."""
 
     starts_at: BookingTime
     idempotency_key: GuestText
@@ -540,7 +571,7 @@ class GuestRow(_Model):
     date: Date
     time: HHMM
     party_size: PositiveInt
-    bookings: int  # live bookings in the next 7 days
+    bookings: int  # live bookings in the next 7 days that haven't started
     via: Via
 
 
@@ -557,15 +588,33 @@ class SearchOutput(_Model):
 
 
 class Hours(_Model):
-    services: tuple[Service, ...]
+    services: tuple[Service, ...]  # by start
+
+
+# Form bodies are structural: their rules are checked by `core.forms`, which answers the
+# `Problem` the web words, where a validating type would only give a generic 422.
+
+
+class ServiceDraft(_Model):
+    start: HHMM | None = None
+    end: HHMM | None = None
 
 
 class HoursInput(_Model):
-    services: Services
+    services: tuple[ServiceDraft, ...] = Field(max_length=MAX_SERVICES)
 
 
 class FloorPlanOutput(_Model):
     tables: tuple[TableSpec, ...]
+
+
+class TableDraft(_Model):
+    label: TableLabel
+    seats: int
+
+
+class FloorPlanInput(_Model):
+    tables: tuple[TableDraft, ...] = Field(max_length=MAX_TABLES)
 
 
 class Rules(_Model):
@@ -577,9 +626,9 @@ class Rules(_Model):
 
 
 class RulesInput(_Model):
-    max_party_size: PositiveInt
+    max_party_size: int
     fallback_url: HttpUrl
-    cancellation_policy: str | None = None
+    cancellation_policy: PolicyText | None = None  # blank: none
 
 
 class MerchantSettings(_Model):
@@ -591,10 +640,10 @@ class MerchantSettings(_Model):
 
 
 class SettingsInput(_Model):
-    name: NonEmptyStr
-    city: NonEmptyStr | None = None
+    name: ShortText
+    city: ShortText | None = None  # blank: none
     price_level: PriceLevel
-    tags: tuple[Tag, ...]
+    tags: tuple[Tag, ...] = Field(max_length=len(get_args(Tag)))
 
 
 class BlockedTime(_Model):
@@ -610,9 +659,9 @@ class BlockedTimes(_Model):
 
 
 class BlockedDayInput(_Model):
-    """`PUT /blocked?date=`: the day's whole set, as local times."""
+    """`PUT /blocked?date=`: the day's whole set, as local times. The last write wins."""
 
-    times: tuple[HHMM, ...]
+    times: tuple[HHMM, ...] = Field(max_length=MAX_DAY_STARTS)
 
 
 class AgentStatusOutput(_Model):
@@ -648,9 +697,13 @@ class Problem(_Model):
     seats: int | None = None
 
 
-class ManagementError(ToolError):
-    """The `/merchants/{slug}` error body: a `ToolError`, with the form rule it broke."""
+class ManagementError(_Model):
+    """The `/merchants/{slug}` error body: a `ToolError`'s fields, with the management site's
+    own codes and the form rule a request broke."""
 
+    error: ManagementErrorCode
+    message: str
+    fallback_url: HttpUrl | None = None
     problem: Problem | None = None
 
 

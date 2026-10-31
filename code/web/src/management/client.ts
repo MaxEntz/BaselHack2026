@@ -5,9 +5,11 @@ import type {
   BlockedTimes,
   Dashboard,
   DaySlots,
+  FloorPlanInput,
   FloorPlanOutput,
   GuestsOutput,
   Hours,
+  HoursInput,
   ManagedReservation,
   ManagementError,
   MerchantBookingInput,
@@ -20,7 +22,6 @@ import type {
   RulesInput,
   SearchOutput,
   SettingsInput,
-  TableSpec,
 } from "../types.ts";
 
 export type SlotsQuery = { date: string; partySize: number; ignore?: string };
@@ -28,6 +29,8 @@ export type RequestsQuery = { date: string; refused: boolean };
 
 // The management site's calls, one per /merchants/<slug> route (#129). Each
 // throws `ManagementRequestError` when the platform refuses or can't answer.
+// Bodies must hold only their input's fields: the platform refuses any other
+// (send a `RulesInput`, not the `Rules` it answered).
 export type ManagementClient = {
   merchant: (slug: string, signal?: AbortSignal) => Promise<MerchantOverview>;
   dashboard: (slug: string, date: string, signal?: AbortSignal) => Promise<Dashboard>;
@@ -39,9 +42,9 @@ export type ManagementClient = {
   guests: (slug: string, q: string, signal?: AbortSignal) => Promise<GuestsOutput>;
   search: (slug: string, q: string, signal?: AbortSignal) => Promise<SearchOutput>;
   hours: (slug: string, signal?: AbortSignal) => Promise<Hours>;
-  saveHours: (slug: string, body: Hours) => Promise<Hours>;
+  saveHours: (slug: string, body: HoursInput) => Promise<Hours>;
   tables: (slug: string, signal?: AbortSignal) => Promise<FloorPlanOutput>;
-  saveTables: (slug: string, tables: TableSpec[]) => Promise<FloorPlanOutput>;
+  saveTables: (slug: string, body: FloorPlanInput) => Promise<FloorPlanOutput>;
   rules: (slug: string, signal?: AbortSignal) => Promise<Rules>;
   saveRules: (slug: string, body: RulesInput) => Promise<Rules>;
   settings: (slug: string, signal?: AbortSignal) => Promise<MerchantSettings>;
@@ -138,7 +141,7 @@ export const httpManagementClient: ManagementClient = {
   hours: (slug, signal) => call("GET", slug, "/hours", { signal }),
   saveHours: (slug, body) => call("PUT", slug, "/hours", { body }),
   tables: (slug, signal) => call("GET", slug, "/tables", { signal }),
-  saveTables: (slug, tables) => call("PUT", slug, "/tables", { body: { tables } }),
+  saveTables: (slug, body) => call("PUT", slug, "/tables", { body }),
   rules: (slug, signal) => call("GET", slug, "/rules", { signal }),
   saveRules: (slug, body) => call("PUT", slug, "/rules", { body }),
   settings: (slug, signal) => call("GET", slug, "/settings", { signal }),

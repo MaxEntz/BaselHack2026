@@ -2,16 +2,17 @@
 
 Their shapes are frozen in `core.models` and `web/src/types.ts`, so that the pages and the
 backend are built in parallel. Each route answers `501` until the issue named in its message
-implements it; errors use the `ManagementError` body (a `ToolError`). The owner's session
-check comes with #132.
+implements it, after checking its input: a form that breaks a rule answers `422` with its
+`problem` already. Errors use the `ManagementError` body. Every route needs the merchant's
+owner (`auth.owner_of_path`): `401` without one, `403` for another merchant.
 """
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Depends, Path, Query
 
+from core.forms import checked_rules, checked_services, checked_settings, checked_tables
 from core.models import (
-    MAX_GUEST_TEXT,
     AgentRequests,
     AgentStatusOutput,
     BlockedDayInput,
@@ -19,8 +20,10 @@ from core.models import (
     BookingDay,
     Dashboard,
     DaySlots,
+    FloorPlanInput,
     FloorPlanOutput,
     GuestsOutput,
+    GuestText,
     Hours,
     HoursInput,
     ManagedReservation,
@@ -33,17 +36,20 @@ from core.models import (
     Rules,
     RulesInput,
     SearchOutput,
+    SearchText,
     SettingsInput,
     Slug,
-    UpdateTablesInput,
 )
+from merchant_platform.auth import owner_of_path
 
-router = APIRouter(prefix="/merchants/{slug}", tags=["management"])
+router = APIRouter(
+    prefix="/merchants/{slug}", tags=["management"], dependencies=[Depends(owner_of_path)]
+)
 
 SlugPath = Annotated[Slug, Path()]
 Day = Annotated[BookingDay, Query()]
-ReservationId = Annotated[str, Path(min_length=1, max_length=MAX_GUEST_TEXT)]
-Search = Annotated[str, Query(max_length=MAX_GUEST_TEXT)]
+ReservationId = Annotated[GuestText, Path()]
+Search = Annotated[SearchText, Query()]
 
 
 class NotBuiltYet(Exception):
@@ -89,8 +95,8 @@ async def cancel_booking(slug: SlugPath, reservation_id: ReservationId) -> Merch
 async def slots(
     slug: SlugPath,
     date: Day,
-    party_size: Annotated[int, Query(gt=0)],
-    ignore: Annotated[str | None, Query(max_length=MAX_GUEST_TEXT)] = None,
+    party_size: Annotated[int, Query(gt=0, le=1000)],
+    ignore: Annotated[GuestText | None, Query()] = None,
 ) -> DaySlots:
     raise NotBuiltYet("#134")
 
@@ -112,6 +118,7 @@ async def hours(slug: SlugPath) -> Hours:
 
 @router.put("/hours")
 async def save_hours(slug: SlugPath, body: HoursInput) -> Hours:
+    checked_services(body)
     raise NotBuiltYet("#133")
 
 
@@ -121,7 +128,8 @@ async def tables(slug: SlugPath) -> FloorPlanOutput:
 
 
 @router.put("/tables")
-async def save_tables(slug: SlugPath, body: UpdateTablesInput) -> FloorPlanOutput:
+async def save_tables(slug: SlugPath, body: FloorPlanInput) -> FloorPlanOutput:
+    checked_tables(body)
     raise NotBuiltYet("#133")
 
 
@@ -132,6 +140,7 @@ async def rules(slug: SlugPath) -> Rules:
 
 @router.put("/rules")
 async def save_rules(slug: SlugPath, body: RulesInput) -> Rules:
+    checked_rules(body)
     raise NotBuiltYet("#133")
 
 
@@ -142,6 +151,7 @@ async def merchant_settings(slug: SlugPath) -> MerchantSettings:
 
 @router.put("/settings")
 async def save_settings(slug: SlugPath, body: SettingsInput) -> MerchantSettings:
+    checked_settings(body)
     raise NotBuiltYet("#133")
 
 

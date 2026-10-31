@@ -21,6 +21,7 @@ from sqlalchemy import Row, delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from core import forms
 from core.availability import bookable_starts, is_bookable_start
 from core.db import (
     blocked_slots_t,
@@ -46,7 +47,7 @@ from core.models import (
 _Row = Row[*tuple[Any, ...]]
 
 # Bounds for merchant input, well inside Postgres `integer`: a typo never reaches the DB.
-MAX_SEATS = 1000
+MAX_SEATS = forms.MAX_SEATS
 
 _SERVICES = TypeAdapter(Services)
 _FLOOR_PLAN = TypeAdapter(FloorPlan)
