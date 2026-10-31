@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     )
 
     database_url: str
-    anthropic_api_key: SecretStr | None = None
-    anthropic_model: str = "claude-sonnet-5-5"
+    openai_api_key: SecretStr | None = None
+    openai_model: str = "gpt-6.1-terra"
     merchant_tz: str = "Europe/Zurich"
     agent_timeout_ms: int = 2000
     gateway_public_url: str | None = None

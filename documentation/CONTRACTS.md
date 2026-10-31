@@ -45,10 +45,13 @@ Guest updates and cancellations require `guest_name`; merchant cancellation uses
 `by="merchant"` on the service, which is why the admin tool input has no `by`.
 The protocol's overloads make `by="guest"` without a `guest_name` a type error.
 
-`MerchantProfile.model_json_schema()` is the builder tool's `input_schema`.
+`MerchantProfile.model_json_schema()` is the source of the builder tool's `parameters`.
 Tests validate the schema and resolve its local `$defs`/`$ref` entries against
-`code/tests/fixtures/le-petit-zinc.json`. Live Anthropic acceptance is tracked by
-the extraction spike in [#4](https://github.com/MaxEntz/BaselHack2026/issues/4).
+`code/tests/fixtures/le-petit-zinc.json`. OpenAI strict mode accepts `$defs`/`$ref`
+but rejects `format: uri` (from `HttpUrl`) and any property missing from `required`
+(the `None` defaults): pass the schema through `strict_schema()` from
+`code/scripts/spike_extract.py`, as validated live by the extraction spike in
+[#4](https://github.com/MaxEntz/BaselHack2026/issues/4).
 
 ## SSE
 

@@ -40,7 +40,7 @@ make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 ```
 
-Test markers: `integration` (needs Docker), `llm` (calls the Anthropic API, skipped when `ANTHROPIC_API_KEY` is empty).
+Test markers: `integration` (needs Docker), `llm` (calls the OpenAI API, skipped when `OPENAI_API_KEY` is empty).
 
 Shared tool and SSE contracts, fixtures and checks: [CONTRACTS.md](../documentation/CONTRACTS.md).
 
@@ -51,7 +51,7 @@ packages/
 ├── core/               models, DB access, availability rules, errors, settings
 ├── agent/              AgentService + provisioning (templates/restaurant.json)
 ├── gateway/            public MCP server: discovery, preference filters, fallback
-├── builder/            crawl (Playwright) + extraction (Claude API) -> MerchantProfile
+├── builder/            crawl (Playwright) + extraction (OpenAI API) -> MerchantProfile
 └── merchant_platform/  FastAPI /chat + /events, platform assistant
 web/                    merchant chat UI (Vite + React + TS)
 sites/le-petit-zinc/    demo restaurant website

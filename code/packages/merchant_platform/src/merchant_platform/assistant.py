@@ -1,1 +1,1 @@
-"""Platform assistant: Claude API tool-use loop over the admin tools."""
+"""Platform assistant: OpenAI API tool-use loop over the admin tools."""

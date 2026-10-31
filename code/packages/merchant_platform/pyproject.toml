@@ -10,7 +10,7 @@ dependencies = [
     "fastapi>=0.162",
     "uvicorn>=0.54",
     "sse-starlette>=3.6",
-    "anthropic>=2.3",
+    "openai>=3.42",
 ]
 
 [build-system]

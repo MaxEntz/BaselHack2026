@@ -57,10 +57,10 @@ def test_settings_require_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_settings_treat_empty_values_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost:5432/db")
     monkeypatch.setenv("GATEWAY_TOKEN", "")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert settings.gateway_token is None
-    assert settings.anthropic_api_key is None
+    assert settings.openai_api_key is None
 
 
 def test_platform_health() -> None:
