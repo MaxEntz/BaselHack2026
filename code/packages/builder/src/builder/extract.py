@@ -11,7 +11,7 @@ import re
 import unicodedata
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import get_args
+from typing import Literal, get_args
 from urllib.parse import urldefrag, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError
@@ -33,11 +33,13 @@ log = logging.getLogger("builder.extract")
 
 TOOL_NAME = "save_merchant_profile"
 # Part of the extraction cache key: bump it with any prompt or schema change.
-PROMPT_VERSION = "v2.2"
+PROMPT_VERSION = "v2.3"
 MAX_RETRIES = 1
 # When neither the site nor the description gives a seat count or a floor plan.
 DEFAULT_SEATS = 40
 TAGS: tuple[str, ...] = get_args(Tag)
+Weekday = Literal["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+WEEKDAYS: tuple[str, ...] = get_args(Weekday)
 BOOKING_PAGE = re.compile(r"book|reserv", re.IGNORECASE)
 # A section id starting with the word: `reserver`, `book-a-table`, not `icon_facebook`.
 BOOKING_ANCHOR = re.compile(r"(?:^|[-_])(?:book|reserv)", re.IGNORECASE)
@@ -63,6 +65,8 @@ must call.
 - price_level comes from the typical main course or set menu price per person, CHF counting \
 like EUR: € under 15, €€ 15 to 30, €€€ 30 to 60, €€€€ over 60. It is a default only when no \
 source gives any price.
+- closed_days are the weekdays a source says the restaurant is closed every week ("Ruhetag", \
+"Monday to Saturday" means closed on Sunday); empty when it opens every day or no source says.
 - seats counts bookable seats only and equals the sum of the table seats.
 - tags: only {", ".join(TAGS)}, when a source says so.
 - fallback_url is the website's booking page, or its homepage if it has none.
@@ -84,6 +88,11 @@ class ProfileDraft(BaseModel):
     price_level: PriceLevel
     cancellation_policy: str | None
     fallback_url: str | None
+    # Required from the model all the same: strict mode makes every property required.
+    closed_days: tuple[Weekday, ...] = Field(
+        default=(),
+        description="Weekdays the restaurant is closed every week; empty if none is stated.",
+    )
     assumptions: tuple[str, ...] = Field(
         description="One sentence per value taken from the defaults instead of the sources."
     )
@@ -186,6 +195,12 @@ def _strip_tags(text: str) -> str:
 def finalize(draft: ProfileDraft, crawl: CrawlResult) -> ExtractionResult:
     """Set the fields the code owns, then validate. Raises ValidationError."""
     assumptions = list(draft.assumptions)
+    if draft.closed_days:
+        # Services have no weekdays yet (#73): say so rather than book on a closed day.
+        days = _join([day for day in WEEKDAYS if day in draft.closed_days])
+        assumptions.append(
+            f"Closed on {days}: the agent can't skip a weekday yet, so {days} bookings stay open."
+        )
     website = crawl.website
     tables = list(draft.tables)
     seats = draft.seats
@@ -218,6 +233,11 @@ def finalize(draft: ProfileDraft, crawl: CrawlResult) -> ExtractionResult:
         }
     )
     return ExtractionResult(profile=profile, assumptions=assumptions)
+
+
+def _join(words: list[str]) -> str:
+    """`Monday`, `Monday and Tuesday`, `Monday, Tuesday and Sunday`."""
+    return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} and {words[-1]}"
 
 
 def slugify(name: str, website: str) -> str:
