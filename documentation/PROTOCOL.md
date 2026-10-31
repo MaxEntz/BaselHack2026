@@ -1,7 +1,7 @@
-# BATP — Broad Agent Transfer Protocol (draft 0.1)
+# BATP — Broad Agent Transfer Protocol (version 0.1)
 
-> Working name. Status: **draft**, implementation tracked in the issues linked from ADR-0011.
-> This page is the short, readable version. The **normative** spec is the Internet-Draft
+> This page is a readable summary of BATP 0.1, which is implemented and deployed (§13).
+> The **normative** spec is the Internet-Draft
 > [`rfc/draft-merchant-agents-batp-00`](rfc/draft-merchant-agents-batp-00.md)
 > ([text](rfc/draft-merchant-agents-batp-00.txt), [HTML](rfc/draft-merchant-agents-batp-00.html)):
 > where they differ, the draft wins and this page is a bug.
@@ -50,7 +50,7 @@ flowchart LR
 
 A merchant agent is addressed as `batp://<host>[:4710]/<slug>`, for example
 `batp://191-96-88-152.sslip.io/le-petit-zinc`. The slug is the merchant's slug
-(`^[a-z0-9-]{3,61}$`, AGENTS.md §0). Requests carry it in `merchant`, so one session can talk
+(`^[a-z0-9-]{3,61}$`, `core.models.Slug`). Requests carry it in `merchant`, so one session can talk
 to every merchant agent of a node.
 
 ## 5. Session
@@ -151,7 +151,7 @@ through the guest notice returned by `RECALL`.
 
 - **Identity:** every request is attributed to the `agent.id` of its session, in the node's logs. Guest names are never logged at INFO (AGENTS.md §12).
 - **Credentials:** one token per known agent (node configuration), compared in constant time.
-- **Exposure:** in the POC the node listens on `127.0.0.1:4710`, and only the gateway on the same host reaches it. Opening 4710 on the team server needs TLS and a firewall rule on a shared machine, so ask first (AGENTS.md §0).
+- **Exposure:** in the POC the node listens on `127.0.0.1:4710`, and only the gateway on the same host reaches it. Opening 4710 on the team server needs TLS and a firewall rule on a shared machine, so ask first (AGENTS.md, "Team server").
 - **Limits:**
   - 64 KiB per frame (an answer that would exceed it becomes `503`);
   - 10 s to say `HELLO`, then 60 s idle timeout (no frame and no request in flight);
@@ -210,13 +210,13 @@ node logs as `request`. Without `BATP_URL`, the gateway calls the agent in its o
 
 ## 13. Implementation
 
-| Part | Where | State |
-|---|---|---|
-| Messages, framing, status codes, client, generic node | `code/packages/batp/` (`batp.messages`, `batp.codec`, `batp.status`, `batp.client`, `batp.server`) | ✅ #60 |
-| The node of this backend | `code/packages/merchant_node/` (`make node`, `uv run python -m merchant_node`), settings `BATP_HOST`, `BATP_PORT`, `BATP_TOKENS` | ✅ #60 |
-| The MCP gateway as a bridge | `gateway/agent_client.py` (`BatpAgentClient`), settings `BATP_URL`, `BATP_TOKEN` | ✅ #61 |
-| The node on the team server (loopback) | `code/deploy/merchant-node.service`, `make deploy` | ✅ #62 |
-| RFC-style Internet-Draft of this spec | `documentation/rfc/` | 🚧 #63 |
+| Part | Where |
+|---|---|
+| Messages, framing, status codes, client, generic node | `code/packages/batp/` (`batp.messages`, `batp.codec`, `batp.status`, `batp.client`, `batp.server`) |
+| The node of this backend | `code/packages/merchant_node/` (`make node`, `uv run python -m merchant_node`), settings `BATP_HOST`, `BATP_PORT`, `BATP_TOKENS` |
+| The MCP gateway as a bridge | `gateway/agent_client.py` (`BatpAgentClient`), settings `BATP_URL`, `BATP_TOKEN` |
+| The node on the team server (loopback) | `code/deploy/merchant-node.service`, `make deploy` |
+| RFC-style Internet-Draft of this spec | `documentation/rfc/` (`.md` source; `.xml`, `.txt` and `.html` built by `make rfc` from `code/`, which also regenerates the JSON schemas in `rfc/schemas/` and needs Docker and `npx`) |
 
 Without `BATP_TOKENS`, the node lets any agent in, and refuses to start unless it listens on loopback.
 
@@ -229,15 +229,14 @@ ignored; because `params` are strict, a caller only sends the params of the sess
 
 ## 15. Where the reference node still differs from the draft
 
-The Internet-Draft is the normative text. The node in `packages/batp/` (#60) was written in
-parallel and still differs on one point:
+The Internet-Draft is the normative text. The node in `code/packages/merchant_node/` differs
+from it on one point:
 
-- **`via`:** the node records every BATP booking as `claude`, whatever `kind` the caller
-  declares (§7). The draft's BOOK section still says `merchant` for a `merchant-agent`.
-
-Aligned since #93: an `id` already in flight gets an `error` frame and is not carried out;
-`merchant` is checked per intent; the session closes on the 10th malformed frame in a row;
-frames without a request `id` (not JSON, unknown `type`, no or invalid `id`, above 64 KiB) get
-`error` frames; and the node's own `503` (handler timeout or failure, answer too large) carries
-the merchant's `fallback_url`, looked up within 1 s. A refused duplicate doesn't count as
-malformed: it is a valid frame.
+- **`via`:** the node records every `BOOK` as `claude`, whatever `kind` the caller declares
+  (`merchant_node.agents.VIA`, §7; pinned by
+  `tests/integration/test_batp_node.py`). The draft's BOOK section says a node MUST record
+  `merchant` for a `merchant-agent`. The gap is kept on purpose (#118): the declared `kind` is
+  not trusted. Whoever closes it should know that `via = "merchant"` also hides a booking from
+  the merchant's live feed (`merchant_platform.events.made_by_merchant`, #81 treats it as the
+  merchant's own change, already confirmed in its chat), so a booking from a merchant-side agent
+  would arrive unseen. That may argue for changing the draft rather than the node.

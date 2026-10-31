@@ -6,7 +6,7 @@
 
 A restaurant owner gives us their website and describes how they work. We generate their booking agent. Anyone can then book a table by asking Claude, through a single MCP server that applies their preferences and sends them back to the restaurant's own site whenever the agent can't help. The owner runs it by chatting with our platform, onboarding included, and sees bookings made through Claude appear live. A management site is being added next to the chat ([#127](https://github.com/MaxEntz/BaselHack2026/issues/127)).
 
-Built at BaselHack 2026, and still being built. §4 of the architecture document shows which components are merged, and issue [#26](https://github.com/MaxEntz/BaselHack2026/issues/26) tracks the plan.
+Built at BaselHack 2026. Issue [#26](https://github.com/MaxEntz/BaselHack2026/issues/26) tracks the plan.
 
 ![Sésame onboarding: the merchant is asked for their website's address](documentation/img/sesame-onboarding.png)
 
@@ -18,14 +18,14 @@ Built at BaselHack 2026, and still being built. §4 of the architecture document
 
 - **User side.** Claude.ai calls our **gateway**, a remote MCP server, which routes the call to the merchant's **agent**. Each merchant's data lives in its own Postgres schema, and the database itself makes double booking impossible. On failure, the gateway returns the merchant's own booking page.
 - **Merchant side.** The merchant uses a **web chat**, backed by the **platform API**. There, an **assistant** answers through admin tools ("What bookings do I have tonight?", "Block 21:00"), and the **builder** turns the merchant's website into a validated profile, then provisions the agent. The LLM only fills that profile; it never writes code or SQL.
-- **Agent network.** Behind the gateway, the merchant agents form a network reserved for AI agents, with its own protocol: **BATP**, on TCP port 4710. Every session names the calling agent, and every request names its intent and merchant. Claude only speaks MCP, so the gateway is its bridge to BATP. The spec is an RFC-style Internet-Draft, [`draft-merchant-agents-batp-00`](documentation/rfc/draft-merchant-agents-batp-00.txt), summarized in [`documentation/PROTOCOL.md`](documentation/PROTOCOL.md); the node and the bridge are in progress (#60, #61).
+- **Agent network.** Behind the gateway, the merchant agents form a network reserved for AI agents, with its own protocol: **BATP**, on TCP port 4710. Every session names the calling agent, and every request names its intent and merchant. Claude only speaks MCP, so the gateway is its bridge to BATP. The spec is an RFC-style Internet-Draft, [`draft-merchant-agents-batp-00`](documentation/rfc/draft-merchant-agents-batp-00.txt), summarized in [`documentation/PROTOCOL.md`](documentation/PROTOCOL.md). The BATP node runs on the team server, and the deployed gateway reaches the agents through it.
 - **Live.** A committed booking fires Postgres `NOTIFY`, which is pushed to the merchant's chat over SSE. The target is under 2 seconds.
 
 ➡️ **[documentation/ARCHITECTURE.md](documentation/ARCHITECTURE.md)** has the diagrams, the main flow step by step, every component and what it does *not* do, and the stack with its [decision records](documentation/adr/README.md).
 
 ## Quick start
 
-Prerequisites: Python 3.12 with [uv](https://docs.astral.sh/uv/), Docker, Node.js ≥ 22.12.
+Prerequisites: Python 3.12 with [uv](https://docs.astral.sh/uv/), Docker, Node.js (minimum version in [`code/README.md`](code/README.md#prerequisites)).
 
 ```bash
 cd code
@@ -40,7 +40,7 @@ All the commands are in [`code/README.md`](code/README.md). To connect Claude.ai
 
 | Path | Content |
 |---|---|
-| [`code/`](code) | uv workspace (`core`, `agent`, `gateway`, `builder`, `merchant_platform`), web chat, demo site, migrations, tests |
+| [`code/`](code) | uv workspace (`core`, `agent`, `gateway`, `batp`, `merchant_node`, `builder`, `merchant_platform`), web chat, demo sites, migrations, scripts, tests |
 | [`documentation/`](documentation) | Architecture, decision records, contracts, runbooks |
 | [`assets/`](assets) | Presentation material |
 | [`AGENTS.md`](AGENTS.md) | Full spec, shared by Claude Code (`CLAUDE.md`) and opencode |
