@@ -236,7 +236,13 @@ def default_assistant(
     async def build(arguments: BuildAgentInput, emit: StepEmitter) -> BuildAgentOutput:
         return await builder.build_agent(str(arguments.website), arguments.description, emit)
 
-    tools = AdminTools(agent, build, tz, today=lambda: datetime.now(tz).date())
+    tools = AdminTools(
+        agent,
+        build,
+        tz,
+        today=lambda: datetime.now(tz).date(),
+        owned_merchant=settings.platform_merchant,
+    )
     return Assistant(
         llm, tools, registry_profiles(engine), tz, default_merchant=settings.platform_merchant
     )

@@ -54,6 +54,10 @@ NOT_ONBOARDED = "No agent yet: onboard the merchant first with build_agent."
 ALREADY_ONBOARDED = "This merchant already has a live agent: use the other tools to change it."
 NOT_AVAILABLE = "Managing bookings isn't available yet on this platform."
 TOOL_FAILED = "The tool failed unexpectedly."
+SITE_TAKEN = (
+    "This website already has an agent on the platform, managed from another account. "
+    "It can't be built again from here."
+)
 
 
 @dataclass(frozen=True)
@@ -146,11 +150,16 @@ class AdminTools:
         build_agent: BuildAgent,
         tz: ZoneInfo,
         today: Callable[[], date],
+        *,
+        owned_merchant: str | None = None,
     ) -> None:
+        """`owned_merchant` (PLATFORM_MERCHANT) is the only existing merchant a session may
+        take over by onboarding its website again: there is no authentication (§13, §15)."""
         self._agent = agent
         self._build_agent = build_agent
         self._tz = tz
         self._today = today
+        self._owned_merchant = owned_merchant
 
     async def run(self, session: Session, call: ToolCall, emit: Emit) -> ToolResult:
         tool = _BY_NAME.get(call.name)
@@ -172,7 +181,10 @@ class AdminTools:
         try:
             outcome = await self._handle(session, tool.name, arguments, emit)
         except AlreadyProvisioned as error:
-            # The merchant onboards again with a site that has an agent: work on that one.
+            if error.slug != self._owned_merchant:
+                # Typing someone's URL must not hand over their bookings and settings.
+                return ToolResult(f"{error.code}: {SITE_TAKEN}", is_error=True)
+            # The demo's merchant onboards again: work on its existing agent.
             session.merchant_slug = error.slug
             return ToolResult(f"{error.code}: {error}", is_error=True)
         except AgentError as error:
