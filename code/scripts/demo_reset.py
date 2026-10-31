@@ -53,7 +53,12 @@ async def wipe(conn: AsyncConnection) -> list[str]:
     )
     for schema in schemas:
         await conn.execute(DropSchema(schema, cascade=True))
-    await conn.execute(text("TRUNCATE public.guest_notices, public.merchants RESTART IDENTITY"))
+    await conn.execute(
+        text(
+            "TRUNCATE public.reservation_changes, public.guest_notices, public.merchants"
+            " RESTART IDENTITY"
+        )
+    )
     return schemas
 
 

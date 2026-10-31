@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import Row, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import Range
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.sql import Executable
@@ -38,6 +39,7 @@ from core.db import (
     merchants_t,
     next_reservation_id,
     policy_t,
+    reservation_changes_t,
     reservations_t,
     tables_t,
 )
@@ -367,6 +369,12 @@ class PgAgentService:
         async with merchant_conn(self.engine, slug) as conn:
             merchant = await self._load(conn, slug)
             current = await self._own_booking(conn, reservation_id, guest_name)
+            # A key already applied returns the booking as it is now: a late retry of an
+            # older change must not undo a newer one (#78).
+            if not await self._claim_update_key(
+                conn, slug, idempotency_key, current.id, starts_at, party_size
+            ):
+                return self._from_row(slug, current)
             if current.status != "confirmed":
                 _not_found(reservation_id)
             self._check_not_started(current)
@@ -402,7 +410,10 @@ class PgAgentService:
                     current.guest_name,
                     current.via,
                 )
-        raise SlotUnavailable(f"No table left at {merchant.name} at {_hhmm(new_start, self.tz)}")
+            # Inside the transaction: it rolls back, and the key claimed above with it.
+            raise SlotUnavailable(
+                f"No table left at {merchant.name} at {_hhmm(new_start, self.tz)}"
+            )
 
     @overload
     async def cancel_reservation(
@@ -449,6 +460,51 @@ class PgAgentService:
             current.guest_name,
             current.via,
         )
+
+    async def _claim_update_key(
+        self,
+        conn: AsyncConnection,
+        slug: str,
+        key: str,
+        reservation_id: str,
+        starts_at: datetime | None,
+        party_size: int | None,
+    ) -> bool:
+        """True if this update is new: its key is then stored, in the update's transaction.
+
+        A failed update rolls the key back with it. False if the key already applied this very
+        change; another change under the same key is `InvalidInput`, as for creations. The
+        booking's row lock, taken by `_own_booking`, queues two concurrent uses of one key.
+        """
+        claimed = await conn.scalar(
+            pg_insert(reservation_changes_t)
+            .values(
+                merchant_slug=slug,
+                idempotency_key=key,
+                reservation_id=reservation_id,
+                starts_at=starts_at,
+                party_size=party_size,
+            )
+            .on_conflict_do_nothing(index_elements=["merchant_slug", "idempotency_key"])
+            .returning(reservation_changes_t.c.idempotency_key)
+        )
+        if claimed is not None:
+            return True
+        applied = (
+            await conn.execute(
+                select(
+                    reservation_changes_t.c.reservation_id,
+                    reservation_changes_t.c.starts_at,
+                    reservation_changes_t.c.party_size,
+                ).where(
+                    reservation_changes_t.c.merchant_slug == slug,
+                    reservation_changes_t.c.idempotency_key == key,
+                )
+            )
+        ).one()
+        if tuple(applied) != (reservation_id, starts_at, party_size):
+            raise InvalidInput("idempotency_key reused with different parameters")
+        return False
 
     def _check_not_started(self, booking: _Row) -> None:
         """A guest changes a booking only before it starts: after, it's the merchant's (#79)."""
