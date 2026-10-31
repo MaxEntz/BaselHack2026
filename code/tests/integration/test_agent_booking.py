@@ -567,6 +567,32 @@ async def test_a_merchant_cancellation_reaches_a_guest_named_weiss(
     assert booked.id in notices[0]
 
 
+async def test_a_lookup_leaves_another_guest_s_notice_alone(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    # Only `same_guest` now picks the notices to mark: another guest's must stay undelivered.
+    slug = await make_merchant()
+    token = uuid4().hex[:6]
+    for guest in (f"Anna Weiß {token}", f"Anna Weber {token}"):
+        async with engine.begin() as conn:
+            await conn.execute(
+                insert(guest_notices_t).values(
+                    guest_name=guest, merchant_slug=slug, reservation_id="R-001", message=guest
+                )
+            )
+
+    _, notices = await service.find_guest_reservations(f"anna weiss {token}")
+
+    assert notices == [f"Anna Weiß {token}"]
+    async with engine.connect() as conn:
+        other = await conn.scalar(
+            select(guest_notices_t.c.delivered_at).where(
+                guest_notices_t.c.guest_name == f"Anna Weber {token}"
+            )
+        )
+    assert other is None
+
+
 async def test_guest_notices_come_back_for_a_day_then_stop(
     engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
 ) -> None:
