@@ -58,6 +58,7 @@ Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_pr
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
 uv run pytest tests/e2e           # §9 user scenarios through a real MCP client
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
+uv run scripts/bench_extract.py    # builder extraction, 5 runs on 6 sites (needs OPENAI_API_KEY, `make sites`)
 uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway packages/matp packages/merchant_node
 make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp

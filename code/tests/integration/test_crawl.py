@@ -141,6 +141,16 @@ async def test_reads_the_demo_site_pages_from_its_homepage(demo: DemoCrawl) -> N
     assert all(page.text and "  " not in page.text for page in demo.result.pages)
 
 
+async def test_keeps_the_ids_a_one_page_sites_link_can_land_on(
+    serve: Callable[[Path], Site],
+) -> None:
+    result = await crawl(
+        serve(DEMO_SITE.parent / "la-graine-verte").url, Steps(), allow_private=True
+    )
+
+    assert "reserver" in result.pages[0].anchors
+
+
 async def test_reports_each_page_read_then_a_summary(demo: DemoCrawl) -> None:
     steps = demo.steps
 
