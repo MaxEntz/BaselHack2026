@@ -15,7 +15,7 @@ from core.config import Settings, get_settings
 from core.db import make_engine
 from core.logs import json_handler
 from merchant_node.agents import MerchantAgents
-from merchant_node.requests_log import RequestLog
+from merchant_node.requests_log import RequestLog, log_engine
 
 NODE = NodeIdentity(id="urn:batp:node:merchant-agents", name="Sésame")
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
@@ -81,7 +81,7 @@ def main() -> None:
         handle=agents,
         authenticate=token_check(settings),
         fallback_url=agents.fallback_url,
-        record=RequestLog(engine),
+        record=RequestLog(log_engine(settings.database_url)),
     )
     asyncio.run(server.serve(settings.batp_host, settings.batp_port, tls=tls_context(settings)))
 

@@ -39,11 +39,13 @@ MERCHANT = "merchant"
 _SLUG = TypeAdapter(Slug)
 
 
-def make_engine(url: str | None = None) -> AsyncEngine:
-    """Async engine on `url`, or DATABASE_URL (driver `postgresql+psycopg`). One per process."""
+def make_engine(url: str | None = None, **pool: int) -> AsyncEngine:
+    """Async engine on `url`, or DATABASE_URL (driver `postgresql+psycopg`). One per process,
+    plus a small one for a side job that must never take the main pool's connections (`pool`:
+    `pool_size`, `max_overflow`)."""
     # hide_parameters: a DB error never carries guest names into logs or messages.
     return create_async_engine(
-        url or get_settings().database_url, pool_pre_ping=True, hide_parameters=True
+        url or get_settings().database_url, pool_pre_ping=True, hide_parameters=True, **pool
     )
 
 

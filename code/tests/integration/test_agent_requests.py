@@ -21,7 +21,7 @@ from core.db import agent_requests_t
 from core.errors import AgentUnavailable, InvalidInput, NotFound, PartyTooLarge
 from merchant_node.__main__ import NODE
 from merchant_node.agents import MerchantAgents
-from merchant_node.requests_log import RequestLog
+from merchant_node.requests_log import RequestLog, log_engine
 
 pytestmark = pytest.mark.integration
 
@@ -143,10 +143,11 @@ async def test_a_refusal_is_logged_with_its_status_and_fallback_url(
     assert row["response"]["error"]["fallback_url"]
 
 
-async def test_requests_without_a_known_merchant_leave_no_row(
+async def test_requests_without_a_published_merchant_leave_no_row(
     engine: AsyncEngine, connect: NodeFactory, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant()
+    building = await make_merchant(live=False)
     client = await connect(RequestLog(engine))
 
     await client.request("PING")
@@ -156,6 +157,8 @@ async def test_requests_without_a_known_merchant_leave_no_row(
         await client.request(
             "AVAILABILITY", "chez-personne", {"date": DAY.isoformat(), "party_size": 2}
         )
+    with pytest.raises(NotFound):
+        await client.request("AVAILABILITY", building, {"date": DAY.isoformat(), "party_size": 2})
     await client.request("AVAILABILITY", slug, {"date": DAY.isoformat(), "party_size": 2})
 
     found = await settled(engine, slug, 1)
@@ -167,6 +170,7 @@ async def test_requests_without_a_known_merchant_leave_no_row(
         )
     assert [row["intent"] for row in found] == ["AVAILABILITY"]
     assert unknown == 0
+    assert await rows(engine, building) == []
 
 
 async def test_rows_older_than_7_days_are_purged_as_new_ones_arrive(
@@ -222,6 +226,30 @@ async def test_a_failing_or_slow_log_never_delays_or_fails_the_answer(
 
     await asyncio.sleep(0.05)
     assert calls == ["AVAILABILITY", "AVAILABILITY"]
+
+
+async def test_the_log_has_its_own_small_pool_and_drops_records_when_full(
+    engine: AsyncEngine,
+    connect: NodeFactory,
+    make_merchant: MerchantFactory,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    slug = await make_merchant()
+    own = log_engine(engine.url.render_as_string(hide_password=False))
+    try:
+        assert (own.pool.size(), own.pool._max_overflow) == (1, 1)  # type: ignore[attr-defined]
+        client = await connect(RequestLog(own, max_pending=0))
+
+        answered = await client.request(
+            "AVAILABILITY", slug, {"date": DAY.isoformat(), "party_size": 2}
+        )
+        await asyncio.sleep(0.2)
+    finally:
+        await own.dispose()
+
+    assert answered["slots"]
+    assert await rows(engine, slug) == []
+    assert "request log full: record dropped" in caplog.text
 
 
 async def test_pause_sends_agents_to_the_booking_page_and_resume_brings_slots_back(
