@@ -108,6 +108,7 @@ async def test_get_my_reservations_tells_claude_to_relay_notices() -> None:
     description = (await list_tools())["get_my_reservations"].description or ""
 
     assert "relay notices" in description
+    assert "24 hours" in description
 
 
 async def test_annotations_describe_each_tool() -> None:

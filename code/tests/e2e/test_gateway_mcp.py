@@ -258,7 +258,7 @@ async def test_unknown_merchant_is_not_found(gateway_base_url: str) -> None:
     assert result["fallback_url"] is None
 
 
-async def test_merchant_cancellation_notice_appears_once(
+async def test_merchant_cancellation_notice_comes_back_on_the_next_call(
     gateway_base_url: str, e2e_engine: AsyncEngine
 ) -> None:
     async with Client(f"{gateway_base_url}/mcp") as client:
@@ -271,7 +271,7 @@ async def test_merchant_cancellation_notice_appears_once(
     assert first["reservations"] == []
     assert len(first["notices"]) == 1
     assert booked["id"] in first["notices"][0]
-    assert second["notices"] == []
+    assert second["notices"] == first["notices"]
 
 
 async def test_blocked_start_is_no_longer_offered(

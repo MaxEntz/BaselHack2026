@@ -122,6 +122,7 @@ The node answers with one of these:
 | `PING` | — | `{}` | `{"pong": true, "server_time": …}` | the node |
 
 - `BOOK` and `AMEND` require `params.idempotency_key`. A `BOOK` replay with the same key (per merchant) and the same params returns the first booking; the same key with other params gets `400 invalid_input`. `CANCEL` is idempotent without a key.
+- `RECALL` returns a notice on every call for 24 hours after the first one that returned it, then never again (#91). An answer lost in transit (dropped session, the caller's timeout) loses no notice, so `RECALL` is safe to send again, and `MatpClient` resends it after a lost session like the read-only intents.
 - For a merchant marked `down`, the node itself answers `503` with the fallback URL to the addressed intents.
 - Writes (`BOOK`, `AMEND`, `CANCEL`) are only sent after the guest confirmed (AGENTS.md §6). The bridge enforces it through the MCP tool descriptions; another caller is expected to do the same.
 - Merchant-side operations (`list_reservations`, `block_slot`, …) are **not** MATP intents: they stay on the merchant platform (AGENTS.md §8.2).

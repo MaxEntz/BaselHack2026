@@ -95,14 +95,14 @@ Table of Contents
      8.5.  CANCEL  . . . . . . . . . . . . . . . . . . . . . . . . .  15
      8.6.  RECALL  . . . . . . . . . . . . . . . . . . . . . . . . .  15
      8.7.  PING  . . . . . . . . . . . . . . . . . . . . . . . . . .  15
-   9.  Status Codes  . . . . . . . . . . . . . . . . . . . . . . . .  15
+   9.  Status Codes  . . . . . . . . . . . . . . . . . . . . . . . .  16
    10. Events  . . . . . . . . . . . . . . . . . . . . . . . . . . .  17
    11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  17
-   12. Security Considerations . . . . . . . . . . . . . . . . . . .  17
-   13. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  18
+   12. Security Considerations . . . . . . . . . . . . . . . . . . .  18
+   13. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  19
    14. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  19
-   15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  19
-     15.1.  Normative References . . . . . . . . . . . . . . . . . .  19
+   15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  20
+     15.1.  Normative References . . . . . . . . . . . . . . . . . .  20
      15.2.  Informative References . . . . . . . . . . . . . . . . .  20
    Appendix A.  The MCP Bridge . . . . . . . . . . . . . . . . . . .  21
    Appendix B.  Example Session  . . . . . . . . . . . . . . . . . .  22
@@ -813,8 +813,12 @@ Internet-Draft                    MATP                      October 2026
 
    Result: reservations, the guest's upcoming confirmed bookings at
    every live merchant of the node, and notices, messages for the guest
-   (for example, that a merchant cancelled a booking).  A notice is
-   returned once: the node MUST NOT return it again in a later RECALL.
+   (for example, that a merchant cancelled a booking).  A node MUST
+   return a notice in every RECALL for the guest during 24 hours after
+   the first RECALL that returned it, and MUST NOT return it after that.
+   An answer lost on its way to the caller therefore loses no notice,
+   and a caller MAY send a RECALL again.  A caller SHOULD NOT show the
+   guest a notice it already showed them.
 
    Errors: 400, 503.
 
@@ -823,6 +827,20 @@ Internet-Draft                    MATP                      October 2026
    Params: {}. Result: pong (true) and server_time, the node's clock.
 
    Errors: none defined.
+
+
+
+
+
+
+
+
+
+
+                           Expires 4 May 2027                  [Page 15]
+
+Internet-Draft                    MATP                      October 2026
+
 
 9.  Status Codes
 
@@ -834,14 +852,6 @@ Internet-Draft                    MATP                      October 2026
      | 400    | invalid_input     | Invalid params,   | no           |
      |        |                   | unknown intent,   |              |
      |        |                   | missing or        |              |
-
-
-
-                           Expires 4 May 2027                  [Page 15]
-
-Internet-Draft                    MATP                      October 2026
-
-
      |        |                   | unexpected        |              |
      |        |                   | merchant          |              |
      +--------+-------------------+-------------------+--------------+
@@ -880,6 +890,14 @@ Internet-Draft                    MATP                      October 2026
      | 503    | agent_unavailable | The merchant      | yes          |
      |        |                   | agent is down,    |              |
      |        |                   | failed, or timed  |              |
+
+
+
+                           Expires 4 May 2027                  [Page 16]
+
+Internet-Draft                    MATP                      October 2026
+
+
      |        |                   | out               |              |
      +--------+-------------------+-------------------+--------------+
 
@@ -888,15 +906,6 @@ Internet-Draft                    MATP                      October 2026
    The status values 400 and 413 also appear in error frames
    (Section 7.5), which carry no error.code; there, 413 means a frame
    above the size limit.
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 16]
-
-Internet-Draft                    MATP                      October 2026
-
 
    A node MUST answer 503 to AVAILABILITY, BOOK, AMEND and CANCEL when
    the merchant is marked as down, without consulting the merchant
@@ -936,6 +945,15 @@ Internet-Draft                    MATP                      October 2026
    does not define.  A caller MUST ignore result members it does not
    know.
 
+
+
+
+
+                           Expires 4 May 2027                  [Page 17]
+
+Internet-Draft                    MATP                      October 2026
+
+
 12.  Security Considerations
 
    Agent identity and tokens:  The node attributes every request to the
@@ -945,14 +963,6 @@ Internet-Draft                    MATP                      October 2026
       tokens in constant time.  Tokens MUST NOT be sent outside TLS
       except on the loopback interface, and SHOULD be long random
       strings that a node can revoke individually.
-
-
-
-
-                           Expires 4 May 2027                  [Page 17]
-
-Internet-Draft                    MATP                      October 2026
-
 
    Transport:  Without TLS, anyone on the path reads guest names,
       bookings and tokens, and can change them.  Section 4 therefore
@@ -991,6 +1001,15 @@ Internet-Draft                    MATP                      October 2026
       SHOULD only offer https URLs, and a node SHOULD only send URLs on
       the merchant's own website.
 
+
+
+
+
+                           Expires 4 May 2027                  [Page 18]
+
+Internet-Draft                    MATP                      October 2026
+
+
 13.  Privacy Considerations
 
    Guest names:  Guest names and party sizes are personal data.  A node
@@ -1002,13 +1021,6 @@ Internet-Draft                    MATP                      October 2026
    Preferences:  DISCOVER filters can reveal diet or religion (vegan,
       halal, kosher).  A node MUST NOT store them beyond the request or
       link them to a guest.
-
-
-
-                           Expires 4 May 2027                  [Page 18]
-
-Internet-Draft                    MATP                      October 2026
-
 
    Recall:  As Section 12 says, RECALL returns the bookings of any name
       it is given.  Callers SHOULD only send the name of the guest they
@@ -1047,6 +1059,13 @@ Internet-Draft                    MATP                      October 2026
    URN namespace:  The urn:matp: identifiers used in examples are not a
       registered URN namespace ([RFC8141]).
 
+
+
+                           Expires 4 May 2027                  [Page 19]
+
+Internet-Draft                    MATP                      October 2026
+
+
 15.  References
 
 15.1.  Normative References
@@ -1055,16 +1074,6 @@ Internet-Draft                    MATP                      October 2026
               Requirement Levels", BCP 14, RFC 2119,
               DOI 10.17487/RFC2119, March 1997,
               <https://www.rfc-editor.org/rfc/rfc2119>.
-
-
-
-
-
-
-                           Expires 4 May 2027                  [Page 19]
-
-Internet-Draft                    MATP                      October 2026
-
 
    [RFC3339]  Klyne, G. and C. Newman, "Date and Time on the Internet:
               Timestamps", RFC 3339, DOI 10.17487/RFC3339, July 2002,
@@ -1103,15 +1112,6 @@ Internet-Draft                    MATP                      October 2026
 
 15.2.  Informative References
 
-   [I-D.bhutton-json-schema]
-              Wright, A., Andrews, H. H., Hutton, B., and G. Dennis,
-              "JSON Schema: A Media Type for Describing JSON Documents",
-              Work in Progress, Internet-Draft, draft-bhutton-json-
-              schema-01, 10 June 2022,
-              <https://datatracker.ietf.org/doc/html/draft-bhutton-json-
-              schema-01>.
-
-
 
 
 
@@ -1121,6 +1121,14 @@ Internet-Draft                    MATP                      October 2026
 
 Internet-Draft                    MATP                      October 2026
 
+
+   [I-D.bhutton-json-schema]
+              Wright, A., Andrews, H. H., Hutton, B., and G. Dennis,
+              "JSON Schema: A Media Type for Describing JSON Documents",
+              Work in Progress, Internet-Draft, draft-bhutton-json-
+              schema-01, 10 June 2022,
+              <https://datatracker.ietf.org/doc/html/draft-bhutton-json-
+              schema-01>.
 
    [I-D.hood-independent-agtp]
               Hood, C., "Agent Transfer Protocol (AGTP)", Work in
@@ -1160,14 +1168,6 @@ Appendix A.  The MCP Bridge
    node.  The reference bridge opens one session with agent.id
    urn:matp:agent:claude-gateway and agent.kind user-agent, and maps its
    tools to intents:
-
-
-
-
-
-
-
-
 
 
 

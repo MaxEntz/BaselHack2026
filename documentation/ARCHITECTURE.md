@@ -210,7 +210,7 @@ So where the platform and the web chat run for the demo is still to decide. They
 | **Fallback URL** | The merchant's own booking page, returned whenever the agent cannot serve a request. |
 | **Registry** | The `public.merchants` table that discovery reads: one row per merchant, with its status (`building`, `live`, `down`). |
 | **Slug** | The merchant's identifier (`le-petit-zinc`), which also names its schema (`m_le_petit_zinc`). |
-| **Guest notice** | A message stored when the merchant cancels a booking, shown to the guest on their next `get_my_reservations`. |
+| **Guest notice** | A message stored when the merchant cancels a booking, returned by every `get_my_reservations` (MATP `RECALL`) for 24 hours after the first one that returned it (#91). |
 | **MCP** | Model Context Protocol: how an AI client (Claude) discovers and calls tools exposed by a server. |
 | **Connector** | A remote MCP server added to Claude.ai. Claude.ai calls it from Anthropic's cloud, hence the need for a public HTTPS URL. |
 | **Streamable HTTP** | The MCP transport over HTTP: JSON-RPC requests in POST, responses as JSON or as an SSE stream. |

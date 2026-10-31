@@ -110,7 +110,8 @@ the user."""
 
 GET_MY_RESERVATIONS = """\
 List the user's upcoming bookings and any notices from restaurants (e.g. a cancellation by the \
-restaurant). Always relay notices to the user: each one is only returned once."""
+restaurant). Always relay notices to the user. A notice keeps coming back for 24 hours after it \
+is first returned: don't repeat one you already gave the user in this conversation."""
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 IDEMPOTENT_WRITE = ToolAnnotations(

@@ -11,7 +11,7 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import set_status
-from agent.service import PgAgentService
+from agent.service import NOTICE_WINDOW, PgAgentService
 from core.db import blocked_slots_t, guest_notices_t, merchant_conn, reservations_t
 from core.errors import InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import Reservation
@@ -530,9 +530,10 @@ async def test_guest_sees_upcoming_bookings_across_live_merchants(
     assert notices == []
 
 
-async def test_guest_notices_are_returned_once(
-    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
+async def test_guest_notices_come_back_for_a_day_then_stop(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory, clock: Clock
 ) -> None:
+    # An answer lost in transit must not lose a notice: a later call within the window gets it.
     guest = f"Guest {uuid4().hex[:6]}"
     slug = await make_merchant()
     async with engine.begin() as conn:
@@ -544,10 +545,14 @@ async def test_guest_notices_are_returned_once(
             )
 
     _, first = await service.find_guest_reservations(f" {guest.lower()} ")
-    _, second = await service.find_guest_reservations(guest)
+    clock.now = NOW + NOTICE_WINDOW - timedelta(minutes=1)
+    _, within = await service.find_guest_reservations(guest)
+    clock.now = NOW + NOTICE_WINDOW + timedelta(seconds=1)
+    _, after = await service.find_guest_reservations(guest)
 
     assert first == ["First notice", "Second notice"]
-    assert second == []
+    assert within == first
+    assert after == []
     async with engine.connect() as conn:
         delivered = await conn.scalar(
             select(func.count())

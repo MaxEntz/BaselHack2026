@@ -16,7 +16,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Literal, NoReturn, Protocol, overload
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Row, func, insert, select, update
+from sqlalchemy import Row, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -62,6 +62,9 @@ _Row = Row[*tuple[Any, ...]]
 
 EXCLUSION_VIOLATION = "23P01"
 IDEMPOTENCY_CONSTRAINT = "reservations_idempotency_key_key"
+# A notice comes back on every lookup for this long after the first one that returned it, so
+# that an answer lost on its way to the guest doesn't lose the notice (#91).
+NOTICE_WINDOW = timedelta(hours=24)
 
 Outcome = Literal["done", "taken", "key_taken"]
 
@@ -448,10 +451,11 @@ class PgAgentService:
         )
 
     async def find_guest_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
-        """Upcoming confirmed bookings at every live merchant, and the guest's new notices.
+        """Upcoming confirmed bookings at every live merchant, and the guest's notices.
 
-        Notices are marked delivered in the same statement that returns them: each one is
-        returned once. A simple loop over merchants is fine for the POC's handful of them.
+        A notice is returned from its first lookup until `NOTICE_WINDOW` later, then never
+        again; `delivered_at` keeps the time of that first lookup. A simple loop over merchants
+        is fine for the POC's handful of them.
         """
         name = _normalize(guest_name)
         now = self.clock()
@@ -481,10 +485,13 @@ class PgAgentService:
             delivered = await conn.execute(
                 update(guest_notices_t)
                 .where(
-                    guest_notices_t.c.delivered_at.is_(None),
+                    or_(
+                        guest_notices_t.c.delivered_at.is_(None),
+                        guest_notices_t.c.delivered_at > now - NOTICE_WINDOW,
+                    ),
                     _normalized_column(guest_notices_t.c.guest_name) == name,
                 )
-                .values(delivered_at=now)
+                .values(delivered_at=func.coalesce(guest_notices_t.c.delivered_at, now))
                 .returning(guest_notices_t.c.id, guest_notices_t.c.message)
             )
             notices = [row.message for row in sorted(delivered, key=lambda row: row.id)]
