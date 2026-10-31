@@ -53,15 +53,7 @@ web-dist: ## Build the merchant web app (web/dist) for make deploy
 	cd web && npm run build
 
 deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web app to the team server
-	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
-		f=$(PLATFORM_ENV); \
-		test -f $$f || { echo "$$f is missing on the server (documentation/runbooks/platform.md, step 2)" >&2; exit 1; }; \
-		last() { grep -E "^(export +)?$$1 *=" $$f | tail -1 | sed -E "s/^[^=]*= *//"; }; \
-		for c in "PLATFORM_DEV_ROUTES ^0" "PLATFORM_INVITE_CODE ." "PLATFORM_COOKIE_SECRET ." "PLATFORM_WEB_URL ^https://sesame\\."; do \
-			set -- $$c; \
-			last $$1 | grep -Eq "$$2" || { echo "$$f on the server needs $$1 matching $$2 (documentation/runbooks/platform.md, step 2)" >&2; exit 1; }; \
-		done; \
-		test -z "$$(last PLATFORM_MERCHANT)" || { echo "$$f on the server must not set PLATFORM_MERCHANT (local development only)" >&2; exit 1; }'
+	$(DEPLOY_SSH) $(DEPLOY_HOST) 'test -f $(PLATFORM_ENV) || { echo "$(PLATFORM_ENV) is missing on the server (documentation/runbooks/platform.md, step 2)" >&2; exit 1; }'
 	rsync -rlptz --chmod=a+rX --delete --exclude .venv --exclude '.env*' --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .hypothesis --exclude '.coverage*' --exclude htmlcov --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) 'mkdir -p $(DEPLOY_DIR)/web/dist'
 	rsync -rlptz --chmod=a+rX --delete -e "$(DEPLOY_SSH)" web/dist/ $(DEPLOY_HOST):$(DEPLOY_DIR)/web/dist/
@@ -72,6 +64,7 @@ deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web ap
 		chown root:gateway .env && chmod 640 .env && \
 		chown -R root:sesame ../platform && chmod 750 ../platform && chmod 640 ../platform/.env && \
 		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node --package merchant-platform --package builder -q && \
+		( cd ../platform && ../code/.venv/bin/python ../code/scripts/platform_env.py ) && \
 		{ ( umask 077 && .venv/bin/python scripts/caddy_env.py > ../caddy.env.new ) || { rm -f ../caddy.env.new; exit 1; }; } && \
 		{ cmp -s deploy/Caddyfile /etc/caddy/Caddyfile || caddy validate --adapter caddyfile --config deploy/Caddyfile; } && \
 		caddy_changed=0 && \

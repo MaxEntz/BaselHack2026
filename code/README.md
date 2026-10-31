@@ -95,9 +95,9 @@ packages/
 web/                    Studio and the management site (Vite + React + TS)
 sites/                  demo restaurant websites: le-petit-zinc (crawl target), 2 one-page sites
 migrations/             Alembic (public schema only; merchant schemas come from provisioning)
-scripts/                seed.py, demo_reset.py, set_status.py (outage switch), caddy_env.py (make deploy),
-                        crawl_site.py, bench_extract.py (+ bench_sites/), batp_schemas.py (make rfc),
-                        spike_extract.py (+ spike_samples/, the #4 spike)
+scripts/                seed.py, demo_reset.py, set_status.py (outage switch), caddy_env.py and
+                        platform_env.py (make deploy), crawl_site.py, bench_extract.py (+ bench_sites/),
+                        batp_schemas.py (make rfc), spike_extract.py (+ spike_samples/, the #4 spike)
 deploy/                 systemd units and Caddyfile for make deploy
 tests/{unit,integration,e2e,fixtures}/
 ```
