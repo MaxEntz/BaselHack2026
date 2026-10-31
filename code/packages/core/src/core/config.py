@@ -1,8 +1,13 @@
 """Runtime settings read from the environment and from `code/.env` (see `.env.example`)."""
 
+import logging
+import os
+from collections.abc import Mapping
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from dotenv import dotenv_values
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -50,7 +55,35 @@ class Settings(BaseSettings):
     batp_tls_key: str | None = None
 
 
+# Settings named after MATP, which #119 renamed BATP (ADR-0014).
+LEGACY_PREFIX = "MATP_"
+
+log = logging.getLogger("core.config")
+
+
+def legacy_keys(
+    env_file: str | Path = ".env", environ: Mapping[str, str] | None = None
+) -> list[str]:
+    """`MATP_*` keys still set in the environment or in `env_file`, sorted.
+
+    `Settings` ignores unknown keys, so a leftover `MATP_URL` would silently make the gateway
+    run its agent in-process instead of bridging to the node.
+    """
+    environ = os.environ if environ is None else environ
+    keys = {key.upper() for key in environ}
+    if Path(env_file).is_file():
+        keys |= {key.upper() for key in dotenv_values(env_file)}
+    return sorted(key for key in keys if key.startswith(LEGACY_PREFIX))
+
+
 @lru_cache
 def get_settings() -> Settings:
-    """Load settings once; fails fast if a required variable such as DATABASE_URL is missing."""
+    """Load settings once; fails fast if a required variable such as DATABASE_URL is missing.
+
+    Warns about leftover `MATP_*` keys, which are ignored.
+    """
+    if keys := legacy_keys():
+        log.warning(
+            "%s ignored since #119: rename them BATP_* (urn:batp:, batp://)", ", ".join(keys)
+        )
     return Settings()

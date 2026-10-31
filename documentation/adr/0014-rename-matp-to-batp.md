@@ -29,8 +29,9 @@ Cheaper, but a protocol named BATP that sends `"matp": "0.1"` and `urn:matp:` wo
 
 - Positive: the name matches the intent of ADR-0011, an open agent network.
 - Negative: a MATP peer can't talk to a BATP node (`HELLO` without `batp` is refused). Only our own gateway and node exist, and they ship together.
-- Negative: a teammate's local `.env` with `MATP_*` keys stops bridging silently: the gateway falls back to the in-process agent. `.env.example` shows the new keys.
+- Negative: `Settings` ignores unknown keys, so a teammate's local `.env` with `MATP_*` keys no longer bridges: the gateway falls back to the in-process agent. `get_settings()` logs a warning naming every `MATP_*` key it finds in the environment or in `.env`, and `.env.example` shows the new keys.
+- Negative: rolling the team server back to a commit before #119 finds only `BATP_*` keys. Run the reverse rename in `/opt/merchant-agents/code` first: `sed -i -E "s/^BATP_/MATP_/; s/urn:batp:/urn:matp:/g; s,batp://,matp://,g" .env`.
 
 ## Sources
 
-- [code] `documentation/PROTOCOL.md` — the BATP draft; `code/packages/batp/` — library; `code/Makefile` (`deploy`) — the `.env` rename on the team server
+- [code] `documentation/PROTOCOL.md` — the BATP draft; `code/packages/batp/` — library; `code/Makefile` (`deploy`) — the `.env` rename on the team server; `code/packages/core/src/core/config.py` (`legacy_keys`) — the warning
