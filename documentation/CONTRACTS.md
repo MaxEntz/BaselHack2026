@@ -88,7 +88,7 @@ live booking also appears in tonight's reservations.
   booked `via="website"`. Errors use the `ToolError` body with `404` (`not_found`), `409`
   (`slot_unavailable`), `422` (`party_too_large`, `invalid_input`), `503`
   (`agent_unavailable`). CORS allows `PUBLIC_CORS_ORIGINS` only (default
-  `http://localhost:8080`).
+  `http://localhost:8080` and `http://127.0.0.1:8080`).
 - Request validation errors on any route are `422` + `ToolError` (`invalid_input`).
 - `POST /dev/reset-session` with `{"session_id": str | null}` restarts onboarding (disabled
   with `PLATFORM_DEV_ROUTES=0`). `GET /health`.
