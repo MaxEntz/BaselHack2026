@@ -931,6 +931,20 @@ async def test_live_knows_a_publish_from_the_button() -> None:
 
 
 @pytest.mark.llm
+async def test_live_sends_a_paused_merchant_to_the_agent_page() -> None:
+    """No tool resumes a paused agent: the Agent page's switch does (#198)."""
+    harness = Harness(real_llm(), agent=FakeAgent())
+    harness.provisioned.add(SLUG)
+    harness.status = "down"
+    session = onboarded()
+
+    await harness.turn(session, "Resume my agent, please.")
+
+    assert tools_called(session) == []
+    assert "agent page" in session.messages[-1]["content"].lower()
+
+
+@pytest.mark.llm
 async def test_live_onboarding_asks_then_builds() -> None:
     harness, session = await live_turns("Hi!", onboarded_already=False)
     assert tools_called(session) == []

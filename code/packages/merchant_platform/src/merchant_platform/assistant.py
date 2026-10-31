@@ -104,7 +104,8 @@ STATUS_LINES: dict[MerchantStatus, str] = {
     "publish_agent.",
     "live": "Status now: live. Claude users can book it; it needs no publishing.",
     "down": "Status now: paused. Guests and their agents get the merchant's own booking page "
-    "instead; the pause switch on the Agent page resumes it, publish_agent doesn't.",
+    "instead. Only the pause switch on the Agent page resumes it (no tool does, publish_agent "
+    "neither): when asked to resume, send the merchant there.",
 }
 STATUS_RULE = (
     "The status can change outside this conversation (the Publish button, the Agent page's "
