@@ -646,12 +646,16 @@ async def set_blocked(
     times: Sequence[str],
     tz: ZoneInfo,
     *,
+    now: datetime,
     at: datetime | None = None,
 ) -> None:
-    """The day's blocked starts become `times` (local `HH:MM`): the last write wins (#83).
+    """The day's blocked starts still to come become `times` (local `HH:MM`): the last write
+    wins (#83).
 
-    Every time must be a start of the day. One activity line for the whole save: the times
-    it blocked, else the ones it reopened. Bookings already made stay (AGENTS.md §6).
+    Every time must be a start of the day. Only starts after `now` change: the form only knows
+    those (`list_blocked`), so the day's past blocks and its history stay, and a past time sent
+    is ignored. One activity line for the whole save: the times it blocked, else the ones it
+    reopened. Bookings already made stay (AGENTS.md §6).
     """
     starts = {_hhmm(moment, tz): moment for moment in bookable_starts(services, day, tz)}
     unknown = sorted(set(times) - starts.keys())
@@ -660,9 +664,13 @@ async def set_blocked(
             f"{', '.join(unknown)} is not a start time on {day:%Y-%m-%d}; valid times: "
             f"{', '.join(starts) or 'none'}"
         )
-    wanted = [starts[time] for time in sorted(set(times))]
+    wanted = [starts[time] for time in sorted(set(times)) if starts[time] > now]
     start, end = _day_bounds(day, tz)
-    in_day = (blocked_slots_t.c.starts_at >= start, blocked_slots_t.c.starts_at < end)
+    in_day = (
+        blocked_slots_t.c.starts_at >= start,
+        blocked_slots_t.c.starts_at > now,
+        blocked_slots_t.c.starts_at < end,
+    )
     removed = list(
         await conn.scalars(
             delete(blocked_slots_t)

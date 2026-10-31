@@ -733,10 +733,11 @@ class PgAgentService:
     async def set_blocked(self, slug: str, day: date, times: Sequence[str]) -> list[BlockedTime]:
         async with merchant_conn(self.engine, slug) as conn:
             merchant = await self._load(conn, slug, merchant_side=True)
+            now = self.clock()
             await admin.set_blocked(
-                conn, slug, merchant.services, day, times, self.tz, at=self.clock()
+                conn, slug, merchant.services, day, times, self.tz, now=now, at=now
             )
-            blocked = await admin.list_blocked(conn, self.clock(), self.tz)
+            blocked = await admin.list_blocked(conn, now, self.tz)
         log.info("blocked times set", extra={"merchant": slug, "date": day.isoformat()})
         return blocked
 

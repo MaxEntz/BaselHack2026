@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from agent.provisioning import described_tools
 from agent.service import PgAgentService
 from core.config import Settings
-from core.db import merchant_activity_t, merchant_conn, merchants_t, tables_t
+from core.db import blocked_slots_t, merchant_activity_t, merchant_conn, merchants_t, tables_t
 from core.db import reservations_t as reservations
 from core.errors import FormProblem, InvalidInput
 from core.models import (
@@ -421,6 +421,27 @@ async def test_only_blocked_times_to_come_are_listed(
 
     assert [b.time for b in await later.list_blocked(slug)] == []
     assert [b.time for b in await service.list_blocked(slug)] == ["13:00"]
+
+
+async def test_a_save_keeps_the_day_s_past_blocked_times(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    """At 20:10 the form only knows 21:00: reopening it leaves 19:00 blocked and unnamed."""
+    slug = await make_merchant()
+    morning = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
+    await morning.set_blocked(slug, DAY, ["19:00", "21:00"])
+    evening = PgAgentService(engine, tz=TZ, clock=lambda: at("20:10"))
+
+    # 19:30 has passed: ignored, and the save changes nothing.
+    assert [b.time for b in await evening.set_blocked(slug, DAY, ["19:30", "21:00"])] == ["21:00"]
+    assert [b.time for b in await evening.set_blocked(slug, DAY, [])] == []
+
+    async with merchant_conn(engine, slug) as conn:
+        kept = list(await conn.scalars(select(blocked_slots_t.c.starts_at)))
+    assert kept == [at("19:00")]
+    kind, details = (await activity(engine, slug))[-1]
+    assert kind == "reopened"
+    assert [datetime.fromisoformat(t) for t in details["times"]] == [at("21:00")]
 
 
 async def test_blocked_times_over_http(
