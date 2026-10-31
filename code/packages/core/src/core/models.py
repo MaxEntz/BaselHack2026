@@ -401,6 +401,16 @@ class ShowViewInput(_Model):
     view: Literal["agent", "manage"]
 
 
+# The management site's pages (web/src/management/pages.ts), Home and the Assistant aside.
+ManagePage = Literal["reservations", "guests", "hours", "floor", "rules", "agent", "settings"]
+
+
+class LinkPageInput(_Model):
+    """`link_page`: the management page a reply points to (#140)."""
+
+    page: ManagePage
+
+
 FactKey = Literal[
     "name",
     "hours",
@@ -920,6 +930,19 @@ class ViewCard(_Model):
     data: ViewCardData
 
 
+class PageCardData(_Model):
+    page: ManagePage
+
+
+class PageCard(_Model):
+    """A link from a reply to a management page, worded by code (#140): "You can change this
+    in Opening hours."."""
+
+    type: Literal["card"] = "card"
+    kind: Literal["page"] = "page"
+    data: PageCardData
+
+
 class ErrorEvent(_Model):
     type: Literal["error"] = "error"
     message: str
@@ -936,7 +959,8 @@ Card = Annotated[
     | PolicyCard
     | ConfirmationCard
     | DiffCard
-    | ViewCard,
+    | ViewCard
+    | PageCard,
     Field(discriminator="kind"),
 ]
 ChatEvent = Annotated[
@@ -957,3 +981,47 @@ class LiveEvent(_Model):
     via: Via
     date: Date
     reservation: AdminReservationRow
+
+
+# The assistant's conversation as the web shows it (#140), kept by the platform per session so
+# that the management site's panel finds it after a reload or on another device.
+
+
+class UserItem(_Model):
+    type: Literal["user"] = "user"
+    text: str
+
+
+class AssistantItem(_Model):
+    type: Literal["assistant"] = "assistant"
+    text: str
+
+
+class CardItem(_Model):
+    type: Literal["card"] = "card"
+    card: Card
+
+
+class NotificationItem(_Model):
+    type: Literal["notification"] = "notification"
+    event: LiveEvent
+
+
+class ErrorItem(_Model):
+    type: Literal["error"] = "error"
+    message: str
+
+
+ConversationItem = Annotated[
+    UserItem | AssistantItem | CardItem | NotificationItem | ErrorItem,
+    Field(discriminator="type"),
+]
+
+
+class AssistantConversation(_Model):
+    """`GET /merchants/{slug}/assistant`: the owner's conversation with the assistant. The
+    session id is the platform's, one per owner link, so every device of the owner shares
+    it; `/chat` still needs the owner's cookie for it."""
+
+    session_id: str
+    items: tuple[ConversationItem, ...]

@@ -6,6 +6,7 @@ import {
 import type {
   ActivityItem,
   ActivityKind,
+  ConversationItem,
   DaySlot,
   ErrorCode,
   GeneratedTool,
@@ -59,7 +60,12 @@ const UNPRINTABLE = /(?! )[\p{C}\p{Z}]/u;
 const NOT_FOUND = "No booking with that reference.";
 const TAKEN = "That time is no longer free.";
 
-type Options = { latencyMs?: number; liveBookingDelayMs?: number };
+type Options = {
+  latencyMs?: number;
+  liveBookingDelayMs?: number;
+  // The assistant's opening conversation (#140): the demo's, from #131's fixture.
+  conversation?: readonly ConversationItem[];
+};
 
 // The management site against the demo fixture, with no platform (VITE_MOCK=1).
 // It applies the server's rules (#133, #134), not the mockup's: past times are
@@ -68,7 +74,11 @@ type Options = { latencyMs?: number; liveBookingDelayMs?: number };
 // `fixture.now`, as the demo week has no change of clock.
 export function createMockManagementClient(
   fixture: ManagementFixture,
-  { latencyMs = LATENCY_MS, liveBookingDelayMs = LIVE_BOOKING_DELAY_MS }: Options = {},
+  {
+    latencyMs = LATENCY_MS,
+    liveBookingDelayMs = LIVE_BOOKING_DELAY_MS,
+    conversation = [],
+  }: Options = {},
 ): ManagementClient {
   const offset = fixture.now.match(/[+-]\d{2}:\d{2}$/)?.[0];
   if (!offset) throw new Error("fixture.now needs a ±HH:MM offset");
@@ -399,6 +409,7 @@ export function createMockManagementClient(
 
   return {
     merchant: () => respond({ ...data.merchant, now: nowIso() }),
+    assistant: () => respond({ session_id: "mock-owner", items: [...conversation] }),
 
     async dashboard() {
       const current = liveByVia(today);

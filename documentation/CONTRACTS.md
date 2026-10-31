@@ -112,6 +112,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 | `send_test_booking` | (none) | A booking for 2 at the first free time, made through `AgentService.create_reservation` with `via="claude"` as the node's `BOOK` would; refused while `building` |
 | `update_look` | `accent?`, `accent_2?` (`#rrggbb`), `display_font?`, `corners?`, `reset` | `diff` card(s), "See it" opens the management pane. A colour under 3:1 on `bg` is adjusted (`readable()`) and said so; `reset` reads the website's look again. Stored in the registry's profile copy, read by `GET /merchants/{slug}` |
 | `show_view` | `view`: `agent` or `manage` | A `view` card: Studio switches its canvas, the plain chat shows nothing |
+| `link_page` | `page`: `reservations`, `guests`, `hours`, `floor`, `rules`, `agent` or `settings` | A `page` card: the management site's panel shows "You can change this in <Opening hours>." with the link (code's words, `tools.PAGE_LINKS` and the web's `PAGE_LINKS`); Studio and the plain chat show nothing. Only in a reply that calls no other tool (#140) |
 | `list_reservations` | `date` | Rows `{id, time, guest_name, party_size, table_label, via, status}` |
 | `get_stats` | `date` | `{bookings, guests, seats, blocked: [HH:MM]}` |
 | `block_slot` / `unblock_slot` | `starts_at` | Confirmation |
@@ -213,6 +214,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 |---|---|---|---|
 | `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo`, `look` (the site's, #149; null: the default look) | #132 |
 | `POST /publish` | | `MerchantOverview`, now `live`: publishes the agent a build left `building`. A paused (`down`) agent is refused with `invalid_input` | #136 |
+| `GET /assistant` | | `AssistantConversation`: `{session_id, items}`, the owner's conversation with the assistant. One platform-made session per owner link (`o-` + 24 random bytes), shared by every device signed in with it; `/chat` on it still needs the owner's cookie. `items` are the web chat's shapes (`user`, `assistant`, `card`, `notification`, `error`; never the steps), the last 200, kept in memory until the platform restarts | #140 |
 | `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
 | `GET /reservations?date=` | | `ReservationDay`: the day's services, every start of its grid, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |
 | `POST /reservations` | `MerchantBookingInput` | `201` + `ManagedReservation`, `via="merchant"` | #134 |

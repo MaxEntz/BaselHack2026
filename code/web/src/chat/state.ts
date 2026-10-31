@@ -1,4 +1,4 @@
-import type { ChatEvent, LiveEvent } from "../types.ts";
+import type { ChatEvent, ConversationItem, LiveEvent } from "../types.ts";
 
 export type CardEvent = Extract<ChatEvent, { type: "card" }>;
 export type StepEvent = Extract<ChatEvent, { type: "step" }>;
@@ -52,7 +52,9 @@ export type ChatAction =
   | { type: "live"; event: LiveEvent }
   | { type: "failed"; message: string }
   // The platform says which merchant the session works on (GET /session, #88).
-  | { type: "attached"; merchant: Merchant; welcome: string };
+  | { type: "attached"; merchant: Merchant; welcome: string }
+  // The conversation the platform kept (#140): it replaces what is shown.
+  | { type: "restore"; items: readonly ConversationItem[] };
 
 export function initialChatState(
   welcome: string,
@@ -109,6 +111,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return applyChatEvent(state, action.event);
     case "attached":
       return attach(state, action.merchant, action.welcome);
+    case "restore":
+      return action.items.reduce<ChatState>(
+        (next, item) => append(next, { ...item, turn: 0 } as NewItem),
+        { ...state, items: [], turn: 0 },
+      );
   }
 }
 
