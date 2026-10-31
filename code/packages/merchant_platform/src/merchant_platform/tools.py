@@ -42,6 +42,7 @@ from core.models import (
     UpdatePolicyInput,
     UpdateTablesInput,
 )
+from merchant_platform.accounts import IssuedLink
 from merchant_platform.sessions import Session
 
 log = logging.getLogger("merchant_platform.tools")
@@ -161,6 +162,12 @@ SPECS = tuple(ToolSpec(t.name, t.description, t.input.model_json_schema()) for t
 _BY_NAME = {tool.name: tool for tool in TOOLS}
 
 
+# How long after a build its browser may claim the owner cookie (`POST /session/claim`).
+CLAIM_SECONDS = 300
+# The secret link of a merchant just built, for its owner (#132).
+IssueLink = Callable[[str], Awaitable[IssuedLink]]
+
+
 class AdminTools:
     """Runs the model's tool calls for one merchant session."""
 
@@ -172,14 +179,17 @@ class AdminTools:
         today: Callable[[], date],
         *,
         owned_merchant: str | None = None,
+        issue_link: IssueLink | None = None,
     ) -> None:
         """`owned_merchant` (PLATFORM_MERCHANT) is the only existing merchant a session may
-        take over by onboarding its website again: there is no authentication (§13, §15)."""
+        take over by onboarding its website again (development only, §13, §15).
+        `issue_link` gives a new merchant its owner's secret link (#132)."""
         self._agent = agent
         self._build_agent = build_agent
         self._tz = tz
         self._today = today
         self._owned_merchant = owned_merchant
+        self._issue_link = issue_link
 
     async def run(self, session: Session, call: ToolCall, emit: Emit) -> ToolResult:
         """Runs one call and logs it (§12): tool, merchant, latency, and `ok` or the error code.
@@ -287,9 +297,19 @@ class AdminTools:
 
     async def _build(self, session: Session, arguments: BuildAgentInput, emit: Emit) -> Outcome:
         output = await self._build_agent(arguments, emit)
+        # The link first: if it can't be stored, the session isn't attached to a merchant
+        # nobody owns (`make owner-link` then gives it one).
+        link = await self._issue_link(output.profile.slug) if self._issue_link else None
         session.merchant_slug = output.profile.slug
+        session.link = link.fingerprint if link else None
+        # The building browser may claim its owner cookie once, shortly after (#132).
+        session.claimable_until = time.monotonic() + CLAIM_SECONDS if link else None
         data = output.model_dump(mode="json", exclude={"tools"})
-        return Outcome({"shown_to_merchant": "profile card", **data}, ProfileCard(data=output))
+        # On the card only: the secret link never goes to the model or the history.
+        return Outcome(
+            {"shown_to_merchant": "profile card", **data},
+            ProfileCard(data=output, login_url=link.url if link else None),
+        )
 
     def _require_agent(self) -> AgentService:
         if self._agent is None:

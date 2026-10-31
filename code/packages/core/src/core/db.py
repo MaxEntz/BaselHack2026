@@ -72,7 +72,7 @@ def _one_of(name: str, values: tuple[str, ...]) -> CheckConstraint:
     return CheckConstraint(f"{name} IN ({allowed})")
 
 
-# public: managed by Alembic (migration 0001), declared here to query it.
+# public: managed by Alembic (migrations 0001-0004), declared here to query it.
 
 public_metadata = MetaData(schema="public")
 
@@ -134,6 +134,18 @@ agent_requests_t = Table(
     Column("status", Integer, nullable=False),
     Column("request", JSONB, nullable=False),
     Column("response", JSONB, nullable=False),
+)
+
+merchant_owners_t = Table(
+    "merchant_owners",
+    public_metadata,
+    Column(
+        "merchant_slug", Text, ForeignKey(merchants_t.c.slug, ondelete="CASCADE"), primary_key=True
+    ),
+    Column("owner_name", Text),
+    # SHA-256 of the secret link's token (#132, migration 0004): the token is never stored.
+    Column("token_hash", Text, nullable=False, unique=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 # Merchant schema: created by provisioning (`merchant_metadata.create_all` on a translated

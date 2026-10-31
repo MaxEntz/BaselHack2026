@@ -23,6 +23,7 @@ from core.db import (
     guest_notices_t,
     merchant_conn,
     merchant_metadata,
+    merchant_owners_t,
     merchants_t,
     next_reservation_id,
     reservation_changes_t,
@@ -33,7 +34,13 @@ from core.db import (
 
 pytestmark = pytest.mark.integration
 
-PUBLIC_TABLES = {"merchants", "guest_notices", "reservation_changes", "agent_requests"}
+PUBLIC_TABLES = {
+    "merchants",
+    "guest_notices",
+    "reservation_changes",
+    "agent_requests",
+    "merchant_owners",
+}
 MERCHANT_TABLES = {"tables", "policy", "blocked_slots", "reservations"}
 MIGRATED = {
     "tables": PUBLIC_TABLES,
@@ -117,7 +124,7 @@ def test_downgrade_refuses_while_a_merchant_schema_exists(
 
 @pytest.mark.parametrize(
     "table",
-    [merchants_t, guest_notices_t, reservation_changes_t, agent_requests_t],
+    [merchants_t, guest_notices_t, reservation_changes_t, agent_requests_t, merchant_owners_t],
     ids=lambda t: t.name,
 )
 async def test_public_tables_match_their_core_declarations(

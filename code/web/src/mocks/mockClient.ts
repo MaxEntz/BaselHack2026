@@ -78,6 +78,10 @@ export function createMockClient(onboarded: boolean): ChatClient {
       return () => timers.forEach((timer) => window.clearTimeout(timer));
     },
 
+    async claim() {
+      // No cookies without a platform.
+    },
+
     async session() {
       return onboarded ? SESSION : { merchant: null };
     },

@@ -82,7 +82,8 @@ export type ChatEvent =
       detail?: string | null;
       duration_ms?: number | null;
     }
-  | { type: "card"; kind: "profile"; data: BuildAgentOutput }
+  // `login_url`: the owner's secret link, shown once after a build (#132).
+  | { type: "card"; kind: "profile"; data: BuildAgentOutput; login_url?: string | null }
   | {
       type: "card";
       kind: "reservations";
@@ -331,6 +332,7 @@ export type ManagementErrorCode =
   | ErrorCode
   | "not_signed_in"
   | "other_merchant"
+  | "needs_invite"
   | "not_built_yet";
 export type Problem = {
   code: ProblemCode;

@@ -25,7 +25,6 @@ SETTINGS = {"name": "La Graine Verte", "city": "Mulhouse", "price_level": "€",
 
 # (method, path under /merchants/{slug}, body, issue that implements it; None once built)
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
-    ("GET", "", None, "#132"),
     ("GET", "/dashboard?date=2026-10-31", None, "#135"),
     ("GET", "/dashboard", None, "#135"),  # the server's today
     ("GET", "/reservations?date=2026-10-31", None, "#134"),
@@ -87,7 +86,7 @@ async def test_each_route_answers_501_naming_its_issue(
     assert issue in error.message
 
 
-@pytest.mark.parametrize(("method", "path", "body", "issue"), ROUTES)
+@pytest.mark.parametrize(("method", "path", "body", "issue"), [*ROUTES, ("GET", "", None, "")])
 async def test_each_route_is_closed_to_anyone_but_the_owner(
     method: str, path: str, body: dict[str, Any] | None, issue: str | None
 ) -> None:
@@ -220,6 +219,7 @@ def test_the_openapi_schema_declares_each_answer() -> None:
     assert "201" in created
     declared = {(path, method) for path, item in paths.items() for method in item}
     assert declared >= {(template(path), method.lower()) for method, path, _, _ in ROUTES}
+    assert ("/merchants/{slug}", "get") in declared
 
 
 def template(path: str) -> str:

@@ -43,6 +43,13 @@ replay `onboarding.json`. A "new booking via Claude" notification
 message replays `tonight.json`, and messages mentioning *block*, *busy*, *stats*,
 *policy* or *party* replay `cards.json`.
 
+## Accounts (#132)
+
+After a build, the profile card shows the owner's private link, once: it opens the management site
+in any browser (`/api/login?token=…` sets the owner cookie). When the platform sets
+`PLATFORM_INVITE_CODE`, a new build needs the invitation link, `/?invite=<code>`: the Studio sends
+the code once and removes it from the address bar.
+
 ## Layout
 
 - `src/chat/state.ts`: `ChatItem` union and the pure reducer that turns `ChatEvent`
