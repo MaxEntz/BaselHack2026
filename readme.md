@@ -8,9 +8,11 @@ A restaurant owner gives us their website and describes how they work. We genera
 
 Built at BaselHack 2026, and still being built. §4 of the architecture document shows which components are merged, and issue [#26](https://github.com/MaxEntz/BaselHack2026/issues/26) tracks the plan.
 
-![The merchant chat: tonight's bookings and a live "New booking via Claude" notification](documentation/img/merchant-chat-mock.png)
+![Sésame onboarding: the merchant is asked for their website's address](documentation/img/sesame-onboarding.png)
 
-*The merchant chat in mock mode (`VITE_MOCK=1`), with fictional guests. Claude.ai calling our MCP gateway is shown in [this screenshot](documentation/runbooks/img/connector-ping.png).*
+![Sésame building Le Petit Zinc's agent, step by step, next to the restaurant's public site](documentation/img/sesame-build.png)
+
+*Sésame's merchant side, in its static preview (a fixed script answers, nothing is read or saved): the merchant gives their website's address, then watches their agent being built next to their public site. Restaurants and guests are fictional. Claude.ai calling our MCP gateway is shown in [this screenshot](documentation/runbooks/img/connector-ping.png).*
 
 ## How it works
 
