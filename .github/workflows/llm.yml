@@ -1,0 +1,55 @@
+name: LLM
+
+# Tests that call the OpenAI API (`-m llm`, #75): the builder on the demo sites, the extraction
+# bench and the onboarding conversation. Not on pull requests: each run costs a few cents, and
+# a fork's pull request must never read the key.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  llm:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: code
+    # The key is only given to the two steps that read it, never to checkout, package
+    # installs or the browser download.
+    steps:
+      - name: Skip without the OPENAI_API_KEY secret
+        id: key
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::notice title=LLM tests skipped::Add the repository secret OPENAI_API_KEY to run them."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+        working-directory: .
+      - if: steps.key.outputs.present == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: steps.key.outputs.present == 'true'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no floating major tag)
+        with:
+          working-directory: code
+          enable-cache: true
+      - if: steps.key.outputs.present == 'true'
+        run: uv sync --locked
+      - if: steps.key.outputs.present == 'true'
+        run: uv run playwright install --with-deps chromium
+      # Fresh extractions: never pass from a cache.
+      - if: steps.key.outputs.present == 'true'
+        run: uv run pytest -m llm
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BUILDER_CACHE: "off"

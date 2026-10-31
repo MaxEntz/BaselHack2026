@@ -12,6 +12,7 @@ from core.models import (
     LiveEvent,
     MerchantProfile,
     ReservationsCard,
+    SessionOutput,
 )
 
 MOCKS = Path(__file__).parents[2] / "web" / "src" / "mocks"
@@ -47,6 +48,16 @@ def test_onboarding_mock_matches_profile_contract(profile_data: dict[str, Any]) 
     assert result.profile == MerchantProfile.model_validate(profile_data)
 
 
+def test_session_mock_is_the_onboarded_merchant(profile_data: dict[str, Any]) -> None:
+    session = SessionOutput.model_validate(load_mock("session"))
+
+    assert session.merchant is not None
+    assert (session.merchant.slug, session.merchant.name) == (
+        profile_data["slug"],
+        profile_data["name"],
+    )
+
+
 def test_notification_mock_is_a_booking_from_tonight() -> None:
     card = next(event for event in load_mock("tonight") if event["type"] == "card")
     tonight = ReservationsCard.model_validate(card)
@@ -54,5 +65,6 @@ def test_notification_mock_is_a_booking_from_tonight() -> None:
     notification = LiveEvent.model_validate(load_mock("notification"))
 
     assert notification.reservation in tonight.data.reservations
+    assert notification.date == tonight.data.date
     assert notification.kind == "new_booking"
     assert notification.via == notification.reservation.via == "claude"

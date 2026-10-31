@@ -14,7 +14,7 @@ from mcp.server import MCPServer
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
-from pydantic import AwareDatetime, Field, PositiveInt
+from pydantic import Field, PositiveInt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.applications import Starlette
@@ -28,10 +28,12 @@ from core.config import Settings
 from core.db import make_engine
 from core.models import (
     HHMM,
+    BookingDay,
+    BookingTime,
     CancelOutput,
     GetAvailabilityOutput,
     GetMyReservationsOutput,
-    NonEmptyStr,
+    GuestText,
     ReservationOutput,
     SearchFilters,
     SearchMerchantsOutput,
@@ -70,7 +72,8 @@ Find restaurants and book tables, on the user's behalf, at merchants connected t
   So never call a write tool in the same reply as search_merchants or get_availability.
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page.
-- Always relay the notices returned by get_my_reservations."""
+- Relay the notices returned by get_my_reservations. A notice can come back for 24 hours: tell
+  the user each one once per conversation, matching notices by their text."""
 
 SEARCH_MERCHANTS = """\
 Find restaurants that can be booked through this connector. Use this tool first whenever the \
@@ -115,7 +118,8 @@ If the result contains `fallback_url`, give it to the user."""
 
 GET_MY_RESERVATIONS = """\
 List the user's upcoming bookings and any notices from restaurants (e.g. a cancellation by the \
-restaurant). Always relay notices to the user: each one is only returned once."""
+restaurant). Always relay notices to the user. A notice keeps coming back for 24 hours after it \
+is first returned: don't repeat one whose text you already gave the user in this conversation."""
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 IDEMPOTENT_WRITE = ToolAnnotations(
@@ -127,17 +131,17 @@ DESTRUCTIVE = ToolAnnotations(
 
 Merchant = Annotated[Slug, Field(description="Restaurant slug returned by search_merchants.")]
 GuestName = Annotated[
-    NonEmptyStr, Field(description="Guest's full name, the same one for the whole booking.")
+    GuestText, Field(description="Guest's full name, the same one for the whole booking.")
 ]
 PartySize = Annotated[PositiveInt, Field(description="Number of guests.")]
 StartsAt = Annotated[
-    AwareDatetime,
+    BookingTime,
     Field(description="Start time with its UTC offset, exactly as returned by get_availability."),
 ]
 IdempotencyKey = Annotated[
-    NonEmptyStr, Field(description="UUID you generate; reuse it only to retry the same action.")
+    GuestText, Field(description="UUID you generate; reuse it only to retry the same action.")
 ]
-ReservationId = Annotated[NonEmptyStr, Field(description="Booking reference, e.g. R-001.")]
+ReservationId = Annotated[GuestText, Field(description="Booking reference, e.g. R-001.")]
 
 
 def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -> MCPServer:
@@ -150,7 +154,13 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
 
     @mcp.tool(title="Search restaurants", description=SEARCH_MERCHANTS, annotations=READ_ONLY)
     async def search_merchants(
-        query: Annotated[str, Field(description="What the user asked for, in their own words.")],
+        query: Annotated[
+            str,
+            Field(
+                max_length=discovery.MAX_QUERY,
+                description="What the user asked for, in their own words.",
+            ),
+        ],
         near: Annotated[str | None, Field(description="City, if the user named one.")] = None,
         date: Annotated[
             Date | None, Field(description="Requested day. Not used to filter yet.")
@@ -166,6 +176,7 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         ] = None,
     ) -> SearchMerchantsOutput | ToolError:
         async def op() -> SearchMerchantsOutput | ToolError:
+            discovery.check_search_bounds(query, filters)
             if down := await discovery.find_named_down_merchant(query, engine=engine):
                 return unavailable(down)
             return await agent.search_merchants(query, near, date, filters)
@@ -176,7 +187,7 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
         merchant: Merchant,
-        date: Annotated[Date, Field(description="Requested day, YYYY-MM-DD.")],
+        date: Annotated[BookingDay, Field(description="Requested day, YYYY-MM-DD.")],
         party_size: PartySize,
         time: Annotated[
             HHMM | None, Field(description="Requested time (HH:MM), 24-hour clock.")
@@ -213,7 +224,7 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         guest_name: GuestName,
         idempotency_key: IdempotencyKey,
         starts_at: Annotated[
-            AwareDatetime | None,
+            BookingTime | None,
             Field(description="New start time with its UTC offset, from get_availability."),
         ] = None,
         party_size: Annotated[

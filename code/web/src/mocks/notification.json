@@ -2,6 +2,7 @@
   "type": "notification",
   "kind": "new_booking",
   "via": "claude",
+  "date": "2026-10-31",
   "reservation": {
     "id": "R-002",
     "time": "20:00",

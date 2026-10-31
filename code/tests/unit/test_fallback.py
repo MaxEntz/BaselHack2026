@@ -11,7 +11,14 @@ import pytest
 from pydantic import BaseModel, PositiveInt, ValidationError
 
 from core.config import Settings
-from core.errors import AgentUnavailable, InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
+from core.errors import (
+    AgentError,
+    AgentUnavailable,
+    InvalidInput,
+    NotFound,
+    PartyTooLarge,
+    SlotUnavailable,
+)
 from core.logs import JsonFormatter
 from core.models import ErrorCode, ToolError
 from gateway.discovery import RegistryEntry
@@ -283,7 +290,7 @@ async def test_call_service_logs_a_tool_error_returned_by_the_operation(
     assert [r.__dict__["outcome"] for r in logged] == ["agent_unavailable"]
 
 
-@pytest.mark.parametrize("error", [RuntimeError("secret"), TimeoutError(), InvalidInput("secret")])
+@pytest.mark.parametrize("error", [RuntimeError("secret"), TimeoutError()])
 async def test_call_service_failure_is_unavailable_without_url(error: Exception) -> None:
     result = await call_service("get_my_reservations", raising(error), settings=SETTINGS)
 
@@ -333,6 +340,35 @@ async def test_call_merchant_without_registry_is_unavailable_without_url(
     assert "secret" not in result.message
     outcomes = [r.__dict__["outcome"] for r in caplog.records if r.getMessage() == "tool_call"]
     assert outcomes == ["agent_unavailable"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        InvalidInput("A search takes at most 32 tags"),
+        NotFound("Unknown reservation"),
+        SlotUnavailable("No table left"),
+    ],
+)
+async def test_call_service_keeps_a_refusal_as_its_own_error_without_a_link(
+    error: AgentError, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A refusal comes from a service that works: no outage, no merchant's link, no crash log.
+    looked_up = False
+
+    async def named() -> RegistryEntry:
+        nonlocal looked_up
+        looked_up = True
+        return ZINC
+
+    with caplog.at_level(logging.INFO, logger="gateway.tools"):
+        result = await call_service(
+            "search_merchants", raising(error), settings=SETTINGS, named=named
+        )
+
+    assert result == ToolError(error=error.code, message=str(error))
+    assert not looked_up
+    assert [r.levelno for r in caplog.records] == [logging.INFO]
 
 
 async def test_call_service_gives_the_named_merchant_s_link_when_it_fails() -> None:
@@ -414,3 +450,86 @@ async def test_call_service_times_out() -> None:
 
     assert isinstance(result, ToolError)
     assert time.perf_counter() - started < 0.3
+
+
+# One deadline per tool call (#92): AGENT_TIMEOUT_MS bounds the whole call, not each step.
+BUDGET_S = 0.2
+TIGHT = make_settings(agent_timeout_ms=round(BUDGET_S * 1000))
+# Scheduling noise on a busy CI runner.
+MARGIN_S = 0.05
+
+
+async def hang() -> Any:
+    await asyncio.sleep(10)
+
+
+async def slow_find() -> RegistryEntry:
+    await asyncio.sleep(BUDGET_S * 0.75)
+    return ZINC
+
+
+async def timed(call: Awaitable[Any]) -> tuple[Any, float]:
+    started = time.perf_counter()
+    result = await call
+    return result, time.perf_counter() - started
+
+
+async def test_call_merchant_answers_within_one_budget_when_the_lookup_is_slow() -> None:
+    result, elapsed = await timed(
+        call_merchant("le-petit-zinc", "get_availability", slow_find, hang, settings=TIGHT)
+    )
+
+    assert isinstance(result, ToolError)
+    assert result.error == "agent_unavailable"
+    assert str(result.fallback_url) == URL
+    assert elapsed < BUDGET_S + MARGIN_S
+
+
+async def test_call_merchant_answers_within_one_budget_when_the_registry_hangs() -> None:
+    result, elapsed = await timed(
+        call_merchant("le-petit-zinc", "get_availability", hang, ok, settings=TIGHT)
+    )
+
+    assert isinstance(result, ToolError)
+    assert result.fallback_url is None
+    assert elapsed < BUDGET_S + MARGIN_S
+
+
+async def test_call_merchant_takes_the_deadline_of_the_whole_request() -> None:
+    # The per-merchant endpoint already spent part of the budget checking the slug.
+    deadline = asyncio.get_running_loop().time() + BUDGET_S / 2
+
+    result, elapsed = await timed(
+        call_merchant(
+            "le-petit-zinc", "get_availability", slow_find, ok, settings=TIGHT, deadline=deadline
+        )
+    )
+
+    assert isinstance(result, ToolError)
+    assert result.fallback_url is None
+    assert elapsed < BUDGET_S / 2 + MARGIN_S
+
+
+@pytest.mark.parametrize("named", [hang, slow_find], ids=["hanging", "slow"])
+async def test_call_service_keeps_a_tenth_of_the_budget_for_the_link(
+    named: Callable[[], Awaitable[RegistryEntry | None]],
+) -> None:
+    result, elapsed = await timed(
+        call_service("search_merchants", hang, settings=TIGHT, named=named)
+    )
+
+    assert isinstance(result, ToolError)
+    assert result.error == "agent_unavailable"
+    assert elapsed < BUDGET_S * 1.1 + MARGIN_S
+
+
+async def test_call_service_gives_a_quick_failure_s_lookup_the_rest_of_the_budget() -> None:
+    result, elapsed = await timed(
+        call_service(
+            "search_merchants", raising(AgentUnavailable("node")), settings=TIGHT, named=slow_find
+        )
+    )
+
+    assert isinstance(result, ToolError)
+    assert str(result.fallback_url) == URL
+    assert elapsed < BUDGET_S + MARGIN_S

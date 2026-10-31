@@ -65,16 +65,22 @@ async def test_builds_le_petit_zinc_from_its_website(
     async def emit(step: StepEvent) -> None:
         steps.append(step)
 
-    # No description: the tables and the group size must come from defaults, as assumptions.
+    # No description: the tables come from defaults, as an assumption; the site states the
+    # group size ("en ligne jusqu'à 6 personnes", although its form offers up to 12, #74).
     output = await builder.build_agent(demo_site, "", emit)
     try:
         profile = output.profile
         assert set(profile.tags) >= {"vegetarian", "gluten-free", "terrace", "kid-friendly"}
         assert profile.price_level == "€€"
-        assert len(profile.services) == 2
+        assert [(s.start, s.end) for s in profile.services] == [
+            ("12:00", "14:00"),
+            ("19:00", "22:00"),
+        ]
         assumptions = " ".join(output.assumptions).lower()
         assert "table" in assumptions
-        assert "party" in assumptions or "group" in assumptions
+        assert profile.max_party_size == 6
+        assert "closed on" not in assumptions  # "tous les jours" (#73)
+        assert str(profile.fallback_url).endswith("/reservation.html")
         assert [s.step for s in steps if s.status == "done"] == [
             "crawl",
             "extract",

@@ -5,18 +5,48 @@ import { chime } from "./chime.ts";
 import type { Merchant } from "./state.ts";
 import { chatReducer, initialChatState } from "./state.ts";
 
+// Kept across reloads (not across tabs) so the platform keeps the same session.
+const SESSION_KEY = "merchant-agents:session";
+
+export type Welcome = { onboarding: string; operations: string };
+
 export function useChat(
   client: ChatClient,
-  welcome: string,
+  welcome: Welcome,
   merchant: Merchant | null,
 ) {
   const [state, dispatch] = useReducer(chatReducer, null, () =>
-    initialChatState(welcome, merchant),
+    initialChatState(
+      merchant ? welcome.operations : welcome.onboarding,
+      merchant,
+    ),
   );
   const [liveConnected, setLiveConnected] = useState(false);
-  const [sessionId] = useState(newSessionId);
+  const [sessionId] = useState(storedSessionId);
   const busy = useRef(false);
   const controller = useRef<AbortController | null>(null);
+  const known = useRef(state.merchant !== null);
+  useEffect(() => {
+    known.current = state.merchant !== null;
+  }, [state.merchant]);
+
+  // Ask the platform which merchant the session works on (#88): after a
+  // reload, or once a turn attached one without a profile card.
+  const refresh = useCallback(
+    async (signal?: AbortSignal) => {
+      const { merchant } = await client.session(sessionId, signal);
+      if (merchant && !signal?.aborted) {
+        dispatch({ type: "attached", merchant, welcome: welcome.operations });
+      }
+    },
+    [client, sessionId, welcome.operations],
+  );
+
+  useEffect(() => {
+    const abort = new AbortController();
+    void refresh(abort.signal);
+    return () => abort.abort();
+  }, [refresh]);
 
   const send = useCallback(
     async (text: string) => {
@@ -42,8 +72,9 @@ export function useChat(
       } finally {
         busy.current = false;
       }
+      if (!known.current && !abort.signal.aborted) void refresh();
     },
-    [client, sessionId],
+    [client, sessionId, refresh],
   );
 
   useEffect(() => () => controller.current?.abort(), []);
@@ -65,6 +96,22 @@ export function useChat(
   }, [client, slug]);
 
   return { state, send, liveConnected };
+}
+
+function storedSessionId(): string {
+  try {
+    const stored = window.sessionStorage.getItem(SESSION_KEY);
+    if (stored) return stored;
+  } catch {
+    // Storage blocked: a reload starts a new session.
+  }
+  const id = newSessionId();
+  try {
+    window.sessionStorage.setItem(SESSION_KEY, id);
+  } catch {
+    // Same.
+  }
+  return id;
 }
 
 function newSessionId(): string {

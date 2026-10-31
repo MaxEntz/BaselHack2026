@@ -1,14 +1,27 @@
 """Discovery rules (#12) on the 3 demo merchants: preference filters and their relaxation."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
+from core.errors import InvalidInput
 from core.models import (
     FilterSuggestion,
     MerchantProfile,
     MerchantSummary,
     SearchFilters,
 )
-from gateway.discovery import Criteria, filter_merchants, normalize_filters, suggest_relaxations
+from gateway.discovery import (
+    MAX_QUERY,
+    MAX_TAGS,
+    Criteria,
+    check_search_bounds,
+    filter_merchants,
+    names,
+    normalize_filters,
+    search,
+    suggest_relaxations,
+)
 
 
 @pytest.fixture
@@ -235,7 +248,8 @@ def test_city_with_accents_and_joining_words() -> None:
 def test_ligatures_fold_to_their_letters() -> None:
     merchants = [summary("boeuf", "Le Bœuf Rouge"), summary("other", "Autre")]
 
-    criteria, _ = normalize_filters(None, None, "boeuf")
+    # Every distinctive word of the name (#89): "boeuf" and "rouge".
+    criteria, _ = normalize_filters(None, None, "boeuf rouge")
 
     assert [m.slug for m in filter_merchants(merchants, criteria)] == ["boeuf"]
 
@@ -291,3 +305,80 @@ def test_the_distinctive_word_still_names_the_merchant(
     criteria, _ = normalize_filters(None, None, query)
 
     assert [m.slug for m in filter_merchants(merchants, criteria)] == [slug]
+
+
+def test_a_search_at_its_bounds_is_accepted() -> None:
+    check_search_bounds("a" * MAX_QUERY, SearchFilters(tags=("vegan",) * MAX_TAGS))
+
+
+@pytest.mark.parametrize(
+    ("query", "filters"),
+    [("a" * (MAX_QUERY + 1), None), ("dinner", SearchFilters(tags=("vegan",) * (MAX_TAGS + 1)))],
+)
+async def test_a_search_beyond_its_bounds_is_invalid_before_reading_the_registry(
+    query: str, filters: SearchFilters | None
+) -> None:
+    engine = MagicMock()
+
+    with pytest.raises(InvalidInput, match=f"at most {MAX_TAGS} tags"):
+        await search(query, None, None, filters, engine=engine)
+
+    assert not engine.mock_calls
+
+
+# #89: an article, a tag or a city in a generic query never names one merchant.
+REAL_NAMES = [
+    summary("le-petit-zinc", "Le Petit Zinc"),
+    summary("the-green-door", "The Green Door"),
+    summary("les-trois-rois", "Les Trois Rois", city="Basel"),
+    summary("la-terrasse", "La Terrasse"),
+    summary("brasserie-mulhouse", "Brasserie Mulhouse"),
+]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Book a table for the four of us tonight",
+        "Une table pour les enfants ce soir",
+        "restaurant avec terrasse ce soir",
+        "a table in Mulhouse tonight",
+        "the green salad place",  # one of two distinctive words
+    ],
+)
+def test_a_common_word_of_a_name_keeps_the_search_generic(query: str) -> None:
+    criteria, _ = normalize_filters(None, None, query)
+
+    assert len(filter_merchants(REAL_NAMES, criteria)) == len(REAL_NAMES)
+
+
+@pytest.mark.parametrize(
+    ("query", "slug"),
+    [
+        ("a table at The Green Door", "the-green-door"),
+        ("Les Trois Rois ce soir", "les-trois-rois"),
+        ("zinc", "le-petit-zinc"),
+        # Names made only of common words are named by the whole name.
+        ("dîner à La Terrasse", "la-terrasse"),
+        ("Brasserie Mulhouse, 4 people", "brasserie-mulhouse"),
+    ],
+)
+def test_a_query_holding_the_whole_name_still_names_it(query: str, slug: str) -> None:
+    criteria, _ = normalize_filters(None, None, query)
+
+    assert [m.slug for m in filter_merchants(REAL_NAMES, criteria)] == [slug]
+
+
+@pytest.mark.parametrize(
+    ("query", "name", "city", "named"),
+    [
+        ("Kronenhalle", "Restaurant Kronenhalle", "Zürich", True),
+        ("Restaurant in Zürich", "Restaurant Kronenhalle", "Zürich", False),
+        ("Zum Goldenen Sternen", "Zum Goldenen Sternen", "Basel", True),
+        ("zum Essen", "Zum Goldenen Sternen", "Basel", False),
+        ("le petit zinc", "Le Petit Zinc", None, True),
+        ("", "La Terrasse", None, False),
+    ],
+)
+def test_names(query: str, name: str, city: str | None, named: bool) -> None:
+    assert names(query, name, city) is named

@@ -1,6 +1,7 @@
 """Builder extraction with a fake LLM: post-processing, validation and the single retry."""
 
 import json
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -10,13 +11,14 @@ import pytest
 from builder.crawl import CrawlResult, Page
 from builder.extract import (
     INSTRUCTIONS,
+    TOOL,
     TOOL_NAME,
     ExtractionFailed,
     extract_profile,
     slugify,
     user_message,
 )
-from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
+from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec, strict_schema
 from core.models import TableSpec
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())
@@ -106,6 +108,16 @@ async def test_the_llm_fills_a_draft_and_the_code_owns_the_rest() -> None:
     assert llm.calls[0]["instructions"] == INSTRUCTIONS
 
 
+async def test_a_name_split_over_lines_becomes_one_line() -> None:
+    # Copied from a two-line heading: the profile refuses control characters (#79).
+    llm = FakeLLM(draft(name="Le Petit\n  Zinc\t"))
+
+    result = await extract_profile(CRAWL, "", llm)
+
+    assert result.profile.name == "Le Petit Zinc"
+    assert len(llm.calls) == 1
+
+
 async def test_missing_floor_plan_gets_the_default_layout_and_an_assumption() -> None:
     llm = FakeLLM(draft(tables=[], seats=30))
 
@@ -193,6 +205,60 @@ async def test_fallback_url_stays_on_the_merchants_site(
     assert str(result.profile.fallback_url) == expected
 
 
+ONE_PAGE = CrawlResult(
+    website=SITE,
+    pages=[
+        Page(
+            url=SITE,
+            title="La Graine Verte",
+            text="Réserver une table : 03 89 00 00 11.",
+            json_ld=[],
+            anchors=["carte", "icon_facebook", "reserver", "reserver-titre"],
+        )
+    ],
+)
+
+
+@pytest.mark.parametrize(
+    ("proposed", "expected"),
+    [
+        (None, f"{SITE}#reserver"),
+        (SITE, f"{SITE}#reserver"),
+        # The model's own section of the page wins.
+        (f"{SITE}#carte", f"{SITE}#carte"),
+    ],
+)
+async def test_a_one_page_site_falls_back_to_its_booking_section(
+    proposed: str | None, expected: str
+) -> None:
+    result = await extract_profile(ONE_PAGE, "", FakeLLM(draft(fallback_url=proposed)))
+
+    assert str(result.profile.fallback_url) == expected
+
+
+@pytest.mark.parametrize(
+    ("anchor", "section"),
+    [
+        ("reservation", True),
+        ("book-a-table", True),
+        ("booking", True),
+        ("online_booking", True),
+        ("icon_facebook", False),
+        ("bookimage", False),
+        ("notebook", False),
+    ],
+)
+async def test_only_an_id_naming_a_booking_is_a_booking_section(anchor: str, section: bool) -> None:
+    page = ONE_PAGE.pages[0]
+    crawl = CrawlResult(
+        website=SITE, pages=[Page(page.url, page.title, page.text, [], anchors=[anchor])]
+    )
+
+    result = await extract_profile(crawl, "", FakeLLM(draft(fallback_url=None)))
+
+    assert str(result.profile.fallback_url) == (f"{SITE}#{anchor}" if section else SITE)
+
+
 async def test_without_a_booking_page_the_fallback_is_the_homepage() -> None:
     crawl = CrawlResult(website=SITE, pages=CRAWL.pages[:1])
 
@@ -233,3 +299,72 @@ def test_the_untrusted_website_text_cannot_close_its_tag() -> None:
 )
 def test_slugify(name: str, website: str, slug: str) -> None:
     assert slugify(name, website) == slug
+
+
+async def test_the_retry_logs_the_invalid_fields_without_their_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="builder.extract")
+    llm = FakeLLM(draft(max_party_size=0, tags=["vegan", 4711]), draft())
+
+    await extract_profile(CRAWL, "", llm)
+
+    [record] = [r for r in caplog.records if r.msg == "extraction_invalid"]
+    assert record.levelno == logging.INFO
+    assert record.__dict__["fields"] == ["max_party_size", "tags.1"]
+    assert record.__dict__["attempt"] == 0
+    assert "4711" not in repr(record.__dict__)
+
+
+@pytest.mark.parametrize(
+    ("closed_days", "assumption"),
+    [
+        ([], None),
+        (["Sunday"], "Closed on Sunday: the agent can't skip a weekday yet, so Sunday bookings "),
+        # Week order, without duplicates.
+        (["Tuesday", "Monday", "Tuesday"], "Closed on Monday and Tuesday: "),
+        (["Sunday", "Monday", "Wednesday"], "Closed on Monday, Wednesday and Sunday: "),
+    ],
+)
+async def test_weekly_closing_days_become_an_assumption(
+    closed_days: list[str], assumption: str | None
+) -> None:
+    result = await extract_profile(CRAWL, "", FakeLLM(draft(closed_days=closed_days)))
+
+    closing = [a for a in result.assumptions if a.startswith("Closed on")]
+    if assumption is None:
+        assert closing == []
+    else:
+        [found] = closing
+        assert found.startswith(assumption)
+
+
+async def test_an_unknown_weekday_is_a_validation_error() -> None:
+    llm = FakeLLM(draft(closed_days=["Sonntag"]), draft())
+
+    await extract_profile(CRAWL, "", llm)
+
+    assert "closed_days.0" in llm.calls[1]["history"][-1]["content"]
+
+
+def test_the_model_must_fill_the_closing_days() -> None:
+    # The default only serves hand-written drafts: strict mode makes the field required.
+    assert "closed_days" in strict_schema(TOOL.parameters)["required"]
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        # Price bands, with CHF counted like EUR (#74).
+        "€ under 15, €€ 15 to 30, €€€ 30 to 60, €€€€ over 60",
+        "CHF counting like EUR",
+        # Kitchen hours, not the building's opening hours.
+        "the kitchen hours when a source gives them",
+        # A booking form's maximum is not the group size when groups must call.
+        "A booking form's maximum doesn't count",
+        # Weekly closing days, until services carry weekdays (#73).
+        "closed_days are the weekdays a source says the restaurant is closed every week",
+    ],
+)
+def test_the_instructions_keep_the_extraction_rules(rule: str) -> None:
+    assert rule in INSTRUCTIONS.replace("\n", " ")

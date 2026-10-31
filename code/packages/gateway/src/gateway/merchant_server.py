@@ -11,7 +11,6 @@ import logging
 import re
 import unicodedata
 from collections.abc import Awaitable, Callable
-from datetime import date as Date
 from functools import partial
 from typing import Annotated, Any
 
@@ -19,7 +18,7 @@ from mcp.server import MCPServer
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.mcpserver import Context
 from mcp.types import ToolAnnotations
-from pydantic import AwareDatetime, Field, PositiveInt, ValidationError
+from pydantic import Field, PositiveInt, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.responses import PlainTextResponse
@@ -30,22 +29,26 @@ from core.config import Settings
 from core.db import merchants_t
 from core.models import (
     HHMM,
+    BookingDay,
+    BookingTime,
     CancelOutput,
     GetAvailabilityOutput,
+    GuestText,
     MerchantProfile,
-    NonEmptyStr,
     ReservationOutput,
     ToolError,
     UpdateReservationInput,
 )
 from gateway import discovery
 from gateway.agent_client import AgentClient
-from gateway.fallback import RejectedArguments, call_merchant
+from gateway.fallback import RejectedArguments, call_merchant, deadline_in
 
 log = logging.getLogger("gateway.merchant_server")
 
 MERCHANT_PATH = "/m/{slug}/mcp"
 SLUG = re.compile(r"^[a-z0-9-]{3,61}$")
+# Key of the request's deadline in the ASGI scope's `state`, set by `MerchantEndpoint`.
+DEADLINE = "merchant_deadline"
 # Merchant free text allowed in a tool description (name, city).
 MAX_FREE_TEXT = 80
 # Instead of the merchant's own words, which could carry instructions for Claude.
@@ -99,23 +102,30 @@ DESTRUCTIVE = ToolAnnotations(
 )
 
 GuestName = Annotated[
-    NonEmptyStr, Field(description="Guest's full name, the same one for the whole booking.")
+    GuestText, Field(description="Guest's full name, the same one for the whole booking.")
 ]
 PartySize = Annotated[PositiveInt, Field(description="Number of guests.")]
 StartsAt = Annotated[
-    AwareDatetime,
+    BookingTime,
     Field(description="Start time with its UTC offset, exactly as returned by get_availability."),
 ]
 IdempotencyKey = Annotated[
-    NonEmptyStr, Field(description="UUID you generate; reuse it only to retry the same action.")
+    GuestText, Field(description="UUID you generate; reuse it only to retry the same action.")
 ]
-ReservationId = Annotated[NonEmptyStr, Field(description="Booking reference, e.g. R-001.")]
+ReservationId = Annotated[GuestText, Field(description="Booking reference, e.g. R-001.")]
 
 
 def slug_of(request: Any) -> str:
     """The merchant named by the request's path; empty outside an HTTP request."""
     params = getattr(request, "path_params", None) or {}
     return str(params.get("slug", ""))
+
+
+def deadline_of(request: Any) -> float | None:
+    """The HTTP request's deadline: the endpoint's slug check already used part of it (#92)."""
+    scope = getattr(request, "scope", None) or {}
+    deadline = (scope.get("state") or {}).get(DEADLINE)
+    return deadline if isinstance(deadline, float) else None
 
 
 async def load_profile(slug: str, *, engine: AsyncEngine) -> MerchantProfile | None:
@@ -181,7 +191,7 @@ class MerchantDescriptions:
 
     def __init__(self, engine: AsyncEngine, settings: Settings) -> None:
         self.engine = engine
-        self.timeout = settings.agent_timeout_ms / 1000
+        self.settings = settings
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
@@ -190,7 +200,7 @@ class MerchantDescriptions:
         if ctx.method != "tools/list" or not isinstance(result, dict):
             return result
         try:
-            async with asyncio.timeout(self.timeout):
+            async with asyncio.timeout_at(deadline_of(ctx.request) or deadline_in(self.settings)):
                 profile = await load_profile(slug_of(ctx.request), engine=self.engine)
         except Exception:
             log.warning("merchant profile unavailable", exc_info=True)
@@ -213,13 +223,16 @@ def create_merchant_server(
     async def routed[T](
         tool: str, ctx: Context, op: Callable[[str], Awaitable[T]]
     ) -> T | ToolError:
-        slug = slug_of(ctx.request_context.request)
+        request = ctx.request_context.request
+        slug = slug_of(request)
         find = partial(discovery.find_merchant, slug, engine=engine)
-        return await call_merchant(slug, tool, find, partial(op, slug), settings=settings)
+        return await call_merchant(
+            slug, tool, find, partial(op, slug), settings=settings, deadline=deadline_of(request)
+        )
 
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
-        date: Annotated[Date, Field(description="Requested day, YYYY-MM-DD.")],
+        date: Annotated[BookingDay, Field(description="Requested day, YYYY-MM-DD.")],
         party_size: PartySize,
         ctx: Context,
         time: Annotated[
@@ -257,7 +270,7 @@ def create_merchant_server(
         idempotency_key: IdempotencyKey,
         ctx: Context,
         starts_at: Annotated[
-            AwareDatetime | None,
+            BookingTime | None,
             Field(description="New start time with its UTC offset, from get_availability."),
         ] = None,
         party_size: Annotated[
@@ -301,22 +314,24 @@ def create_merchant_server(
 class MerchantEndpoint:
     """`/m/<slug>/mcp` exists only for a known merchant that is not `building`: 404 otherwise.
 
-    A `down` merchant keeps its endpoint: its tools answer with the fallback link.
+    A `down` merchant keeps its endpoint: its tools answer with the fallback link. The check
+    starts the request's deadline, which the tools and `tools/list` then share (#92).
     """
 
     def __init__(self, app: ASGIApp, engine: AsyncEngine, settings: Settings) -> None:
         self.app = app
         self.engine = engine
-        self.timeout = settings.agent_timeout_ms / 1000
+        self.settings = settings
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         slug = str(scope.get("path_params", {}).get("slug", ""))
         response: PlainTextResponse | None = None
+        deadline = deadline_in(self.settings)
         if not SLUG.match(slug):
             response = PlainTextResponse("Unknown restaurant", status_code=404)
         else:
             try:
-                async with asyncio.timeout(self.timeout):
+                async with asyncio.timeout_at(deadline):
                     merchant = await discovery.find_merchant(slug, engine=self.engine)
             except Exception:
                 log.warning("registry unreachable", exc_info=True)
@@ -327,4 +342,6 @@ class MerchantEndpoint:
         if response is not None:
             await response(scope, receive, send)
             return
-        await self.app(scope, receive, send)
+        await self.app(
+            {**scope, "state": {**scope.get("state", {}), DEADLINE: deadline}}, receive, send
+        )

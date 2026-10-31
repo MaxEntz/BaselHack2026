@@ -10,7 +10,7 @@ from core.errors import (
 )
 from matp.messages import ErrorBody, Response
 
-OK = 200
+TOO_MANY_REQUESTS = 429
 STATUS_BY_CODE = {
     "invalid_input": 400,
     "not_found": 404,
@@ -47,10 +47,15 @@ def error_body(error: AgentError, fallback_url: str | None = None) -> ErrorBody:
 
 
 def raise_for(response: Response) -> None:
-    """Raise the business error a response carries; anything else is `AgentUnavailable`."""
-    if response.status == OK:
+    """Raise the business error a response carries; anything else is `AgentUnavailable`.
+
+    Any 2xx is a success, as the draft says of a status the caller doesn't know. A 429, or a
+    code outside AGENTS.md §8.4, has no tool error of its own: the merchant is just unavailable.
+    """
+    if 200 <= response.status < 300:
         return
     body = response.error
-    if body is not None and body.code is not None:
-        raise ERROR_BY_CODE[body.code](body.message)
+    error = ERROR_BY_CODE.get(body.code) if body and body.code else None
+    if body is not None and error is not None:
+        raise error(body.message)
     raise AgentUnavailable(body.message if body else f"MATP status {response.status}")

@@ -391,7 +391,7 @@ async def test_merchant_cancellation_leaves_one_notice_for_the_guest(
         f"Le Petit Zinc cancelled your booking {booking.id} on 2026-11-02 at 20:00. "
         "Please contact them at http://localhost:8080/ or book again."
     ]
-    assert notices_again == []
+    assert notices_again == notices  # again within the day, in case the first answer was lost
     async with engine.connect() as conn:
         count = await conn.scalar(
             select(func.count())
@@ -486,7 +486,13 @@ async def test_a_booking_racing_a_floor_plan_change_takes_a_table_that_still_fit
             lambda s, slug: s.update_tables(slug, [TableSpec(label="T1", seats=3_000_000_000)]),
             "at most",
         ),
-        (lambda s, slug: s.update_tables(slug, [TableSpec(label="T\x001", seats=2)]), "printable"),
+        # The model refuses it too (#79); the service keeps its own guard behind it.
+        (
+            lambda s, slug: s.update_tables(
+                slug, [TableSpec.model_construct(label="T\x001", seats=2)]
+            ),
+            "printable",
+        ),
         (lambda s, slug: s.list_reservations(slug, date.max), "out of range"),
     ],
     ids=["huge-party", "huge-table", "nul-label", "last-date"],

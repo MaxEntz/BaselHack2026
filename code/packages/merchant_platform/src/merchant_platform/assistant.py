@@ -131,6 +131,18 @@ def compact(history: Sequence[Message]) -> list[Message]:
     return compacted
 
 
+async def session_merchant(
+    session: Session | None, default: str | None, profiles: ProfileLookup
+) -> MerchantProfile | None:
+    """The merchant `session` works on, or will from its next message (#88).
+
+    A session without a merchant takes `default` (PLATFORM_MERCHANT) once it is registered,
+    so that a page reload or a seeded demo doesn't force a new onboarding (AGENTS.md §14).
+    """
+    slug = (session.merchant_slug if session else None) or default
+    return await profiles(slug) if slug else None
+
+
 class Assistant:
     """`RunTurn` implementation: answers one merchant message."""
 
@@ -151,9 +163,9 @@ class Assistant:
         self._clock = clock or (lambda: datetime.now(tz))
 
     async def __call__(self, session: Session, user_message: str, emit: Emit) -> None:
-        default = self._default_merchant
-        if session.merchant_slug is None and default and await self._profiles(default):
-            session.merchant_slug = default
+        if session.merchant_slug is None:
+            attached = await session_merchant(session, self._default_merchant, self._profiles)
+            session.merchant_slug = attached.slug if attached else None
         session.messages.append({"role": "user", "content": user_message})
 
         async def on_text(delta: str) -> None:

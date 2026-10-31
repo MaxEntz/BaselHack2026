@@ -67,6 +67,10 @@ export type Policy = {
   services: Service[];
 };
 
+// GET /session?session_id=: the merchant the chat session works on (#88).
+export type SessionMerchant = { slug: string; name: string };
+export type SessionOutput = { merchant: SessionMerchant | null };
+
 // POST /chat: event: <type> + data: <JSON>, separated by a blank line.
 export type ChatEvent =
   | { type: "text"; delta: string }
@@ -90,10 +94,13 @@ export type ChatEvent =
   | { type: "error"; message: string }
   | { type: "done" };
 
-// GET /events?merchant=<slug>: EventSource notifications.
+// GET /events?merchant=<slug>: EventSource notifications. Only guests' changes:
+// the merchant's own are not sent. `via` is the channel the booking was made
+// through; `date` (YYYY-MM-DD) is its day in the merchant's timezone.
 export type LiveEvent = {
   type: "notification";
   kind: "new_booking" | "updated" | "cancelled";
   via: Via;
+  date: string;
   reservation: AdminReservationRow;
 };

@@ -1,4 +1,5 @@
-"""FastAPI app: `/chat` (SSE), `/events` (SSE), the public booking API and `/health`."""
+"""FastAPI app: `/chat` (SSE), `/events` (SSE), `/session`, the public booking API and
+`/health`."""
 
 import asyncio
 import logging
@@ -13,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
@@ -22,16 +23,26 @@ from core.config import Settings, get_settings
 from core.db import make_engine
 from core.errors import AgentError, AgentUnavailable
 from core.models import (
+    BookingTime,
     ChatEvent,
     DoneEvent,
     ErrorCode,
     ErrorEvent,
-    NonEmptyStr,
+    GuestText,
     ReservationOutput,
+    SessionMerchant,
+    SessionOutput,
     Slug,
     ToolError,
 )
-from merchant_platform.assistant import RunTurn, default_assistant, run_turn
+from merchant_platform.assistant import (
+    ProfileLookup,
+    RunTurn,
+    default_assistant,
+    registry_profiles,
+    run_turn,
+    session_merchant,
+)
 from merchant_platform.events import LiveBus, LiveListener
 from merchant_platform.logs import configure_logging
 from merchant_platform.sessions import Session, SessionStore
@@ -68,10 +79,10 @@ class ResetSessionRequest(_Body):
 class PublicReservationInput(_Body):
     """The showcase site's booking form (the merchant comes from the URL)."""
 
-    starts_at: AwareDatetime
+    starts_at: BookingTime
     party_size: PositiveInt
-    guest_name: NonEmptyStr
-    idempotency_key: NonEmptyStr
+    guest_name: GuestText
+    idempotency_key: GuestText
 
 
 def create_app(
@@ -79,6 +90,7 @@ def create_app(
     *,
     assistant: RunTurn = run_turn,
     agent: AgentService | None = None,
+    profiles: ProfileLookup | None = None,
     bus: LiveBus | None = None,
     listener: LiveListener | None = None,
     engine: AsyncEngine | None = None,
@@ -86,8 +98,9 @@ def create_app(
 ) -> FastAPI:
     """Build the platform API around its collaborators (injected by tests).
 
-    Without `agent`, the public booking API answers `agent_unavailable`. `listener` feeds
-    `bus` while the app runs; `engine` is disposed at shutdown.
+    Without `agent`, the public booking API answers `agent_unavailable`. Without `profiles`
+    (the registry), `/session` reports no merchant. `listener` feeds `bus` while the app
+    runs; `engine` is disposed at shutdown.
     """
     sessions = SessionStore()
     live = bus or LiveBus()
@@ -148,6 +161,24 @@ def create_app(
         session.turn = asyncio.create_task(_run(assistant, session, body.message, queue))
         return EventSourceResponse(_chat_stream(queue, session.turn), ping=heartbeat_seconds)
 
+    @app.get("/session")
+    async def session_info(
+        session_id: Annotated[str | None, Query(max_length=100)] = None,
+    ) -> SessionOutput:
+        """The merchant the chat session works on, so that the web finds it after a reload.
+
+        Read-only: an unknown session isn't created, and reports PLATFORM_MERCHANT like a new
+        one, since its first message attaches it.
+        """
+        if profiles is None:
+            return SessionOutput(merchant=None)
+        profile = await session_merchant(
+            sessions.find(session_id), settings.platform_merchant, profiles
+        )
+        if profile is None:
+            return SessionOutput(merchant=None)
+        return SessionOutput(merchant=SessionMerchant(slug=profile.slug, name=profile.name))
+
     @app.get("/events", response_class=EventSourceResponse)
     async def events(merchant: Annotated[Slug, Query()]) -> EventSourceResponse:
         async def stream() -> AsyncIterator[ServerSentEvent]:
@@ -169,7 +200,8 @@ def create_app(
         if agent is None:
             raise AgentUnavailable("Online booking is not available yet.")
         started = time.perf_counter()
-        outcome = "ok"
+        # `ok` only once booked: a crash or a cancelled request is never logged as `ok` (#79).
+        outcome = "error"
         try:
             reservation = await agent.create_reservation(
                 slug,
@@ -179,6 +211,7 @@ def create_app(
                 body.idempotency_key,
                 via="website",
             )
+            outcome = "ok"
         except AgentError as error:
             outcome = error.code
             raise
@@ -272,6 +305,7 @@ def _default_app() -> FastAPI:
         settings,
         assistant=default_assistant(settings, engine, agent),
         agent=agent,
+        profiles=registry_profiles(engine),
         bus=bus,
         listener=listener,
         engine=engine,
