@@ -17,3 +17,9 @@ export function dayShort(date: string): string {
 export function dayLong(date: string): string {
   return format(date, { weekday: "long", day: "numeric", month: "long" });
 }
+
+/** The day `days` after `date`. */
+export function addDays(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
