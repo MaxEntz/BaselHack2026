@@ -4,12 +4,14 @@
 (`scripts/export_management_fixture.py`), and the web mock reads it too. Its 7 days of bookings
 go in as they are, with their references: they take R-001 to R-055 from the merchant's sequence,
 so the next booking, the demo's live one, is R-056. The 29 days before today only have totals
-there, so `history_bookings` makes bookings that add up to them exactly. Every date moves so that
-the fixture's today is the seed's. `create_reservation` refuses past times, so these are Core
-inserts; the exclusion constraint still applies.
+there, so `history_bookings` makes bookings that add up to them exactly. The agent requests go to
+`public.agent_requests`, as the BATP node logs them (#146). Every date moves so that the
+fixture's today is the seed's, local times kept, inside the frames too. `create_reservation`
+refuses past times, so these are Core inserts; the exclusion constraint still applies.
 """
 
 import json
+import re
 from datetime import date, datetime, time, timedelta
 from math import ceil
 from pathlib import Path
@@ -22,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from core.availability import BusyInterval, TableRow, bookable_starts, pick_table
 from core.db import (
+    agent_requests_t,
     blocked_slots_t,
     merchant_conn,
     merchants_t,
@@ -47,6 +50,8 @@ KEY = "management-"  # idempotency keys of the seeded bookings: `management-R-00
 # Names for the past days' guests (the mockup's lists).
 FIRST = ("Alex", "Sam", "Nora", "Lou", "Noa", "Eli", "Claire", "Yann", "Ines", "Jo", "Mia", "Tom")
 LAST = ("Martin", "Dupont", "Haas", "Fischer", "Keller", "Brun", "Roth", "Meyer", "Vogt", "Bauer")
+# A day, or an instant with its offset, as the fixture writes them (frames included).
+STAMP = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))?\b")
 
 
 def guest_name(n: int) -> str:
@@ -56,6 +61,18 @@ def guest_name(n: int) -> str:
 def load() -> dict[str, Any]:
     data: dict[str, Any] = json.loads(FIXTURE.read_text())
     return data
+
+
+def moved(text: str, shift: timedelta, tz: ZoneInfo) -> str:
+    """`text` with every day and instant `shift` later, instants at the same local time."""
+
+    def move(match: re.Match[str]) -> str:
+        if "T" not in match[0]:
+            return (date.fromisoformat(match[0]) + shift).isoformat()
+        local = datetime.fromisoformat(match[0]).astimezone(tz)
+        return datetime.combine(local.date() + shift, local.time(), tz).isoformat()
+
+    return STAMP.sub(move, text)
 
 
 def parties(count: int, guests: int) -> list[int]:
@@ -169,8 +186,8 @@ async def seed_management(engine: AsyncEngine, today: date) -> str:
     tz = ZoneInfo(data["merchant"]["timezone"])
     shift = today - datetime.fromisoformat(data["now"]).date()
 
-    def moved(day: str, hhmm: str) -> datetime:
-        return datetime.combine(date.fromisoformat(day) + shift, time.fromisoformat(hhmm), tz)
+    def at(stamp: str) -> datetime:
+        return datetime.fromisoformat(moved(stamp, shift, tz))
 
     async with engine.connect() as conn:
         if not await conn.scalar(select(merchants_t.c.slug).where(merchants_t.c.slug == MERCHANT)):
@@ -200,8 +217,8 @@ async def seed_management(engine: AsyncEngine, today: date) -> str:
             # The sequence hands out the fixture's references, so it goes on from there.
             if await next_reservation_id(conn) != booking["id"]:
                 raise InvalidInput(f"{MERCHANT}'s booking references don't start at R-001")
-            start = moved(booking["date"], booking["time"])
-            created = datetime.fromisoformat(booking["created_at"]).astimezone(tz)
+            day = date.fromisoformat(booking["date"]) + shift
+            start = datetime.combine(day, time.fromisoformat(booking["time"]), tz)
             rows.append(
                 {
                     "id": booking["id"],
@@ -213,7 +230,7 @@ async def seed_management(engine: AsyncEngine, today: date) -> str:
                     "status": booking["status"],
                     "cancelled_by": booking["cancelled_by"],
                     "idempotency_key": KEY + booking["id"],
-                    "created_at": moved(created.date().isoformat(), created.strftime("%H:%M")),
+                    "created_at": at(booking["created_at"]),
                 }
             )
         past = [
@@ -222,11 +239,26 @@ async def seed_management(engine: AsyncEngine, today: date) -> str:
         ]
         rows += history_bookings(past, tables, services, tz, slot_length)
         await conn.execute(insert(reservations_t), rows)
-        blocked = [{"starts_at": moved(b["date"], b["time"])} for b in data["blocked"]]
+        blocked = [{"starts_at": at(b["starts_at"])} for b in data["blocked"]]
         if blocked:
             await conn.execute(insert(blocked_slots_t), blocked)
+        requests = [
+            {
+                "merchant_slug": MERCHANT,
+                "at": at(r["at"]),
+                "agent_name": r["agent_name"],
+                "intent": r["intent"],
+                "status": r["status"],
+                "request": json.loads(moved(r["request"], shift, tz)),
+                "response": json.loads(moved(r["response"], shift, tz)),
+            }
+            for r in reversed(data["agent_requests"])  # oldest first, so ids follow time
+        ]
+        if requests:
+            await conn.execute(insert(agent_requests_t), requests)
     week = len(data["reservations"])
     return (
         f"management data: {week} bookings over the 7 days from {today}, "
-        f"{len(rows) - week} over the 29 days before, {len(blocked)} blocked time(s)"
+        f"{len(rows) - week} over the 29 days before, {len(blocked)} blocked time(s), "
+        f"{len(requests)} agent requests"
     )

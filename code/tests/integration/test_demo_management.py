@@ -11,7 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import PgAgentService
-from core.db import blocked_slots_t, make_engine, merchant_conn, reservations_t
+from core.db import (
+    agent_requests_t,
+    blocked_slots_t,
+    make_engine,
+    merchant_conn,
+    reservations_t,
+)
 from core.errors import NotFound
 
 ZURICH = ZoneInfo("Europe/Zurich")
@@ -77,11 +83,24 @@ async def test_a_seed_shows_the_mockups_numbers_once_and_the_live_booking_is_r_0
     again = await demo_management.seed_management(engine, TODAY)
 
     assert first.startswith("management data: 55 bookings over the 7 days from 2026-11-14")
+    assert first.endswith(", 24 agent requests")
     assert again == "management data kept"
     assert seeded == await home(engine) == (982, 597, 42, 17, 6, 146)
     async with merchant_conn(engine, demo_management.MERCHANT) as conn:
         blocked = list(await conn.scalars(select(blocked_slots_t.c.starts_at)))
     assert blocked == [datetime.combine(TODAY + timedelta(days=1), time(13), ZURICH)]
+    async with engine.connect() as conn:
+        requests = (
+            await conn.execute(select(agent_requests_t).order_by(agent_requests_t.c.id))
+        ).all()
+    refused = [r for r in requests if r.status >= 400]
+    assert len(requests) == 24
+    assert [r.at for r in requests] == sorted(r.at for r in requests)
+    assert [(r.at.astimezone(ZURICH).isoformat(), r.intent, r.status) for r in refused] == [
+        ("2026-11-14T11:04:00+01:00", "AVAILABILITY", 413),
+        ("2026-11-14T13:37:00+01:00", "BOOK", 409),
+    ]
+    assert refused[1].request["params"]["starts_at"] == "2026-11-14T20:30:00+01:00"
 
     agent = PgAgentService(engine, tz=ZURICH, clock=lambda: NOW)
     kim = await agent.create_reservation(

@@ -144,3 +144,11 @@ def test_the_opening_conversation_tells_the_fixtures_story() -> None:
     assert turns[3]["text"].startswith("Done. **13:00** is blocked tomorrow")
     assert kept == ["Remy Schmitt"]
     assert f"{kept[0]} keeps their table" in turns[3]["text"]
+
+
+def test_moved_frames_keep_their_local_times_across_a_clock_change() -> None:
+    frame = '{"date":"2026-10-31","starts_at":"2026-10-31T20:30:00+01:00","key":"k-R-009"}'
+
+    assert demo_management.moved(frame, date(2027, 4, 10) - TODAY, TZ) == (
+        '{"date":"2027-04-10","starts_at":"2027-04-10T20:30:00+02:00","key":"k-R-009"}'
+    )
