@@ -292,8 +292,10 @@ FACT_LABELS: dict[FactKey, str] = {
     "booking_page": "Booking page",
 }
 SOURCE_FIELDS = ("name", "services", "tags", "max_party_size", "cancellation_policy", "price_level")
-# Shorter quotes ("6", "€") are in almost any page: found, but no evidence of anything.
+# Shorter quotes ("6", "€", "19h") are in almost any page: found, but no evidence of anything.
+# A name or a tag is a word the page must hold, so "Noma" or "Vegan" stays a source (#184).
 MIN_QUOTE = 8
+SHORT_QUOTE_FIELDS = frozenset({"name", "tags"})
 
 
 @dataclass(frozen=True)
@@ -324,7 +326,7 @@ def verified_sources(sources: Sources, crawl: CrawlResult, description: str) -> 
         if source is None or not (quote := " ".join(source.quote.split())[:200]):
             continue
         wanted = _comparable(quote)
-        if len(wanted) < MIN_QUOTE:
+        if len(wanted) < MIN_QUOTE and name not in SHORT_QUOTE_FIELDS:
             continue
         named = source.page and _page_key(source.page)
         ordered = sorted(pages, key=lambda url: _page_key(url) != named)

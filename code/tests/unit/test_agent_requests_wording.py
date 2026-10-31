@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from agent.requests import describe
+from core.errors import BookingStarted
 
 TZ = ZoneInfo("Europe/Zurich")
 SLUG = "la-graine-verte"
@@ -143,6 +144,41 @@ def test_the_demo_fixture_is_worded_as_the_server_words_it() -> None:
                 "Emma Roth tried to cancel a booking that had started",
                 "Bookings can only be changed before they start.",
             ),
+        ),
+        (
+            "AMEND",
+            409,
+            {"reservation_id": "R-007", "guest_name": "Emma Roth", "party_size": 5},
+            {"error": {"code": "slot_unavailable", "message": str(BookingStarted("R-007"))}},
+            (
+                "Emma Roth tried to change a booking that had started",
+                "Bookings can only be changed before they start.",
+            ),
+        ),
+        (
+            "AMEND",
+            409,
+            {"reservation_id": "R-007", "guest_name": "Emma Roth", "party_size": 5},
+            refusal("slot_unavailable"),
+            ("Emma Roth asked for more seats than were free", "Their booking stays as it was."),
+        ),
+        (
+            "AMEND",
+            409,
+            {"reservation_id": "R-007", "guest_name": "Emma Roth", "starts_at": None},
+            refusal("slot_unavailable"),  # `null` from another client: still a resize
+            ("Emma Roth asked for more seats than were free", "Their booking stays as it was."),
+        ),
+        (
+            "AMEND",
+            409,
+            {
+                "reservation_id": "R-007",
+                "guest_name": "Emma Roth",
+                "starts_at": BOOKING["starts_at"],
+            },
+            refusal("slot_unavailable"),
+            ("Emma Roth asked for a time that had just gone", "Claude offered them another one."),
         ),
         (
             "AMEND",
