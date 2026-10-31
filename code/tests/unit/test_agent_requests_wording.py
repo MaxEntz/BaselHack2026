@@ -60,11 +60,11 @@ def test_the_issues_four_wordings() -> None:
 
     assert word("AVAILABILITY", 200, checked, slots) == (
         "Claude checked 20:00 for 3 guests",
-        "Saturday 31 October. Your agent offered the closest free times.",
+        "Sat 31 Oct. Your agent offered the closest free times.",
     )
     assert word("BOOK", 200, BOOKING, BOOKED) == (
         "Emma Roth booked through Claude",
-        "Saturday 31 October, 20:00, 3 guests, table T9.",
+        "Sat 31 Oct, 20:00, 3 guests, table T9.",
     )
     assert word("AVAILABILITY", 413, checked | {"party_size": 8}, refusal("party_too_large")) == (
         "A group of 8 was sent to your booking page",
@@ -104,7 +104,7 @@ def test_the_demo_fixture_is_worded_as_the_server_words_it() -> None:
             {"result": {"slots": []}},
             (
                 "Claude checked free times for 1 guest",
-                "Monday 2 November. Your agent offered the closest free times.",
+                "Mon 2 Nov. Your agent offered the closest free times.",
             ),
         ),
         (
@@ -114,7 +114,7 @@ def test_the_demo_fixture_is_worded_as_the_server_words_it() -> None:
             BOOKED,
             (
                 "Emma Roth changed their booking through Claude",
-                "Saturday 31 October, 20:00, 3 guests, table T9.",
+                "Sat 31 Oct, 20:00, 3 guests, table T9.",
             ),
         ),
         (
@@ -122,7 +122,7 @@ def test_the_demo_fixture_is_worded_as_the_server_words_it() -> None:
             200,
             {"reservation_id": "R-007", "guest_name": "Emma Roth"},
             BOOKED,
-            ("Emma Roth cancelled through Claude", "Saturday 31 October, 20:00, 3 guests."),
+            ("Emma Roth cancelled through Claude", "Sat 31 Oct, 20:00, 3 guests."),
         ),
         (
             "BOOK",

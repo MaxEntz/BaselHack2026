@@ -374,7 +374,7 @@ async def test_the_agent_page_lists_the_days_requests_worded_newest_first(
         "Your limit is 6, so the guest got your link instead.",
     )
     assert booked.title == f"{GUEST} booked through {GATEWAY.name}"
-    assert booked.text.startswith("Monday 2 November, 20:00, 2 guests, table ")
+    assert booked.text.startswith("Mon 2 Nov, 20:00, 2 guests, table ")
     assert booked.agent_name == GATEWAY.name
     assert booked.at.utcoffset() == TZ.utcoffset(booked.at.replace(tzinfo=None))
     # The frames as stored: the wire's text, never re-serialized.

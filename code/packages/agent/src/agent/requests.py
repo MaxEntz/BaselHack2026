@@ -9,21 +9,8 @@ import json
 from datetime import date, datetime, tzinfo
 from typing import Any
 
-WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-MONTHS = (
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
 def describe(
@@ -108,7 +95,8 @@ def _booking(starts: datetime | None, party: int | None, booking: dict[str, Any]
 
 
 def _date(day: date) -> str:
-    """ "Saturday 31 October", whatever the server's locale."""
+    """ "Sat 31 Oct", the mockup's day (`sesame-management.html#agent`), whatever the server's
+    locale."""
     return f"{WEEKDAYS[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
 
 
