@@ -35,9 +35,9 @@ describe("review card (#136)", () => {
     render(<CardView card={PROFILE} />);
 
     expect(screen.getByText(/Hidden from guests until you publish/)).toBeTruthy();
-    expect(screen.getByText(/6, from "Réservation en ligne jusqu'à 6 personnes"/)).toBeTruthy();
-    expect(screen.getByText(/\/reservation\.html$/)).toBeTruthy();
-    expect(screen.getByText("No cancellation policy on your site.")).toBeTruthy();
+    expect(screen.getByText(/4, from "Tables de 1 à 4 personnes"/)).toBeTruthy();
+    expect(screen.getByText(/^\/#reserver, used as the fallback/)).toBeTruthy();
+    expect(screen.getByText("Your site only takes bookings by phone.")).toBeTruthy();
   });
 
   it("titles a build waiting for its owner, and a publish on its own", () => {

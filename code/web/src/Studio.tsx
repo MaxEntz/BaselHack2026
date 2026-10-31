@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
-import App from "./App.tsx";
 import { acceptInvite } from "./chat/client.ts";
 import { Gallery } from "./cards/Gallery.tsx";
 import { PrimitivesGallery } from "./management/PrimitivesGallery.tsx";
+import { StudioPage } from "./studio/StudioPage.tsx";
 
-/** `/`: Studio (the chat until #141), or the review galleries with `?gallery`. */
+/** `/`: Studio, or the review galleries with `?gallery`. */
 export function Studio() {
   const { search, pathname } = useLocation();
   const navigate = useNavigate();
@@ -28,5 +28,5 @@ export function Studio() {
       </>
     );
   }
-  return <App />;
+  return <StudioPage />;
 }

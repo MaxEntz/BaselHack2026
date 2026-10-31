@@ -53,6 +53,8 @@ export type ManagementClient = {
   blocked: (slug: string, signal?: AbortSignal) => Promise<BlockedTimes>;
   // Sets the day's whole set of blocked times (HH:MM).
   setBlocked: (slug: string, date: string, times: string[]) => Promise<BlockedTimes>;
+  // Goes live, from what a build left hidden (#136).
+  publish: (slug: string) => Promise<MerchantOverview>;
   pauseAgent: (slug: string) => Promise<AgentStatusOutput>;
   resumeAgent: (slug: string) => Promise<AgentStatusOutput>;
   agentRequests: (slug: string, query: RequestsQuery, signal?: AbortSignal) => Promise<AgentRequests>;
@@ -150,6 +152,7 @@ export const httpManagementClient: ManagementClient = {
   blocked: (slug, signal) => call("GET", slug, "/blocked", { signal }),
   setBlocked: (slug, date, times) =>
     call("PUT", slug, `/blocked${query({ date })}`, { body: { times } }),
+  publish: (slug) => call("POST", slug, "/publish"),
   pauseAgent: (slug) => call("POST", slug, "/agent/pause"),
   resumeAgent: (slug) => call("POST", slug, "/agent/resume"),
   agentRequests: (slug, { date, refused }, signal) =>

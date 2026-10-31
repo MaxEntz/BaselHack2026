@@ -1,74 +1,225 @@
 [
-  { "type": "text", "delta": "I'll build the booking agent for Le Petit Zinc." },
-  { "type": "tool_start", "tool": "build_agent", "label": "Building your agent…" },
-  { "type": "step", "step": "crawl", "status": "running" },
-  { "type": "step", "step": "crawl", "status": "done", "detail": "Read the homepage, menu, hours, contact and booking pages.", "duration_ms": 820 },
-  { "type": "step", "step": "extract", "status": "running" },
-  { "type": "step", "step": "extract", "status": "done", "detail": "Combined the website with your table plan and group limit.", "duration_ms": 1400 },
-  { "type": "step", "step": "validate", "status": "running" },
-  { "type": "step", "step": "validate", "status": "done", "duration_ms": 4 },
-  { "type": "step", "step": "provision", "status": "running" },
-  { "type": "step", "step": "provision", "status": "done", "detail": "Created 12 tables with 44 seats.", "duration_ms": 110 },
-  { "type": "step", "step": "deploy", "status": "waiting", "detail": "Waiting for you." },
+  {
+    "type": "tool_start",
+    "tool": "build_agent",
+    "label": "Building your agent…"
+  },
+  {
+    "type": "step",
+    "step": "crawl",
+    "status": "running"
+  },
+  {
+    "type": "step",
+    "step": "crawl",
+    "status": "done",
+    "detail": "Read 1 page: /",
+    "duration_ms": 820
+  },
+  {
+    "type": "step",
+    "step": "extract",
+    "status": "running"
+  },
+  {
+    "type": "step",
+    "step": "extract",
+    "status": "done",
+    "duration_ms": 1400
+  },
+  {
+    "type": "step",
+    "step": "validate",
+    "status": "running"
+  },
+  {
+    "type": "step",
+    "step": "validate",
+    "status": "done",
+    "duration_ms": 4,
+    "detail": "Hours, tables and links are valid."
+  },
+  {
+    "type": "step",
+    "step": "provision",
+    "status": "running"
+  },
+  {
+    "type": "step",
+    "step": "provision",
+    "status": "done",
+    "detail": "9 tables, 24 seats. Hidden from guests until you publish.",
+    "duration_ms": 110
+  },
+  {
+    "type": "step",
+    "step": "deploy",
+    "status": "waiting",
+    "detail": "Waiting for you."
+  },
   {
     "type": "card",
     "kind": "profile",
     "login_url": "http://localhost:5173/api/login?token=demo-secret-link",
     "data": {
       "profile": {
-        "slug": "le-petit-zinc",
-        "name": "Le Petit Zinc",
-        "website": "http://localhost:8080/",
+        "slug": "la-graine-verte",
+        "name": "La Graine Verte",
+        "website": "http://localhost:8081/",
         "vertical": "restaurant",
-        "location": { "city": "Mulhouse", "lat": null, "lng": null },
-        "seats": 44,
+        "location": {
+          "city": "Mulhouse",
+          "lat": null,
+          "lng": null
+        },
+        "seats": 24,
         "services": [
-          { "start": "12:00", "end": "14:00" },
-          { "start": "19:00", "end": "22:00" }
+          {
+            "start": "11:30",
+            "end": "14:30"
+          },
+          {
+            "start": "18:30",
+            "end": "21:30"
+          }
         ],
-        "max_party_size": 6,
+        "max_party_size": 4,
         "tables": [
-          { "label": "T1", "seats": 2 },
-          { "label": "T2", "seats": 2 },
-          { "label": "T3", "seats": 2 },
-          { "label": "T4", "seats": 2 },
-          { "label": "T5", "seats": 4 },
-          { "label": "T6", "seats": 4 },
-          { "label": "T7", "seats": 4 },
-          { "label": "T8", "seats": 4 },
-          { "label": "T9", "seats": 4 },
-          { "label": "T10", "seats": 4 },
-          { "label": "T11", "seats": 6 },
-          { "label": "T12", "seats": 6 }
+          {
+            "label": "T1",
+            "seats": 2
+          },
+          {
+            "label": "T2",
+            "seats": 2
+          },
+          {
+            "label": "T3",
+            "seats": 2
+          },
+          {
+            "label": "T4",
+            "seats": 2
+          },
+          {
+            "label": "T5",
+            "seats": 2
+          },
+          {
+            "label": "T6",
+            "seats": 2
+          },
+          {
+            "label": "T7",
+            "seats": 4
+          },
+          {
+            "label": "T8",
+            "seats": 4
+          },
+          {
+            "label": "T9",
+            "seats": 4
+          }
         ],
-        "tags": ["vegetarian", "gluten-free", "terrace", "kid-friendly"],
-        "price_level": "€€",
-        "cancellation_policy": null,
-        "fallback_url": "http://localhost:8080/reservation.html"
+        "tags": [
+          "vegan",
+          "vegetarian",
+          "gluten-free"
+        ],
+        "price_level": "€",
+        "cancellation_policy": "Free cancellation up to 1 hour before the booking.",
+        "fallback_url": "http://localhost:8081/#reserver"
       },
       "status": "building",
-      "assumptions": ["Bookings last 120 minutes by default."],
+      "assumptions": [],
       "facts": [
-        { "key": "name", "label": "Name", "value": "Le Petit Zinc", "source": "/", "quote": "Le Petit Zinc" },
-        { "key": "hours", "label": "Hours", "value": "12:00-14:00, 19:00-22:00", "source": "/horaires.html", "quote": "12h – 14h · 19h – 22h" },
-        { "key": "tags", "label": "Tags", "value": "Vegetarian, gluten-free, terrace, kid-friendly", "source": null, "quote": null },
-        { "key": "max_party_size", "label": "Largest group", "value": "6, from \"Réservation en ligne jusqu'à 6 personnes\"", "source": "/reservation.html", "quote": "Réservation en ligne jusqu'à 6 personnes" },
-        { "key": "cancellation_policy", "label": "Cancelling", "value": "None on your site", "source": null, "quote": null },
-        { "key": "price_level", "label": "Price level", "value": "€€", "source": null, "quote": null },
-        { "key": "booking_page", "label": "Booking page", "value": "/reservation.html, used as the fallback", "source": null, "quote": null }
+        {
+          "key": "name",
+          "label": "Name",
+          "value": "La Graine Verte",
+          "source": "/",
+          "quote": "La Graine Verte"
+        },
+        {
+          "key": "hours",
+          "label": "Hours",
+          "value": "Lunch 11:30–14:30, dinner 18:30–21:30",
+          "source": "/",
+          "quote": "Déjeuner 11h30 – 14h30"
+        },
+        {
+          "key": "tags",
+          "label": "Tags",
+          "value": "Vegan, vegetarian, gluten-free",
+          "source": "/",
+          "quote": "100 % végétal"
+        },
+        {
+          "key": "max_party_size",
+          "label": "Largest group",
+          "value": "4, from \"Tables de 1 à 4 personnes\"",
+          "source": "/",
+          "quote": "Tables de 1 à 4 personnes"
+        },
+        {
+          "key": "cancellation_policy",
+          "label": "Cancelling",
+          "value": "Free up to 1 hour before",
+          "source": "/",
+          "quote": "Annulation gratuite jusqu'à 1 heure avant le repas"
+        },
+        {
+          "key": "price_level",
+          "label": "Price level",
+          "value": "€, from your menu prices",
+          "source": "/",
+          "quote": "12 €"
+        },
+        {
+          "key": "booking_page",
+          "label": "Booking page",
+          "value": "/#reserver, used as the fallback",
+          "source": "/",
+          "quote": null
+        }
       ],
       "flags": [
-        { "title": "No cancellation policy on your site.", "detail": "Guests see none until you give me one." }
+        {
+          "title": "Your site only takes bookings by phone.",
+          "detail": "The fallback link goes to that section, so a guest who can't book through Claude still finds your number."
+        },
+        {
+          "title": "\"Sans gluten pour la plupart des plats\" became the gluten-free tag.",
+          "detail": "Tags can't say \"most dishes\". Tell me if you'd rather drop it."
+        }
       ],
       "tools": [
-        { "name": "get_availability", "description": "Check free tables at Le Petit Zinc (Mulhouse). Services: 12:00–14:00, 19:00–22:00. Groups up to 6." },
-        { "name": "create_reservation", "description": "Book a table at Le Petit Zinc. Always confirm with the guest first." },
-        { "name": "update_reservation", "description": "Move or resize a booking at Le Petit Zinc." },
-        { "name": "cancel_reservation", "description": "Cancel a booking at Le Petit Zinc. Policy: not specified." }
+        {
+          "name": "get_availability",
+          "description": "Check free tables at La Graine Verte (Mulhouse). Services: 11:30–14:30, 18:30–21:30. Groups up to 4."
+        },
+        {
+          "name": "create_reservation",
+          "description": "Book a table at La Graine Verte. Always confirm with the guest first."
+        },
+        {
+          "name": "update_reservation",
+          "description": "Move or resize a booking at La Graine Verte."
+        },
+        {
+          "name": "cancel_reservation",
+          "description": "Cancel a booking at La Graine Verte. Policy: Free cancellation up to 1 hour before the booking."
+        }
       ],
       "mcp_url": "http://localhost:8001/mcp"
     }
   },
-  { "type": "text", "delta": "Your agent is built and hidden from guests. Check the card, then tell me to publish it." },
-  { "type": "done" }
+  {
+    "type": "text",
+    "delta": "Your agent is built and hidden from guests. Check the card, then tell me to publish it."
+  },
+  {
+    "type": "done"
+  }
 ]

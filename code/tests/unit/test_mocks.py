@@ -53,7 +53,7 @@ def test_chat_mocks_match_python_events(name: str) -> None:
     assert isinstance(parsed[-1], DoneEvent)
 
 
-def test_onboarding_mock_matches_profile_contract(profile_data: dict[str, Any]) -> None:
+def test_onboarding_mock_matches_profile_contract() -> None:
     events = load_mock("onboarding")
     steps = [event for event in events if event["type"] == "step"]
 
@@ -65,18 +65,16 @@ def test_onboarding_mock_matches_profile_contract(profile_data: dict[str, Any]) 
     ] + [("deploy", "waiting")]
     card = next(event for event in events if event["type"] == "card")
     result = BuildAgentOutput.model_validate(card["data"])
-    assert result.profile == MerchantProfile.model_validate(profile_data)
+    assert result.profile == MerchantProfile.model_validate_json(PROFILE.read_text())
     assert result.status == "building"
 
 
-def test_session_mock_is_the_onboarded_merchant(profile_data: dict[str, Any]) -> None:
+def test_session_mock_is_the_onboarded_merchant() -> None:
     session = SessionOutput.model_validate(load_mock("session"))
+    profile = MerchantProfile.model_validate_json(PROFILE.read_text())
 
     assert session.merchant is not None
-    assert (session.merchant.slug, session.merchant.name) == (
-        profile_data["slug"],
-        profile_data["name"],
-    )
+    assert (session.merchant.slug, session.merchant.name) == (profile.slug, profile.name)
 
 
 def test_notification_mock_is_a_booking_from_tonight() -> None:
