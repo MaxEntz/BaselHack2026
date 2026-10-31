@@ -22,7 +22,8 @@ export type ChatClient = {
 export class ChatError extends Error {}
 
 // A silent network drop never ends the stream: give up after this long without
-// any event (builder steps report progress well within it).
+// any byte. The platform's heartbeat (a `: ping` comment every 15 s) keeps a slow
+// turn alive (#87).
 const IDLE_TIMEOUT_MS = 90_000;
 const LIVE_RETRY_MS = 2000;
 
@@ -61,8 +62,7 @@ export const httpClient: ChatClient = {
       }
 
       try {
-        for await (const frame of readSse(response.body)) {
-          touch();
+        for await (const frame of readSse(response.body, touch)) {
           const event = parseEvent<ChatEvent>(frame.data);
           if (!event) continue;
           yield event;

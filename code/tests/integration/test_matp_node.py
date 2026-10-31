@@ -252,3 +252,38 @@ async def test_a_notice_whose_recall_answer_was_lost_comes_back_on_the_next_reca
 
     assert len(lost["notices"]) == 1
     assert recalled["notices"] == lost["notices"]
+
+
+async def test_a_handler_timeout_gives_the_merchants_fallback_url(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    """The node's own 503 (past its handler timeout) carries the link, as `down` does (#93)."""
+    slug = await make_merchant()
+
+    class SlowService(PgAgentService):
+        async def get_availability(self, *args: object, **kwargs: object) -> list[object]:
+            await asyncio.sleep(1)
+            return []
+
+    agents = MerchantAgents(engine, SlowService(engine, tz=TZ, clock=lambda: NOW))
+    node = NodeServer(
+        node=NODE,
+        handle=agents,
+        authenticate=lambda h: True,
+        handler_timeout=0.2,
+        fallback_url=agents.fallback_url,
+    )
+    await node.start("127.0.0.1", 0)
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", node.port, limit=MAX_FRAME)
+        writer.write(encode({"type": "hello", "matp": "0.1", "agent": GATEWAY.model_dump()}))
+        await reader.readline()
+        request = {"type": "request", "id": "r-1", "intent": "AVAILABILITY", "merchant": slug}
+        writer.write(encode(request | {"params": {"date": DAY.isoformat(), "party_size": 2}}))
+        response = json.loads(await asyncio.wait_for(reader.readline(), 5))
+        writer.close()
+    finally:
+        await node.stop()
+
+    assert response["status"] == 503
+    assert response["error"]["fallback_url"] == "http://localhost:8080/reservation.html"

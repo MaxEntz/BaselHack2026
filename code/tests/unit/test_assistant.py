@@ -26,6 +26,7 @@ from builder.llm import (
     ToolCall,
     ToolSpec,
 )
+from core.config import Settings
 from core.errors import NotFound
 from core.models import (
     AdminReservationRow,
@@ -48,6 +49,7 @@ from merchant_platform.assistant import (
     UNAVAILABLE,
     Assistant,
     compact,
+    default_assistant,
     system_prompt,
 )
 from merchant_platform.sessions import Session
@@ -828,3 +830,28 @@ async def test_live_onboarding_asks_then_builds() -> None:
     assert name == "build_agent"
     assert arguments["website"].startswith("http://localhost:8080")
     assert session.merchant_slug == SLUG
+
+
+def test_a_model_call_that_stops_sending_gives_up_after_60_s(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The web counts heartbeats as activity (#87): the server must bound a hung call itself.
+    built: list[dict[str, Any]] = []
+
+    def capture(**kwargs: Any) -> AsyncOpenAI:
+        built.append(kwargs)
+        return AsyncOpenAI(**kwargs)
+
+    monkeypatch.setattr("merchant_platform.assistant.AsyncOpenAI", capture)
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        database_url="postgresql+psycopg://unused/db",
+        openai_api_key=SecretStr("sk-test"),
+    )
+
+    default_assistant(settings, cast(Any, None))
+
+    [kwargs] = built
+    assert kwargs["timeout"].read == 60
+    assert kwargs["timeout"].connect == 5
+    assert kwargs["max_retries"] == 0

@@ -168,6 +168,10 @@ class MerchantAgents:
             raise NotFound(f"Unknown merchant: {slug!r}")
         return row.status, row.fallback_url, row.name
 
+    async def fallback_url(self, request: Request) -> str | None:
+        """For `NodeServer`: the addressed merchant's booking page, for a 503 it sends itself."""
+        return await self._fallback_or_none(request.merchant)
+
     async def _fallback_or_none(self, slug: str | None) -> str | None:
         if slug is None:
             return None

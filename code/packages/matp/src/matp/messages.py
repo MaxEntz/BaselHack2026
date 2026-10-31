@@ -26,6 +26,8 @@ ALL_INTENTS: tuple[Intent, ...] = (
     "RECALL",
     "PING",
 )
+# The intents that address one merchant: `merchant` is required for them, absent otherwise (§6).
+ADDRESSED: frozenset[Intent] = frozenset({"AVAILABILITY", "BOOK", "AMEND", "CANCEL"})
 AgentKind = Literal["user-agent", "merchant-agent"]
 
 RequestId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
@@ -92,9 +94,19 @@ class ErrorBody(_Frame):
     fallback_url: str | None = None
 
 
+class ErrorFrame(_Frame):
+    """A problem no response can carry, because no request `id` can be attributed to it (§6):
+    the frame isn't JSON, has no valid `type` or `id`, is too large, or reuses an `id` in
+    flight. After a 413 the node closes the session; after a 400 it goes on."""
+
+    type: Literal["error"] = "error"
+    status: Literal[400, 413]
+    message: str
+
+
 class Response(_Frame):
     type: Literal["response"] = "response"
-    # None only when the request could not be read at all (malformed frame).
+    # None only from a node older than #93: frames without a request id now get `ErrorFrame`.
     id: RequestId | None
     status: int
     result: dict[str, Any] | None = None

@@ -230,9 +230,14 @@ ignored; because `params` are strict, a caller only sends the params of the sess
 ## 15. Where the reference node still differs from the draft
 
 The Internet-Draft is the normative text. The node in `packages/matp/` (#60) was written in
-parallel and still differs on two points, to be aligned in a follow-up:
+parallel and still differs on one point:
 
-- **Oversized frame:** the node answers with a `response` frame without `id` (status `413`),
-  not with the session-level `error` frame of §3.
 - **`via`:** the node records every MATP booking as `claude`, whatever `kind` the caller
   declares (§7). The draft's BOOK section still says `merchant` for a `merchant-agent`.
+
+Aligned since #93: an `id` already in flight gets an `error` frame and is not carried out;
+`merchant` is checked per intent; the session closes on the 10th malformed frame in a row;
+frames without a request `id` (not JSON, unknown `type`, no or invalid `id`, above 64 KiB) get
+`error` frames; and the node's own `503` (handler timeout or failure, answer too large) carries
+the merchant's `fallback_url`, looked up within 1 s. A refused duplicate doesn't count as
+malformed: it is a valid frame.

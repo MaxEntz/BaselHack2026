@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, Timeout
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -42,6 +42,11 @@ KEEP_TURNS = 3
 LONG_RESULT_CHARS = 600
 
 UNAVAILABLE = "The assistant is temporarily unavailable, please retry."
+# A model call that stops sending gives up after 60 s without a chunk (one retry, then
+# UNAVAILABLE). The web no longer does: it counts the platform's heartbeats as activity (#87),
+# and the SDK's default read timeout is 600 s. Streaming restarts the read timeout on every
+# chunk, so a long answer still goes through.
+LLM_TIMEOUT = Timeout(60, connect=5)
 INTERRUPTED = "Interrupted before it finished."
 TOO_MANY_STEPS = "I couldn't finish that request. Could you rephrase it or split it up?"
 
@@ -265,7 +270,9 @@ def default_assistant(
         return run_turn
     tz = ZoneInfo(settings.merchant_tz)
     # Retries are ours (one, before any text reached the merchant).
-    openai = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value(), max_retries=0)
+    openai = AsyncOpenAI(
+        api_key=settings.openai_api_key.get_secret_value(), max_retries=0, timeout=LLM_TIMEOUT
+    )
     llm = OpenAIClient(
         openai, settings.openai_model, reasoning_effort=settings.openai_reasoning_effort
     )
