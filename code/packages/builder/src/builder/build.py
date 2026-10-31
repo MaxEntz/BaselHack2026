@@ -163,7 +163,7 @@ class Builder:
     async def _extract_steps(
         self, site: str, crawled: CrawlResult, description: str, on_event: StepEmitter
     ) -> ExtractionResult:
-        key = extraction_key(site, description, self._model, PROMPT_VERSION)
+        key = extraction_key(crawled, description, self._model, PROMPT_VERSION)
         cached = self._cache.get_extraction(key)
         log.info("builder_cache", extra={"stage": "extract", "hit": cached is not None})
         current: list[tuple[StepName, float]] = [("extract", time.monotonic())]

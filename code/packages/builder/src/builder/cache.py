@@ -32,8 +32,10 @@ def crawl_key(website: str) -> str:
     return _sha256(json.dumps([website, CRAWL_VERSION]))
 
 
-def extraction_key(website: str, description: str, model: str, prompt_version: str) -> str:
-    return _sha256(json.dumps([website, description, model, prompt_version]))
+def extraction_key(crawled: CrawlResult, description: str, model: str, prompt_version: str) -> str:
+    """Keyed on what the crawl read: a new crawl of a rewritten site never meets the extraction
+    of its old text (#148)."""
+    return _sha256(json.dumps([asdict(crawled), description, model, prompt_version]))
 
 
 def _sha256(text: str) -> str:
