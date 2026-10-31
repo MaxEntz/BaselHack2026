@@ -128,7 +128,7 @@ One Postgres schema per merchant ([ADR-0001](documentation/adr/0001-one-postgres
 
 | Where | Tables |
 |---|---|
-| `public` (Alembic, migrations `0001`, `0002`) | `merchants` (registry: slug, name, website, fallback_url, city, tags, price_level, `status` `building`/`live`/`down`, default `building`, `profile` jsonb), `guest_notices`, `reservation_changes` (applied update keys, [ADR-0013](documentation/adr/0013-store-update-idempotency-keys-in-public.md)), function `notify_reservation()` |
+| `public` (Alembic, migrations `0001`–`0003`) | `merchants` (registry: slug, name, website, fallback_url, city, tags, price_level, `status` `building`/`live`/`down`, default `building`, `profile` jsonb), `guest_notices`, `reservation_changes` (applied update keys, [ADR-0013](documentation/adr/0013-store-update-idempotency-keys-in-public.md)), `agent_requests` (the BATP node's request log, 7 days, #146), function `notify_reservation()` |
 | `m_<slug>`, one per merchant | `tables`, `policy` (one row), `blocked_slots`, `reservations` (`EXCLUDE USING gist (table_id WITH =, during WITH &&) WHERE status = 'confirmed'`; `during` never empty; `via` `claude`/`merchant`/`website`), triggers `reservations_notify` (sends `schema`, `op`, `id`, `status`, `via`) and `reservations_skip_noop` |
 
 Rules for DB code:
@@ -335,6 +335,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | The BATP node follows the draft on duplicate ids, `merchant` per intent, malformed frames, `error` frames and its own `503` with the fallback URL | #93 |
 | 2026-10-31 | Product named **Sésame**; identifiers stay `merchant-agents` / `merchant_agents` | #105 |
 | 2026-10-31 | Web app: `react-router` (Studio at `/`, management pages at `/manage/<slug>/<page>`), Vitest + Testing Library, Playwright in CI; management tokens scoped to `.mg`, fonts self-hosted | [ADR-0017](documentation/adr/0017-router-and-test-tools-for-the-management-site.md), #130 |
+| 2026-10-31 | The BATP node records each answered request to a published merchant, with both frames, in `public.agent_requests` (7 days), after the answer, on its own small pool, at most 100 waiting; `AgentService.set_status` pauses or resumes a published agent | #146 |
 
 ## 15. Out of scope (POC)
 

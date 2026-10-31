@@ -150,6 +150,7 @@ through the guest notice returned by `RECALL`.
 ## 10. Security
 
 - **Identity:** every request is attributed to the `agent.id` of its session, in the node's logs. Guest names are never logged at INFO (AGENTS.md §12).
+- **Request log:** this backend's node also stores each answered request addressed to a published merchant, with both frames and the caller's `agent.name`, for that merchant's Agent page (`public.agent_requests`, 7 days, #146). `HELLO` and its token are never stored, and the write, on its own small connection pool, never delays an answer.
 - **Credentials:** one token per known agent (node configuration), compared in constant time.
 - **Exposure:** in the POC the node listens on `127.0.0.1:4710`, and only the gateway on the same host reaches it. Opening 4710 on the team server needs TLS and a firewall rule on a shared machine, so ask first (AGENTS.md, "Team server").
 - **Limits:**

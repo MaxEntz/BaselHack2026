@@ -115,6 +115,13 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 - `block_slot` / `unblock_slot` refuse an offset that isn't `Europe/Zurich`'s at that instant, with an `invalid_input` naming the local time to send.
 - `cancel_by_merchant` returns `notified` (guest notice stored), `ended` (booking over, no notice), `guest_cancelled` or `already_cancelled` (nothing changed). The card never says a notice was sent when none was stored ([#82](https://github.com/MaxEntz/BaselHack2026/issues/82)).
 - `update_tables` refuses to remove a table that bookings refer to.
+- `AgentService.set_status(slug, "down" | "live")` pauses or resumes a published agent ([#146](https://github.com/MaxEntz/BaselHack2026/issues/146)): `down` sends Claude and other agents to the booking page, while the website keeps booking. A `building` merchant is `invalid_input` (only `deploy` publishes), an unknown one `not_found`. Not an admin tool yet: the Agent page's routes come with #129.
+
+## BATP node request log
+
+- One row per answered request addressed to a published merchant (`live` or `down`) in `public.agent_requests` (migration `0003`, [#146](https://github.com/MaxEntz/BaselHack2026/issues/146)): the caller's `agent_name`, the intent, the status and both frames as on the wire. `HELLO`, and so the caller's token, is never stored.
+- Written after the answer, in its own task (`NodeServer(record=…)`), through the log's own engine (at most 2 connections, apart from the handlers'); a record is dropped with a warning when 100 are already waiting. The log never delays or fails an answer, not even another request's.
+- Rows older than 7 days are purged as new ones arrive. Rows hold guest names: only the merchant's own session may read them.
 
 ## Platform HTTP API
 

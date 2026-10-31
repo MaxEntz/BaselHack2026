@@ -19,6 +19,7 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 
 from core.db import (
     MERCHANT,
+    agent_requests_t,
     guest_notices_t,
     merchant_conn,
     merchant_metadata,
@@ -32,7 +33,7 @@ from core.db import (
 
 pytestmark = pytest.mark.integration
 
-PUBLIC_TABLES = {"merchants", "guest_notices", "reservation_changes"}
+PUBLIC_TABLES = {"merchants", "guest_notices", "reservation_changes", "agent_requests"}
 MERCHANT_TABLES = {"tables", "policy", "blocked_slots", "reservations"}
 MIGRATED = {
     "tables": PUBLIC_TABLES,
@@ -115,7 +116,9 @@ def test_downgrade_refuses_while_a_merchant_schema_exists(
 
 
 @pytest.mark.parametrize(
-    "table", [merchants_t, guest_notices_t, reservation_changes_t], ids=lambda t: t.name
+    "table",
+    [merchants_t, guest_notices_t, reservation_changes_t, agent_requests_t],
+    ids=lambda t: t.name,
 )
 async def test_public_tables_match_their_core_declarations(
     engine: AsyncEngine, table: Table
@@ -163,7 +166,7 @@ async def test_registry_rejects_values_outside_the_contract(
     assert sqlstate(raised.value) == "23514"  # check_violation
 
 
-async def test_registry_starts_in_building_and_cascades_to_notices_and_update_keys(
+async def test_registry_starts_in_building_and_cascades_to_notices_keys_and_requests(
     engine: AsyncEngine,
 ) -> None:
     slug = f"zinc-{uuid4().hex[:8]}"
@@ -181,6 +184,16 @@ async def test_registry_starts_in_building_and_cascades_to_notices_and_update_ke
                 merchant_slug=slug, idempotency_key="k1", reservation_id="R-001", party_size=2
             )
         )
+        await conn.execute(
+            insert(agent_requests_t).values(
+                merchant_slug=slug,
+                agent_name="Claude",
+                intent="PING",
+                status=200,
+                request={},
+                response={},
+            )
+        )
     async with engine.begin() as conn:
         await conn.execute(delete(merchants_t).where(merchants_t.c.slug == slug))
         notices = await conn.scalar(
@@ -193,9 +206,14 @@ async def test_registry_starts_in_building_and_cascades_to_notices_and_update_ke
             .select_from(reservation_changes_t)
             .where(reservation_changes_t.c.merchant_slug == slug)
         )
+        requests = await conn.scalar(
+            select(func.count())
+            .select_from(agent_requests_t)
+            .where(agent_requests_t.c.merchant_slug == slug)
+        )
 
     assert status == "building"
-    assert (notices, keys) == (0, 0)  # deprovision deletes the registry row (ADR-0013)
+    assert (notices, keys, requests) == (0, 0, 0)  # deprovision deletes the registry row (ADR-0013)
 
 
 @pytest.fixture
