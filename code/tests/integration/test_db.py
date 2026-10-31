@@ -215,13 +215,14 @@ async def test_merchant_objects_land_in_the_merchant_schema(
             ),
             {"schema": schema},
         )
-        triggers = await conn.scalar(
-            text(
-                "SELECT count(*) FROM pg_trigger "
-                "WHERE tgname = 'reservations_notify' "
-                "AND tgrelid = CAST(:table AS regclass)"
-            ),
-            {"table": f"{schema}.reservations"},
+        triggers = set(
+            await conn.scalars(
+                text(
+                    "SELECT tgname FROM pg_trigger "
+                    "WHERE NOT tgisinternal AND tgrelid = CAST(:table AS regclass)"
+                ),
+                {"table": f"{schema}.reservations"},
+            )
         )
         placeholder = await conn.scalar(
             text("SELECT count(*) FROM pg_namespace WHERE nspname = :name"), {"name": MERCHANT}
@@ -230,7 +231,7 @@ async def test_merchant_objects_land_in_the_merchant_schema(
     assert tables == MERCHANT_TABLES
     assert "reservation_seq" in sequences
     assert exclusions == 1
-    assert triggers == 1
+    assert triggers == {"reservations_notify", "reservations_skip_noop"}
     assert placeholder == 0
 
 
