@@ -34,7 +34,7 @@ describe("management routes", () => {
   it("/manage/:slug is Home, which greets the owner", async () => {
     at("/manage/la-graine-verte");
     expect(document.title).toBe("La Graine Verte · Home");
-    expect(await screen.findByRole("heading", { level: 1, name: /^Good (morning|afternoon|evening), Léa$/ })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: /^Good (morning|afternoon|evening), Camille$/ })).toBeTruthy();
   });
 
   it("sends an unknown page to Home", () => {

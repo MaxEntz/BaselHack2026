@@ -74,7 +74,7 @@ test("slots never offer a time that has passed, flag blocked ones and can leave 
   const mock = client();
   const tonight = await mock.slots(SLUG, { date: TODAY, partySize: 2 });
   const tomorrow = await mock.slots(SLUG, { date: TOMORROW, partySize: 2 });
-  const ignoring = await mock.slots(SLUG, { date: TOMORROW, partySize: 2, ignore: "R-012" });
+  const ignoring = await mock.slots(SLUG, { date: TOMORROW, partySize: 2, ignore: "R-021" });
 
   assert.equal(tonight.slots[0]?.time, "20:00");
   assert.deepEqual(
@@ -83,7 +83,7 @@ test("slots never offer a time that has passed, flag blocked ones and can leave 
   );
   const at = (slots: typeof tomorrow.slots, time: string) => slots.find((s) => s.time === time);
   assert.equal(at(tomorrow.slots, "20:00")?.until, "22:00");
-  assert.equal(at(tomorrow.slots, "20:00")?.table?.label, "T2"); // T1 holds Clara Meyer
+  assert.equal(at(tomorrow.slots, "20:00")?.table?.label, "T4"); // T1 to T3 hold Nora Blanc, Alice Laurent, Zoé Huber
   assert.equal(at(ignoring.slots, "20:00")?.table?.label, "T1");
 });
 
@@ -123,7 +123,7 @@ test("adding a booking follows the server's rules, and a replay changes nothing"
   assert.equal(reused.body.error, "invalid_input");
   assert.equal(added.guest_name, "Ines Roux");
   assert.equal(added.via, "merchant");
-  assert.equal(added.id, "R-018"); // R-017 is the live booking's
+  assert.equal(added.id, "R-057"); // R-056 is the live booking's
   const day = await mock.reservations(SLUG, TODAY);
   assert.equal(day.reservations.filter((b) => b.guest_name === "Ines Roux").length, 1);
   const dashboard = await mock.dashboard(SLUG);
@@ -136,14 +136,14 @@ test("a move keeps the day and the future, and a cancellation says whether the g
   const move = (id: string, starts_at: string) =>
     mock.moveBooking(SLUG, id, { starts_at, idempotency_key: `move-${id}` });
 
-  assert.equal((await move("R-012", `${TOMORROW}T20:30:00+01:00`)).time, "20:30");
-  assert.equal((await refusal(move("R-012", `${TODAY}T21:00:00+01:00`))).body.error, "invalid_input");
+  assert.equal((await move("R-023", `${TOMORROW}T20:30:00+01:00`)).time, "20:30");
+  assert.equal((await refusal(move("R-023", `${TODAY}T21:00:00+01:00`))).body.error, "invalid_input");
   assert.equal((await refusal(move("R-001", `${TODAY}T20:30:00+01:00`))).body.error, "slot_unavailable");
 
-  assert.equal((await mock.cancelBooking(SLUG, "R-012")).outcome, "notified");
-  assert.equal((await mock.cancelBooking(SLUG, "R-012")).outcome, "already_cancelled");
+  assert.equal((await mock.cancelBooking(SLUG, "R-023")).outcome, "notified");
+  assert.equal((await mock.cancelBooking(SLUG, "R-023")).outcome, "already_cancelled");
   assert.equal((await mock.cancelBooking(SLUG, "R-016")).outcome, "own_booking");
-  assert.equal((await mock.cancelBooking(SLUG, "R-011")).outcome, "guest_cancelled");
+  assert.equal((await mock.cancelBooking(SLUG, "R-055")).outcome, "guest_cancelled");
   assert.equal((await mock.cancelBooking(SLUG, "R-001")).outcome, "ended");
   assert.equal((await refusal(mock.cancelBooking(SLUG, "R-999"))).status, 404);
 });
@@ -188,7 +188,7 @@ test("each form rule answers the problem the web words", async () => {
   assert.deepEqual(await problemOf(plan(tables.filter((t) => t.label !== "T9"))), {
     code: "table_in_use",
     table: "T9",
-    guest: "Emma Roth",
+    guest: "Sam Moreau",
   });
   const shrunk = await problemOf(plan(tables.map((t) => (t.label === "T8" ? { ...t, seats: 2 } : t))));
   assert.equal(shrunk?.code, "table_too_small");
@@ -264,10 +264,10 @@ test("guests are grouped by name, and search finds a booking by reference", asyn
 
   assert.deepEqual(
     guests.map((g) => [g.guest_name, g.bookings, g.reservation_id]),
-    [["Lena Becker", 1, "R-010"]], // her 19:00 booking tonight has started
+    [["Lena Becker", 2, "R-049"]], // Lena Laurent cancelled hers
   );
   assert.deepEqual((await mock.guests(SLUG, "  LÉNA  bëcker")).guests, guests);
-  assert.deepEqual(reservations.map((b) => b.guest_name), ["Emma Roth"]);
+  assert.deepEqual(reservations.map((b) => b.guest_name), ["Anna Huber"]);
   assert.deepEqual((await mock.search(SLUG, "")).reservations, []);
 });
 
@@ -300,7 +300,7 @@ test("the live booking arrives once, whoever listens, and shows on the dashboard
 
 test("the live booking keeps its own table when it is free", async () => {
   const mock = client(10);
-  await mock.cancelBooking(SLUG, "R-003"); // frees T1 at 20:00, before T4
+  await mock.cancelBooking(SLUG, "R-010"); // frees T2 at 20:00, before T4
 
   const event = await new Promise<LiveEvent>((resolve) => {
     mock.subscribe(SLUG, { onEvent: resolve, onConnection: () => {} });
@@ -336,5 +336,5 @@ test("pausing the agent is the merchant's status, and requests filter by refusal
   const all = await mock.agentRequests(SLUG, { date: TODAY, refused: false });
 
   assert.deepEqual(refused.requests.map((r) => r.status), [409, 413]);
-  assert.equal(all.requests.length, 4);
+  assert.equal(all.requests.length, 10); // the latest of the day's 24
 });

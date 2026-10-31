@@ -310,8 +310,11 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 - `web/src/management/client.ts` has one call per route (`ManagementClient`), throwing
   `ManagementRequestError` with the status and the `ManagementError`.
 - With `VITE_MOCK=1`, `managementClient` (`web/src/management/index.ts`) is the mock. It
-  serves the demo fixture, `code/tests/fixtures/demo/la-graine-verte-management.json`, which
-  #131 fills from the mockup.
+  serves the demo fixture, `code/tests/fixtures/demo/la-graine-verte-management.json`,
+  exported from the mockup (#131, `scripts/export_management_fixture.py`); `make seed` loads the
+  same data into Postgres. The assistant's opening conversation is next to it,
+  `la-graine-verte-assistant.json`: `{ merchant, opening }`, `opening` being the web chat's items
+  (`web/src/chat/state.ts`) without `id` and `turn`.
 - The mock applies the server's rules, as listed above:
   - no past start, the smallest free table then its label, unknown fields refused;
   - a reused key with other parameters refused;

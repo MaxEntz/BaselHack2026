@@ -67,10 +67,10 @@ deploy: ## Ship the BATP node and the gateway to the team server -> https://191-
 
 SLUG ?= le-petit-zinc
 
-seed: ## The 3 demo merchants + tonight's bookings (or SEED="--except le-petit-zinc" …)
-	uv run python scripts/seed.py $(or $(SEED),--all --with-bookings)
+seed: ## The 3 demo merchants, tonight's bookings, La Graine Verte's management data (or SEED=…)
+	uv run python scripts/seed.py $(or $(SEED),--all --with-bookings --with-management)
 
-demo-reset: ## Known demo state: all but Le Petit Zinc, built live by onboarding (or SEED=…)
+demo-reset: ## Known demo state: all but Le Petit Zinc, built live by onboarding, + management data
 	uv run python scripts/demo_reset.py $(SEED)
 
 bookings: ## Tonight's bookings at Le Petit Zinc, e.g. after its live onboarding
