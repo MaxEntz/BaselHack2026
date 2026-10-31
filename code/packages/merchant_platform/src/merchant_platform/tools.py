@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ValidationError
 
 from agent.service import AgentService
+from agent.words import short_day
 from builder.build import AlreadyProvisioned
 from builder.llm import ToolCall, ToolSpec
 from core.errors import AgentError, AgentUnavailable, InvalidInput
@@ -367,4 +368,4 @@ class AdminTools:
         day = local.date()
         if day == self._today():
             return f"{local:%H:%M} tonight" if local.hour >= 17 else f"{local:%H:%M} today"
-        return f"{local:%H:%M} on {local:%a %-d %b}"
+        return f"{local:%H:%M} on {short_day(day)}"
