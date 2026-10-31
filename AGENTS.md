@@ -30,7 +30,7 @@ We have a server: use it to test anything Claude.ai must reach, instead of openi
   ```bash
   ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
   ```
-- **Gateway:** `https://191-96-88-152.sslip.io/mcp`, deployed with `make deploy` from `code/`. Code in `/opt/merchant-agents/code`, service `merchant-gateway`, HTTPS by Caddy. Details in `documentation/runbooks/connector.md`.
+- **Gateway:** `https://191-96-88-152.sslip.io/mcp`, deployed with `make deploy` from `code/`. Code in `/opt/merchant-agents/code`, service `merchant-gateway`, HTTPS by Caddy. Caddy only lets Anthropic's outbound range (`160.79.104.0/21`) through and answers `403` to everyone else (ADR-0010): test with a local gateway, or run the SDK client on the server over SSH against `http://127.0.0.1:8001/mcp`, not with the public URL (SSH port forwarding is disabled on the server). Details in `documentation/runbooks/connector.md`.
 - **The server is shared, it doesn't only run the gateway.** Ask the user before rebooting it, stopping a service or changing anything outside `/opt/merchant-agents`. When `code/deploy/Caddyfile` changed, `make deploy` validates it, overwrites `/etc/caddy/Caddyfile` and restarts Caddy, so any other site must also be declared there.
 - **Firewall (`/etc/nftables.conf`):** only ports 22, 80 and 443 are open inbound, and new outbound connections to private networks are refused. A new service needs a rule there. `fail2ban` bans IPs that repeatedly fail SSH logins.
 
@@ -280,7 +280,7 @@ Tool descriptions must tell Claude: *confirm with the user before any create/upd
 
 ### 8.3 Builder steps (emitted as events, shown in the merchant chat)
 
-1. `crawl` — Playwright loads the site (homepage + up to 5 same-domain pages matching `menu|carte|hours|horaires|contact|book|reserv`).
+1. `crawl` — Playwright loads the site (homepage + up to 5 same-domain pages whose path or link text matches `menu|carte|karte|hours|horaires|zeiten|contact|kontakt|book|reserv`).
 2. `extract` — OpenAI API fills `MerchantProfile` (forced strict function call with the JSON schema as `parameters`), using crawled text + merchant description. Description wins on conflicts.
 3. `validate` — Pydantic validation; on failure, one retry with the validation errors fed back; then fail with a message to the merchant.
 4. `provision` — create schema `m_<slug>`, tables, policy, registry row.
@@ -326,7 +326,7 @@ uv run python -m gateway                  # MCP server  → http://localhost:800
 uv run uvicorn platform.api:app --port 8002
 cd web && npm i && npm run dev            # merchant chat UI → http://localhost:5173
 uv run pytest                             # all tests (testcontainers starts Postgres)
-uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core
+uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway
 npx @modelcontextprotocol/inspector       # manual MCP testing against :8001/mcp
 ```
 
@@ -363,7 +363,7 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 - Tests first for `availability.py` and anything touching the exclusion constraint.
 - Commits: Conventional Commits (`feat:`, `fix:`, `test:` …), one milestone per branch/PR.
 - **Living docs, same PR as the code**: update `documentation/ARCHITECTURE.md` when you add, rename or remove a component, change the main flow, the stack, a protocol or data format, or a guarantee (§4 Components, §3 Main flow, §5 Stack, §6 Invariants, §7 Glossary). A new or replaced technology or a structural choice gets a new ADR in `documentation/adr/` (never edit an accepted one: supersede it). A local fix, a rename of a variable or an extra test needs neither.
-- Everything in the repo is in **English**: code, comments, docs, commits, PRs, issues. Only the demo site's content is in French. `documentation/runbooks/connector.md` is still in French and is to be translated.
+- Everything in the repo is in **English**: code, comments, docs, commits, PRs, issues. Only the demo site's content is in French.
 
 ## 13. Default decisions (apply without asking)
 
@@ -398,10 +398,18 @@ Env (`.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHAN
 | 2026-10-31 | Gateway stays on MCP SDK v2 (`mcp` 2.3.0), no fallback to v1 | Spike #3: works from Claude.ai, Claude Code and the SDK client (`documentation/runbooks/connector.md`) |
 | 2026-10-31 | `GATEWAY_TOKEN` is optional; public URL = team LXC behind Caddy (`https://191-96-88-152.sslip.io/mcp`), ngrok as documented alternative; gateway binds `127.0.0.1` | Static header auth on Claude.ai connectors is a beta for limited organizations; fixed URL independent of a laptop and of hackathon Wi-Fi; only Caddy reaches the gateway |
 | 2026-10-31 | OpenAI API for every backend LLM call (replaces the "Claude API" row above) | The team's API key is an OpenAI one; still one SDK. Spike #4 validated strict function calling for the extraction |
+| 2026-10-31 | Platform assistant (#17) on the OpenAI Responses API behind an `LLMClient` interface; history stored in a provider-neutral format, `store=False`; reasoning effort `low` by default | Same provider as the builder; the loop and its tests don't depend on OpenAI types; nothing kept on OpenAI's side; first words fast in a chat |
+| 2026-10-31 | Until the builder lands (#22), `build_agent` provisions the Le Petit Zinc fixture while emitting the five steps; `PLATFORM_MERCHANT` starts the chat as an existing merchant | Onboarding demoable end to end now; a page reload or a seeded demo doesn't force a new onboarding |
+| 2026-10-31 | Builder (#22): the LLM fills a `ProfileDraft` (no slug, website, vertical; tags as free strings; tables may be empty) through a forced `save_merchant_profile` call; the code sets slug (suffix `-2`, `-3`… when taken), website, vertical, filters tags, keeps `fallback_url` on the merchant's host (else the crawled booking page, else the homepage), fills a missing floor plan with `default_tables` and aligns `seats` with the tables, each default announced as an assumption | §7.1: the LLM only fills a schema; the code owns identity, links and the floor plan; a strict `MerchantProfile` schema would reject what the code is meant to fix |
+| 2026-10-31 | `llm.py` (the `LLMClient` interface and its OpenAI client) lives in `builder`, used by the builder and the platform assistant; `tool_choice` forces a tool; the builder's extraction uses `BUILDER_REASONING_EFFORT` (default `none`, spike #4) | `merchant_platform` depends on `builder`, not the reverse; `builder` already depends on `openai`, so no new dependency |
+| 2026-10-31 | A website that already has a live (or down) agent is refused by `build_agent` before any step; only for `PLATFORM_MERCHANT` does the platform attach the session to it so the assistant offers to update it; a build stopped before `deploy` is deprovisioned; generated profiles go to `code/.cache/builder/generated/`; the #17 fixture stub is removed | No duplicate agents; without authentication, typing someone's URL must not hand over their bookings; no half-built merchant blocks a site; builds never write into the source tree |
 | 2026-10-31 | One Postgres schema per merchant, tables declared once in Core and translated per merchant; no migrations for merchant schemas (drop + re-provision) | Structural isolation, per-merchant exclusion constraint and sequence, no SQL built from slugs ([ADR-0001](documentation/adr/0001-one-postgres-schema-per-merchant.md)) |
 | 2026-10-31 | Keep the name "Le Petit Zinc" (slug `le-petit-zinc`): the site uses a fictional address and says on every page that the restaurant is fictional | A bistro of that name existed in Mulhouse (15 rue des Bons Enfants) but is listed as closed; renaming would touch every team's fixtures and mocks |
+| 2026-10-31 | The public gateway URL only accepts Anthropic's outbound range `160.79.104.0/21` (Caddy `remote_ip`, `403` otherwise) | Claude.ai can't send `GATEWAY_TOKEN` without the header-auth beta; the write tools (#11) must not be open to anyone ([ADR-0010](documentation/adr/0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md)) |
 | 2026-10-31 | La Graine Verte and Maison Albane have one-page sites on :8081 and :8082 (`make sites`); their `fallback_url` is the page's `#reserver` section | Their fallback link opens a real page in the demo, next to Le Petit Zinc on :8080 |
 | 2026-10-31 | Booking writes lock the table's row (`SELECT … FOR UPDATE`) inside each SAVEPOINT before inserting or moving a reservation (#8) | Without it, concurrent writers checking the exclusion constraint wait on each other's uncommitted rows and deadlock (`40P01`, ~1 s each). The lock only queues writers per table; the constraint stays what prevents double booking (with the lock but without the constraint, 10 concurrent bookings all succeed) |
+| 2026-10-31 | The crawler checks every browser request after DNS resolution, follows redirects itself hop by hop and never lets the browser follow one (each page's redirects are resolved before loading it); it never loads WebSockets, images, fonts or media; link-local addresses (169.254.169.254) stay refused with `CRAWL_ALLOW_PRIVATE=1`; DNS rebinding is not covered | Chromium doesn't route redirect hops, so a public page could otherwise reach the team server's local services, even by answering the check and the browser differently; only text is read (#21) |
+| 2026-10-31 | The crawl's link filter (§8.3) also matches German (`karte`, `zeiten`, `kontakt`), accents ignored; crawl failures are `InvalidInput` with the message shown in the `crawl` step | Most Basel restaurant sites are in German (tested on kronenhalle.com); the merchant can fix the address (#21) |
 
 ## 15. Out of scope (POC)
 
