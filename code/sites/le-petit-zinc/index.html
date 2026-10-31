@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Le Petit Zinc · Bistrot alsacien à Mulhouse</title>
+    <meta name="description" content="Bistrot alsacien au cœur de Mulhouse : cuisine de marché faite maison, plats végétariens et sans gluten, terrasse en été, enfants bienvenus. Ouvert tous les jours, midi et soir.">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="style.css">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Restaurant",
+        "name": "Le Petit Zinc",
+        "description": "Bistrot alsacien au cœur de Mulhouse : cuisine de marché faite maison, plats végétariens et sans gluten, terrasse en été, enfants bienvenus.",
+        "url": "http://localhost:8080/",
+        "servesCuisine": ["Alsacienne", "Cuisine de marché"],
+        "priceRange": "€€",
+        "telephone": "+33 3 89 00 00 00",
+        "email": "bonjour@lepetitzinc.example",
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "14 rue des Ferblantiers",
+          "postalCode": "68100",
+          "addressLocality": "Mulhouse",
+          "addressCountry": "FR"
+        },
+        "openingHoursSpecification": [
+          {
+            "@type": "OpeningHoursSpecification",
+            "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+            "opens": "12:00",
+            "closes": "14:00"
+          },
+          {
+            "@type": "OpeningHoursSpecification",
+            "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+            "opens": "19:00",
+            "closes": "22:00"
+          }
+        ],
+        "amenityFeature": [
+          { "@type": "LocationFeatureSpecification", "name": "Terrasse", "value": true },
+          { "@type": "LocationFeatureSpecification", "name": "Enfants bienvenus", "value": true }
+        ],
+        "hasMenu": "http://localhost:8080/carte.html",
+        "acceptsReservations": "http://localhost:8080/reservation.html"
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#contenu">Aller au contenu</a>
+    <header class="site-header">
+      <div class="kelsch" aria-hidden="true"></div>
+      <div class="wrap header-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-name">Le Petit Zinc</span>
+          <span class="brand-tag">Bistrot alsacien · Mulhouse</span>
+        </a>
+        <nav class="site-nav" aria-label="Navigation principale">
+          <a href="index.html" aria-current="page">Accueil</a>
+          <a href="carte.html">La carte</a>
+          <a href="horaires.html">Horaires</a>
+          <a href="contact.html">Contact</a>
+          <a class="button" href="reservation.html">Réserver</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="contenu">
+      <section class="hero">
+        <div class="wrap hero-grid">
+          <div>
+            <p class="eyebrow">Bistrot alsacien · Mulhouse</p>
+            <h1>Le Petit Zinc</h1>
+            <p class="lead">Une cuisine de marché faite maison, les recettes de nos grands-mères alsaciennes et un vieux comptoir en zinc où l'on prend le temps. Midi et soir, tous les jours.</p>
+            <div class="actions">
+              <a class="button" href="reservation.html">Réserver une table</a>
+              <a class="button button-ghost" href="carte.html">Découvrir la carte</a>
+            </div>
+          </div>
+          <aside class="ardoise" aria-labelledby="ardoise-titre">
+            <h2 id="ardoise-titre">À l'ardoise</h2>
+            <ul>
+              <li><span>Formule du midi<small>entrée + plat ou plat + dessert</small></span><span class="price">19,50 €</span></li>
+              <li><span>Tarte flambée traditionnelle</span><span class="price">12 €</span></li>
+              <li><span>Spaetzle aux champignons des Vosges<small>végétarien</small></span><span class="price">17 €</span></li>
+              <li><span>Kougelhopf glacé au kirsch</span><span class="price">8 €</span></li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section section-alt" aria-labelledby="maison-titre">
+        <div class="wrap">
+          <h2 id="maison-titre">Un bistrot de quartier, depuis 2009</h2>
+          <p class="lead">Derrière la vitrine de la rue des Ferblantiers : un comptoir en zinc, des banquettes en moleskine et une cuisine ouverte sur la salle. Nous travaillons avec des producteurs du Sundgau et des Vosges, et la carte suit les saisons.</p>
+          <div class="features">
+            <article class="card feature">
+              <h3>Tout est fait maison</h3>
+              <p>Du pain aux desserts, tout est préparé sur place. Chaque jour, des plats végétariens et plusieurs plats sans gluten, signalés sur la carte.</p>
+            </article>
+            <article class="card feature">
+              <h3>La terrasse en été</h3>
+              <p>Aux beaux jours, installez-vous en terrasse, à l'ombre des tilleuls de la place, pour un déjeuner au soleil ou un dîner qui s'attarde.</p>
+            </article>
+            <article class="card feature">
+              <h3>Les enfants bienvenus</h3>
+              <p>Menu enfant, chaises hautes et crayons de couleur : au Petit Zinc, on vient en famille, et les petits gourmands ont leur carte.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="horaires-titre">
+        <div class="wrap strip">
+          <div>
+            <h2 id="horaires-titre">Ouvert tous les jours</h2>
+            <p class="strip-hours">Déjeuner 12h – 14h · Dîner 19h – 22h</p>
+          </div>
+          <a class="button button-ghost" href="horaires.html">Horaires et accès</a>
+        </div>
+      </section>
+
+      <section class="section cta" aria-labelledby="reserver-titre">
+        <div class="wrap">
+          <h2 id="reserver-titre">Une table pour ce soir ?</h2>
+          <p>Réservez en ligne en quelques secondes. Groupes : nous contacter.</p>
+          <div class="actions">
+            <a class="button" href="reservation.html">Réserver une table</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap footer-grid">
+        <div>
+          <span class="brand-name">Le Petit Zinc</span>
+          <p>14 rue des Ferblantiers<br>68100 Mulhouse</p>
+        </div>
+        <div>
+          <h2>Horaires</h2>
+          <p>Tous les jours<br>12h – 14h · 19h – 22h</p>
+        </div>
+        <div>
+          <h2>Contact</h2>
+          <p><a href="tel:+33389000000">03 89 00 00 00</a><br><a href="mailto:bonjour@lepetitzinc.example">bonjour@lepetitzinc.example</a></p>
+        </div>
+      </div>
+      <p class="wrap footer-note">Le Petit Zinc est un restaurant fictif, créé pour une démonstration (BaselHack 2026). L'adresse, le téléphone et l'e-mail sont factices.</p>
+      <div class="kelsch" aria-hidden="true"></div>
+    </footer>
+  </body>
+</html>
