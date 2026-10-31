@@ -1,8 +1,19 @@
-"""The real gateway on a free port, over its own database seeded with the 3 demo merchants."""
+"""The real gateway on a free port, over its own database seeded with the 3 demo merchants.
 
+Every e2e scenario runs twice: with the agent in the gateway's process, and with the gateway as
+a bridge to a real MATP node (#61).
+"""
+
+import os
+import signal
+import socket
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 import seed
@@ -14,6 +25,7 @@ from core.db import make_engine
 from gateway.server import create_app
 
 STARTUP_SECONDS = 10.0
+LOOPBACK = "127.0.0.1"
 
 
 @pytest.fixture(scope="module")
@@ -31,11 +43,74 @@ async def e2e_engine(e2e_database_url: str) -> AsyncIterator[AsyncEngine]:
     await engine.dispose()
 
 
+class MatpNode:
+    """`python -m matp` as a separate process, as on the server: it can die or freeze."""
+
+    def __init__(self, database_url: str, log_path: Path) -> None:
+        with socket.socket() as probe:
+            probe.bind((LOOPBACK, 0))
+            self.port = probe.getsockname()[1]
+        self.url = f"matp://{LOOPBACK}:{self.port}"
+        self.database_url = database_url
+        self.log_path = log_path
+        self.process: subprocess.Popen[bytes] | None = None
+
+    def start(self) -> None:
+        env = {
+            **os.environ,
+            "DATABASE_URL": self.database_url,
+            "MATP_HOST": LOOPBACK,
+            "MATP_PORT": str(self.port),
+        }
+        with self.log_path.open("ab") as log:
+            self.process = subprocess.Popen(
+                [sys.executable, "-m", "matp"], env=env, stderr=log, stdout=log
+            )
+        deadline = time.monotonic() + STARTUP_SECONDS
+        while True:
+            assert self.process.poll() is None, f"node exited:\n{self.logs()}"
+            try:
+                socket.create_connection((LOOPBACK, self.port), timeout=0.2).close()
+                return
+            except OSError:
+                assert time.monotonic() < deadline, f"node did not start:\n{self.logs()}"
+                time.sleep(0.02)
+
+    def stop(self) -> None:
+        assert self.process is not None
+        self.process.terminate()
+        self.process.wait(timeout=STARTUP_SECONDS)
+
+    def freeze(self) -> None:
+        """The kernel still accepts connections, but nothing answers: a slow node."""
+        assert self.process is not None
+        self.process.send_signal(signal.SIGSTOP)
+
+    def resume(self) -> None:
+        assert self.process is not None
+        self.process.send_signal(signal.SIGCONT)
+
+    def logs(self) -> str:
+        return self.log_path.read_text()
+
+
 @pytest.fixture(scope="module")
-def gateway_base_url(e2e_database_url: str, e2e_engine: AsyncEngine) -> Iterator[str]:
+def matp_node(
+    e2e_database_url: str, e2e_engine: AsyncEngine, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[MatpNode]:
+    pytest.importorskip("matp", reason="the MATP node comes with #60")
+    node = MatpNode(e2e_database_url, tmp_path_factory.mktemp("matp") / "node.log")
+    node.start()
+    yield node
+    if node.process and node.process.poll() is None:
+        node.resume()
+        node.stop()
+
+
+@contextmanager
+def running_gateway(settings: Settings) -> Iterator[str]:
     """`python -m gateway`, minus the port: uvicorn in a thread, with its own event loop."""
-    settings = Settings(_env_file=None, database_url=e2e_database_url)
-    config = uvicorn.Config(create_app(settings), host="127.0.0.1", port=0, log_config=None)
+    config = uvicorn.Config(create_app(settings), host=LOOPBACK, port=0, log_config=None)
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -44,6 +119,23 @@ def gateway_base_url(e2e_database_url: str, e2e_engine: AsyncEngine) -> Iterator
         assert thread.is_alive() and time.monotonic() < deadline, "gateway did not start"
         time.sleep(0.01)
     port = server.servers[0].sockets[0].getsockname()[1]
-    yield f"http://127.0.0.1:{port}"
+    yield f"http://{LOOPBACK}:{port}"
     server.should_exit = True
     thread.join(timeout=STARTUP_SECONDS)
+
+
+@pytest.fixture(scope="module", params=["in_process", "over_matp"])
+def gateway_base_url(
+    request: pytest.FixtureRequest, e2e_database_url: str, e2e_engine: AsyncEngine
+) -> Iterator[str]:
+    matp_url = request.getfixturevalue("matp_node").url if request.param == "over_matp" else None
+    settings = Settings(_env_file=None, database_url=e2e_database_url, matp_url=matp_url)
+    with running_gateway(settings) as url:
+        yield url
+
+
+@pytest.fixture(scope="module")
+def bridge_base_url(matp_node: MatpNode, e2e_database_url: str) -> Iterator[str]:
+    settings = Settings(_env_file=None, database_url=e2e_database_url, matp_url=matp_node.url)
+    with running_gateway(settings) as url:
+        yield url

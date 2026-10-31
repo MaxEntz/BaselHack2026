@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from core.db import merchants_t
 from core.models import FilterSuggestion, SearchFilters
-from gateway.discovery import RegistryEntry, find_merchant, find_named_down_merchant, search
+from gateway.discovery import (
+    RegistryEntry,
+    find_merchant,
+    find_named_down_merchant,
+    find_named_merchant,
+    search,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -113,3 +119,24 @@ async def test_a_generic_word_of_a_down_merchants_name_does_not_name_it(
 
     assert named is not None
     assert await find_named_down_merchant("un petit restaurant végétarien", engine=engine) is None
+
+
+async def test_find_named_merchant_is_live_or_down_but_not_building(
+    engine: AsyncEngine, token: str
+) -> None:
+    rows = [
+        registry_row(f"{token}-live", f"Live{token} Bistro"),
+        registry_row(f"{token}-off", f"Off{token} Bistro", status="down"),
+        registry_row(f"{token}-new", f"New{token} Bistro", status="building"),
+    ]
+    async with engine.begin() as conn:
+        await conn.execute(insert(merchants_t), rows)
+
+    async def named(query: str) -> str | None:
+        entry = await find_named_merchant(query, engine=engine)
+        return entry.slug if entry else None
+
+    assert await named(f"a table at live{token}") == f"{token}-live"
+    assert await named(f"off{token}") == f"{token}-off"
+    assert await named(f"new{token}") is None
+    assert await named("un petit restaurant") is None
