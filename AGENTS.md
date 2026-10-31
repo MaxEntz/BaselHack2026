@@ -213,7 +213,7 @@ make platform   # Platform API      -> http://localhost:8002
 make web        # merchant chat UI  -> http://localhost:5173
 make sites      # demo websites     -> http://localhost:8080, :8081, :8082
 make demo-reset # known demo state; make outage / make restore SLUG=…
-make deploy     # gateway + node to the team server
+make deploy     # gateway, node, platform and web app to the team server
 ```
 
 Env (`code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `PLATFORM_MERCHANT`.
@@ -259,6 +259,7 @@ We have a server: use it to test anything Claude.ai must reach, instead of openi
   ```
 - **Gateway:** `https://191-96-88-152.sslip.io/mcp`, deployed with `make deploy` from `code/`. Code in `/opt/merchant-agents/code`, service `merchant-gateway`, HTTPS by Caddy. Caddy only lets Anthropic's outbound range (`160.79.104.0/21`) through and answers `403` to everyone else: test with a local gateway, or run the SDK client on the server over SSH against `http://127.0.0.1:8001/mcp`, not with the public URL (SSH port forwarding is disabled on the server).
 - **BATP node:** service `merchant-node` (`code/deploy/merchant-node.service`), installed and restarted by `make deploy` with the gateway, bound to `127.0.0.1:4710` only; the gateway reaches it through `BATP_URL=batp://127.0.0.1:4710`. Port 4710 is never opened without asking (TLS + firewall rule on the shared server). Logs: `journalctl -u merchant-node`.
+- **Sésame (web app and platform, #142):** host `https://sesame.191-96-88-152.sslip.io` (web app; `/api/*` → service `merchant-platform` on `127.0.0.1:8002`), demo sites on `https://<site>.191-96-88-152.sslip.io`, all shipped by `make deploy` (it builds `web/dist` locally). The platform runs as its own user `sesame`, with its own settings in `/opt/merchant-agents/platform/.env` (it can't read `code/.env`). Not deployed before #132 (accounts): the platform has no login. Runbook: [`documentation/runbooks/platform.md`](documentation/runbooks/platform.md).
 - **The server is shared, it doesn't only run the gateway.** Ask the user before rebooting it, stopping a service or changing anything outside `/opt/merchant-agents`. When `code/deploy/Caddyfile` changed, `make deploy` validates it, overwrites `/etc/caddy/Caddyfile` and restarts Caddy, so any other site must also be declared there.
 - **Firewall (`/etc/nftables.conf`):** only ports 22, 80 and 443 are open inbound, and new outbound connections to private networks are refused. A new service needs a rule there. `fail2ban` bans IPs that repeatedly fail SSH logins.
 - **Postgres:** `postgresql-16` on the server, listening on localhost only, database `merchant_agents` (UTF-8), credentials in `/opt/merchant-agents/code/.env`. `make deploy` applies the migrations but doesn't seed. `make outage` and `make seed` act on your local database: for the server's, see the runbook.
@@ -334,6 +335,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | Web unit tests on Node's test runner; an interrupted build step shows "Interrupted" | #86 |
 | 2026-10-31 | The BATP node follows the draft on duplicate ids, `merchant` per intent, malformed frames, `error` frames and its own `503` with the fallback URL | #93 |
 | 2026-10-31 | Product named **Sésame**; identifiers stay `merchant-agents` / `merchant_agents` | #105 |
+| 2026-10-31 | Web app, platform and demo sites on the team server, each on its own `sslip.io` host; the platform runs as its own user `sesame` with its own `.env`; the crawler reads only ports 80 and 443 without `CRAWL_ALLOW_PRIVATE`; deployed after #132 | [ADR-0016](documentation/adr/0016-serve-the-web-app-and-the-platform-from-the-team-server.md), #142 |
 
 ## 15. Out of scope (POC)
 

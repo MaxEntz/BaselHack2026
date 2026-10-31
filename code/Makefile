@@ -4,7 +4,7 @@ DEPLOY_HOST ?= root@191.96.88.152
 DEPLOY_SSH ?= ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes
 DEPLOY_DIR := /opt/merchant-agents/code
 
-.PHONY: setup db migrate gateway node platform web site sites tunnel deploy seed demo-reset test lint fmt rfc
+.PHONY: setup db migrate gateway node platform web web-dist site sites tunnel deploy seed demo-reset test lint fmt rfc
 
 setup: ## .env, Python deps, Chromium for the crawler, web deps
 	test -f .env || cp .env.example .env
@@ -45,17 +45,26 @@ tunnel: ## Expose a local gateway through ngrok (the team URL is served by `make
 	@test -n "$(GATEWAY_PUBLIC_URL)" || (echo "GATEWAY_PUBLIC_URL is empty: see documentation/runbooks/connector.md" >&2; exit 1)
 	ngrok http --url="$(GATEWAY_PUBLIC_URL)" 8001
 
-deploy: ## Ship the BATP node and the gateway to the team server -> https://191-96-88-152.sslip.io/mcp
+web-dist: ## Build the merchant web app (web/dist) for make deploy
+	test -d web/node_modules || (cd web && npm ci)
+	cd web && npm run build
+
+deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web app to the team server
 	rsync -rlptz --delete --exclude .venv --exclude .env --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .hypothesis --exclude '.coverage*' --exclude htmlcov --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
+	$(DEPLOY_SSH) $(DEPLOY_HOST) 'mkdir -p $(DEPLOY_DIR)/web/dist'
+	rsync -rlptz --delete -e "$(DEPLOY_SSH)" web/dist/ $(DEPLOY_HOST):$(DEPLOY_DIR)/web/dist/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
 		sed -i -E "s/^MATP_/BATP_/; s/urn:matp:/urn:batp:/g; s,matp://,batp://,g" .env && \
-		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node -q && \
+		{ grep -q "^PLATFORM_DEV_ROUTES=0" .env || { echo "Set PLATFORM_DEV_ROUTES=0 in the server .env first (documentation/runbooks/platform.md)" >&2; exit 1; }; } && \
+		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node --package merchant-platform --package builder -q && \
+		PLAYWRIGHT_BROWSERS_PATH=/opt/merchant-agents/ms-playwright .venv/bin/playwright install chromium && \
+		install -d -o gateway -g gateway .cache && \
 		.venv/bin/alembic upgrade head && \
-		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service /etc/systemd/system/ && \
+		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service deploy/merchant-platform.service /etc/systemd/system/ && \
 		systemctl daemon-reload && \
-		systemctl enable --quiet merchant-node merchant-gateway && \
-		systemctl restart merchant-node merchant-gateway && \
+		systemctl enable --quiet merchant-node merchant-gateway merchant-platform && \
+		systemctl restart merchant-node merchant-gateway merchant-platform && \
 		if ! cmp -s deploy/Caddyfile /etc/caddy/Caddyfile; then \
 			caddy validate --adapter caddyfile --config deploy/Caddyfile && \
 			install -m 644 deploy/Caddyfile /etc/caddy/Caddyfile && \

@@ -137,7 +137,7 @@ Paths are relative to `code/`.
 | Web chat | `web/` | Merchant chat: SSE client, one component per card kind, live notifications, mock mode (`VITE_MOCK=1`, `/?gallery`) | No business logic, no forms |
 | Demo sites | `sites/le-petit-zinc/`, `sites/la-graine-verte/`, `sites/maison-albane/` (`make site`, `make sites` on :8080–:8082) | Fictional restaurant sites (in French): crawl target, fallback URL, and Le Petit Zinc's booking form, which posts to the platform's public booking API | — |
 | Demo data | `tests/fixtures/*.json`, `scripts/seed.py`, `demo_reset.py`, `set_status.py` (`make seed`, `demo-reset`, `outage`, `restore`) | 3 fictional Mulhouse restaurants; reset the demo to a known state; outage switch | Never resets a non-local database |
-| Deployment | `deploy/Caddyfile`, `deploy/merchant-gateway.service`, `deploy/merchant-node.service`, `make deploy` | Gateway on the team server behind Caddy (HTTPS, only Anthropic's outbound range gets through), and the BATP node next to it on `127.0.0.1:4710`, both as systemd services. Outside `/opt/merchant-agents` it installs the systemd units, and replaces the Caddyfile and restarts Caddy when it changed, which affects every site on the shared server | Ships neither the platform nor the web app; never exposes port 4710 |
+| Deployment | `deploy/Caddyfile`, `deploy/merchant-gateway.service`, `deploy/merchant-node.service`, `deploy/merchant-platform.service`, `make deploy` (`make web-dist`) | Gateway on the team server behind Caddy (HTTPS, only Anthropic's outbound range gets through), and the BATP node next to it on `127.0.0.1:4710`. The web app (`web/dist`) and the platform (`127.0.0.1:8002`, behind `/api`) on their own host `sesame.…`, and the demo sites each on their own host ([ADR-0016](adr/0016-serve-the-web-app-and-the-platform-from-the-team-server.md), [runbook](runbooks/platform.md); deployed after #132). Outside `/opt/merchant-agents` it installs the systemd units, and replaces the Caddyfile and restarts Caddy when it changed, which affects every site on the shared server | Doesn't ship Postgres; never exposes ports 4710 or 8002; refuses to deploy while the server's `.env` keeps the dev routes on |
 
 Every component above is built and merged. Still open: the Claude.ai check of `/m/<slug>/mcp` ([#23](https://github.com/MaxEntz/BaselHack2026/issues/23)) and the Claude Desktop scenarios left to retest ([#14](https://github.com/MaxEntz/BaselHack2026/issues/14)); both are tracked in the [connector runbook](runbooks/connector.md#validation-status).
 
@@ -191,7 +191,7 @@ Breaking one of these is a bug.
 - A single hard-coded merchant session on the platform.
 - Deployed, the gateway reaches the agents through the BATP node on the same host (`BATP_URL`); without it (development, tests), they run in the same process.
 
-**Open question:** where the platform and the web chat run for the demo, given that live events need them on the gateway's Postgres ([#25](https://github.com/MaxEntz/BaselHack2026/issues/25)).
+**Demo topology** ([#25](https://github.com/MaxEntz/BaselHack2026/issues/25), #142, [ADR-0016](adr/0016-serve-the-web-app-and-the-platform-from-the-team-server.md)): everything runs on the team server, next to its Postgres, so live events work (the platform `LISTEN`s on the database the gateway and the node write to). Caddy serves each part on its own `sslip.io` host: the gateway (Anthropic's range only), the web app and its platform API (`sesame.…`), and each demo website. The platform is deployed once merchant accounts exist (#132).
 
 ## 7. Glossary
 
