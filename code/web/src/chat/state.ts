@@ -161,9 +161,10 @@ function appendText(state: ChatState, delta: string): ChatState {
 // All steps of one build are grouped into a single StepGroup per turn.
 function applyStep(state: ChatState, event: StepEvent): ChatState {
   const { type: _type, step, ...stepState } = event;
-  let status: AgentStatus = "building";
-  // A failed rebuild leaves an onboarded merchant's agent live.
-  if (event.status === "error") status = state.merchant ? "live" : "down";
+  let status: AgentStatus | null = "building";
+  // A failed rebuild leaves an onboarded merchant's agent live; a failed first build leaves no
+  // agent at all (the server undoes it), as when the stream is cut (#86).
+  if (event.status === "error") status = state.merchant ? "live" : null;
   else if (step === "deploy" && event.status === "done") status = "live";
   const next: ChatState = { ...state, status };
   const index = lastTurnItemIndex(state, (item) => item.type === "steps");

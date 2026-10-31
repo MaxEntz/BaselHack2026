@@ -87,3 +87,16 @@ test("a failure outside a build changes no status", () => {
     ["assistant", "user", "error"],
   );
 });
+
+test("a failed first build shows the same pill as a cut one: none", () => {
+  const failed = chatReducer(midBuild(), {
+    type: "chat",
+    event: { type: "step", step: "extract", status: "error", detail: "No profile" },
+  });
+
+  assert.equal(failed.status, null);
+  assert.equal(chatReducer(midBuild(ZINC), {
+    type: "chat",
+    event: { type: "step", step: "extract", status: "error" },
+  }).status, "live");
+});

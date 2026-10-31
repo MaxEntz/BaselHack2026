@@ -10,7 +10,7 @@ VITE_MOCK=1 npm run dev    # no backend: replays src/mocks/*.json
 npm run build              # tsc (strict) + vite build
 npm run lint
 npm run check:contracts    # mocks vs src/types.ts
-npm test                   # tests/*.test.ts (the chat reducer), Node's own runner, no extra dependency
+npm test                   # tests/*.test.ts (the chat reducer), Node's own runner (Node ≥ 22.18: it runs .ts as is)
 ```
 
 Open <http://localhost:5173/?gallery> to review every card and state (steps,
