@@ -159,7 +159,7 @@ Each merchant also has `/m/<slug>/mcp` with the 4 booking tools, without `mercha
 
 ### 8.2 Admin tools
 
-Platform assistant only, never exposed to Claude users: `build_agent`, `list_reservations`, `get_stats`, `block_slot`, `unblock_slot`, `update_policy`, `update_tables`, `cancel_reservation` (as the merchant, with a guest notice).
+Platform assistant only, never exposed to Claude users: `build_agent`, `publish_agent` (#136), `list_reservations`, `get_stats`, `block_slot`, `unblock_slot`, `update_policy`, `update_tables`, `cancel_reservation` (as the merchant, with a guest notice).
 
 ### 8.3 Builder steps
 
@@ -169,7 +169,7 @@ Streamed as events into the merchant chat:
 2. `extract`: a forced strict function call fills `ProfileDraft` from the crawled text and the description (the description wins on conflicts).
 3. `validate`: Pydantic; one retry with the errors fed back, then a message to the merchant.
 4. `provision`: schema `m_<slug>`, tables, policy, registry row in `building`.
-5. `deploy`: `status = 'live'`; the merchant is now discoverable.
+5. `deploy`: waits for the owner ("Waiting for you.", #136). The merchant stays `building`, hidden from guests and agents, until `publish_agent` (or `POST /merchants/{slug}/publish`) sets `status = 'live'`.
 
 ### 8.4 Errors
 
@@ -193,7 +193,7 @@ Every tool error is `{ "error": <code>, "message": str, "fallback_url"?: str }`.
 - Agent down → `agent_unavailable` → Claude gives the fallback link.
 
 **Merchant ↔ platform assistant**
-- Onboarding: assistant asks for the website → asks for the description → calls `build_agent` → shows step progress → shows the agent profile card.
+- Onboarding: assistant asks for the website → asks for the description → calls `build_agent` → shows step progress (`deploy` waits: "Waiting for you.") → shows the review card, hidden from guests, with each fact's source and the flags to check → the merchant confirms or corrects them (`update_policy`, `update_tables`) → `publish_agent` → "Your agent is live: Claude users can now book you." (#136)
 - "What bookings do I have tonight?" → `list_reservations` → table message.
 - "Block 21:00 tonight" → `block_slot`; Claude users no longer get 21:00.
 - "Set max party size to 6" → `update_policy`.
@@ -252,6 +252,7 @@ All done; open work is tracked in [#26](https://github.com/MaxEntz/BaselHack2026
 - **Gateway** (`gateway/`): only `fallback.py` turns failures into `ToolError`; arguments the SDK rejects also answer `invalid_input`. `search_merchants` answers `agent_unavailable` + `fallback_url` when its query names a `down` merchant and no live one. Fault injection: `CHAOS_DELAY_MS`, `CHAOS_MERCHANTS`. As a bridge, it still reads the registry for the `down` status and the fallback URL.
 - **Accounts** (`merchant_platform/accounts.py`, `auth.py`, #132, [ADR-0018](documentation/adr/0018-open-a-merchants-site-with-a-secret-link.md)): a build gives its merchant a secret link, shown once on the profile card; only its hash is stored in `public.merchant_owners` (migration `0004`). The link sets a signed owner cookie (`PLATFORM_COOKIE_SECRET`), which every `/merchants/{slug}` route and `/events` need. `PLATFORM_INVITE_CODE` gates new builds. `make owner-link SLUG=…` issues a new link. `PLATFORM_MERCHANT` is development only.
 - **Management bookings** (`agent/management.py`, #134): `ManagementService` serves the Reservations page: a day, its slots, add (`via="merchant"`), move, cancel, in the `core.models` shapes. A move takes the table lock like a guest's update and marks its transaction as the merchant's (`core.db.as_merchant`), so it sends no live event. It is separate from the frozen `AgentService` protocol.
+- **Activity** (`agent/activity.py`, #135): every write path records its change on its own transaction's connection (`activity.record`, `record_booking`, `record_times`), so the line and the change commit together; a new write path must record its line too. Lines are worded when read.
 - **Management site** (`merchant_platform/management.py`, #129): the `/merchants/{slug}/…` routes, shapes in `core/models.py` and `web/src/types.ts` ([CONTRACTS.md](documentation/CONTRACTS.md)), client `web/src/management/client.ts` and its mock on `code/tests/fixtures/demo/la-graine-verte-management.json`. Every route depends on `auth.owner_of_path` (fail-closed) and answers `501` until its issue (#132–#146) implements it. Form bodies are structural, checked by `core.forms` (`FormProblem`, answered with its `problem`).
 - **BATP**: the library (`packages/batp/`) depends only on `core`, so the gateway can import its client. Change the protocol in `PROTOCOL.md`, the draft in `documentation/rfc/`, the library and its tests together.
 
@@ -307,7 +308,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | Platform assistant on the OpenAI Responses API behind `LLMClient`, provider-neutral history, `store=False`, effort `low` | #17 |
 | 2026-10-31 | `llm.py` lives in `builder`, shared with the assistant; `BUILDER_REASONING_EFFORT` defaults to `none` | #22 |
 | 2026-10-31 | Builder: the LLM fills `ProfileDraft`; the code sets slug, website, vertical, tags, `fallback_url` and the floor plan, each default announced as an assumption | #22 |
-| 2026-10-31 | `build_agent` refuses a website that already has an agent; a build stopped before `deploy` is deprovisioned; only `PLATFORM_MERCHANT` attaches a session to an existing agent | #22 |
+| 2026-10-31 | `build_agent` refuses a website that already has an agent; a build stopped before `deploy` is deprovisioned; only `PLATFORM_MERCHANT` attaches a session to an existing agent (#22). **Superseded by #136 for the leftover:** a build now ends at `provision`, and only a build stopped *inside* `provision` is deprovisioned. One waiting to be published holds its website for 24 hours (its owner finishes it from their link), then another build replaces it | #22, #136 |
 | 2026-10-31 | Builder cache (`BUILDER_CACHE`) for a replayable demo | [ADR-0007](documentation/adr/0007-builder-cache-for-a-replayable-demo.md) |
 | 2026-10-31 | Chat cards rendered from tool results | [ADR-0006](documentation/adr/0006-chat-cards-rendered-from-tool-results.md) |
 | 2026-10-31 | Keep "Le Petit Zinc": its site says on every page that it is fictional | #16 |
@@ -345,8 +346,10 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | The BATP node records each answered request to a published merchant, with both frames, in `public.agent_requests` (7 days), after the answer, on its own small pool, at most 100 waiting; `AgentService.set_status` pauses or resumes a published agent | #146 |
 | 2026-10-31 | `same_guest` also ignores accents and moves to `agent/guests.py` with `guest_key`, which the Guests page groups by; Claude-side updates, cancellations and `get_my_reservations` follow | #144 |
 | 2026-10-31 | Merchant accounts (#132): a secret link per merchant, shown once on the profile card and stored as its SHA-256; it sets a signed `HttpOnly` cookie naming the merchant and the link, needed by `/merchants/{slug}` and `/events`; `PLATFORM_INVITE_CODE` gates new builds before any model call; `owner_name` stays empty until something asks for it; the `ProfileCard` gains `login_url` | No ownership proof is in scope (§15), but guest names and the OpenAI key must not be open to anyone with a slug; a stdlib HMAC cookie needs no new dependency or session table, and the link fingerprint makes a new link end old sessions ([ADR-0018](documentation/adr/0018-open-a-merchants-site-with-a-secret-link.md)) |
+| 2026-10-31 | A build stops after `provision` and its merchant stays `building` until the owner publishes (`publish_agent`, `POST /merchants/{slug}/publish`; a paused `down` merchant is refused). `BuildAgentOutput` gains `facts` (each with the crawled page or "you" as source, and the exact quote) and `flags` (bold line plus why), both written by code; the model only gives a page and a quote per fact, kept when the quote really is in that page, another crawled page or the description, else dropped. Prompt `v3.0`, crawl cache key versioned (`CRAWL_VERSION`). Home shows the web's sample bookings until publishing (#136) | "Hidden from guests until you publish": agents saw a merchant nobody had checked. A quote the model invents can't pass as a source (ADR-0003). Samples from the web's fixture leave nothing to clear on publish |
 | 2026-10-31 | La Graine Verte's management data is exported from the mockup (`scripts/export_management_fixture.py`) and loaded by `seed.py --with-management`, on in `make seed` and demo mode, dated from the seed's day: the 7 days keep R-001 to R-055 from the merchant's sequence (the live booking is R-056), the 29 days before are bookings made up to the mockup's daily totals, the agent requests go to `public.agent_requests`; it goes in once, into a La Graine Verte without bookings. The assistant's opening conversation is a file of its own, in the web chat's item shapes, since `ManagementFixture` is frozen | #131 |
 | 2026-10-31 | Bookings from the management site (#134): `agent.management.ManagementService` beside the `AgentService` protocol; merchant moves keep the guests' machinery (table lock, SAVEPOINT per table, exclusion constraint) and their keys in `reservation_changes`; `notify_reservation()` carries `actor` from the transaction-local `sesame.actor` (migration `0005`); no guest notice for a booking the merchant entered, a notice when the merchant moves a guest's booking | The live listener couldn't tell a merchant's move from a guest's (both are UPDATEs), and a merchant schema can't take a column (ADR-0001): the function lives in `public`; the protocol is frozen and `service.py` is at its size limit; the guest who never booked has nothing to be told |
+| 2026-10-31 | Home's data (#135): `public.merchant_activity` (migration `0006`) keeps each change's `details` (guest, party, start; times; the form) rather than its text, and the line is worded when read; the dashboard is one query per block; the table writes of `service.py` moved to `agent/writes.py` | Text worded at write time says "today" the next day too (#129 contract); a dashboard must open in under 300 ms whatever the history (about 20 ms on the demo data); `service.py` had reached the 800-line limit |
 | 2026-10-31 | Merchants get a management site next to the chat: pages and forms are a second path to the same `AgentService` operations; the agent site has no interface; the v10 mockups in `documentation/design/poc-v10/` are the reference | [ADR-0015](documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #128 |
 | 2026-10-31 | La Graine Verte's demo site is the public mockup rebuilt as static files: same text and `#reserver`, Fraunces and Karla self-hosted (SIL OFL), identical to the mockup at 1440 px, stacked below 900 px; contrast pairs left to #153 | #148 |
 

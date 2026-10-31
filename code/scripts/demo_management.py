@@ -26,6 +26,7 @@ from core.availability import BusyInterval, TableRow, bookable_starts, pick_tabl
 from core.db import (
     agent_requests_t,
     blocked_slots_t,
+    merchant_activity_t,
     merchant_conn,
     merchants_t,
     next_reservation_id,
@@ -180,6 +181,40 @@ def history_bookings(
     return rows
 
 
+def activity_lines(
+    feed: list[dict[str, Any]],
+    bookings: list[dict[str, Any]],
+    blocked: list[dict[str, Any]],
+    at: Any,
+) -> list[dict[str, Any]]:
+    """Home's feed (#135): the fixture's lines, oldest first, with the details the server words
+    them from (the booking's guest, party and start; the blocked times) instead of their text."""
+    by_id = {b["id"]: b for b in bookings}
+    lines = []
+    for item in reversed(feed):
+        details: dict[str, Any] = {}
+        booking = by_id.get(item["reservation_id"] or "")
+        if booking is not None:
+            details = {
+                "guest": booking["guest_name"],
+                "party": booking["party_size"],
+                "starts_at": booking["during"].lower.isoformat(),
+            }
+        elif item["kind"] in ("blocked", "reopened"):
+            details = {"times": [b["starts_at"].isoformat() for b in blocked]}
+        lines.append(
+            {
+                "merchant_slug": MERCHANT,
+                "at": at(item["at"]),
+                "kind": item["kind"],
+                "source": item["source"],
+                "reservation_id": item["reservation_id"],
+                "details": details,
+            }
+        )
+    return lines
+
+
 async def seed_management(engine: AsyncEngine, today: date) -> str:
     """Load the fixture into La Graine Verte, moved to `today`; a second run changes nothing."""
     data = load()
@@ -256,6 +291,9 @@ async def seed_management(engine: AsyncEngine, today: date) -> str:
         ]
         if requests:
             await conn.execute(insert(agent_requests_t), requests)
+        lines = activity_lines(data["activity"], rows, blocked, at)
+        if lines:
+            await conn.execute(insert(merchant_activity_t), lines)
     week = len(data["reservations"])
     return (
         f"management data: {week} bookings over the 7 days from {today}, "

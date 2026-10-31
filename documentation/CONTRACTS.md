@@ -104,7 +104,8 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 
 | Tool | Input (`core.models`) | Result |
 |---|---|---|
-| `build_agent` | `BuildAgentInput`: `website`, `description` | `BuildAgentOutput`: `profile`, `status: "live"`, `assumptions`, `tools`, `mcp_url`; streams the 5 build steps |
+| `build_agent` | `BuildAgentInput`: `website`, `description` | `BuildAgentOutput`: `profile`, `status: "building"`, `assumptions`, `facts` (`BuildFact`: `key`, `label`, `value`, `source` = a crawled page's path, `"you"` or null, `quote`), `flags` (`BuildFlag`: `title`, `detail`), `tools`, `mcp_url`; streams 4 steps, then `deploy` `waiting` ("Waiting for you.") (#136) |
+| `publish_agent` | `PublishAgentInput` (empty) | Confirmation "Your agent is live: Claude users can now book you."; streams `deploy` `running` then `done`. A live agent stays live, a paused (`down`) one is refused (#136) |
 | `list_reservations` | `date` | Rows `{id, time, guest_name, party_size, table_label, via, status}` |
 | `get_stats` | `date` | `{bookings, guests, seats, blocked: [HH:MM]}` |
 | `block_slot` / `unblock_slot` | `starts_at` | Confirmation |
@@ -198,6 +199,7 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 | Route | Body | Answer | Issue |
 |---|---|---|---|
 | `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo` | #132 |
+| `POST /publish` | | `MerchantOverview`, now `live`: publishes the agent a build left `building`. A paused (`down`) agent is refused with `invalid_input` | #136 |
 | `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
 | `GET /reservations?date=` | | `ReservationDay`: the day's services, every start of its grid, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |
 | `POST /reservations` | `MerchantBookingInput` | `201` + `ManagedReservation`, `via="merchant"` | #134 |
@@ -293,6 +295,19 @@ the merchant's owner, `403` `other_merchant` for another merchant, before the bo
 - `ActivityItem.text` is worded by the server when read, relative to `date` ("R-009, Sara
   Muller, 2 guests, today 18:30"). `source` is the channel that made the change (`merchant` for
   the merchant's own). One line per change; a `PUT /blocked` is one change.
+
+**Home's data (#135, `agent/dashboard.py`, `agent/activity.py`)**
+- Every change writes one line in `public.merchant_activity` (migration `0006`), in the transaction of the change, whichever path made it:
+  - new bookings, from an agent, the website, the assistant or the management site;
+  - guests' and the merchant's moves and cancellations;
+  - blocked and reopened times;
+  - saved hours, rules and floor plan;
+  - pausing and resuming.
+  A change that fails, or changes nothing, writes none: a time already blocked, a pause of a paused agent, an identical save, a move to the same time, a replayed key. A guest's own update or cancellation is the agent's (`source: claude`), since the website only books; saving hours and the party limit together writes one line each. Lines are dated by the service's clock.
+- A line keeps its `details` (guest, party, start; the times; the form saved), not its words, so `text` is worded when read. A line without them reads as its reference: one bad row never takes Home down. `make seed` loads the mockup's 12 lines with their details.
+- `GET /dashboard` makes one query per block, whatever the history: the days (the 30 before and the 7 after, together), channels, the room, activity. On the demo data it answers in about 20 ms.
+- `GET /search?q=`: up to 8 bookings of the next 7 days by guest name or reference, cancelled ones included; names compare as on the Guests page (`agent.guests.guest_key`: case, accents and spacing ignored, so "zoe" finds Zoé); a blank `q` finds nothing.
+- `room.next_free` is null both when the service is full and when its last seating has passed (after 20:30 for an 18:30–21:30 dinner): the web words the second case itself.
 
 **Other fields**
 - `MerchantOverview`:

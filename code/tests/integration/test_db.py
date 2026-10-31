@@ -22,6 +22,7 @@ from core.db import (
     agent_requests_t,
     as_merchant,
     guest_notices_t,
+    merchant_activity_t,
     merchant_conn,
     merchant_metadata,
     merchant_owners_t,
@@ -41,6 +42,7 @@ PUBLIC_TABLES = {
     "reservation_changes",
     "agent_requests",
     "merchant_owners",
+    "merchant_activity",
 }
 MERCHANT_TABLES = {"tables", "policy", "blocked_slots", "reservations"}
 MIGRATED = {
@@ -125,7 +127,14 @@ def test_downgrade_refuses_while_a_merchant_schema_exists(
 
 @pytest.mark.parametrize(
     "table",
-    [merchants_t, guest_notices_t, reservation_changes_t, agent_requests_t, merchant_owners_t],
+    [
+        merchants_t,
+        guest_notices_t,
+        reservation_changes_t,
+        agent_requests_t,
+        merchant_owners_t,
+        merchant_activity_t,
+    ],
     ids=lambda t: t.name,
 )
 async def test_public_tables_match_their_core_declarations(

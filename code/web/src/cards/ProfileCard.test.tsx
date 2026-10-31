@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import onboarding from "../mocks/onboarding.json";
 import type { ChatEvent } from "../types.ts";
 import { CardView } from "./CardView.tsx";
+import { StepsCard } from "./StepsCard.tsx";
 
 const PROFILE = (onboarding as ChatEvent[]).find(
   (event) => event.type === "card" && event.kind === "profile",
@@ -24,5 +25,38 @@ describe("profile card", () => {
     render(<CardView card={{ ...PROFILE, login_url: null }} />);
 
     expect(screen.queryByText(/shown only once/)).toBeNull();
+  });
+});
+
+describe("review card (#136)", () => {
+  it("says the agent is hidden, shows each fact with its source, and the flags", () => {
+    if (PROFILE?.type !== "card" || PROFILE.kind !== "profile") throw new Error("no profile card");
+
+    render(<CardView card={PROFILE} />);
+
+    expect(screen.getByText(/Hidden from guests until you publish/)).toBeTruthy();
+    expect(screen.getByText(/6, from "Réservation en ligne jusqu'à 6 personnes"/)).toBeTruthy();
+    expect(screen.getByText(/\/reservation\.html$/)).toBeTruthy();
+    expect(screen.getByText("No cancellation policy on your site.")).toBeTruthy();
+  });
+
+  it("titles a build waiting for its owner, and a publish on its own", () => {
+    const { rerender } = render(
+      <StepsCard
+        steps={{
+          crawl: { status: "done", duration_ms: 800 },
+          extract: { status: "done", duration_ms: 1400 },
+          validate: { status: "done", duration_ms: 4 },
+          provision: { status: "done", duration_ms: 110 },
+          deploy: { status: "waiting", detail: "Waiting for you." },
+        }}
+      />,
+    );
+    expect(screen.getByText(/check it, then publish/)).toBeTruthy();
+    expect(screen.getByText("Waiting for you.")).toBeTruthy();
+
+    rerender(<StepsCard steps={{ deploy: { status: "done", detail: "Your agent is live." } }} />);
+    expect(screen.getByText("Your agent is live")).toBeTruthy();
+    expect(screen.queryByText("Reading your website")).toBeNull();
   });
 });

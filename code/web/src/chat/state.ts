@@ -111,7 +111,8 @@ function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       if (event.kind === "profile") {
         const { slug, name } = event.data.profile;
         next.merchant = { slug, name };
-        next.status = "live";
+        // Hidden from guests until the owner publishes (#136).
+        next.status = event.data.status;
       }
       return append(next, { type: "card", turn: state.turn, card: event });
     }
@@ -143,7 +144,10 @@ function interruptBuild(state: ChatState): ChatState {
       next = replaceAt(state, index, { ...group, steps });
     }
   }
-  if (next.status !== "building") return next;
+  // A build that reached `deploy` waits for its owner, hidden from guests (#136): its pill
+  // stays. One stopped earlier in this turn left nothing, as the server undid it.
+  const deploy = group?.type === "steps" ? group.steps.deploy?.status : undefined;
+  if (next.status !== "building" || group?.type !== "steps" || deploy === "waiting") return next;
   return { ...next, status: next.merchant ? "live" : null };
 }
 
