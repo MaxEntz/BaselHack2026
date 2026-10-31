@@ -1,21 +1,32 @@
-import { useEffect, useState } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router";
-import type { ManagementClient } from "./client.ts";
-import { managementClient } from "./index.ts";
+import { useClient } from "./data.ts";
+import { HoursPage } from "./pages/HoursPage.tsx";
 import { HomePage } from "./pages/home/HomePage.tsx";
+import { RulesPage } from "./pages/RulesPage.tsx";
+import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { type PageId, PAGES, isPage, nameFromSlug, pageTitle } from "./pages.ts";
 import { ToastProvider } from "./ui/index.ts";
 
-/** One management page. The pages themselves come with their issues (#137-#147). */
-export function ManagePage({ client = managementClient }: { client?: ManagementClient }) {
+// The pages built so far; the others come with their issues (#137-#147).
+const VIEWS: Partial<Record<PageId, ComponentType<{ slug: string; version: number }>>> = {
+  home: HomePage,
+  hours: HoursPage,
+  rules: RulesPage,
+  settings: SettingsPage,
+};
+
+/** One management page. */
+export function ManagePage() {
   const { slug = "", page, "*": rest } = useParams();
   // Unknown pages go to Home.
   if (rest || (page !== undefined && !isPage(page))) return <Navigate to={`/manage/${slug}`} replace />;
-  return <ManageShell slug={slug} page={page ?? "home"} client={client} />;
+  return <ManageShell slug={slug} page={page ?? "home"} />;
 }
 
 /** Bumps on every live event, so the page reads its data again. The shell (#137) replaces it. */
-function useLiveVersion(slug: string, client: ManagementClient): number {
+function useLiveVersion(slug: string): number {
+  const client = useClient();
   const [version, setVersion] = useState(0);
   useEffect(
     () =>
@@ -28,18 +39,19 @@ function useLiveVersion(slug: string, client: ManagementClient): number {
   return version;
 }
 
-function ManageShell({ slug, page, client }: { slug: string; page: PageId; client: ManagementClient }) {
+function ManageShell({ slug, page }: { slug: string; page: PageId }) {
   const name = nameFromSlug(slug);
-  const version = useLiveVersion(slug, client);
+  const version = useLiveVersion(slug);
   useEffect(() => {
     document.title = pageTitle(name, page);
   }, [name, page]);
+  const View = VIEWS[page];
   return (
     <div className="mg mg-page" data-page={page}>
       <ToastProvider>
         <main>
-          {page === "home" ? (
-            <HomePage slug={slug} client={client} version={version} />
+          {View ? (
+            <View key={slug} slug={slug} version={version} />
           ) : (
             <>
               <h1>{PAGES[page]}</h1>

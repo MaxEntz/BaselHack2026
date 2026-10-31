@@ -7,6 +7,7 @@ import { DEMO_NOW, setClock } from "../../../clock.ts";
 import { createMockManagementClient } from "../../../mocks/managementClient.ts";
 import type { Dashboard, ManagementFixture, MerchantOverview, ReservationDay } from "../../../types.ts";
 import type { ManagementClient } from "../../client.ts";
+import { ClientContext } from "../../data.ts";
 import { HomePage, type HomeProps, NOTHING_TONIGHT, NO_ACTIVITY } from "./HomePage.tsx";
 import { NO_HISTORY } from "./GuestsCard.tsx";
 
@@ -17,25 +18,18 @@ function mock(liveBookingDelayMs = 60_000) {
   return createMockManagementClient(fixture, { latencyMs: 0, liveBookingDelayMs });
 }
 
-function show(props: Partial<HomeProps> & { client: ManagementClient }) {
-  const view = render(
-    <MemoryRouter>
-      <div className="mg">
-        <HomePage slug={SLUG} {...props} />
-      </div>
-    </MemoryRouter>,
+function show({ client, ...props }: Partial<HomeProps> & { client: ManagementClient }) {
+  const tree = (next: Partial<HomeProps> = {}) => (
+    <ClientContext.Provider value={client}>
+      <MemoryRouter>
+        <div className="mg">
+          <HomePage slug={SLUG} {...props} {...next} />
+        </div>
+      </MemoryRouter>
+    </ClientContext.Provider>
   );
-  return {
-    ...view,
-    again: (next: Partial<HomeProps>) =>
-      view.rerender(
-        <MemoryRouter>
-          <div className="mg">
-            <HomePage slug={SLUG} {...props} {...next} />
-          </div>
-        </MemoryRouter>,
-      ),
-  };
+  const view = render(tree());
+  return { ...view, again: (next: Partial<HomeProps>) => view.rerender(tree(next)) };
 }
 
 const card = (name: string) => screen.getByRole("region", { name });

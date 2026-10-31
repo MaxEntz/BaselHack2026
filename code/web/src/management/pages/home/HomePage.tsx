@@ -9,7 +9,7 @@ import type {
   ReservationDay,
 } from "../../../types.ts";
 import type { ManagementClient } from "../../client.ts";
-import { managementClient } from "../../index.ts";
+import { useClient } from "../../data.ts";
 import { Blob, Box, Pill, Tag, Under } from "../../ui/index.ts";
 import { GuestsCard } from "./GuestsCard.tsx";
 import {
@@ -37,7 +37,6 @@ const ACTIVITY_ROWS = 6;
 
 export type HomeProps = {
   slug: string;
-  client?: ManagementClient;
   // Bump to read everything again (the shell does on live events, #137).
   version?: number;
   // The shell's actions; without them Home navigates to the page that has them.
@@ -90,7 +89,6 @@ function useHomeData(slug: string, client: ManagementClient, version: number) {
 
 export function HomePage({
   slug,
-  client = managementClient,
   version = 0,
   onAsk,
   onBlock,
@@ -98,6 +96,7 @@ export function HomePage({
   onOpenDay,
 }: HomeProps) {
   const navigate = useNavigate();
+  const client = useClient();
   const base = `/manage/${encodeURIComponent(slug)}`;
   const { data, error } = useHomeData(slug, client, version);
   const clock = useNow();
