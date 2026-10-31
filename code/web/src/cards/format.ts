@@ -30,10 +30,9 @@ export function describeDate(date: string): string {
   const day = new Date(`${date}T12:00:00`);
   if (Number.isNaN(day.getTime())) return `on ${date}`;
   if (day.toDateString() === new Date().toDateString()) return "tonight";
-  const label = day.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-  return `on ${label}`;
+  return `on ${shortDate(day)}`;
+}
+
+function shortDate(day: Date): string {
+  return day.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 }
