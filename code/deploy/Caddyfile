@@ -1,0 +1,7 @@
+{
+	admin off
+}
+
+191-96-88-152.sslip.io {
+	reverse_proxy 127.0.0.1:8001
+}

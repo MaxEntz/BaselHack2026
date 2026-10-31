@@ -7,6 +7,7 @@ dependencies = [
     "core",
     "agent",
     "mcp>=2.3,<3",
+    "starlette>=1.10",
     "uvicorn>=0.54",
 ]
 
