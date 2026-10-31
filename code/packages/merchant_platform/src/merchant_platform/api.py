@@ -30,7 +30,7 @@ from core.models import (
     Slug,
     ToolError,
 )
-from merchant_platform.assistant import RunTurn, run_turn
+from merchant_platform.assistant import RunTurn, default_assistant, run_turn
 from merchant_platform.events import LiveBus, LiveListener
 from merchant_platform.logs import configure_logging
 from merchant_platform.sessions import Session, SessionStore
@@ -267,7 +267,13 @@ def _default_app() -> FastAPI:
     engine = make_engine(settings.database_url)
     bus = LiveBus()
     listener = LiveListener(settings.database_url, engine, bus, settings.merchant_tz)
-    return create_app(settings, bus=bus, listener=listener, engine=engine)
+    return create_app(
+        settings,
+        assistant=default_assistant(settings, engine),
+        bus=bus,
+        listener=listener,
+        engine=engine,
+    )
 
 
 def __getattr__(name: str) -> Any:
