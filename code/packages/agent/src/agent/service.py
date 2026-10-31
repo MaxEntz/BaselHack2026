@@ -178,7 +178,7 @@ def check_start(
         raise SlotUnavailable(
             f"{local:%H:%M} is not a start time on {local:%Y-%m-%d}; valid times: {valid or 'none'}"
         )
-    if start <= now:
+    if _utc(start) <= _utc(now):
         raise SlotUnavailable(f"{start.astimezone(tz):%Y-%m-%d %H:%M} is in the past")
 
 
@@ -524,7 +524,7 @@ class PgAgentService:
 
     def _check_not_started(self, booking: _Row) -> None:
         """A guest changes a booking only before it starts: after, it's the merchant's (#79)."""
-        if booking.during.lower <= self.clock():
+        if _utc(booking.during.lower) <= _utc(self.clock()):
             raise SlotUnavailable(f"Booking {booking.id} has already started")
 
     async def find_guest_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
