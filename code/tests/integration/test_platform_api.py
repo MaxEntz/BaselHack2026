@@ -457,8 +457,22 @@ async def test_events_sends_heartbeats(serve: Any) -> None:
     ):
         async with asyncio.timeout(2):
             async for line in response.aiter_lines():
-                if line.startswith(":"):
+                if line.startswith(": ping"):
                     break
+
+
+async def test_events_sends_its_first_bytes_as_soon_as_it_opens(serve: Any) -> None:
+    # A long heartbeat, as in production: nothing else would be written for 15 s (#87).
+    base_url = await serve(create_app(settings(), heartbeat_seconds=15))
+
+    async with (
+        httpx.AsyncClient(base_url=base_url, timeout=5) as http,
+        http.stream("GET", "/events", params={"merchant": "le-petit-zinc"}) as response,
+    ):
+        async with asyncio.timeout(1):
+            first = await anext(response.aiter_lines())
+
+    assert first == ": connected"
 
 
 async def test_events_rejects_an_invalid_merchant() -> None:
