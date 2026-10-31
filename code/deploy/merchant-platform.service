@@ -1,0 +1,34 @@
+[Unit]
+Description=Sésame platform API (merchant chat, live events, public booking API)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+# Its own user: Chromium runs without its sandbox (Playwright's default; Ubuntu 24.04 restricts
+# the user namespaces it needs), so a crawled page exploiting it must not get the gateway's
+# identity or the node's tokens. `sesame` can't read code/.env (root:gateway 640).
+User=sesame
+# Its own settings, read from the working directory's .env (root:sesame 640): DATABASE_URL,
+# OPENAI_API_KEY and the platform's, not BATP_TOKENS or GATEWAY_TOKEN.
+WorkingDirectory=/opt/merchant-agents/platform
+# Chromium for the crawler, installed by `make deploy` outside any home directory.
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/merchant-agents/ms-playwright
+# Loopback only: Caddy (sesame host, /api) is the only client. One worker: chat sessions live
+# in the process's memory.
+ExecStart=/opt/merchant-agents/code/.venv/bin/uvicorn merchant_platform.api:app --host 127.0.0.1 --port 8002 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=2
+# The builder writes its cache and generated profiles under .cache (ADR-0007).
+ReadWritePaths=/opt/merchant-agents/code/.cache
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

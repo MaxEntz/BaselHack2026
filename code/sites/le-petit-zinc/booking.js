@@ -2,7 +2,7 @@
 // that API is missing, the form switches to "call us" mode, so the site works on its own.
 "use strict";
 
-const API_URL = "http://localhost:8002/public/le-petit-zinc/reservations";
+const API_URL = `${platformUrl()}/public/le-petit-zinc/reservations`;
 const PHONE = "03 89 00 00 00";
 const TIME_ZONE = "Europe/Zurich"; // MERCHANT_TZ: same offsets as Mulhouse
 const SERVICES = [
@@ -13,6 +13,16 @@ const SERVICES = [
 const STEP_MIN = 30;
 const LAST_SEATING_MIN = 60;
 const TIMEOUT_MS = 8000;
+
+// Where the platform answers: `make site` serves this page on localhost next to `make platform`;
+// on the team server (#142) the site is le-petit-zinc.<server> and the platform sesame.<server>/api.
+function platformUrl() {
+  const { protocol, hostname } = window.location;
+  if (hostname === "localhost" || hostname === "127.0.0.1" || !hostname.includes(".")) {
+    return "http://localhost:8002";
+  }
+  return `${protocol}//sesame.${hostname.split(".").slice(1).join(".")}/api`;
+}
 
 const form = document.querySelector("#booking-form");
 const dateInput = form.elements.date;
