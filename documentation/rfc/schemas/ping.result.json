@@ -1,5 +1,5 @@
 {
-  "$comment": "Generated from matp_schemas.PingResult",
+  "$comment": "Generated from batp_schemas.PingResult",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "pong": {
@@ -17,6 +17,6 @@
     "pong",
     "server_time"
   ],
-  "title": "MATP PING result",
+  "title": "BATP PING result",
   "type": "object"
 }

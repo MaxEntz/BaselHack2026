@@ -1,4 +1,4 @@
-"""MATP wire format: frames, status codes, versions (documentation/PROTOCOL.md §3, §6, §8, §13)."""
+"""BATP wire format: frames, status codes, versions (documentation/PROTOCOL.md §3, §6, §8, §13)."""
 
 import asyncio
 import json
@@ -6,6 +6,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from batp.codec import MAX_FRAME, FrameError, FrameTooLarge, encode, read_frame
+from batp.messages import ErrorBody, Request, Response, compatible
+from batp.status import error_body, raise_for
 from core.errors import (
     AgentError,
     AgentUnavailable,
@@ -14,9 +17,6 @@ from core.errors import (
     PartyTooLarge,
     SlotUnavailable,
 )
-from matp.codec import MAX_FRAME, FrameError, FrameTooLarge, encode, read_frame
-from matp.messages import ErrorBody, Request, Response, compatible
-from matp.status import error_body, raise_for
 
 
 def reader_with(data: bytes) -> asyncio.StreamReader:
@@ -133,7 +133,7 @@ def test_version_numbers_are_ascii_digits_only() -> None:
 
 
 def test_the_token_never_shows_in_a_repr() -> None:
-    from matp.messages import AgentIdentity, Hello
+    from batp.messages import AgentIdentity, Hello
 
-    agent = AgentIdentity(id="urn:matp:agent:x", name="X", kind="user-agent", operator="o")
-    assert "s3cret-token" not in repr(Hello(matp="0.1", agent=agent, token="s3cret-token"))
+    agent = AgentIdentity(id="urn:batp:agent:x", name="X", kind="user-agent", operator="o")
+    assert "s3cret-token" not in repr(Hello(batp="0.1", agent=agent, token="s3cret-token"))

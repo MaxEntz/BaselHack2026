@@ -1,4 +1,4 @@
-"""MATP framing: one UTF-8 JSON object per line, at most 64 KiB (PROTOCOL.md §3).
+"""BATP framing: one UTF-8 JSON object per line, at most 64 KiB (PROTOCOL.md §3).
 
 Streams must be opened with `limit=MAX_FRAME`, so an oversized frame is refused before it is
 buffered or parsed.

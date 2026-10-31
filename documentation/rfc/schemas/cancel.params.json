@@ -20,6 +20,6 @@
     "reservation_id",
     "guest_name"
   ],
-  "title": "MATP CANCEL params",
+  "title": "BATP CANCEL params",
   "type": "object"
 }

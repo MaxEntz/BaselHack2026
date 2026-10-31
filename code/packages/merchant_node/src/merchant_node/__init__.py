@@ -1,1 +1,1 @@
-"""The MATP node that serves the merchant agents (documentation/PROTOCOL.md)."""
+"""The BATP node that serves the merchant agents (documentation/PROTOCOL.md)."""

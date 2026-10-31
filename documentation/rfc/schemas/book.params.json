@@ -32,6 +32,6 @@
     "guest_name",
     "idempotency_key"
   ],
-  "title": "MATP BOOK params",
+  "title": "BATP BOOK params",
   "type": "object"
 }

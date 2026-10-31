@@ -1,7 +1,7 @@
 """The real gateway on a free port, over its own database seeded with the 3 demo merchants.
 
 Every e2e scenario runs twice: with the agent in the gateway's process, and with the gateway as
-a bridge to a real MATP node (#61).
+a bridge to a real BATP node (#61).
 """
 
 import os
@@ -44,14 +44,14 @@ async def e2e_engine(e2e_database_url: str) -> AsyncIterator[AsyncEngine]:
     await engine.dispose()
 
 
-class MatpNode:
+class BatpNode:
     """`python -m merchant_node` as a separate process, as on the server: it can die or freeze."""
 
     def __init__(self, database_url: str, log_path: Path, tokens: str | None = None) -> None:
         with socket.socket() as probe:
             probe.bind((LOOPBACK, 0))
             self.port = probe.getsockname()[1]
-        self.url = f"matp://{LOOPBACK}:{self.port}"
+        self.url = f"batp://{LOOPBACK}:{self.port}"
         self.database_url = database_url
         self.log_path = log_path
         self.tokens = tokens
@@ -61,9 +61,9 @@ class MatpNode:
         env = {
             **os.environ,
             "DATABASE_URL": self.database_url,
-            "MATP_HOST": LOOPBACK,
-            "MATP_PORT": str(self.port),
-            "MATP_TOKENS": self.tokens or "",
+            "BATP_HOST": LOOPBACK,
+            "BATP_PORT": str(self.port),
+            "BATP_TOKENS": self.tokens or "",
         }
         with self.log_path.open("ab") as log:
             self.process = subprocess.Popen(
@@ -99,10 +99,10 @@ class MatpNode:
 
 
 @pytest.fixture(scope="module")
-def matp_node(
+def batp_node(
     e2e_database_url: str, e2e_engine: AsyncEngine, tmp_path_factory: pytest.TempPathFactory
-) -> Iterator[MatpNode]:
-    node = MatpNode(e2e_database_url, tmp_path_factory.mktemp("matp") / "node.log")
+) -> Iterator[BatpNode]:
+    node = BatpNode(e2e_database_url, tmp_path_factory.mktemp("batp") / "node.log")
     node.start()
     yield node
     if node.process and node.process.poll() is None:
@@ -126,18 +126,18 @@ def running_gateway(settings: Settings) -> Iterator[str]:
     thread.join(timeout=STARTUP_SECONDS)
 
 
-@pytest.fixture(scope="module", params=["in_process", "over_matp"])
+@pytest.fixture(scope="module", params=["in_process", "over_batp"])
 def gateway_base_url(
     request: pytest.FixtureRequest, e2e_database_url: str, e2e_engine: AsyncEngine
 ) -> Iterator[str]:
-    matp_url = request.getfixturevalue("matp_node").url if request.param == "over_matp" else None
-    settings = Settings(_env_file=None, database_url=e2e_database_url, matp_url=matp_url)
+    batp_url = request.getfixturevalue("batp_node").url if request.param == "over_batp" else None
+    settings = Settings(_env_file=None, database_url=e2e_database_url, batp_url=batp_url)
     with running_gateway(settings) as url:
         yield url
 
 
 @pytest.fixture(scope="module")
-def bridge_base_url(matp_node: MatpNode, e2e_database_url: str) -> Iterator[str]:
-    settings = Settings(_env_file=None, database_url=e2e_database_url, matp_url=matp_node.url)
+def bridge_base_url(batp_node: BatpNode, e2e_database_url: str) -> Iterator[str]:
+    settings = Settings(_env_file=None, database_url=e2e_database_url, batp_url=batp_node.url)
     with running_gateway(settings) as url:
         yield url

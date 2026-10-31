@@ -1,4 +1,4 @@
-"""Both clients: what must never come from Claude is fixed, and MATP frames follow the spec."""
+"""Both clients: what must never come from Claude is fixed, and BATP frames follow the spec."""
 
 import json
 import logging
@@ -8,19 +8,19 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from batp.client import BatpClient, BatpRejected, SessionLost
 from core.config import Settings
 from core.db import make_engine
 from core.errors import AgentUnavailable, NotFound
 from core.logs import JsonFormatter
 from core.models import SearchFilters, SearchMerchantsOutput
 from gateway.agent_client import (
+    BatpAgentClient,
     LocalAgentClient,
-    MatpAgentClient,
     make_agent_client,
-    parse_matp_url,
+    parse_batp_url,
 )
-from gateway.fallback import log_call, matp_request
-from matp.client import MatpClient, MatpRejected, SessionLost
+from gateway.fallback import batp_request, log_call
 
 STARTS_AT = datetime(2026, 11, 1, 19, tzinfo=UTC)
 NO_ENGINE: Any = object()
@@ -112,8 +112,8 @@ def node() -> AsyncMock:
 
 
 @pytest.fixture
-def bridge(node: AsyncMock) -> MatpAgentClient:
-    return MatpAgentClient(node)
+def bridge(node: AsyncMock) -> BatpAgentClient:
+    return BatpAgentClient(node)
 
 
 def sent(node: AsyncMock) -> tuple[str, str | None, dict[str, Any]]:
@@ -122,7 +122,7 @@ def sent(node: AsyncMock) -> tuple[str, str | None, dict[str, Any]]:
 
 
 async def test_search_is_a_discover_without_merchant(
-    bridge: MatpAgentClient, node: AsyncMock
+    bridge: BatpAgentClient, node: AsyncMock
 ) -> None:
     node.request.return_value = {"merchants": [], "suggestions": [], "ignored_filters": []}
 
@@ -142,7 +142,7 @@ async def test_search_is_a_discover_without_merchant(
 
 
 async def test_availability_carries_the_merchant_outside_its_params(
-    bridge: MatpAgentClient, node: AsyncMock
+    bridge: BatpAgentClient, node: AsyncMock
 ) -> None:
     slot = {"starts_at": "2026-11-01T20:00:00+01:00", "table_label": "T5"}
     node.request.return_value = {"slots": [slot]}
@@ -157,7 +157,7 @@ async def test_availability_carries_the_merchant_outside_its_params(
     assert [s.table_label for s in slots] == ["T5"]
 
 
-async def test_booking_is_a_book(bridge: MatpAgentClient, node: AsyncMock) -> None:
+async def test_booking_is_a_book(bridge: BatpAgentClient, node: AsyncMock) -> None:
     node.request.return_value = {"reservation": RESERVATION}
 
     reservation = await bridge.create_reservation(ZINC, STARTS_AT, 2, "Alex", "key")
@@ -176,7 +176,7 @@ async def test_booking_is_a_book(bridge: MatpAgentClient, node: AsyncMock) -> No
 
 
 async def test_a_move_is_an_amend_with_only_what_changes(
-    bridge: MatpAgentClient, node: AsyncMock
+    bridge: BatpAgentClient, node: AsyncMock
 ) -> None:
     node.request.return_value = {"reservation": RESERVATION}
 
@@ -194,7 +194,7 @@ async def test_a_move_is_an_amend_with_only_what_changes(
     )
 
 
-async def test_a_cancellation_is_a_cancel(bridge: MatpAgentClient, node: AsyncMock) -> None:
+async def test_a_cancellation_is_a_cancel(bridge: BatpAgentClient, node: AsyncMock) -> None:
     node.request.return_value = {"reservation": {**RESERVATION, "status": "cancelled"}}
 
     reservation = await bridge.cancel_reservation(ZINC, "R-001", "Alex")
@@ -203,7 +203,7 @@ async def test_a_cancellation_is_a_cancel(bridge: MatpAgentClient, node: AsyncMo
     assert reservation.status == "cancelled"
 
 
-async def test_my_reservations_is_a_recall(bridge: MatpAgentClient, node: AsyncMock) -> None:
+async def test_my_reservations_is_a_recall(bridge: BatpAgentClient, node: AsyncMock) -> None:
     node.request.return_value = {"reservations": [RESERVATION], "notices": ["Sorry"]}
 
     reservations, notices = await bridge.get_my_reservations("Alex")
@@ -214,7 +214,7 @@ async def test_my_reservations_is_a_recall(bridge: MatpAgentClient, node: AsyncM
 
 
 async def test_the_node_s_business_errors_pass_through(
-    bridge: MatpAgentClient, node: AsyncMock
+    bridge: BatpAgentClient, node: AsyncMock
 ) -> None:
     node.request.side_effect = NotFound("No booking")
 
@@ -223,10 +223,10 @@ async def test_the_node_s_business_errors_pass_through(
 
 
 @pytest.mark.parametrize(
-    "failure", [SessionLost("gone"), MatpRejected(401, "Unknown agent or token")]
+    "failure", [SessionLost("gone"), BatpRejected(401, "Unknown agent or token")]
 )
 async def test_a_lost_or_refused_session_is_agent_unavailable(
-    bridge: MatpAgentClient, node: AsyncMock, failure: Exception
+    bridge: BatpAgentClient, node: AsyncMock, failure: Exception
 ) -> None:
     node.request.side_effect = failure
 
@@ -235,7 +235,7 @@ async def test_a_lost_or_refused_session_is_agent_unavailable(
 
 
 async def test_an_invalid_result_is_agent_unavailable_not_invalid_input(
-    bridge: MatpAgentClient, node: AsyncMock
+    bridge: BatpAgentClient, node: AsyncMock
 ) -> None:
     node.request.return_value = {"unexpected": True}
 
@@ -244,7 +244,7 @@ async def test_an_invalid_result_is_agent_unavailable_not_invalid_input(
 
 
 async def test_the_request_id_reaches_the_node_and_the_log_line(
-    bridge: MatpAgentClient, node: AsyncMock, caplog: pytest.LogCaptureFixture
+    bridge: BatpAgentClient, node: AsyncMock, caplog: pytest.LogCaptureFixture
 ) -> None:
     node.request.return_value = {"slots": []}
 
@@ -254,12 +254,12 @@ async def test_the_request_id_reaches_the_node_and_the_log_line(
 
     request_id = node.request.await_args.kwargs["request_id"]
     line = json.loads(JsonFormatter().format(caplog.records[-1]))
-    assert line["matp_request"] == request_id
+    assert line["batp_request"] == request_id
     assert line["tool"] == "get_availability"
-    matp_request.set(None)
+    batp_request.set(None)
 
 
-async def test_close_closes_the_session(bridge: MatpAgentClient, node: AsyncMock) -> None:
+async def test_close_closes_the_session(bridge: BatpAgentClient, node: AsyncMock) -> None:
     await bridge.close()
 
     node.close.assert_awaited_once_with()
@@ -268,22 +268,22 @@ async def test_close_closes_the_session(bridge: MatpAgentClient, node: AsyncMock
 @pytest.mark.parametrize(
     ("url", "expected"),
     [
-        ("matp://127.0.0.1:4710", ("127.0.0.1", 4710)),
-        ("matp://node.example", ("node.example", 4710)),
-        ("matp://localhost:5000/", ("localhost", 5000)),
+        ("batp://127.0.0.1:4710", ("127.0.0.1", 4710)),
+        ("batp://node.example", ("node.example", 4710)),
+        ("batp://localhost:5000/", ("localhost", 5000)),
     ],
 )
-def test_parse_matp_url(url: str, expected: tuple[str, int]) -> None:
-    assert parse_matp_url(url) == expected
+def test_parse_batp_url(url: str, expected: tuple[str, int]) -> None:
+    assert parse_batp_url(url) == expected
 
 
-@pytest.mark.parametrize("url", ["127.0.0.1:4710", "http://127.0.0.1:4710", "matp://"])
-def test_a_wrong_matp_url_is_refused(url: str) -> None:
-    with pytest.raises(ValueError, match="MATP_URL"):
-        parse_matp_url(url)
+@pytest.mark.parametrize("url", ["127.0.0.1:4710", "http://127.0.0.1:4710", "batp://"])
+def test_a_wrong_batp_url_is_refused(url: str) -> None:
+    with pytest.raises(ValueError, match="BATP_URL"):
+        parse_batp_url(url)
 
 
-def test_without_matp_url_the_agent_stays_in_this_process() -> None:
+def test_without_batp_url_the_agent_stays_in_this_process() -> None:
     settings = Settings(_env_file=None, database_url="postgresql+psycopg://u:p@localhost/db")
 
     agent = make_agent_client(settings, make_engine(settings.database_url))
@@ -291,19 +291,19 @@ def test_without_matp_url_the_agent_stays_in_this_process() -> None:
     assert isinstance(agent, LocalAgentClient)
 
 
-def test_with_matp_url_the_gateway_is_a_bridge_under_its_own_identity() -> None:
+def test_with_batp_url_the_gateway_is_a_bridge_under_its_own_identity() -> None:
     settings = Settings(
         _env_file=None,
         database_url="postgresql+psycopg://u:p@localhost/db",
-        matp_url="matp://127.0.0.1:4711",
-        matp_token="a-token-long-enough",
+        batp_url="batp://127.0.0.1:4711",
+        batp_token="a-token-long-enough",
     )
 
     agent = make_agent_client(settings, make_engine(settings.database_url))
 
-    assert isinstance(agent, MatpAgentClient)
-    assert isinstance(agent.client, MatpClient)
+    assert isinstance(agent, BatpAgentClient)
+    assert isinstance(agent.client, BatpClient)
     assert (agent.client.host, agent.client.port) == ("127.0.0.1", 4711)
     assert agent.client.token == "a-token-long-enough"
-    assert agent.client.agent.id == "urn:matp:agent:claude-gateway"
+    assert agent.client.agent.id == "urn:batp:agent:claude-gateway"
     assert agent.client.agent.kind == "user-agent"

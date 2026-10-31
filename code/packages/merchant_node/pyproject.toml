@@ -1,13 +1,13 @@
 [project]
 name = "merchant-node"
 version = "0.1.0"
-description = "The MATP node that serves the merchant agents on port 4710."
+description = "The BATP node that serves the merchant agents on port 4710."
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "core",
     "agent",
     "gateway",
-    "matp",
+    "batp",
 ]
 
 [build-system]

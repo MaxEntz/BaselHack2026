@@ -1,7 +1,7 @@
 ---
-title: Merchant Agent Transfer Protocol (MATP)
-abbrev: MATP
-docname: draft-merchant-agents-matp-00
+title: Broad Agent Transfer Protocol (BATP)
+abbrev: BATP
+docname: draft-merchant-agents-batp-00
 category: exp
 submissiontype: independent
 ipr: trust200902
@@ -41,8 +41,8 @@ informative:
     author:
       - org: Model Context Protocol
     date: false
-  MATP-SCHEMAS:
-    title: MATP JSON Schemas (generated from the reference implementation)
+  BATP-SCHEMAS:
+    title: BATP JSON Schemas (generated from the reference implementation)
     target: https://github.com/MaxEntz/BaselHack2026/tree/main/documentation/rfc/schemas
     author:
       - org: Merchant Agents (BaselHack 2026)
@@ -50,15 +50,15 @@ informative:
 
 --- abstract
 
-This document specifies the Merchant Agent Transfer Protocol (MATP), an
+This document specifies the Broad Agent Transfer Protocol (BATP), an
 application protocol reserved for software agents that book with merchants
-on behalf of people or businesses. A MATP session runs over TCP, starts with
+on behalf of people or businesses. A BATP session runs over TCP, starts with
 a handshake that names the calling agent, and carries newline-delimited JSON
 frames. Each request states an intent (discover merchants, check
 availability, book, amend, cancel, recall bookings, ping) and the merchant it
 addresses. Responses carry numeric status codes and, when the merchant's own
 agent cannot serve the request, a fallback URL to the merchant's website.
-MATP is designed to sit behind a Model Context Protocol (MCP) server, which
+BATP is designed to sit behind a Model Context Protocol (MCP) server, which
 acts as a bridge for assistants that only speak MCP.
 
 --- middle
@@ -70,7 +70,7 @@ check a table and book it. When that traffic uses HTTP, a merchant cannot
 tell it apart from a browser, so it cannot identify the calling agent,
 route agent traffic separately, or apply rules meant for agents.
 
-MATP gives that traffic its own channel. Every frame says which agent is
+BATP gives that traffic its own channel. Every frame says which agent is
 talking (established once per session), what it intends to do, and to which
 merchant. The protocol is deliberately small: it covers what a network of
 merchant agents needs to take bookings, and nothing else.
@@ -86,14 +86,14 @@ platform.
 ## Relation to MCP
 
 Assistants such as Claude connect to remote tools through MCP {{MCP}}. An
-MCP server can act as a bridge: each of its tools maps to one MATP intent
-({{mcp-bridge}}). Any other agent can speak MATP directly.
+MCP server can act as a bridge: each of its tools maps to one BATP intent
+({{mcp-bridge}}). Any other agent can speak BATP directly.
 
 ## Relation to AGTP
 
 The idea of an application protocol reserved for agent traffic, with agent
 identity and intent-named methods, comes from the AGTP Internet-Draft
-{{I-D.hood-independent-agtp}}. MATP is independent from it: it does not
+{{I-D.hood-independent-agtp}}. BATP is independent from it: it does not
 implement AGTP, it uses a different transport framing and method set, and
 it is limited to the booking use case.
 
@@ -106,7 +106,7 @@ This document uses the Augmented Backus-Naur Form (ABNF) notation of
 {{RFC8259}}.
 
 Node:
-: A MATP server. It serves the merchant agents of one backend.
+: A BATP server. It serves the merchant agents of one backend.
 
 Merchant agent:
 : One merchant's booking logic and data, served by a node and addressed by
@@ -149,20 +149,20 @@ in any order.
   assistant --->| MCP client  |------------------->| MCP gateway |
                 +-------------+                    |  (bridge)   |
                                                    +------+------+
-                                                          | MATP
-  other agent ------------------- MATP --------------+    | TCP 4710
+                                                          | BATP
+  other agent ------------------- BATP --------------+    | TCP 4710
                                                      v    v
                                                    +-------------+
-                                                   |  MATP node  |
+                                                   |  BATP node  |
                                                    +------+------+
                                                           |
                                          merchant agents (one per slug)
 ~~~
-{: title="MATP deployment with an MCP bridge"}
+{: title="BATP deployment with an MCP bridge"}
 
 ~~~ ascii-art
   Caller                                        Node
-    |  hello {agent, token, matp: "0.1"}         |
+    |  hello {agent, token, batp: "0.1"}         |
     |------------------------------------------->|
     |  welcome {node, intents, session}          |
     |<-------------------------------------------|
@@ -179,9 +179,9 @@ in any order.
 
 # Transport {#transport}
 
-MATP runs over TCP {{RFC9293}}. A node listens on a configured port. This
+BATP runs over TCP {{RFC9293}}. A node listens on a configured port. This
 document uses port 4710 for its examples and its reference implementation;
-that port is not registered for MATP ({{iana}}), so a caller MUST be able to
+that port is not registered for BATP ({{iana}}), so a caller MUST be able to
 use another port.
 
 On the loopback interface, a session MAY use plain TCP. On any other path,
@@ -199,12 +199,12 @@ response, and the caller MUST NOT assume it was or was not carried out
 A merchant agent is named by a URI {{RFC3986}} of the form:
 
 ~~~ abnf
-matp-URI = "matp://" host [ ":" port ] "/" slug
+batp-URI = "batp://" host [ ":" port ] "/" slug
 slug     = 3*61( %x61-7A / DIGIT / "-" )   ; a-z, 0-9, "-"
 ~~~
 
 where `host` and `port` are those of {{RFC3986}}. When `port` is absent, it
-is 4710. For example, `matp://node.example/le-petit-zinc` names the merchant
+is 4710. For example, `batp://node.example/le-petit-zinc` names the merchant
 agent `le-petit-zinc` on the node at `node.example`. The slug is not sent in
 the handshake: a session reaches every merchant agent of a node, and each
 request names its merchant ({{requests}}).
@@ -255,7 +255,7 @@ session.
 | Member | Type | Requirement |
 |---|---|---|
 | `type` | `"hello"` | REQUIRED |
-| `matp` | version string ({{versioning}}) | REQUIRED |
+| `batp` | version string ({{versioning}}) | REQUIRED |
 | `agent` | object, below | REQUIRED |
 | `token` | string | see below |
 {: title="Members of hello"}
@@ -270,7 +270,7 @@ session.
 
 - `agent.id` names the calling agent. The node treats it as an opaque
   string and attributes every request of the session to it. This document
-  uses identifiers of the form `urn:matp:agent:<name>`; `matp` is not a
+  uses identifiers of the form `urn:batp:agent:<name>`; `batp` is not a
   registered URN namespace {{RFC8141}}, so these identifiers are only
   meaningful between parties that agreed on them.
 - `agent.kind` is `user-agent` when the caller acts for a guest, and
@@ -286,7 +286,7 @@ The node MUST answer a `hello` with exactly one `welcome` or `reject`.
 | Member | Type | Requirement |
 |---|---|---|
 | `type` | `"welcome"` | REQUIRED |
-| `matp` | the version the node will use for this session | REQUIRED |
+| `batp` | the version the node will use for this session | REQUIRED |
 | `node` | object with `id` (string, REQUIRED) and `name` (string, OPTIONAL) | REQUIRED |
 | `intents` | array of intent names the node serves | REQUIRED |
 | `session` | string, the node's identifier for this session | REQUIRED |
@@ -302,13 +302,13 @@ that receives one MUST answer it with status 400.
 | `type` | `"reject"` | REQUIRED |
 | `status` | 400, 401 or 426 | REQUIRED |
 | `message` | string, for humans | REQUIRED |
-| `matp` | the version the node speaks | OPTIONAL |
+| `batp` | the version the node speaks | OPTIONAL |
 {: title="Members of reject"}
 
 - 401: the agent is unknown to the node, the token is missing where it is
   required, or the token does not match the agent.
-- 426: the node does not speak the major version in `hello.matp`
-  ({{versioning}}). The node SHOULD include `matp`.
+- 426: the node does not speak the major version in `hello.batp`
+  ({{versioning}}). The node SHOULD include `batp`.
 - 400: the first frame was not a valid `hello`.
 
 After sending `reject`, the node MUST close the connection.
@@ -448,7 +448,7 @@ states their meaning and errors.
 | CANCEL | required | Cancel a booking as the guest |
 | RECALL | absent | A guest's upcoming bookings and notices |
 | PING | absent | Liveness check, keeps the session open |
-{: title="MATP 0.1 intents"}
+{: title="BATP 0.1 intents"}
 
 ## DISCOVER
 
@@ -489,7 +489,7 @@ Result: `reservation`, with `id` (the merchant's reference, for example
 ("confirmed"), `guest_name` and `via`.
 
 `via` is the booking channel, as the merchant sees it. Version 0.1 defines
-"claude", "merchant" and "website"; "website" is never set by MATP. A node
+"claude", "merchant" and "website"; "website" is never set by BATP. A node
 MUST record "merchant" when the caller's `agent.kind` is `merchant-agent`,
 and "claude" when it is `user-agent`, whatever assistant the caller is. So
 in this version, `via` is only accurate for callers behind the reference
@@ -550,7 +550,7 @@ Errors: none defined.
 | 426 | none | Unsupported major version (in `reject` only) | no |
 | 429 | `too_many_requests` | Too many requests in flight in the session; retry after an earlier response | no |
 | 503 | `agent_unavailable` | The merchant agent is down, failed, or timed out | yes |
-{: title="MATP 0.1 status codes"}
+{: title="BATP 0.1 status codes"}
 
 The `status` values 400 and 413 also appear in `error` frames
 ({{error-frames}}), which carry no `error.code`; there, 413 means a frame
@@ -679,32 +679,32 @@ Port:
   the procedures of {{RFC6335}}.
 
 URI scheme:
-: The `matp` scheme of {{transport}} is not registered. A later version
+: The `batp` scheme of {{transport}} is not registered. A later version
   would request provisional registration under {{RFC7595}} with this
   template:
 
-  - Scheme name: matp
+  - Scheme name: batp
   - Status: Provisional
-  - Applications/protocols that use this scheme name: the Merchant Agent
+  - Applications/protocols that use this scheme name: the Broad Agent
     Transfer Protocol (this document)
   - Contact: the authors of this document
   - Change controller: the authors of this document
   - References: this document
 
 URN namespace:
-: The `urn:matp:` identifiers used in examples are not a registered URN
+: The `urn:batp:` identifiers used in examples are not a registered URN
   namespace ({{RFC8141}}).
 
 --- back
 
 # The MCP Bridge {#mcp-bridge}
 
-An MCP server can let an assistant that only speaks MCP use a MATP node.
+An MCP server can let an assistant that only speaks MCP use a BATP node.
 The reference bridge opens one session with `agent.id`
-`urn:matp:agent:claude-gateway` and `agent.kind` `user-agent`, and maps its
+`urn:batp:agent:claude-gateway` and `agent.kind` `user-agent`, and maps its
 tools to intents:
 
-| MCP tool | MATP intent | Notes |
+| MCP tool | BATP intent | Notes |
 |---|---|---|
 | `search_merchants` | DISCOVER | |
 | `get_availability` | AVAILABILITY | the tool's `merchant` becomes the request's `merchant` |
@@ -712,7 +712,7 @@ tools to intents:
 | `update_reservation` | AMEND | idem |
 | `cancel_reservation` | CANCEL | the tool returns `{"status": "cancelled"}` |
 | `get_my_reservations` | RECALL | |
-{: title="MCP tools and MATP intents"}
+{: title="MCP tools and BATP intents"}
 
 - The tool descriptions tell the assistant to confirm with the guest before
   `create_reservation`, `update_reservation` and `cancel_reservation`,
@@ -735,13 +735,13 @@ Long frames are wrapped here for readability: on the wire, each is one
 line.
 
 ~~~
-C: {"type": "hello", "matp": "0.1",
-    "agent": {"id": "urn:matp:agent:claude-gateway",
+C: {"type": "hello", "batp": "0.1",
+    "agent": {"id": "urn:batp:agent:claude-gateway",
               "name": "Claude via the merchant-agents gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
-N: {"type": "welcome", "matp": "0.1",
-    "node": {"id": "urn:matp:node:merchant-agents",
+N: {"type": "welcome", "batp": "0.1",
+    "node": {"id": "urn:batp:node:merchant-agents",
              "name": "Merchant Agents"},
     "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
                 "RECALL", "PING"],
@@ -800,7 +800,7 @@ N: {"type": "response", "id": "r-5", "status": 200,
 
 These schemas use JSON Schema 2020-12 {{I-D.bhutton-json-schema}}. They are
 generated from the reference implementation's contract models, so this
-appendix and the implementation cannot drift {{MATP-SCHEMAS}}. In the
+appendix and the implementation cannot drift {{BATP-SCHEMAS}}. In the
 params of AVAILABILITY, BOOK, AMEND and CANCEL, the merchant is not a
 member: it is the request's `merchant`.
 
