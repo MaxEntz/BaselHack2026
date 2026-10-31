@@ -4,7 +4,7 @@ setup: ## .env, Python deps, Chromium for the crawler, web deps
 	test -f .env || cp .env.example .env
 	uv sync
 	uv run playwright install chromium
-	cd web && npm install
+	cd web && npm ci
 
 db: ## Postgres 16, waits until healthy
 	docker compose up -d --wait db

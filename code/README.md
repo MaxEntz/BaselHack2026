@@ -7,11 +7,12 @@ Spec: [`AGENTS.md`](../AGENTS.md) (also loaded by Claude Code through `CLAUDE.md
 - [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 itself if needed)
 - Docker (Postgres 16, and testcontainers for the integration tests)
 - Node.js ≥ 22.12 (Vite)
+- Linux only, once: `uv run playwright install --with-deps chromium` (installs Chromium's system packages, needs sudo rights)
 
 ## First run
 
 ```bash
-make setup     # .env from .env.example, uv sync, Playwright Chromium, npm install in web/
+make setup     # .env from .env.example, uv sync, Playwright Chromium, npm ci in web/
 make db        # Postgres 16 via docker compose, waits until healthy
 make migrate   # alembic upgrade head
 make test
@@ -23,7 +24,7 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 
 | Command | What | URL |
 |---|---|---|
-| `make gateway` | MCP server (protocol), `uv run python -m gateway` | http://localhost:8001/mcp |
+| `make gateway` | MCP server (protocol), `uv run python -m gateway`; stub until #3 / #11 | http://localhost:8001/mcp |
 | `make platform` | Platform API, `uv run uvicorn merchant_platform.api:app --port 8002` | http://localhost:8002 |
 | `make web` | Merchant chat UI (Vite) | http://localhost:5173 |
 | `make site` | Demo restaurant website (static) | http://localhost:8080 |
