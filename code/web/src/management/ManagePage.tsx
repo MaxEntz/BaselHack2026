@@ -1,13 +1,16 @@
-import { type ComponentType, useEffect } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router";
+import { useClient } from "./data.ts";
 import { HoursPage } from "./pages/HoursPage.tsx";
+import { HomePage } from "./pages/home/HomePage.tsx";
 import { RulesPage } from "./pages/RulesPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { type PageId, PAGES, isPage, nameFromSlug, pageTitle } from "./pages.ts";
 import { ToastProvider } from "./ui/index.ts";
 
 // The pages built so far; the others come with their issues (#137-#147).
-const VIEWS: Partial<Record<PageId, ComponentType<{ slug: string }>>> = {
+const VIEWS: Partial<Record<PageId, ComponentType<{ slug: string; version: number }>>> = {
+  home: HomePage,
   hours: HoursPage,
   rules: RulesPage,
   settings: SettingsPage,
@@ -21,8 +24,24 @@ export function ManagePage() {
   return <ManageShell slug={slug} page={page ?? "home"} />;
 }
 
+/** Bumps on every live event, so the page reads its data again. The shell (#137) replaces it. */
+function useLiveVersion(slug: string): number {
+  const client = useClient();
+  const [version, setVersion] = useState(0);
+  useEffect(
+    () =>
+      client.subscribe(slug, {
+        onEvent: () => setVersion((v) => v + 1),
+        onConnection: () => {},
+      }),
+    [slug, client],
+  );
+  return version;
+}
+
 function ManageShell({ slug, page }: { slug: string; page: PageId }) {
   const name = nameFromSlug(slug);
+  const version = useLiveVersion(slug);
   useEffect(() => {
     document.title = pageTitle(name, page);
   }, [name, page]);
@@ -32,7 +51,7 @@ function ManageShell({ slug, page }: { slug: string; page: PageId }) {
       <ToastProvider>
         <main>
           {View ? (
-            <View key={slug} slug={slug} />
+            <View key={slug} slug={slug} version={version} />
           ) : (
             <>
               <h1>{PAGES[page]}</h1>

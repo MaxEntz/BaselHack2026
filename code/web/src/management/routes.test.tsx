@@ -1,9 +1,21 @@
 import { render, screen } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEMO_NOW, now, setClock } from "../clock.ts";
 import { routes } from "../router.tsx";
 import { PAGES, type PageId, nameFromSlug } from "./pages.ts";
+
+// jsdom has no fetch target nor EventSource: the pages read the demo fixture.
+vi.mock("./index.ts", async () => {
+  const { createMockManagementClient } = await import("../mocks/managementClient.ts");
+  const fixture = await import("../../../tests/fixtures/demo/la-graine-verte-management.json");
+  return {
+    managementClient: createMockManagementClient(fixture.default as never, {
+      latencyMs: 0,
+      liveBookingDelayMs: 60_000,
+    }),
+  };
+});
 
 function at(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -12,10 +24,17 @@ function at(path: string) {
 }
 
 describe("management routes", () => {
-  it.each(Object.keys(PAGES) as PageId[])("/manage/:slug/%s has its title", (page) => {
-    at(page === "home" ? "/manage/la-graine-verte" : `/manage/la-graine-verte/${page}`);
+  const others = (Object.keys(PAGES) as PageId[]).filter((page) => page !== "home");
+  it.each(others)("/manage/:slug/%s has its title", (page) => {
+    at(`/manage/la-graine-verte/${page}`);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(PAGES[page]);
     expect(document.title).toBe(`La Graine Verte · ${PAGES[page]}`);
+  });
+
+  it("/manage/:slug is Home, which greets the owner", async () => {
+    at("/manage/la-graine-verte");
+    expect(document.title).toBe("La Graine Verte · Home");
+    expect(await screen.findByRole("heading", { level: 1, name: /^Good (morning|afternoon|evening), Léa$/ })).toBeTruthy();
   });
 
   it("sends an unknown page to Home", () => {
