@@ -92,7 +92,9 @@ live booking also appears in tonight's reservations.
   keeps at most 100 pending events (oldest dropped).
 - `POST /public/{slug}/reservations` (the showcase site's form) with `{starts_at,
   party_size, guest_name, idempotency_key}`: `201` + `{"reservation": Reservation}`
-  booked `via="website"`. Errors use the `ToolError` body with `404` (`not_found`), `409`
+  booked `via="website"`. A merchant still `building` is `not_found`; a `down` one keeps
+  taking bookings here (the outage only stops Claude, at the gateway). Errors use the
+  `ToolError` body with `404` (`not_found`), `409`
   (`slot_unavailable`), `422` (`party_too_large`, `invalid_input`), `503`
   (`agent_unavailable`). CORS allows `PUBLIC_CORS_ORIGINS` only (default
   `http://localhost:8080` and `http://127.0.0.1:8080`).
