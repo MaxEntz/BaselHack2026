@@ -290,7 +290,7 @@ class PgAgentService:
                 select(reservations_t.c.table_id, reservations_t.c.during).where(
                     reservations_t.c.status == "confirmed",
                     reservations_t.c.during.overlaps(
-                        Range(day_start, day_end + merchant.slot_length)
+                        Range(day_start, day_end.astimezone(UTC) + merchant.slot_length)
                     ),
                 )
             )
@@ -331,7 +331,7 @@ class PgAgentService:
             await self._check_new_start(conn, merchant, starts_at)
 
             reservation_id = await next_reservation_id(conn)
-            during = Range(starts_at, starts_at + merchant.slot_length, bounds="[)")
+            during = _during(starts_at, merchant.slot_length)
             for table in candidate_tables(merchant.tables, party_size):
                 outcome = await _attempt(
                     conn,
@@ -399,7 +399,7 @@ class PgAgentService:
             if new_start != current.during.lower:
                 await self._check_new_start(conn, merchant, new_start)
 
-            during = Range(new_start, new_start + merchant.slot_length, bounds="[)")
+            during = _during(new_start, merchant.slot_length)
             for table in candidate_tables(merchant.tables, new_party, current_id=current.table_id):
                 outcome = await _attempt(
                     conn,
@@ -749,6 +749,13 @@ class PgAgentService:
             guest_name=guest_name,
             via=via,
         )
+
+
+def _during(start: datetime, slot_length: timedelta) -> Range[datetime]:
+    """The range a booking holds its table: `slot_length` of real time, also across a clock
+    change, which wall-clock arithmetic on a `ZoneInfo` datetime would get wrong (#80)."""
+    start = start.astimezone(UTC)
+    return Range(start, start + slot_length, bounds="[)")
 
 
 def _not_found(reservation_id: str) -> NoReturn:

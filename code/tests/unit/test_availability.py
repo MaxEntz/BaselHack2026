@@ -340,3 +340,78 @@ def test_offered_slots_never_overlap_a_booking(
         assert is_bookable_start([LUNCH, DINNER], start, TZ)
         end = start + TWO_HOURS
         assert not any(b.table_id == table.id and b.start < end and start < b.end for b in taken)
+
+
+# Clock changes (#80): the grid of starts is local time, durations are elapsed time.
+
+SPRING_FORWARD = date(2026, 3, 29)  # 02:00 CET → 03:00 CEST
+FALL_BACK = date(2026, 10, 25)  # 03:00 CEST → 02:00 CET
+NIGHT = Service(start="00:00", end="04:00")
+
+
+def test_a_slot_on_the_spring_forward_night_lasts_two_real_hours() -> None:
+    # 01:00 CET is 00:00 UTC: the slot runs to 02:00 UTC, which is 04:00 CEST, past a 03:00
+    # CEST booking. Wall-clock arithmetic ended it at "03:00", one real hour only.
+    start = datetime.combine(SPRING_FORWARD, time(1), tzinfo=TZ)
+    booked = datetime.combine(SPRING_FORWARD, time(3), tzinfo=TZ)
+
+    assert pick_table([T2], 2, start, TWO_HOURS, [BusyInterval(T2.id, booked, booked)]) is None
+    taken = [BusyInterval(T2.id, booked, booked + TWO_HOURS)]
+    assert pick_table([T2], 2, start, TWO_HOURS, taken) is None
+
+
+def test_a_slot_on_the_fall_back_night_lasts_two_real_hours() -> None:
+    # 01:00 CEST is 23:00 UTC: the slot ends at 01:00 UTC (02:00 CET, first pass). A booking
+    # from 01:30 UTC doesn't overlap; wall-clock arithmetic ran the slot to 02:00 UTC.
+    start = datetime.combine(FALL_BACK, time(1), tzinfo=TZ)
+    later = datetime(2026, 10, 25, 1, 30, tzinfo=UTC)
+
+    assert pick_table([T2], 2, start, TWO_HOURS, [BusyInterval(T2.id, later, later)]) == T2
+
+
+@given(
+    day=st.sampled_from([SPRING_FORWARD, FALL_BACK]),
+    tables=floor_plans(),
+    data=st.data(),
+    party_size=st.integers(1, 8),
+)
+def test_offered_slots_never_overlap_a_booking_on_clock_change_nights(
+    day: date, tables: tuple[TableRow, ...], data: st.DataObject, party_size: int
+) -> None:
+    # Bookings are real instants, every 30 real minutes from local midnight.
+    midnight = datetime.combine(day, time(0), tzinfo=TZ).astimezone(UTC)
+    taken = tuple(
+        BusyInterval(
+            table.id,
+            midnight + timedelta(minutes=30 * step),
+            midnight + timedelta(minutes=30 * step + minutes),
+        )
+        for table, step, minutes in data.draw(
+            st.lists(
+                st.tuples(
+                    st.sampled_from(tables), st.integers(0, 10), st.sampled_from([30, 90, 120])
+                ),
+                max_size=10,
+            )
+        )
+    )
+
+    found = find_slots(
+        services=[NIGHT],
+        tables=tables,
+        busy=taken,
+        blocked=frozenset(),
+        day=day,
+        tz=TZ,
+        party_size=party_size,
+        requested=None,
+        now=datetime(2026, 1, 1, tzinfo=TZ),
+        slot_length=TWO_HOURS,
+    )
+
+    for start, table in found:
+        real_start = start.astimezone(UTC)
+        end = real_start + TWO_HOURS
+        assert not any(
+            b.table_id == table.id and b.start < end and real_start < b.end for b in taken
+        )

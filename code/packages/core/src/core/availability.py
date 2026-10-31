@@ -1,7 +1,9 @@
 """Pure availability rules: slot generation, table choice, blocked slots. No I/O.
 
 AGENTS.md §6. Times are aware datetimes in the merchant's timezone; `now` is always passed in,
-so the rules never read the clock.
+so the rules never read the clock. The grid of starts is local time; durations are elapsed
+time, computed in UTC: Python adds a `timedelta` to a `ZoneInfo` datetime in wall-clock time,
+which makes a slot 1 or 3 real hours on a clock-change night (#80).
 """
 
 from collections.abc import Collection, Sequence
@@ -77,6 +79,7 @@ def pick_table(
     busy: Sequence[BusyInterval],
 ) -> TableRow | None:
     """The smallest free table that seats the party, ties broken by label."""
+    start = start.astimezone(UTC)
     end = start + slot_length
     taken = {b.table_id for b in busy if b.start < end and start < b.end}
     fitting = (t for t in tables if t.seats >= party_size and t.id not in taken)
