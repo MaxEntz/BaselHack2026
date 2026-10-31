@@ -4,7 +4,7 @@
 .mg .err { color: var(--red); font-weight: 600; font-size: 15px; }
 
 .mg .forms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
-.mg .fs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; padding: 22px 24px; border-radius: min(30px, var(--radius, 30px)); background: var(--cream); }
+.mg .fs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; padding: 22px 24px; border-radius: min(30px, var(--radius)); background: var(--cream); }
 .mg :is(.fs > h3, .tb b) { font-family: var(--display); font-style: italic; font-weight: 900; font-variation-settings: "SOFT" 55, "opsz" 144; letter-spacing: -.005em; }
 .mg .fs > h3 { font-size: 27px; line-height: 1.05; color: var(--olive); }
 .mg .fs > p { margin-top: -6px; font-size: 16px; color: var(--mut); }
@@ -32,17 +32,18 @@
 .mg fieldset { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
 .mg legend { padding: 0 0 6px; font-weight: 700; }
 .mg .pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
-.mg .pick label { display: grid; place-items: center; min-height: 36px; border: 1px solid var(--olive); border-radius: min(30px, var(--radius, 30px)); font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; }
+.mg .pick label { display: grid; place-items: center; min-height: 36px; border: 1px solid var(--olive); border-radius: min(30px, var(--radius)); font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; }
 .mg .pick input { position: absolute; opacity: 0; pointer-events: none; }
 .mg .pick label:has(input:checked) { background: var(--brick); border-color: var(--brick); color: var(--on); }
 .mg .pick label:has(input:focus-visible) { outline: 2px solid var(--brick); outline-offset: 2px; }
-.mg .note { padding: 9px 15px; border-radius: min(18px, var(--radius, 30px)); background: var(--cream); font-size: 16px; }
+.mg .note { padding: 9px 15px; border-radius: min(18px, var(--radius)); background: var(--cream); font-size: 16px; }
 .mg .note.bad { color: var(--red); font-weight: 600; }
 
 
 /* Day bar and Floor plan (#143) */
 .mg .m-hd { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; }
 .mg .m-hd > span { font-size: 15px; color: var(--mut); }
+.mg .room .m-hd > span { color: inherit; }
 .mg .bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
 .mg .date { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; font-size: 19px; }
 .mg .round { display: inline-grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--brick); color: var(--on); font-size: 18px; }
@@ -92,8 +93,8 @@
 .mg .item b { font-weight: 500; font-size: 19px; line-height: 1.2; }
 .mg .item u { font-size: 15px; text-underline-offset: .2em; white-space: nowrap; }
 .mg .item p { grid-column: 2 / -1; font-size: 16px; }
-.mg .item.ref b::after { content: "Refused"; margin-left: 8px; padding: 1px 8px; border-radius: min(30px, var(--radius, 30px)); background: var(--on); color: var(--brick-deep); font-weight: 700; font-size: 13px; vertical-align: 2px; }
-.mg .item pre { margin-top: 10px; padding: 11px 13px; overflow-x: auto; border-radius: min(14px, var(--radius, 30px)); background: var(--brick-deep); font: 400 13px/1.5 var(--mono); }
+.mg .item.ref b::after { content: "Refused"; margin-left: 8px; padding: 1px 8px; border-radius: min(30px, var(--radius)); background: var(--on); color: var(--brick-deep); font-weight: 700; font-size: 13px; vertical-align: 2px; }
+.mg .item pre { margin-top: 10px; padding: 11px 13px; overflow-x: auto; border-radius: min(14px, var(--radius)); background: var(--brick-deep); font: 400 13px/1.5 var(--mono); }
 
 @container (max-width: 540px) {
   .mg .sv { grid-template-columns: 62px minmax(0, 1fr) minmax(0, 1fr); }

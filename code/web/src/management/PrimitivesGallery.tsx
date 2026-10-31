@@ -184,12 +184,7 @@ function LookPreview({ name, look }: { name: string; look: Look }) {
         </div>
       </Box>
       <Box tone="brick">Through your agent</Box>
-      <Field
-        label="Largest group"
-        hint="Larger groups go to your booking page."
-        type="number"
-        defaultValue={4}
-      />
+      <Field label="Seats" hint="The tables of your room, together." type="number" defaultValue={24} />
       <p className="err">Your restaurant needs a name.</p>
       <Doodle className="mg-gallery-doodle" />
     </div>
