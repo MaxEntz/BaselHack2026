@@ -52,11 +52,7 @@ deploy: ## Ship the BATP node and the gateway to the team server -> https://191-
 		sed -i -E "s/^MATP_/BATP_/; s/urn:matp:/urn:batp:/g; s,matp://,batp://,g" .env && \
 		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node -q && \
 		{ ( umask 077 && .venv/bin/python scripts/caddy_env.py > ../caddy.env.new ) || { rm -f ../caddy.env.new; exit 1; }; } && \
-		.venv/bin/alembic upgrade head && \
-		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service /etc/systemd/system/ && \
-		systemctl daemon-reload && \
-		systemctl enable --quiet merchant-node merchant-gateway && \
-		systemctl restart merchant-node merchant-gateway && \
+		{ cmp -s deploy/Caddyfile /etc/caddy/Caddyfile || caddy validate --adapter caddyfile --config deploy/Caddyfile; } && \
 		caddy_changed=0 && \
 		if cmp -s ../caddy.env.new ../caddy.env; then rm ../caddy.env.new; else mv ../caddy.env.new ../caddy.env && caddy_changed=1; fi && \
 		if ! cmp -s deploy/caddy-merchant-agents.conf /etc/systemd/system/caddy.service.d/merchant-agents.conf; then \
@@ -64,11 +60,15 @@ deploy: ## Ship the BATP node and the gateway to the team server -> https://191-
 			systemctl daemon-reload && caddy_changed=1; \
 		fi && \
 		if ! cmp -s deploy/Caddyfile /etc/caddy/Caddyfile; then \
-			caddy validate --adapter caddyfile --config deploy/Caddyfile && \
 			install -m 644 deploy/Caddyfile /etc/caddy/Caddyfile && caddy_changed=1; \
 		fi && \
 		if [ $$caddy_changed = 1 ]; then systemctl restart caddy; fi && \
-		systemctl enable --now --quiet caddy'
+		systemctl enable --now --quiet caddy && \
+		.venv/bin/alembic upgrade head && \
+		install -m 644 deploy/merchant-node.service deploy/merchant-gateway.service /etc/systemd/system/ && \
+		systemctl daemon-reload && \
+		systemctl enable --quiet merchant-node merchant-gateway && \
+		systemctl restart merchant-node merchant-gateway'
 
 .PHONY: bookings demo-booking outage restore
 

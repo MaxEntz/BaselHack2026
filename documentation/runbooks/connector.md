@@ -42,7 +42,7 @@ What it touches **outside** `/opt/merchant-agents`:
 
 - `/etc/systemd/system/merchant-node.service` and `merchant-gateway.service`.
 - `/etc/caddy/Caddyfile`, only when `code/deploy/Caddyfile` changed: it validates it, overwrites the file and restarts Caddy. **The server is shared**: any other site must also be declared in our Caddyfile.
-- `/etc/systemd/system/caddy.service.d/merchant-agents.conf` (`code/deploy/caddy-merchant-agents.conf`), a drop-in that gives Caddy `GATEWAY_TOKEN` from `/opt/merchant-agents/caddy.env`. `make deploy` writes that file with the token the gateway reads from `code/.env` (`scripts/caddy_env.py`, `root:root 600`, read by systemd before Caddy drops its privileges) and restarts Caddy when it, the drop-in or the Caddyfile changed.
+- `/etc/systemd/system/caddy.service.d/merchant-agents.conf` (`code/deploy/caddy-merchant-agents.conf`), a drop-in that gives Caddy `GATEWAY_TOKEN` from `/opt/merchant-agents/caddy.env`. `make deploy` writes that file with the token the gateway reads from `code/.env` (`scripts/caddy_env.py`, `root:root 600`, read by systemd before Caddy drops its privileges) and restarts Caddy when it, the drop-in or the Caddyfile changed. All of this happens before the gateway restarts, so Claude.ai never meets a gateway that wants a token Caddy doesn't add yet.
 
 It never touches `/opt/merchant-agents/code/.env`, and stops before touching Caddy or the services when the gateway would load no `GATEWAY_TOKEN` from it: Caddy forwards any request with a bearer token, so the gateway must check one. On a new server, create it with these lines (keep `GATEWAY_TOKEN`'s comment on its own line, as here):
 
