@@ -19,6 +19,7 @@ import pytest
 import seed
 import uvicorn
 from sqlalchemy.ext.asyncio import AsyncEngine
+from starlette.types import ASGIApp
 
 from core.config import Settings
 from core.db import make_engine
@@ -109,21 +110,36 @@ def batp_node(
         node.stop()
 
 
+def free_port() -> int:
+    """A port nothing listens on, for a server whose address must be known before it starts."""
+    with socket.socket() as probe:
+        probe.bind((LOOPBACK, 0))
+        port: int = probe.getsockname()[1]
+        return port
+
+
 @contextmanager
-def running_gateway(settings: Settings) -> Iterator[str]:
-    """`python -m gateway`, minus the port: uvicorn in a thread, with its own event loop."""
-    config = uvicorn.Config(create_app(settings), host=LOOPBACK, port=0, log_config=None)
+def serving(app: ASGIApp, port: int = 0) -> Iterator[str]:
+    """`app` on uvicorn in a thread, with its own event loop and its lifespan."""
+    config = uvicorn.Config(app, host=LOOPBACK, port=port, log_config=None)
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     deadline = time.monotonic() + STARTUP_SECONDS
     while not server.started:
-        assert thread.is_alive() and time.monotonic() < deadline, "gateway did not start"
+        assert thread.is_alive() and time.monotonic() < deadline, "server did not start"
         time.sleep(0.01)
     port = server.servers[0].sockets[0].getsockname()[1]
     yield f"http://{LOOPBACK}:{port}"
     server.should_exit = True
     thread.join(timeout=STARTUP_SECONDS)
+
+
+@contextmanager
+def running_gateway(settings: Settings) -> Iterator[str]:
+    """`python -m gateway`, minus the port."""
+    with serving(create_app(settings)) as url:
+        yield url
 
 
 @pytest.fixture(scope="module", params=["in_process", "over_batp"])
