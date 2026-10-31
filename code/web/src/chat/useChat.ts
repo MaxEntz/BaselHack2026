@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { announceChange } from "../management/changes.ts";
-import type { ChatEvent } from "../types.ts";
+import type { ChatEvent, ConversationItem, LiveEvent } from "../types.ts";
 import { changeWatcher } from "./changes.ts";
 import type { ChatClient } from "./client.ts";
 import { ChatError } from "./client.ts";
@@ -16,22 +16,29 @@ export type Welcome = { onboarding: string; operations: string };
 // `wire`: what the platform receives, when it isn't what the merchant typed.
 export type SendOptions = { wire?: string; site?: string };
 
+// The management site's panel (#140): the platform's session, the conversation it kept, and
+// live events from the shell, which already listens to them.
+export type ChatOptions = {
+  sessionId?: string;
+  restore?: readonly ConversationItem[];
+  listen?: boolean;
+};
+
 export function useChat(
   client: ChatClient,
   welcome: Welcome,
   merchant: Merchant | null,
+  { sessionId, restore, listen = true }: ChatOptions = {},
 ) {
-  const [state, dispatch] = useReducer(chatReducer, null, () =>
-    initialChatState(
-      merchant ? welcome.operations : welcome.onboarding,
-      merchant,
-    ),
-  );
+  const [state, dispatch] = useReducer(chatReducer, null, () => {
+    const initial = initialChatState(merchant ? welcome.operations : welcome.onboarding, merchant);
+    return restore ? chatReducer(initial, { type: "restore", items: restore }) : initial;
+  });
   const [liveConnected, setLiveConnected] = useState(false);
   // False from a build's card until this browser has the owner cookie (#132).
   const [claimed, setClaimed] = useState(true);
   const session = useRef<string>(null);
-  session.current ??= storedSessionId();
+  session.current ??= sessionId ?? storedSessionId();
   const busy = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const knownSlug = useRef(state.merchant?.slug ?? null);
@@ -126,9 +133,12 @@ export function useChat(
 
   useEffect(() => () => controller.current?.abort(), []);
 
+  // A live event the caller received itself.
+  const notify = useCallback((event: LiveEvent) => dispatch({ type: "live", event }), []);
+
   const slug = state.merchant?.slug;
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || !listen) return;
     const unsubscribe = client.subscribe(slug, {
       onEvent: (event) => {
         dispatch({ type: "live", event });
@@ -140,9 +150,9 @@ export function useChat(
       unsubscribe();
       setLiveConnected(false);
     };
-  }, [client, slug]);
+  }, [client, slug, listen]);
 
-  return { state, send, stream, askDetails, setStatus, reset, claimed, liveConnected };
+  return { state, send, stream, askDetails, setStatus, reset, notify, claimed, liveConnected };
 }
 
 function storedSessionId(): string {

@@ -103,6 +103,71 @@ for (const width of [1440, 390]) {
   });
 }
 
+// The assistant's panel (#140) with the fixture's opening conversation, beside Home at 1440 px
+// and on its own page at 390 px. The mockup's composer ends with a "static preview" line ours
+// doesn't have, so its parts are compared by look and width, not by height.
+const FEED: [string, string][] = [
+  ["ping", "#feed .ping"],
+  ["ping label", "#feed .ping small"],
+  ["ping line", "#feed .ping b"],
+  ["question", "#feed .msg.me"],
+  ["answer", "#feed .msg.bot"],
+];
+const COMPOSER: [string, string][] = [
+  ["feed", "#feed"],
+  ["chips", "#chips"],
+  ["chip", "#chips .pill"],
+  ["input box", ".box-in"],
+  ["input", ".box-in textarea"],
+  ["send", ".send"],
+];
+
+for (const [width, path, hash] of [
+  [1440, "", "#home"],
+  [390, "/assistant", "#assistant"],
+] as const) {
+  test.describe(`assistant at ${width} px`, () => {
+    test.skip(!existsSync(MOCKUP), `mockup not found: ${MOCKUP}`);
+    test.use({ viewport: { width, height: 900 } });
+
+    test("matches the mockup with the fixture's conversation", async ({ page, browser }) => {
+      await page.clock.install({ time: DEMO_NOW });
+      await page.goto(`/manage/la-graine-verte${path}`);
+      await expect(page.locator("#feed .msg.me")).toHaveCount(2);
+      await expect(page.locator("#chips .pill")).toHaveCount(4);
+      await settle(page);
+
+      const mockup = await browser.newPage({ viewport: { width, height: 900 } });
+      await mockup.goto(`${pathToFileURL(MOCKUP).href}${hash}`);
+      await settle(mockup);
+
+      for (const [name, selector] of FEED) {
+        const mine = await seen(page, selector);
+        const theirs = await seen(mockup, selector);
+        expect.soft(mine, `${name} (${selector})`).not.toBeNull();
+        if (!mine || !theirs) continue;
+        expect.soft(mine.look, `${name} look`).toEqual(theirs.look);
+        expect.soft(near(mine.box, theirs.box), `${name} box ${JSON.stringify([mine.box, theirs.box])}`).toBe(true);
+        expect.soft(mine.text, `${name} text`).toBe(theirs.text);
+      }
+      for (const [name, selector] of COMPOSER) {
+        const mine = await seen(page, selector);
+        const theirs = await seen(mockup, selector);
+        expect.soft(mine, `${name} (${selector})`).not.toBeNull();
+        if (!mine || !theirs) continue;
+        expect.soft(mine.look, `${name} look`).toEqual(theirs.look);
+        expect.soft([mine.box?.x, mine.box?.width], `${name} x and width`).toEqual([theirs.box?.x, theirs.box?.width]);
+      }
+      // The whole conversation reads the same.
+      const conversation = (p: Page) => p.locator("#feed").innerText();
+      expect.soft(await conversation(page)).toBe(await conversation(mockup));
+      const chips = (p: Page) => p.locator("#chips .pill").allInnerTexts();
+      expect.soft(await chips(page)).toEqual(await chips(mockup));
+      await mockup.close();
+    });
+  });
+}
+
 test.describe("shell behaviour in a browser", () => {
   test("the assistant follows a resize across 1240 px", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
