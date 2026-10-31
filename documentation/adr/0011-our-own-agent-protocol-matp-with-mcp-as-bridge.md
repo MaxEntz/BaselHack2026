@@ -1,6 +1,6 @@
 # ADR-0011 — Define our own agent protocol (MATP) on a dedicated port, with MCP as Claude's bridge
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-10-31
 
 ## Context

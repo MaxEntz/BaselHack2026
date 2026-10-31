@@ -41,8 +41,8 @@ flowchart LR
 ## 3. Transport
 
 - **TCP, port 4710.** It is unassigned in the IANA registry (range 4705–4710). MATP is not registered.
-- **TLS 1.3** is required on any path other than loopback. Plain TCP is allowed on loopback only.
-- **Framing:** each frame is one UTF-8 JSON object, written without line breaks, followed by `\n` (LF). A frame larger than **64 KiB** gets an `error` frame with `413` and the session is closed, before the node parses it.
+- **TLS 1.3** is required on any path other than loopback: the node refuses to listen beyond loopback without `MATP_TLS_CERT` and `MATP_TLS_KEY`. Plain TCP is allowed on loopback only.
+- **Framing:** each frame is one JSON object in strict UTF-8 (no byte-order mark), written without line breaks, followed by `\n` (LF). A frame larger than **64 KiB** gets an `error` frame with `413` and the session is closed, before the node parses it. JSON that can't be parsed safely (invalid UTF-8, huge numbers, deep nesting) is a malformed frame (`400`).
 - **One session, many requests:** a caller may send several requests without waiting. Every request carries an `id` (1 to 64 characters) chosen by the caller, unique among its unanswered requests. Responses carry the same `id` and **may arrive out of order**.
 - **Idle sessions** are closed by the node after 60 s without a frame. `PING` keeps a session open.
 
@@ -66,7 +66,7 @@ The caller speaks first. Until the node answers `WELCOME`, any other frame close
 
 - `agent.id` is a URN that names the calling agent. It is logged on every request.
 - `agent.kind` is `user-agent` (acts for a guest) or `merchant-agent` (acts for a business).
-- `token` is the caller's credential on this node. A node may accept a `hello` without one on loopback only.
+- `token` is the caller's credential on this node: at least 16 characters, compared in constant time. A node may accept a `hello` without one on loopback only, when it has no tokens configured.
 
 The node answers with one of these:
 
@@ -115,7 +115,7 @@ The node answers with one of these:
 |---|---|---|---|---|
 | `DISCOVER` | — | `SearchMerchantsInput` | `SearchMerchantsOutput` | `gateway.discovery.search` |
 | `AVAILABILITY` | required | `GetAvailabilityInput` without `merchant` | `GetAvailabilityOutput` | `AgentService.get_availability` |
-| `BOOK` | required | `CreateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.create_reservation` (`via`: `merchant` for a `merchant-agent`, `claude` for any `user-agent`, so only accurate behind our bridge) |
+| `BOOK` | required | `CreateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.create_reservation` with `via = claude`: MATP bookings come from guests' agents, and the `kind` a caller declares is not trusted |
 | `AMEND` | required | `UpdateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.update_reservation` |
 | `CANCEL` | required | `CancelReservationInput` without `merchant` | `ReservationOutput` | `AgentService.cancel_reservation(by="guest")` |
 | `RECALL` | — | `GetMyReservationsInput` | `GetMyReservationsOutput` | `AgentService.find_guest_reservations` |
@@ -151,7 +151,15 @@ through the guest notice returned by `RECALL`.
 - **Identity:** every request is attributed to the `agent.id` of its session, in the node's logs. Guest names are never logged at INFO (AGENTS.md §12).
 - **Credentials:** one token per known agent (node configuration), compared in constant time.
 - **Exposure:** in the POC the node listens on `127.0.0.1:4710`, and only the gateway on the same host reaches it. Opening 4710 on the team server needs TLS and a firewall rule on a shared machine, so ask first (AGENTS.md §0).
-- **Limits:** 64 KiB per frame, 60 s idle timeout, at least 32 requests in flight per session: beyond the node's limit, extra requests get `429 too_many_requests` and may be sent again once earlier ones are answered.
+- **Limits:**
+  - 64 KiB per frame (an answer that would exceed it becomes `503`);
+  - 10 s to say `HELLO`, then 60 s idle timeout (no frame and no request in flight);
+  - 10 s per request on the node (`503` past that);
+  - at least 32 requests in flight per session: beyond the node's limit, extra requests get `429 too_many_requests` and may be sent again once earlier ones are answered;
+  - 64 sessions per node, the next one gets a `503` reject;
+  - a session closes after 10 malformed frames in a row, or when its peer stops reading for 10 s.
+- **Bounded work:** a `DISCOVER` takes at most 32 tags and a 500-character query.
+- **Logging:** refused sessions are logged at WARNING with the peer address and the agent they claimed, never the token. Database errors never carry query parameters (guest names).
 - **Guest identity** is only the guest name and the booking reference (AGENTS.md §13). Fine for the POC with trusted callers; the draft's Security Considerations say what a real deployment needs.
 
 ## 11. Example session
@@ -183,9 +191,33 @@ The gateway's fallback layer (`fallback.py`) is unchanged. Its 2 s budget now in
 to the node, and a MATP `503` or a dropped session becomes `agent_unavailable` with the
 fallback URL.
 
-## 13. Versioning
+## 13. Implementation
+
+| Part | Where | State |
+|---|---|---|
+| Messages, framing, status codes, client, generic node | `code/packages/matp/` (`matp.messages`, `matp.codec`, `matp.status`, `matp.client`, `matp.server`) | ✅ #60 |
+| The node of this backend | `code/packages/merchant_node/` (`make node`, `uv run python -m merchant_node`), settings `MATP_HOST`, `MATP_PORT`, `MATP_TOKENS` | ✅ #60 |
+| The MCP gateway as a bridge | `gateway/agent_client.py` | 🚧 #61 |
+| The node on the team server (loopback) | `code/deploy/` | 🚧 #62 |
+| RFC-style Internet-Draft of this spec | `documentation/rfc/` | 🚧 #63 |
+
+Without `MATP_TOKENS`, the node lets any agent in, and refuses to start unless it listens on loopback.
+
+## 14. Versioning
 
 `matp` is `major.minor`. The caller sends the highest version it speaks. A node with the same
 major answers `welcome` with the highest minor both speak, and refuses another major with
 `426`. A new intent or a new optional field is a minor change. Unknown fields in a frame are
 ignored; because `params` are strict, a caller only sends the params of the session's version.
+
+## 15. Where the reference node still differs from the draft
+
+The Internet-Draft is the normative text. The node in `packages/matp/` (#60) was written in
+parallel and still differs on three points, to be aligned in a follow-up:
+
+- **Oversized frame:** the node answers with a `response` frame without `id` (status `413`),
+  not with the session-level `error` frame of §3.
+- **In-flight limit:** the node answers `400 invalid_input` beyond 32 requests, not
+  `429 too_many_requests`.
+- **`via`:** the node records every MATP booking as `claude`, whatever `kind` the caller
+  declares (§7). The draft's BOOK section still says `merchant` for a `merchant-agent`.
