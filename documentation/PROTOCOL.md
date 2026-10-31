@@ -235,4 +235,8 @@ from it on one point:
 - **`via`:** the node records every `BOOK` as `claude`, whatever `kind` the caller declares
   (`merchant_node.agents.VIA`, §7; pinned by
   `tests/integration/test_batp_node.py`). The draft's BOOK section says a node MUST record
-  `merchant` for a `merchant-agent`. Open PR #71 changes the channel to `assistant`.
+  `merchant` for a `merchant-agent`. The gap is kept on purpose (#118): the declared `kind` is
+  not trusted. Whoever closes it should know that `via = "merchant"` also hides a booking from
+  the merchant's live feed (`merchant_platform.events.made_by_merchant`, #81 treats it as the
+  merchant's own change, already confirmed in its chat), so a booking from a merchant-side agent
+  would arrive unseen. That may argue for changing the draft rather than the node.
