@@ -69,6 +69,7 @@ ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes root@191.96.88.152
 cd /opt/merchant-agents/code
 .venv/bin/python scripts/demo_reset.py --all --with-bookings      # known state: the 3 restaurants and tonight's bookings
 .venv/bin/python scripts/set_status.py le-petit-zinc down         # outage (then `live`)
+.venv/bin/python scripts/demo_booking.py                         # the live booking, through the local gateway
 ```
 
 On a new server, create the database in UTF-8. Without a locale, Postgres picks `SQL_ASCII`: psycopg then returns bytes, and everything fails with `cannot use a string pattern on a bytes-like object`.
