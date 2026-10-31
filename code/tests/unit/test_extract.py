@@ -1,6 +1,7 @@
 """Builder extraction with a fake LLM: post-processing, validation and the single retry."""
 
 import json
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -193,6 +194,48 @@ async def test_fallback_url_stays_on_the_merchants_site(
     assert str(result.profile.fallback_url) == expected
 
 
+ONE_PAGE = CrawlResult(
+    website=SITE,
+    pages=[
+        Page(
+            url=SITE,
+            title="La Graine Verte",
+            text="Réserver une table : 03 89 00 00 11.",
+            json_ld=[],
+            anchors=["carte", "icon_facebook", "reserver", "reserver-titre"],
+        )
+    ],
+)
+
+
+@pytest.mark.parametrize(
+    ("proposed", "expected"),
+    [
+        (None, f"{SITE}#reserver"),
+        (SITE, f"{SITE}#reserver"),
+        # The model's own section of the page wins.
+        (f"{SITE}#carte", f"{SITE}#carte"),
+    ],
+)
+async def test_a_one_page_site_falls_back_to_its_booking_section(
+    proposed: str | None, expected: str
+) -> None:
+    result = await extract_profile(ONE_PAGE, "", FakeLLM(draft(fallback_url=proposed)))
+
+    assert str(result.profile.fallback_url) == expected
+
+
+async def test_a_word_that_only_contains_book_is_not_a_booking_section() -> None:
+    page = ONE_PAGE.pages[0]
+    crawl = CrawlResult(
+        website=SITE, pages=[Page(page.url, page.title, page.text, [], anchors=["icon_facebook"])]
+    )
+
+    result = await extract_profile(crawl, "", FakeLLM(draft(fallback_url=None)))
+
+    assert str(result.profile.fallback_url) == SITE
+
+
 async def test_without_a_booking_page_the_fallback_is_the_homepage() -> None:
     crawl = CrawlResult(website=SITE, pages=CRAWL.pages[:1])
 
@@ -233,3 +276,34 @@ def test_the_untrusted_website_text_cannot_close_its_tag() -> None:
 )
 def test_slugify(name: str, website: str, slug: str) -> None:
     assert slugify(name, website) == slug
+
+
+async def test_the_retry_logs_the_invalid_fields_without_their_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="builder.extract")
+    llm = FakeLLM(draft(max_party_size=0, tags=["vegan", 4711]), draft())
+
+    await extract_profile(CRAWL, "", llm)
+
+    [record] = [r for r in caplog.records if r.msg == "extraction_invalid"]
+    assert record.levelno == logging.INFO
+    assert record.__dict__["fields"] == ["max_party_size", "tags.1"]
+    assert record.__dict__["attempt"] == 0
+    assert "4711" not in repr(record.__dict__)
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        # Price bands, with CHF counted like EUR (#74).
+        "€ under 15, €€ 15 to 30, €€€ 30 to 60, €€€€ over 60",
+        "CHF counting like EUR",
+        # Kitchen hours, not the building's opening hours.
+        "the kitchen hours when a source gives them",
+        # A booking form's maximum is not the group size when groups must call.
+        "A booking form's maximum doesn't count",
+    ],
+)
+def test_the_instructions_keep_the_extraction_rules(rule: str) -> None:
+    assert rule in INSTRUCTIONS.replace("\n", " ")

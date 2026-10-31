@@ -18,7 +18,7 @@ import time
 import unicodedata
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Literal
 from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
@@ -46,6 +46,8 @@ MAX_REDIRECTS = 5
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 # Only the text is read: skip what is heavy and never holds any.
 SKIPPED_RESOURCES = frozenset({"image", "media", "font"})
+# Element ids kept per page, in document order: enough for a one-page site's sections.
+MAX_ANCHORS = 200
 
 Refusal = Literal["private", "unreachable"]
 
@@ -54,6 +56,7 @@ _EXTRACT = """() => ({
   text: document.body ? document.body.innerText : "",
   description:
     document.querySelector('meta[name="description" i]')?.getAttribute("content") ?? null,
+  ids: Array.from(document.querySelectorAll("[id]"), (element) => element.id).filter(Boolean),
   jsonLd: Array.from(
     document.querySelectorAll('script[type="application/ld+json" i]'),
     (script) => script.textContent,
@@ -75,6 +78,8 @@ class Page:
     text: str  # normalized visible text, truncated
     json_ld: list[dict[str, Any]]  # schema.org blocks found on the page
     description: str | None = None  # meta[name=description]
+    # Element ids, in document order: where a link like `/#reserver` can land
+    anchors: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -318,6 +323,7 @@ async def _read(
         text=normalize_text(str(raw["text"]), max_chars),
         json_ld=parse_json_ld(raw["jsonLd"]),
         description=" ".join(str(raw["description"] or "").split()) or None,
+        anchors=[str(anchor) for anchor in raw["ids"][:MAX_ANCHORS]],
     )
     return page, raw["links"]
 

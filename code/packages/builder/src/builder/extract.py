@@ -6,6 +6,7 @@ Pydantic validates the result. One retry feeds the validation errors back (§8.3
 """
 
 import json
+import logging
 import re
 import unicodedata
 from collections.abc import Awaitable, Callable
@@ -28,14 +29,18 @@ from core.models import (
     Tag,
 )
 
+log = logging.getLogger("builder.extract")
+
 TOOL_NAME = "save_merchant_profile"
 # Part of the extraction cache key: bump it with any prompt or schema change.
-PROMPT_VERSION = "v2.1"
+PROMPT_VERSION = "v2.2"
 MAX_RETRIES = 1
 # When neither the site nor the description gives a seat count or a floor plan.
 DEFAULT_SEATS = 40
 TAGS: tuple[str, ...] = get_args(Tag)
 BOOKING_PAGE = re.compile(r"book|reserv", re.IGNORECASE)
+# A section id starting with the word: `reserver`, `book-a-table`, not `icon_facebook`.
+BOOKING_ANCHOR = re.compile(r"(?:^|[-_])(?:book|reserv)", re.IGNORECASE)
 
 _DEFAULTS = TEMPLATE.defaults
 INSTRUCTIONS = f"""\
@@ -49,7 +54,15 @@ add one sentence in English per default to `assumptions`:
   - price_level: {_DEFAULTS.price_level}
 - Leave `tables` empty when neither source describes the floor plan; seats is null when \
 neither gives a seat count.
-- max_party_size is the largest group that can book online.
+- services are the hours when guests can sit down to eat: the kitchen hours when a source \
+gives them rather than the bar's or the building's opening hours, else the opening hours.
+- max_party_size is the largest party that can book without being asked to call or get in \
+touch first, whatever the booking channel ("tables for 1 to 4" gives 4, "groups over 6: \
+contact us" gives 6). A booking form's maximum doesn't count when a source says larger groups \
+must call.
+- price_level comes from the typical main course or set menu price per person, CHF counting \
+like EUR: € under 15, €€ 15 to 30, €€€ 30 to 60, €€€€ over 60. It is a default only when no \
+source gives any price.
 - seats counts bookable seats only and equals the sum of the table seats.
 - tags: only {", ".join(TAGS)}, when a source says so.
 - fallback_url is the website's booking page, or its homepage if it has none.
@@ -121,6 +134,7 @@ async def extract_profile(
         call = next((c for c in reply.tool_calls if c.name == TOOL_NAME), None)
         if call is None:
             problem = "- (root): no profile was returned"
+            log.info("extraction_invalid", extra={"attempt": attempt, "fields": ["(root)"]})
             history.append({"role": "user", "content": f"{problem}\nCall {TOOL_NAME}."})
             continue
         try:
@@ -128,6 +142,8 @@ async def extract_profile(
             return finalize(draft, crawl)
         except ValidationError as error:
             problem = describe(error)
+            # Field paths only: the values may be the merchant's data.
+            log.info("extraction_invalid", extra={"attempt": attempt, "fields": fields(error)})
         history.append(
             {
                 "role": "tool",
@@ -228,7 +244,12 @@ def fallback_url(proposed: str | None, crawl: CrawlResult) -> str:
     """The model's fallback if it is a page the crawl actually read (a `#section` of it is
     fine); else the booking page the crawl found; else the homepage. A guessed or foreign
     link (injected text, a booking platform) never wins: guests only see it when the agent
-    has failed, so it must work."""
+    has failed, so it must work. The homepage of a one-page site lands on its booking section
+    (`/#reserver`) when the crawl saw one."""
+    return _with_booking_section(_booking_page(proposed, crawl), crawl)
+
+
+def _booking_page(proposed: str | None, crawl: CrawlResult) -> str:
     if proposed and same_site(proposed, crawl.website):
         crawled = {_page_key(page.url) for page in crawl.pages} | {_page_key(crawl.website)}
         if _page_key(urldefrag(proposed).url) in crawled:
@@ -237,6 +258,14 @@ def fallback_url(proposed: str | None, crawl: CrawlResult) -> str:
         if BOOKING_PAGE.search(page.url) or BOOKING_PAGE.search(page.title):
             return page.url
     return crawl.website
+
+
+def _with_booking_section(url: str, crawl: CrawlResult) -> str:
+    """`url` with the homepage's booking section, when `url` is the homepage without one."""
+    if urldefrag(url).fragment or _page_key(url) != _page_key(crawl.website) or not crawl.pages:
+        return url
+    anchor = next((a for a in crawl.pages[0].anchors if BOOKING_ANCHOR.search(a)), None)
+    return f"{urldefrag(url).url}#{anchor}" if anchor else url
 
 
 def _page_key(url: str) -> str:
@@ -249,9 +278,17 @@ def _page_key(url: str) -> str:
 
 def describe(error: ValidationError) -> str:
     return "\n".join(
-        f"- {'.'.join(str(part) for part in issue['loc']) or '(root)'}: {issue['msg']}"
-        for issue in error.errors(include_url=False)
+        f"- {path}: {issue['msg']}"
+        for path, issue in zip(fields(error), error.errors(include_url=False), strict=True)
     )
+
+
+def fields(error: ValidationError) -> list[str]:
+    """The invalid fields' paths, such as `services.0.end`."""
+    return [
+        ".".join(str(part) for part in issue["loc"]) or "(root)"
+        for issue in error.errors(include_url=False)
+    ]
 
 
 QUESTIONS = {
