@@ -71,7 +71,7 @@ async def test_the_link_opens_the_management_site_in_this_browser() -> None:
     cookie = login.headers["set-cookie"].lower()
     assert all(flag in cookie for flag in ("httponly", "secure", "samesite=lax", "path=/"))
     assert token not in login.headers["set-cookie"]
-    assert after.status_code == 501  # past the owner check
+    assert after.status_code == 503  # past the owner check: no agent service here
 
 
 async def test_cookies_are_not_secure_on_a_plain_http_web_app() -> None:
@@ -427,7 +427,7 @@ async def test_the_browser_that_built_a_merchant_claims_its_cookie_once() -> Non
 
     assert claimed.status_code == 204
     assert OWNER_COOKIE in claimed.headers["set-cookie"]
-    assert page.status_code == 501  # past the owner check, with the claimed cookie
+    assert page.status_code == 503  # past the owner check (no agent here), with the cookie
     assert again.status_code == 401  # once
     assert bare.status_code == 401  # the session now needs that cookie
     assert stranger.status_code == 401

@@ -1,4 +1,4 @@
-"""The management site's routes (#129): frozen shapes, answering 501 until each issue lands."""
+"""The management site's routes (#129): frozen shapes, each built by its issue."""
 
 from typing import Any
 
@@ -23,28 +23,17 @@ TABLES = {"tables": [{"label": "T1", "seats": 2}]}
 RULES = {"max_party_size": 4, "fallback_url": "http://localhost:8081/#reserver"}
 SETTINGS = {"name": "La Graine Verte", "city": "Mulhouse", "price_level": "€", "tags": []}
 
-# (method, path under /merchants/{slug}, body, issue that implements it; None once built)
-ROUTES: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
-    ("GET", "/hours", None, "#133"),
-    ("PUT", "/hours", HOURS, "#133"),
-    ("GET", "/tables", None, "#133"),
-    ("PUT", "/tables", TABLES, "#133"),
-    ("GET", "/rules", None, "#133"),
-    ("PUT", "/rules", RULES, "#133"),
-    ("GET", "/settings", None, "#133"),
-    ("PUT", "/settings", SETTINGS, "#133"),
-    ("GET", "/blocked", None, "#133"),
-    ("PUT", "/blocked?date=2026-11-01", {"times": ["13:00"]}, "#133"),
-    ("POST", "/agent/pause", None, None),
-    ("POST", "/agent/resume", None, None),
-    ("GET", "/agent/requests?date=2026-10-31&refused=true", None, None),
-    ("POST", "/publish", None, None),
+# Routes on the agent service (`app.state.agent`): (method, path under /merchants/{slug}, body)
+ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
+    ("POST", "/agent/pause", None),
+    ("POST", "/agent/resume", None),
+    ("GET", "/agent/requests?date=2026-10-31&refused=true", None),
+    ("POST", "/publish", None),
 ]
-NOT_BUILT = [route for route in ROUTES if route[3]]
 
 
-# Built routes: the overview (#132), the guests (#144), the bookings (#134) and Home (#135);
-# here without their services.
+# Built routes: the overview (#132), the guests (#144), the bookings (#134), Home (#135) and
+# the restaurant's forms (#133); here without their services.
 BUILT: list[tuple[str, str, dict[str, Any] | None, str]] = [
     ("GET", "", None, "#132"),
     ("GET", "/guests?q=kim", None, "#144"),
@@ -56,6 +45,16 @@ BUILT: list[tuple[str, str, dict[str, Any] | None, str]] = [
     ("PATCH", "/reservations/R-001", MOVE, "#134"),
     ("POST", "/reservations/R-001/cancel", None, "#134"),
     ("GET", "/slots?date=2026-10-31&party_size=2&ignore=R-001", None, "#134"),
+    ("GET", "/hours", None, "#133"),
+    ("PUT", "/hours", HOURS, "#133"),
+    ("GET", "/tables", None, "#133"),
+    ("PUT", "/tables", TABLES, "#133"),
+    ("GET", "/rules", None, "#133"),
+    ("PUT", "/rules", RULES, "#133"),
+    ("GET", "/settings", None, "#133"),
+    ("PUT", "/settings", SETTINGS, "#133"),
+    ("GET", "/blocked", None, "#133"),
+    ("PUT", "/blocked?date=2026-11-01", {"times": ["13:00"]}, "#133"),
 ]
 
 
@@ -82,21 +81,9 @@ async def call(
         return await http.request(method, f"/merchants/{slug}{path}", json=body)
 
 
-@pytest.mark.parametrize(("method", "path", "body", "issue"), NOT_BUILT)
-async def test_each_route_answers_501_naming_its_issue(
-    method: str, path: str, body: dict[str, Any] | None, issue: str
-) -> None:
-    response = await call(method, path, body)
-
-    assert response.status_code == 501
-    error = ManagementError.model_validate(response.json())
-    assert error.error == "not_built_yet"
-    assert issue in error.message
-
-
-@pytest.mark.parametrize(("method", "path", "body", "issue"), ROUTES + BUILT)
+@pytest.mark.parametrize(("method", "path", "body"), ROUTES + [r[:3] for r in BUILT])
 async def test_each_route_is_closed_to_anyone_but_the_owner(
-    method: str, path: str, body: dict[str, Any] | None, issue: str | None
+    method: str, path: str, body: dict[str, Any] | None
 ) -> None:
     anonymous = await call(method, path, body, owner=None)
     other = await call(method, path, body, owner="maison-albane")
@@ -236,7 +223,8 @@ def test_the_openapi_schema_declares_each_answer() -> None:
     created = paths["/merchants/{slug}/reservations"]["post"]["responses"]
     assert "201" in created
     declared = {(path, method) for path, item in paths.items() for method in item}
-    expected = {(template(path), method.lower()) for method, path, _, _ in ROUTES + BUILT}
+    routes = ROUTES + [route[:3] for route in BUILT]
+    expected = {(template(path), method.lower()) for method, path, _ in routes}
     assert declared >= expected
 
 
