@@ -3,6 +3,7 @@
 DEPLOY_HOST ?= root@191.96.88.152
 DEPLOY_SSH ?= ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes
 DEPLOY_DIR := /opt/merchant-agents/code
+PLATFORM_ENV := /opt/merchant-agents/platform/.env
 
 .PHONY: setup db migrate gateway node platform web web-dist site sites tunnel deploy seed demo-reset owner-link test lint fmt rfc
 
@@ -50,14 +51,21 @@ web-dist: ## Build the merchant web app (web/dist) for make deploy
 	cd web && npm run build
 
 deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web app to the team server
+	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
+		f=$(PLATFORM_ENV); \
+		test -f $$f || { echo "$$f is missing on the server (documentation/runbooks/platform.md, step 2)" >&2; exit 1; }; \
+		last() { grep -E "^(export +)?$$1 *=" $$f | tail -1 | sed -E "s/^[^=]*= *//"; }; \
+		for c in "PLATFORM_DEV_ROUTES ^0" "PLATFORM_INVITE_CODE ." "PLATFORM_COOKIE_SECRET ." "PLATFORM_WEB_URL ^https://sesame\\."; do \
+			set -- $$c; \
+			last $$1 | grep -Eq "$$2" || { echo "$$f on the server needs $$1 matching $$2 (documentation/runbooks/platform.md, step 2)" >&2; exit 1; }; \
+		done; \
+		test -z "$$(last PLATFORM_MERCHANT)" || { echo "$$f on the server must not set PLATFORM_MERCHANT (local development only)" >&2; exit 1; }'
 	rsync -rlptz --chmod=a+rX --delete --exclude .venv --exclude '.env*' --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .hypothesis --exclude '.coverage*' --exclude htmlcov --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) 'mkdir -p $(DEPLOY_DIR)/web/dist'
 	rsync -rlptz --chmod=a+rX --delete -e "$(DEPLOY_SSH)" web/dist/ $(DEPLOY_HOST):$(DEPLOY_DIR)/web/dist/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
 		sed -i -E "s/^MATP_/BATP_/; s/urn:matp:/urn:batp:/g; s,matp://,batp://,g" .env && \
-		{ for s in "^PLATFORM_DEV_ROUTES=0" "^PLATFORM_INVITE_CODE=." "^PLATFORM_COOKIE_SECRET=." "^PLATFORM_WEB_URL=https://sesame\\." ; do grep -qs "$$s" ../platform/.env || { echo "../platform/.env on the server needs $$s (documentation/runbooks/platform.md, step 2)" >&2; exit 1; }; done; } && \
-		{ ! grep -qs "^PLATFORM_MERCHANT=." ../platform/.env || { echo "../platform/.env on the server must not set PLATFORM_MERCHANT (local development only)" >&2; exit 1; }; } && \
 		{ id -u sesame >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin sesame; } && \
 		chown root:gateway .env && chmod 640 .env && \
 		chown -R root:sesame ../platform && chmod 750 ../platform && chmod 640 ../platform/.env && \
