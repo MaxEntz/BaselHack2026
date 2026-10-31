@@ -9,12 +9,15 @@ import { PageTitle } from "./PageTitle.tsx";
 
 export const PAUSED_TOAST = "The agent is paused. Guests get your booking page.";
 export const RESUMED_TOAST = "The agent is live again.";
+// The assistant's sentence after `publish_agent` (AGENTS.md §9).
+export const PUBLISHED_TOAST = "Your agent is live: Claude users can now book you.";
+export const NOT_YET = "They answer once you publish.";
 
 const STATUS: Record<MerchantStatus, string> = {
   live: "Live, and taking bookings.",
   down: "Paused. Guests get your booking page.",
-  // A build waits for its owner (#136): publishing goes through the assistant, not this switch.
-  building: "Not published yet. Ask the assistant to publish it.",
+  // A build waits for its owner (#136): hidden from guests and agents until published.
+  building: "Not published yet. Only you can see it.",
 };
 
 type Filter = "all" | "refused";
@@ -37,6 +40,19 @@ export function AgentPage({ slug, version }: { slug: string; version: number }) 
       const answer = status === "down" ? await client.resumeAgent(slug) : await client.pauseAgent(slug);
       merchant.update((data) => ({ ...data, status: answer.status }));
       toast(answer.status === "down" ? PAUSED_TOAST : RESUMED_TOAST);
+    } catch (error) {
+      toast(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function publish() {
+    setBusy(true);
+    try {
+      const published = await client.publish(slug);
+      merchant.update(() => published);
+      toast(PUBLISHED_TOAST);
     } catch (error) {
       toast(errorMessage(error));
     } finally {
@@ -72,7 +88,11 @@ export function AgentPage({ slug, version }: { slug: string; version: number }) 
               <i />
               {STATUS[data.status]}
             </span>
-            {data.status !== "building" && (
+            {data.status === "building" ? (
+              <Pill small className="right" disabled={busy} onClick={() => void publish()}>
+                Publish the agent
+              </Pill>
+            ) : (
               <Pill small className="right" disabled={busy} onClick={() => void toggle(data.status)}>
                 {data.status === "down" ? "Resume the agent" : "Pause the agent"}
               </Pill>
@@ -80,6 +100,8 @@ export function AgentPage({ slug, version }: { slug: string; version: number }) 
           </div>
           <Address label="Its address" value={data.agent_address} onCopy={copy} />
           <Address label="For Claude" value={data.mcp_url} onCopy={copy} />
+          {/* The node and /m/<slug>/mcp refuse an unpublished merchant: don't let it be pasted blind. */}
+          {data.status === "building" && <p className="ag-note">{NOT_YET}</p>}
           <Requests slug={slug} today={data.now.slice(0, 10)} version={version} />
         </section>
       )}
