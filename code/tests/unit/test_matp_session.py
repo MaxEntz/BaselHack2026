@@ -279,6 +279,7 @@ async def test_a_429_on_one_request_leaves_the_others_on_the_session_answered() 
         ]
 
     async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
         scripted_node(script) as (port, sessions),
         MatpClient("127.0.0.1", port, CALLER) as client,
     ):
@@ -309,6 +310,7 @@ async def test_an_unknown_or_invalid_answer_fails_only_its_request(
         return [{"type": "response", "id": request["id"], "status": status, "error": error}]
 
     async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
         scripted_node(script) as (port, sessions),
         MatpClient("127.0.0.1", port, CALLER) as client,
     ):
@@ -319,12 +321,27 @@ async def test_an_unknown_or_invalid_answer_fails_only_its_request(
     assert sessions == ["s-1"]
 
 
+async def test_an_unreadable_answer_without_an_id_drops_the_session() -> None:
+    # Nobody can tell whose answer it was: every request on the session fails, none hangs.
+    async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{"type": "response", "status": "garbled"}]
+
+    async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
+        scripted_node(script) as (port, _),
+        MatpClient("127.0.0.1", port, CALLER) as client,
+    ):
+        with pytest.raises(AgentUnavailable, match="closed before the answer"):
+            await client.request("BOOK", "le-petit-zinc")
+
+
 async def test_any_2xx_status_is_a_success() -> None:
     async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
         request = requests[-1]
         return [{"type": "response", "id": request["id"], "status": 202, "result": {"ok": 1}}]
 
     async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
         scripted_node(script) as (port, _),
         MatpClient("127.0.0.1", port, CALLER) as client,
     ):

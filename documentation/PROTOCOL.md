@@ -103,7 +103,7 @@ The node answers with one of these:
 ```
 
 - `params` and `result` reuse the tool contracts of `core/models.py` (see §7), so MATP and the MCP tools can never disagree.
-- An error is never a stack trace (AGENTS.md §12). `error.code` is one of AGENTS.md §8.4.
+- An error is never a stack trace (AGENTS.md §12). `error.code` is one of AGENTS.md §8.4, or `too_many_requests` with a `429` (§8).
 - `fallback_url` is present for `agent_unavailable` and `party_too_large`.
 - `merchant` is required for `AVAILABILITY`, `BOOK`, `AMEND` and `CANCEL`, and must be absent for the other intents (`400` otherwise).
 - Unknown members of a **frame** are ignored, but `params` are strict: an unknown param gets `400 invalid_input`.
@@ -187,15 +187,19 @@ implementation speaks MATP to the node instead of calling `PgAgentService` in-pr
 | `cancel_reservation` | `CANCEL` |
 | `get_my_reservations` | `RECALL` |
 
-The gateway's fallback layer (`fallback.py`) is unchanged. Its 2 s budget now includes the hop
+The gateway's fallback layer (`fallback.py`) serves both modes. Its 2 s budget includes the hop
 to the node, and a MATP `503` or a dropped session becomes `agent_unavailable` with the
 fallback URL. A refusal from the node (`400`, `404`, `409`, `413`) keeps its own §8.4 code, also
 on `search_merchants`: the node answered, so it is never reported as an outage (#90).
 
-`MatpClient` keeps at most 32 requests in flight on its session, the minimum every node accepts;
-the others wait for a slot within the gateway's budget. A `429` anyway, an unknown status or
-`error.code`, or an answer it can't read fails that request only, as `agent_unavailable` with the
-fallback URL; the session and the other requests go on. Any `2xx` is a success.
+`MatpClient` keeps at most 32 of the requests it waits on in flight, the minimum every node
+accepts; the others wait for a slot within the gateway's budget. A request the gateway gave up
+on may still run on the node for up to 10 s, so a slow node can still answer `429` to a later
+one. That `429`, a status or `error.code` the bridge doesn't know, or an answer it can't read
+fails that request only, as `agent_unavailable` with the fallback URL; the session and the
+other requests go on. An unreadable answer without an `id` drops the session, since nobody can
+tell whose it was. Any `2xx` is a success. The draft would treat an unknown `4xx` as a caller
+error; the bridge can't fix the request for Claude, so it gives the restaurant's link instead.
 
 The gateway keeps reading the registry itself for the `down` status and the fallback URL, so that
 a dead node still gives the restaurant's link. For the same reason, when `DISCOVER` fails and the

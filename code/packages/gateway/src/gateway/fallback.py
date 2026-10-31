@@ -182,8 +182,6 @@ async def call_service[T](
         result = await asyncio.wait_for(op(), timeout)
     except (SlotUnavailable, NotFound, InvalidInput) as exc:
         result = ToolError(error=exc.code, message=str(exc))
-    except ValidationError as exc:
-        result = _invalid_input(exc)
     except Exception as exc:
         result = _service_unavailable(exc, tool, None)
         if named and (merchant := await _quietly(named, timeout)):

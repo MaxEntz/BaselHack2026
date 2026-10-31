@@ -227,6 +227,10 @@ class NodeServer:
                 continue
             if len(tasks) >= self.max_in_flight:
                 # Not carried out; the caller may send it again after an earlier answer (§6).
+                log.warning(
+                    "request refused: too many in flight",
+                    extra={"agent": caller[0].id, "request": request.id},
+                )
                 await send(_too_many(request.id))
                 continue
             task = asyncio.create_task(self._answer(caller, request, send))

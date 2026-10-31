@@ -371,14 +371,6 @@ async def test_call_service_keeps_a_refusal_as_its_own_error_without_a_link(
     assert [r.levelno for r in caplog.records] == [logging.INFO]
 
 
-async def test_call_service_validation_error_is_invalid_input() -> None:
-    result = await call_service("search_merchants", raising(validation_error()), settings=SETTINGS)
-
-    assert isinstance(result, ToolError)
-    assert result.error == "invalid_input"
-    assert GUEST not in result.message
-
-
 async def test_call_service_gives_the_named_merchant_s_link_when_it_fails() -> None:
     async def named() -> RegistryEntry:
         return ZINC

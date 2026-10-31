@@ -1,8 +1,9 @@
 """A MATP client: one session, many requests in flight (PROTOCOL.md §5, §6).
 
 The session opens on the first request and reopens on the next request after the node closed
-it. At most `IN_FLIGHT_LIMIT` requests are in flight; the others wait for a free slot, so a
-node that follows the draft never refuses one with a 429.
+it. At most `IN_FLIGHT_LIMIT` requests it still waits on are in flight; the others wait for a
+free slot. A request whose caller gave up may still run on the node, which then can answer a
+429 to a later one: that request fails as `AgentUnavailable`, like any status it can't use.
 
 When the session is lost under a request, a read-only intent is sent again once; a write is
 never retried, since it may have gone through (BOOK and AMEND carry an idempotency key, so the
@@ -190,8 +191,11 @@ class MatpClient:
                 try:
                     response = Response.model_validate(frame)
                 except ValidationError:
+                    request_id = frame.get("id")
+                    if not isinstance(request_id, str):
+                        return  # no way to tell whose answer it is: the session is dropped
                     # Only its own request fails: the session and the others go on.
-                    self._settle(frame.get("id"), AgentUnavailable(UNREADABLE))
+                    self._settle(request_id, AgentUnavailable(UNREADABLE))
                     continue
                 self._settle(response.id, response)
         except (ConnectionError, FrameError):
@@ -199,8 +203,8 @@ class MatpClient:
         finally:
             self._drop(writer)
 
-    def _settle(self, request_id: object, outcome: Response | AgentUnavailable) -> None:
-        future = self._pending.get(request_id) if isinstance(request_id, str) else None
+    def _settle(self, request_id: str | None, outcome: Response | AgentUnavailable) -> None:
+        future = self._pending.get(request_id) if request_id else None
         if future is None or future.done():
             return
         if isinstance(outcome, Response):
