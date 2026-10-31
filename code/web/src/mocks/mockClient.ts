@@ -1,8 +1,9 @@
 import type { ChatClient } from "../chat/client.ts";
-import type { ChatEvent, LiveEvent } from "../types.ts";
+import type { ChatEvent, LiveEvent, SessionOutput } from "../types.ts";
 import cards from "./cards.json";
 import notification from "./notification.json";
 import onboarding from "./onboarding.json";
+import session from "./session.json";
 import tonight from "./tonight.json";
 
 // `npm run check:contracts` checks these JSON files against the types.
@@ -10,6 +11,7 @@ const ONBOARDING = onboarding as ChatEvent[];
 const TONIGHT = tonight as ChatEvent[];
 const CARDS = cards as ChatEvent[];
 const NOTIFICATION = notification as LiveEvent;
+const SESSION = session as SessionOutput;
 
 const NOTIFICATION_DELAY_MS = 6000;
 
@@ -62,6 +64,10 @@ export function createMockClient(onboarded: boolean): ChatClient {
         );
       }
       return () => timers.forEach((timer) => window.clearTimeout(timer));
+    },
+
+    async session() {
+      return onboarded ? SESSION : { merchant: null };
     },
   };
 }

@@ -1,4 +1,4 @@
-import type { ChatEvent, LiveEvent } from "../types.ts";
+import type { ChatEvent, LiveEvent, SessionOutput } from "../types.ts";
 import { readSse } from "./sse.ts";
 
 export type LiveHandlers = {
@@ -15,6 +15,8 @@ export type ChatClient = {
   ) => AsyncGenerator<ChatEvent>;
   // Subscribes to live notifications; returns the unsubscribe function.
   subscribe: (slug: string, handlers: LiveHandlers) => () => void;
+  // The merchant the session works on; no merchant when the platform can't say.
+  session: (sessionId: string, signal?: AbortSignal) => Promise<SessionOutput>;
 };
 
 export class ChatError extends Error {}
@@ -105,6 +107,22 @@ export const httpClient: ChatClient = {
       window.clearTimeout(retry);
       source.close();
     };
+  },
+
+  async session(sessionId, signal) {
+    try {
+      const response = await fetch(
+        `/api/session?session_id=${encodeURIComponent(sessionId)}`,
+        { signal },
+      );
+      if (response.ok) {
+        const body = (await response.json()) as Partial<SessionOutput>;
+        if (body.merchant) return { merchant: body.merchant };
+      }
+    } catch {
+      // Unreachable platform: the chat reports it on the next message.
+    }
+    return { merchant: null };
   },
 };
 

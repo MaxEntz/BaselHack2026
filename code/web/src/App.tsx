@@ -1,5 +1,6 @@
 import { httpClient } from "./chat/client.ts";
 import type { Merchant } from "./chat/state.ts";
+import type { Welcome } from "./chat/useChat.ts";
 import { useChat } from "./chat/useChat.ts";
 import { Composer } from "./components/Composer.tsx";
 import { Header } from "./components/Header.tsx";
@@ -16,9 +17,12 @@ const DEMO_MERCHANT: Merchant | null = env.VITE_MERCHANT_SLUG
 const CLIENT =
   env.VITE_MOCK === "1" ? createMockClient(DEMO_MERCHANT !== null) : httpClient;
 
-const WELCOME = DEMO_MERCHANT
-  ? "Welcome back! Ask me about tonight's bookings, block a time slot or change your booking policy."
-  : "Hi! I'm your platform assistant. I'll turn your website into a booking agent that Claude can talk to.\n\n**What's your restaurant's website?**";
+const WELCOME: Welcome = {
+  onboarding:
+    "Hi! I'm your platform assistant. I'll turn your website into a booking agent that Claude can talk to.\n\n**What's your restaurant's website?**",
+  operations:
+    "Welcome back! Ask me about tonight's bookings, block a time slot or change your booking policy.",
+};
 
 export default function App() {
   const { state, send, liveConnected } = useChat(CLIENT, WELCOME, DEMO_MERCHANT);
