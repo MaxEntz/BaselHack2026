@@ -1,7 +1,8 @@
+import { strings } from "../strings.ts";
 import type { Service, Via } from "../types.ts";
 
 export const VIA_LABELS: Record<Via, string> = {
-  claude: "Claude",
+  claude: strings.viaAssistant,
   website: "Website",
   merchant: "Merchant",
 };

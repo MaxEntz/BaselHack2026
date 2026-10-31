@@ -5,6 +5,7 @@ write a new one and mark the old one `Superseded by ADR-NNNN`.
 
 | ADR | Decision | Status | Date |
 |---|---|---|---|
+| [0016](0016-router-and-test-tools-for-the-management-site.md) | Use React Router, Vitest with Testing Library, and Playwright in the web app | Accepted | 2026-10-31 |
 | [0014](0014-rename-matp-to-batp.md) | Rename our agent protocol from MATP to BATP (Broad Agent Transfer Protocol) | Accepted | 2026-10-31 |
 | [0013](0013-store-update-idempotency-keys-in-public.md) | Store the idempotency keys of applied updates in `public`, not in each merchant schema | Accepted | 2026-10-31 |
 | [0012](0012-one-mcp-server-for-every-merchant-endpoint.md) | Serve every merchant's own MCP endpoint from one server, routed by the path | Accepted | 2026-10-31 |
