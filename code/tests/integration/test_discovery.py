@@ -8,15 +8,15 @@ import pytest
 from sqlalchemy import delete, insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from core.db import merchants_t
-from core.models import FilterSuggestion, SearchFilters
-from gateway.discovery import (
+from agent.discovery import (
     RegistryEntry,
     find_merchant,
     find_named_down_merchant,
     find_named_merchant,
     search,
 )
+from core.db import merchants_t
+from core.models import FilterSuggestion, SearchFilters
 
 pytestmark = pytest.mark.integration
 

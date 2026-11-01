@@ -4,23 +4,26 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from agent.discovery import (
+    MAX_QUERY,
+    MAX_TAGS,
+    Criteria,
+    RegistryEntry,
+    check_search_bounds,
+    filter_merchants,
+    fold,
+    normalize_filters,
+    query_names,
+    routable,
+    search,
+    suggest_relaxations,
+)
 from core.errors import InvalidInput
 from core.models import (
     FilterSuggestion,
     MerchantProfile,
     MerchantSummary,
     SearchFilters,
-)
-from gateway.discovery import (
-    MAX_QUERY,
-    MAX_TAGS,
-    Criteria,
-    check_search_bounds,
-    filter_merchants,
-    names,
-    normalize_filters,
-    search,
-    suggest_relaxations,
 )
 
 
@@ -380,5 +383,27 @@ def test_a_query_holding_the_whole_name_still_names_it(query: str, slug: str) ->
         ("", "La Terrasse", None, False),
     ],
 )
-def test_names(query: str, name: str, city: str | None, named: bool) -> None:
-    assert names(query, name, city) is named
+def test_query_names(query: str, name: str, city: str | None, named: bool) -> None:
+    assert query_names(query, name, city) is named
+
+
+@pytest.mark.parametrize(
+    ("status", "reachable", "paused"),
+    [("live", True, False), ("down", True, True), ("building", False, False)],
+)
+def test_which_registry_entries_guests_calls_reach(
+    status: str, reachable: bool, paused: bool
+) -> None:
+    # The gateway and the BATP node route by this one rule, each with its own errors (#220).
+    entry = RegistryEntry("le-petit-zinc", "Le Petit Zinc", status, "http://zinc.example/book")
+
+    assert (routable(entry) is entry) is reachable
+    assert entry.paused is paused
+
+
+def test_an_unknown_merchant_is_not_routable() -> None:
+    assert routable(None) is None
+
+
+def test_folding_ignores_case_accents_spacing_and_ligatures() -> None:
+    assert fold("  Œufs  à la COQUE\u00a0Müller ") == "oeufs a la coque muller"

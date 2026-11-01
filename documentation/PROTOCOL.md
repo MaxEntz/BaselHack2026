@@ -113,7 +113,7 @@ The node answers with one of these:
 
 | Intent | `merchant` | `params` (`core.models`) | `result` | Served by |
 |---|---|---|---|---|
-| `DISCOVER` | — | `SearchMerchantsInput` | `SearchMerchantsOutput` | `gateway.discovery.search` |
+| `DISCOVER` | — | `SearchMerchantsInput` | `SearchMerchantsOutput` | `agent.discovery.search` |
 | `AVAILABILITY` | required | `GetAvailabilityInput` without `merchant` | `GetAvailabilityOutput` | `AgentService.get_availability` |
 | `BOOK` | required | `CreateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.create_reservation` with `via = claude`: BATP bookings come from guests' agents, and the `kind` a caller declares is not trusted |
 | `AMEND` | required | `UpdateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.update_reservation` |
@@ -160,7 +160,7 @@ through the guest notice returned by `RECALL`.
   - at least 32 requests in flight per session: beyond the node's limit, extra requests get `429 too_many_requests` and may be sent again once earlier ones are answered;
   - 64 sessions per node, the next one gets a `503` reject;
   - a session closes after 10 malformed frames in a row, or when its peer stops reading for 10 s.
-- **Bounded work:** a `DISCOVER` takes at most 32 tags and a 500-character query (`gateway.discovery.MAX_TAGS`, `MAX_QUERY`, shared with the gateway's `search_merchants`).
+- **Bounded work:** a `DISCOVER` takes at most 32 tags and a 500-character query (`agent.discovery.MAX_TAGS`, `MAX_QUERY`, shared with the gateway's `search_merchants`).
 - **Logging:** refused sessions are logged at WARNING with the peer address and the agent they claimed, never the token. Database errors never carry query parameters (guest names).
 - **Guest identity** is only the guest name and the booking reference (AGENTS.md §13). Fine for the POC with trusted callers; the draft's Security Considerations say what a real deployment needs.
 

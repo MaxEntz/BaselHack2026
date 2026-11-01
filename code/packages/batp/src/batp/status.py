@@ -1,5 +1,7 @@
 """Business errors ↔ BATP status codes (PROTOCOL.md §8, AGENTS.md §8.4)."""
 
+from typing import Final
+
 from batp.messages import ErrorBody, Response
 from core.errors import (
     AgentError,
@@ -10,13 +12,23 @@ from core.errors import (
     SlotUnavailable,
 )
 
-TOO_MANY_REQUESTS = 429
+# The statuses of PROTOCOL.md §8: HTTP's numbers, for the same meanings.
+OK: Final = 200
+BAD_REQUEST: Final = 400
+UNAUTHORIZED: Final = 401
+NOT_FOUND: Final = 404
+CONFLICT: Final = 409
+CONTENT_TOO_LARGE: Final = 413
+UPGRADE_REQUIRED: Final = 426
+TOO_MANY_REQUESTS: Final = 429
+SERVICE_UNAVAILABLE: Final = 503
+
 STATUS_BY_CODE = {
-    "invalid_input": 400,
-    "not_found": 404,
-    "slot_unavailable": 409,
-    "party_too_large": 413,
-    "agent_unavailable": 503,
+    "invalid_input": BAD_REQUEST,
+    "not_found": NOT_FOUND,
+    "slot_unavailable": CONFLICT,
+    "party_too_large": CONTENT_TOO_LARGE,
+    "agent_unavailable": SERVICE_UNAVAILABLE,
 }
 ERROR_BY_CODE: dict[str, type[AgentError]] = {
     error.code: error

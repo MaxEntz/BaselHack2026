@@ -21,7 +21,7 @@ MODULES = [
     "agent.service",
     "agent.provisioning",
     "gateway.server",
-    "gateway.discovery",
+    "agent.discovery",
     "gateway.fallback",
     "gateway.__main__",
     "builder.crawl",

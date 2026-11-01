@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, PositiveInt, ValidationError
 
+from agent.discovery import RegistryEntry
 from core.config import Settings
 from core.errors import (
     AgentError,
@@ -21,7 +22,6 @@ from core.errors import (
 )
 from core.logs import JsonFormatter
 from core.models import ErrorCode, ToolError
-from gateway.discovery import RegistryEntry
 from gateway.fallback import call_agent, call_merchant, call_service
 
 URL = "https://le-petit-zinc.example/reservation"

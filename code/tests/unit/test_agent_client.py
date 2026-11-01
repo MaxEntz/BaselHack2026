@@ -99,7 +99,7 @@ async def test_other_calls_are_passed_through(
 async def test_local_search_goes_to_discovery(client: LocalAgentClient) -> None:
     found = SearchMerchantsOutput(merchants=())
 
-    with patch("gateway.discovery.search", AsyncMock(return_value=found)) as search:
+    with patch("agent.discovery.search", AsyncMock(return_value=found)) as search:
         result = await client.search_merchants("zinc", "Mulhouse", None, None)
 
     assert result is found

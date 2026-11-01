@@ -1,7 +1,6 @@
 """`uv run python -m merchant_node`: the BATP node on BATP_HOST:BATP_PORT (127.0.0.1:4710)."""
 
 import asyncio
-import logging
 import secrets
 import ssl
 import sys
@@ -13,7 +12,7 @@ from batp.messages import Hello, NodeIdentity
 from batp.server import NodeServer
 from core.config import Settings, get_settings
 from core.db import make_engine
-from core.logs import json_handler
+from core.logs import use_json_logs
 from merchant_node.agents import MerchantAgents
 from merchant_node.requests_log import RequestLog, log_engine
 
@@ -67,9 +66,7 @@ def token_check(settings: Settings) -> Callable[[Hello], bool]:
 
 
 def main() -> None:
-    root = logging.getLogger()
-    root.handlers[:] = [json_handler()]
-    root.setLevel(logging.INFO)
+    use_json_logs()
     settings = get_settings()
     if problems := exposure_problems(settings):
         sys.exit("; ".join(problems))

@@ -14,13 +14,13 @@ from mcp import Client
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.discovery import find_merchant
 from agent.provisioning import set_status
 from agent.service import PgAgentService
 from core.config import Settings
 from core.db import merchant_conn, reservations_t
 from core.models import ToolError
 from gateway.agent_client import LocalAgentClient
-from gateway.discovery import find_merchant
 from gateway.fallback import call_agent
 from gateway.server import create_server
 

@@ -33,3 +33,11 @@ def json_handler() -> logging.Handler:
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     return handler
+
+
+def use_json_logs(level: int = logging.INFO) -> None:
+    """Send every logger to stderr as JSON lines from `level` up: the setup of each process
+    (gateway, BATP node, platform API), so their lines read the same (AGENTS.md §12)."""
+    root = logging.getLogger()
+    root.handlers[:] = [json_handler()]
+    root.setLevel(level)
