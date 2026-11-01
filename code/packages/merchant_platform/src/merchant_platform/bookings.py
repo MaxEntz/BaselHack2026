@@ -23,6 +23,7 @@ from core.models import (
     StatsCard,
     StatsCardData,
     TryRequestInput,
+    UpdateKnowledgeInput,
     UpdatePolicyInput,
     UpdateRulesInput,
     UpdateTablesInput,
@@ -30,6 +31,9 @@ from core.models import (
 from merchant_platform.specs import (
     CANCELLED,
     HIDDEN,
+    KNOWLEDGE,
+    KNOWLEDGE_SAVED,
+    KNOWLEDGE_UNCHANGED,
     NOT_AVAILABLE,
     POLICY_SAVED,
     TEST_HIDDEN,
@@ -120,6 +124,21 @@ class BookingTools:
                 **after.model_dump(mode="json", exclude={"tools"}),
             },
             diff("Cancelling", before.cancellation_policy, after.cancellation_policy or "None"),
+        )
+
+    async def update_knowledge(self, slug: str, arguments: UpdateKnowledgeInput) -> Outcome:
+        change = await self._agent.update_knowledge(slug, arguments.remove, arguments.add)
+        if not change.removed and not change.added:
+            return confirmation(KNOWLEDGE_UNCHANGED)
+        return Outcome(
+            {
+                "shown_to_merchant": "change",
+                "text": KNOWLEDGE_SAVED,
+                **change.model_dump(mode="json"),
+            },
+            diff(
+                KNOWLEDGE, "; ".join(change.removed) or None, "; ".join(change.added) or "Removed"
+            ),
         )
 
     async def cancel(self, slug: str, arguments: AdminCancelInput) -> Outcome:

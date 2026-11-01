@@ -17,6 +17,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "build_agent": {"website": "https://zinc.example/", "description": "Dinner 19-22."},
     "publish_agent": {},
     "update_rules": {"cancellation_policy": "Free until 2 hours before."},
+    "update_knowledge": {"remove": ["tartare"]},
     "try_request": {"party_size": 2},
     "send_test_booking": {},
     "update_look": {"corners": "square"},

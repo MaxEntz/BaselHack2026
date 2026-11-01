@@ -119,6 +119,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 | `block_slot` / `unblock_slot` | `starts_at` | Confirmation |
 | `update_policy` | `max_party_size?`, `services?` (at least one) | `Policy`: `{max_party_size, slot_length_min, services}` |
 | `update_tables` | `tables: [{label, seats}]` | Confirmation (tables, seats) |
+| `update_knowledge` | `remove?` (words, 3 characters or more), `add?` (`[{topic, text}]`), at least one | `diff` card; "Saved. Your agent answers guests with this from now on." Removes every item holding these words, ignoring case, accents and spacing; what the owner adds comes first, with no source. Nothing removed and nothing new is a confirmation that nothing changed, with no activity line. `invalid_input` when the result wouldn't fit the 60 items or 12 KB (#248) |
 | `cancel_reservation` | `reservation_id` (no `by`: the service gets `by="merchant"`) | Confirmation worded from `cancel_by_merchant`'s outcome |
 
 - `block_slot` / `unblock_slot` refuse an offset that isn't `Europe/Zurich`'s at that instant, with an `invalid_input` naming the local time to send.

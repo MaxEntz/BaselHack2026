@@ -52,6 +52,8 @@ from core.models import (
     AgentRequest,
     BlockedTime,
     GuestRow,
+    KnowledgeChange,
+    KnowledgeNote,
     MerchantSettings,
     Policy,
     PriceLevel,
@@ -392,6 +394,15 @@ class PgAgentService:
             )
         log.info("policy updated", extra={"merchant": slug})
         return policy
+
+    async def update_knowledge(
+        self, slug: str, remove: Sequence[str], add: Sequence[KnowledgeNote]
+    ) -> KnowledgeChange:
+        async with merchant_conn(self.engine, slug) as conn:
+            await load_merchant(conn, slug, merchant_side=True)
+            change = await admin.update_knowledge(conn, slug, remove, add, at=self.clock())
+        log.info("knowledge updated", extra={"merchant": slug})
+        return change
 
     async def update_tables(self, slug: str, tables: Sequence[TableSpec]) -> list[TableSpec]:
         async with merchant_conn(self.engine, slug) as conn:

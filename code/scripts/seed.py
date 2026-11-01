@@ -70,10 +70,25 @@ def load_profile(slug: str, sites_domain: str | None = None) -> MerchantProfile:
     profile = MerchantProfile.model_validate_json((FIXTURES / f"{slug}.json").read_text())
     if sites_domain is None:
         return profile
+    knowledge = profile.knowledge
+    if knowledge is not None:
+        knowledge = knowledge.model_copy(
+            update={
+                "items": tuple(
+                    item.model_copy(
+                        update={"source_url": public_address(item.source_url, slug, sites_domain)}
+                    )
+                    if item.source_url
+                    else item
+                    for item in knowledge.items
+                )
+            }
+        )
     return profile.model_copy(
         update={
             "website": public_address(profile.website, slug, sites_domain),
             "fallback_url": public_address(profile.fallback_url, slug, sites_domain),
+            "knowledge": knowledge,
         }
     )
 

@@ -2,6 +2,7 @@
 the tests check its effect and the card the merchant sees."""
 
 import json
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any, cast
 from zoneinfo import ZoneInfo
@@ -15,6 +16,8 @@ from core.models import (
     BuildAgentInput,
     BuildAgentOutput,
     ChatEvent,
+    KnowledgeChange,
+    KnowledgeNote,
     Look,
     Reservation,
     Rules,
@@ -52,6 +55,14 @@ class StudioAgent:
             update={"max_party_size": max_party_size, "cancellation_policy": cancellation_policy}
         )
         return self.rules
+
+    async def update_knowledge(
+        self, slug: str, remove: Sequence[str], add: Sequence[KnowledgeNote]
+    ) -> KnowledgeChange:
+        return KnowledgeChange(
+            removed=tuple(word.capitalize() for word in remove if word == "tartare"),
+            added=tuple(note.text for note in add),
+        )
 
     async def get_availability(
         self, slug: str, day: date, party_size: int, time: str | None = None
@@ -155,6 +166,43 @@ async def test_update_rules_saves_the_policy_and_shows_the_change() -> None:
         {"label": "Cancelling", "before": None, "after": "Free up to 2 hours before", "view": None}
     ]
     assert "Saved. Claude reads this before it cancels for a guest." in said(llm)
+
+
+async def test_update_knowledge_shows_what_the_agent_stops_and_starts_saying() -> None:
+    llm = ScriptedLLM(
+        (
+            [],
+            [
+                call(
+                    "update_knowledge",
+                    remove=["tartare"],
+                    add=[{"topic": "menu", "text": "Pas de tartare en ce moment."}],
+                )
+            ],
+        ),
+        (["Done."], []),
+    )
+
+    events = await Studio(llm).turn("We no longer serve the tartare")
+
+    assert cards(events, "diff") == [
+        {
+            "label": "What your agent knows",
+            "before": "Tartare",
+            "after": "Pas de tartare en ce moment.",
+            "view": None,
+        }
+    ]
+    assert "Saved. Your agent answers guests with this from now on." in said(llm)
+
+
+async def test_update_knowledge_says_when_it_changed_nothing() -> None:
+    llm = ScriptedLLM(([], [call("update_knowledge", remove=["parking"])]), (["Done."], []))
+
+    events = await Studio(llm).turn("Remove the parking")
+
+    assert cards(events, "diff") == []
+    assert "Your agent held nothing like that, so nothing changed." in said(llm)
 
 
 @pytest.mark.parametrize(

@@ -29,6 +29,7 @@ from core.models import (
     ShowViewInput,
     SlotInput,
     TryRequestInput,
+    UpdateKnowledgeInput,
     UpdateLookInput,
     UpdatePolicyInput,
     UpdateRulesInput,
@@ -44,6 +45,9 @@ PUBLISHED = (
     "empty until the first guest books."
 )
 POLICY_SAVED = "Saved. Claude reads this before it cancels for a guest."
+KNOWLEDGE = "What your agent knows"
+KNOWLEDGE_SAVED = "Saved. Your agent answers guests with this from now on."
+KNOWLEDGE_UNCHANGED = "Your agent held nothing like that, so nothing changed."
 HIDDEN = "Agents get a 404 until you publish. Do that first, and I'll try it for you."
 TEST_HIDDEN = "Agents get a 404 until you publish. Do that first, and I'll send one through."
 UNREVIEWED = (
@@ -114,6 +118,15 @@ TOOLS = (
         "it). The largest group is update_policy's.",
         "Saving your rules…",
         UpdateRulesInput,
+    ),
+    Tool(
+        "update_knowledge",
+        "Correct what the merchant's agent tells guests beyond booking: the menu, drinks, "
+        "parking, dogs, the chef. `remove` takes out every item holding these words; `add` states "
+        'what is true now, in the merchant\'s words. "We no longer serve the tartare": remove '
+        '"tartare". Hours, groups and tables have their own tools.',
+        "Saving what your agent knows…",
+        UpdateKnowledgeInput,
     ),
     Tool(
         "try_request",

@@ -26,5 +26,17 @@
   "cancellation_policy": "Free cancellation up to 1 hour before the booking.",
   "fallback_url": "http://localhost:8081/#reserver",
   "look": {"bg": "#edebe2", "surface": "#f8f6ef", "line": "#d5d2c3", "ink": "#47522f", "muted": "#5f6a45", "accent": "#616c48", "accent_2": "#935046", "on_accent": "#f4f2ea", "display_font": "Fraunces Soft", "body_font": "Karla", "corners": "organic", "radius_px": 30, "texture": "leather"},
-  "knowledge": null
+  "knowledge": {
+    "items": [
+      {"topic": "menu", "text": "Bol du jour, 12 €.", "source_url": "http://localhost:8081/", "quote": "Bol du jour"},
+      {"topic": "menu", "text": "Dahl de lentilles corail, riz complet, 11 €.", "source_url": "http://localhost:8081/", "quote": "Dahl de lentilles corail, riz complet"},
+      {"topic": "menu", "text": "Formule bol + dessert, 15 €.", "source_url": "http://localhost:8081/", "quote": "Formule bol + dessert"},
+      {"topic": "menu", "text": "Gâteau chocolat-noisette, 5 €.", "source_url": "http://localhost:8081/", "quote": "Gâteau chocolat-noisette"},
+      {"topic": "dietary", "text": "Cantine 100 % végétale, sans aucun produit animal.", "source_url": "http://localhost:8081/", "quote": "sans aucun produit animal"},
+      {"topic": "dietary", "text": "Sans gluten pour la plupart des plats.", "source_url": "http://localhost:8081/", "quote": "Sans gluten pour la plupart des plats"},
+      {"topic": "access", "text": "7 passage des Semis, 68100 Mulhouse.", "source_url": "http://localhost:8081/", "quote": "7 passage des Semis"},
+      {"topic": "practical", "text": "Réservation par téléphone aux heures d'ouverture : 03 89 00 00 11.", "source_url": "http://localhost:8081/", "quote": "Réservez par téléphone, aux heures d'ouverture"},
+      {"topic": "about", "text": "Des bols de saison et des légumes de maraîchers du Haut-Rhin, à petits prix.", "source_url": "http://localhost:8081/", "quote": "des légumes de maraîchers du Haut-Rhin"}
+    ]
+  }
 }
