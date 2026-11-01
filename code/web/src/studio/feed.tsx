@@ -4,6 +4,7 @@ import type { Components } from "react-markdown";
 import { VIA_LABELS, describeDate, formatServices, notificationTitle, plural } from "../cards/format.ts";
 import type { StepName, StepState } from "../chat/state.ts";
 import type { BuildAgentOutput, BuildFact, LiveEvent } from "../types.ts";
+import { Hello } from "./Hello.tsx";
 import { type CanvasView, type FeedEntry, stepNote } from "./phase.ts";
 
 // Links in replies open next to the chat, never in place of it.
@@ -47,6 +48,9 @@ const CopyIcon = () => (
 );
 
 type FeedProps = {
+  // Before the first message: the first question, in the same log, so that the first reply
+  // is announced (a log added with its content already in it is not).
+  empty: boolean;
   entries: readonly FeedEntry[];
   activity: string | null;
   busy: boolean;
@@ -57,7 +61,7 @@ type FeedProps = {
   onRetry: () => void;
 };
 
-export function Feed({ entries, activity, busy, addresses, onOpen, onFact, onCopy, onRetry }: FeedProps) {
+export function Feed({ empty, entries, activity, busy, addresses, onOpen, onFact, onCopy, onRetry }: FeedProps) {
   const feed = useRef<HTMLDivElement>(null);
   const lastError = entries.findLast((entry) => entry.kind === "error")?.key;
   // Smooth when a message comes in; text that streams into the last one just follows.
@@ -75,17 +79,21 @@ export function Feed({ entries, activity, busy, addresses, onOpen, onFact, onCop
 
   return (
     <div ref={feed} className="st-feed" role="log" aria-live="polite" aria-label="Conversation">
-      {entries.map((entry) => (
-        <Entry
-          key={entry.key}
-          entry={entry}
-          addresses={addresses}
-          onOpen={onOpen}
-          onFact={onFact}
-          onCopy={onCopy}
-          onRetry={entry.key === lastError && !busy ? onRetry : undefined}
-        />
-      ))}
+      {empty ? (
+        <Hello />
+      ) : (
+        entries.map((entry) => (
+          <Entry
+            key={entry.key}
+            entry={entry}
+            addresses={addresses}
+            onOpen={onOpen}
+            onFact={onFact}
+            onCopy={onCopy}
+            onRetry={entry.key === lastError && !busy ? onRetry : undefined}
+          />
+        ))
+      )}
       {busy && !CARRIES_ON.has(last?.kind ?? "") && (
         <p className="st-thinking">{activity ?? "Thinking…"}</p>
       )}
@@ -254,11 +262,15 @@ function Review({ data, pages, loginUrl, onOpen, onFact, onCopy }: ReviewProps) 
       <div className="st-msg bot">
         <div className="st-opens">
           <button type="button" className="st-open-site" onClick={() => onOpen("agent")}>
-            <span className="st-tile">Ag</span>
+            <span className="st-tile" aria-hidden="true">
+              Ag
+            </span>
             <b>Agent site</b>
           </button>
           <button type="button" className="st-open-site" onClick={() => onOpen("manage")}>
-            <span className="st-tile">Mg</span>
+            <span className="st-tile" aria-hidden="true">
+              Mg
+            </span>
             <b>Management site</b>
           </button>
         </div>
@@ -312,85 +324,20 @@ function UrlRow({ label, url, copyLabel, onCopy }: UrlRowProps) {
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-function ResultCard({
-  card,
-  onOpen,
-}: {
-  card: Extract<FeedEntry, { kind: "card" }>["card"];
-  onOpen: (view: View) => void;
-}) {
+type ResultCardData = Extract<FeedEntry, { kind: "card" }>["card"];
+type CardData<K extends ResultCardData["kind"]> = Extract<ResultCardData, { kind: K }>["data"];
+
+function ResultCard({ card, onOpen }: { card: ResultCardData; onOpen: (view: View) => void }) {
   switch (card.kind) {
-    case "diff": {
-      const { label, before, after, view } = card.data;
-      return (
-        <div className="st-card">
-          <div className="st-diff">
-            <span>{label}</span>
-            {before && <s>{before}</s>}
-            <b>{after}</b>
-            {view && (
-              <button type="button" className="st-see" onClick={() => onOpen(view)}>
-                See it
-              </button>
-            )}
-          </div>
-        </div>
-      );
-    }
+    case "diff":
+      return <DiffResult data={card.data} onOpen={onOpen} />;
     case "view":
     case "page":
       return null;
-    case "reservations": {
-      const when = describeDate(card.data.date);
-      const rows = card.data.reservations
-        .filter((row) => row.status === "confirmed")
-        .toSorted((a, b) => a.time.localeCompare(b.time));
-      if (rows.length === 0) {
-        return (
-          <div className="st-card">
-            <h3>No bookings {when} yet</h3>
-          </div>
-        );
-      }
-      return (
-        <div className="st-card">
-          <h3>Bookings {when}</h3>
-          <table className="st-tbl">
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.time}</td>
-                  <td>{row.guest_name}</td>
-                  <td>{row.party_size}</td>
-                  <td>{row.table_label}</td>
-                  <td>{VIA_LABELS[row.via]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
+    case "reservations":
+      return <ReservationsResult data={card.data} />;
     case "stats":
-      return (
-        <div className="st-card">
-          <h3>{capitalize(describeDate(card.data.date))}</h3>
-          <div className="st-nums">
-            <div>
-              <b>{card.data.bookings}</b>
-              <small>bookings</small>
-            </div>
-            <div>
-              <b>{card.data.guests}</b>
-              <small>guests</small>
-            </div>
-            <div>
-              <b>{card.data.seats}</b>
-              <small>seats</small>
-            </div>
-          </div>
-        </div>
-      );
+      return <StatsResult data={card.data} />;
     case "policy":
       return (
         <div className="st-card">
@@ -413,6 +360,78 @@ function ResultCard({
         </div>
       );
   }
+}
+
+function DiffResult({ data, onOpen }: { data: CardData<"diff">; onOpen: (view: View) => void }) {
+  const { label, before, after, view } = data;
+  return (
+    <div className="st-card">
+      <div className="st-diff">
+        <span>{label}</span>
+        {before && <s>{before}</s>}
+        <b>{after}</b>
+        {view && (
+          <button type="button" className="st-see" onClick={() => onOpen(view)}>
+            See it
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReservationsResult({ data }: { data: CardData<"reservations"> }) {
+  const when = describeDate(data.date);
+  const rows = data.reservations
+    .filter((row) => row.status === "confirmed")
+    .toSorted((a, b) => a.time.localeCompare(b.time));
+  if (rows.length === 0) {
+    return (
+      <div className="st-card">
+        <h3>No bookings {when} yet</h3>
+      </div>
+    );
+  }
+  return (
+    <div className="st-card">
+      <h3>Bookings {when}</h3>
+      <table className="st-tbl">
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td>{row.time}</td>
+              <td>{row.guest_name}</td>
+              <td>{row.party_size}</td>
+              <td>{row.table_label}</td>
+              <td>{VIA_LABELS[row.via]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function StatsResult({ data }: { data: CardData<"stats"> }) {
+  return (
+    <div className="st-card">
+      <h3>{capitalize(describeDate(data.date))}</h3>
+      <div className="st-nums">
+        <div>
+          <b>{data.bookings}</b>
+          <small>bookings</small>
+        </div>
+        <div>
+          <b>{data.guests}</b>
+          <small>guests</small>
+        </div>
+        <div>
+          <b>{data.seats}</b>
+          <small>seats</small>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Ping({ event }: { event: LiveEvent }) {

@@ -56,7 +56,7 @@ A contract change needs a dedicated PR and a message to the team, with Python an
 
 ### Builder schema
 - `MerchantProfile.look` (#149) is never part of the model's schema: `builder.look.read_look` fills it from the homepage's computed styles (`Page.look`, sampled by `probes.LOOK`, colours and numbers only). Profiles stored before it have `look: null`, which means the default look (#150). Its review-card line is the `look` fact ("Olive, brick and cream. Soft italic titles. Organic shapes.").
-- `MerchantProfile.knowledge` (#248, `core.models.SiteKnowledge`): at most 60 `items`, and 12 KB of `text` and `quote` in all. Each item has a `topic` (`menu`, `drinks`, `dietary`, `access`, `practical`, `about`, `events`, `other`), a `text` of at most 400 characters, and a `source_url` and `quote` of at most 200 characters, both null when the owner said it. No control characters. Profiles stored before it have none. The merchant's agent reads it, never the raw crawl (ADR-0003).
+- `MerchantProfile.knowledge` (#248, `core.models.SiteKnowledge`): at most 60 `items`, and 12 KB of `text` and `quote` in all. Each item has a `topic` (`menu`, `drinks`, `dietary`, `access`, `practical`, `about`, `events`, `other`), a `text` of at most 400 characters, and a `source_url` and `quote` of at most 200 characters, both null when the owner said it. No control characters. Profiles stored before it have none. The merchant's agent reads it, never the raw crawl (ADR-0003). The platform assistant never does: it holds write tools for the merchant, so `knowledge` stays out of its prompt and of `build_agent`'s tool result, like the facts. The model fills `ProfileDraft.knowledge`; `builder.extract.verified_knowledge` keeps an item only if its `quote` (8 characters at least) is in a crawled page's title or text, or in the owner's description, then the source is null. Spaces and control characters are normalized, an item over a bound is dropped without costing the others or a retry, and items past the 60 or the 12 KB don't fit. The review card has one `BuildFact` per topic held (`key` is the topic), naming up to 5 items and the source of the first.
 - `MerchantProfile.model_json_schema()` is the source of the builder tool's `parameters`. Tests resolve its `$defs`/`$ref` against `code/tests/fixtures/le-petit-zinc.json`.
 - OpenAI strict mode rejects `format: uri` and properties missing from `required`: pass the schema through `core.llm.strict_schema()` (`code/packages/core/src/core/llm.py`), the rules the [#4](https://github.com/MaxEntz/BaselHack2026/issues/4) spike found.
 - `BuildAgentInput.website` takes any HTTP(S) URL, `localhost` included. The crawler refuses private addresses and ports other than 80 and 443 unless `CRAWL_ALLOW_PRIVATE=1` (#142), and link-local ones (169.254.169.254) always, checking every request and redirect hop after DNS resolution.
@@ -119,6 +119,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 | `block_slot` / `unblock_slot` | `starts_at` | Confirmation |
 | `update_policy` | `max_party_size?`, `services?` (at least one) | `Policy`: `{max_party_size, slot_length_min, services}` |
 | `update_tables` | `tables: [{label, seats}]` | Confirmation (tables, seats) |
+| `update_knowledge` | `remove?` (words, 3 characters or more), `add?` (`[{topic, text}]`), at least one | `diff` card; "Saved. Your agent answers guests with this from now on." Removes every item holding these words, ignoring case, accents and spacing; what the owner adds comes first, with no source. The model's result only counts them, since the removed text is the site's own words. Nothing removed and nothing new is a confirmation that nothing changed, with no activity line. `invalid_input` when the result wouldn't fit the 60 items or 12 KB (#248) |
 | `cancel_reservation` | `reservation_id` (no `by`: the service gets `by="merchant"`) | Confirmation worded from `cancel_by_merchant`'s outcome |
 
 - `block_slot` / `unblock_slot` refuse an offset that isn't `Europe/Zurich`'s at that instant, with an `invalid_input` naming the local time to send.
@@ -148,15 +149,16 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 | `POST /chat` | `{session_id: str \| null, message: str}` (1–4000 characters) | `ChatEvent` SSE stream, exactly one final `done` | `409` while the session is still answering; `403` `needs_invite` for an onboarding without the invitation; a failing turn sends a generic `error` before `done` |
 | `GET /session?session_id=` | — | `SessionOutput`: `{merchant: {slug, name} \| null}` | — |
 | `GET /events?merchant=<slug>` | — | `LiveEvent` SSE stream | `401` `not_signed_in`, `403` `other_merchant` |
-| `GET /login?token=` | — | `303` to `/manage/<slug>`, with the owner cookie | `401` `not_signed_in` for an unknown link |
+| `GET /login?token=` | — | `303` to `/manage/<slug>`, with the owner cookie | `401` `not_signed_in` for an unknown link; `429` `too_many_requests` |
 | `POST /logout` | — | `204`, the owner cookie removed | — |
-| `POST /invite` | `{code: str}` | `204`, with the invite cookie (nothing when no code is set) | `403` `needs_invite` for a wrong code |
+| `POST /invite` | `{code: str}` | `204`, with the invite cookie (nothing when no code is set) | `403` `needs_invite` for a wrong code; `429` `too_many_requests` |
 | `POST /session/claim` | `{session_id: str}` | `204`, with the owner cookie | `401` `not_signed_in` unless a build in this process attached that session within 5 minutes, its link is current, and it wasn't claimed yet |
-| `POST /public/{slug}/reservations` | `{starts_at, party_size, guest_name, idempotency_key}` | `201` + `{reservation}`, `via="website"` | `ToolError` body: `404` `not_found`, `409` `slot_unavailable`, `422` `party_too_large` / `invalid_input`, `503` `agent_unavailable` |
+| `POST /public/{slug}/reservations` | `{starts_at, party_size, guest_name, idempotency_key}` | `201` + `{reservation}`, `via="website"` | `ToolError` body: `404` `not_found`, `409` `slot_unavailable`, `422` `party_too_large` / `invalid_input`, `503` `agent_unavailable`; `429` `too_many_requests` |
 | `POST /dev/reset-session` | `{session_id: str \| null}` | Restarts onboarding | Disabled with `PLATFORM_DEV_ROUTES=0`; the platform refuses to start with it on beside an https `PLATFORM_WEB_URL`, a cookie secret or an invite code |
 | `GET /health` | — | Status | — |
 
 - Request validation errors on any route: `422` + `ToolError` (`invalid_input`).
+- **Rate limits (#232).** `POST /invite` (10), `GET /login` (30) and `POST /public/{slug}/reservations` (10) each take that many requests per 10 minutes from one address (`merchant_platform.limits.LIMITS`); past it, `429` `too_many_requests` with `Retry-After` in seconds, before any lookup, model or agent call. A refused request isn't counted, and a body outside the schema is. Counted in the platform's process, which is enough with its one worker ([ADR-0016](adr/0016-serve-the-web-app-and-the-platform-from-the-team-server.md)); the address is the visitor's, through uvicorn's `--proxy-headers` behind Caddy. The log line (`rate_limited`) names the route, never the address.
 - A `null` chat session is the development merchant's shared session: without `PLATFORM_MERCHANT`, `POST /chat` needs a `session_id` other than `default` (`422` otherwise).
 - **Accounts (#132, [ADR-0018](adr/0018-open-a-merchants-site-with-a-secret-link.md)).**
   - A build gives its merchant an owner and a secret link, `<PLATFORM_WEB_URL>/api/login?token=…`. The link is shown once, as the profile card's `login_url`; the model and the chat history never see it. Only the token's SHA-256 is stored (`public.merchant_owners`). `make owner-link SLUG=… [NAME=…]` issues a new one, and the old link stops working.
@@ -278,7 +280,8 @@ for it in local development only.
 
 **Errors**
 - Errors are a `ManagementError`: a `ToolError`'s fields, `problem`, and `error` as one of the
-  §8.4 codes or the management site's own (`not_signed_in`, `other_merchant`, `not_built_yet`).
+  §8.4 codes or the management site's own (`not_signed_in`, `other_merchant`, `needs_invite`,
+  `not_built_yet`, `too_many_requests`).
   `ErrorCode` stays the list the tools answer. Statuses otherwise are those of the public
   booking API.
 

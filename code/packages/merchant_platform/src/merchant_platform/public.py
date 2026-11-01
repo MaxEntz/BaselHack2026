@@ -1,16 +1,18 @@
 """The routes anyone may call: `GET /health` and the showcase site's booking form,
-`POST /public/{slug}/reservations` (CORS-limited to PUBLIC_CORS_ORIGINS)."""
+`POST /public/{slug}/reservations` (CORS-limited to PUBLIC_CORS_ORIGINS, and per address,
+#232)."""
 
 import logging
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Request
+from fastapi import APIRouter, Depends, Path, Request
 from pydantic import BaseModel, ConfigDict, PositiveInt
 
 from agent.service import AgentService
 from core.errors import AgentError, AgentUnavailable
 from core.models import BookingTime, GuestText, ReservationOutput, Slug
+from merchant_platform.limits import limited
 
 # The platform API's logger: these lines kept their name when the routes moved here.
 log = logging.getLogger("merchant_platform.api")
@@ -34,7 +36,11 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.post("/public/{slug}/reservations", status_code=201)
+@router.post(
+    "/public/{slug}/reservations",
+    status_code=201,
+    dependencies=[Depends(limited("public_booking"))],
+)
 async def public_reservation(
     request: Request, slug: Annotated[Slug, Path()], body: PublicReservationInput
 ) -> ReservationOutput:
