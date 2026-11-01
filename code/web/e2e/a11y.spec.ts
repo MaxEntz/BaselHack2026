@@ -91,11 +91,15 @@ for (const width of [1440, 390]) {
  * The focused element, marked as seen, and whether it or the box around it draws an outline of at
  * least 2 px. `again` once the focus comes back to an element already seen.
  */
-async function focused(page: Page): Promise<{ what: string; ring: boolean; again: boolean }> {
+async function focused(page: Page): Promise<{ what: string; ring: boolean; again: boolean; same: boolean }> {
   return page.evaluate(() => {
     const element = document.activeElement as HTMLElement | null;
-    if (!element || element === document.body) return { what: "body", ring: false, again: false };
-    if (element.tagName === "IFRAME") return { what: "iframe", ring: true, again: false };
+    const memory = window as unknown as { a11yLast?: Element | null };
+    // A time input keeps the focus while Tab goes from its hours to its minutes.
+    const same = element === memory.a11yLast;
+    memory.a11yLast = element;
+    if (!element || element === document.body) return { what: "body", ring: false, again: false, same: false };
+    if (element.tagName === "IFRAME") return { what: "iframe", ring: true, again: false, same };
     const again = element.dataset.a11ySeen === "1";
     element.dataset.a11ySeen = "1";
     const outlined = (node: Element) => {
@@ -105,7 +109,7 @@ async function focused(page: Page): Promise<{ what: string; ring: boolean; again
     // A radio draws its ring on its label, a composer's textarea on its box.
     const ring = [element, element.parentElement, element.parentElement?.parentElement].some((node) => node && outlined(node));
     const name = element.getAttribute("aria-label") ?? element.innerText?.trim().split("\n")[0] ?? "";
-    return { what: `${element.tagName.toLowerCase()}.${element.className} "${name.slice(0, 40)}"`, ring, again };
+    return { what: `${element.tagName.toLowerCase()}.${element.className} "${name.slice(0, 40)}"`, ring, again, same };
   });
 }
 
@@ -119,14 +123,14 @@ test.describe("keyboard", () => {
     let left = 0;
     for (let press = 0; press < 400; press++) {
       await page.keyboard.press("Tab");
-      const { what, ring, again } = await focused(page);
+      const { what, ring, again, same } = await focused(page);
       // Past the last stop the focus leaves the page, then comes back to the first. A site in
       // an iframe (Studio's canvas) has its own stops: its pages are walked on their own.
       if (what === "body") {
         if (++left === 2) break;
         continue;
       }
-      if (what === "iframe") continue;
+      if (what === "iframe" || same) continue;
       if (again) break;
       stops += 1;
       expect.soft(ring, what).toBe(true);

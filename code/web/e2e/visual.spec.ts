@@ -32,15 +32,13 @@ async function stopped(page: Page) {
  * the page listens, `shoot` adding 1 s).
  */
 async function until(page: Page, what: Locator, step = 250, budget = 4000) {
-  let moved = 0;
-  await expect
-    .poll(async () => {
-      if (moved >= budget) return `not shown after ${budget} ms of the page's clock`;
-      await page.clock.runFor(step);
-      moved += step;
-      return (await what.isVisible()) ? "shown" : "waiting";
-    }, { timeout: 60_000 })
-    .toBe("shown");
+  for (let moved = 0; moved < budget; moved += step) {
+    await page.clock.runFor(step);
+    // A moment of real time for the page to render what the timers gave it.
+    await page.waitForTimeout(100);
+    if (await what.isVisible()) return;
+  }
+  throw new Error(`${what} not shown after ${budget} ms of the page's clock`);
 }
 
 /**
