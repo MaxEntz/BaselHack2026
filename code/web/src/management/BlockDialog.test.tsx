@@ -20,7 +20,6 @@ it("says what the server blocked, not what was ticked", async () => {
             blocked={[]}
             open
             onClose={() => {}}
-            onSaved={() => {}}
           />
         </ToastProvider>
       </ClientContext.Provider>

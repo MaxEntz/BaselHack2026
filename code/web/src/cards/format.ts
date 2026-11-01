@@ -1,3 +1,4 @@
+import { now } from "../clock.ts";
 import { strings } from "../strings.ts";
 import type { LiveEvent, Service, Via } from "../types.ts";
 
@@ -22,15 +23,23 @@ export function formatMinutes(minutes: number): string {
   return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
 }
 
-export function plural(count: number, singular: string, pluralForm = `${singular}s`) {
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
   return `${count} ${count === 1 ? singular : pluralForm}`;
+}
+
+/**
+ * The gateway also serves each restaurant on its own, `/m/<slug>/mcp` next to `/mcp` (#23), as
+ * the platform words it (merchant_platform/overview.py).
+ */
+export function merchantMcpUrl(mcpUrl: string, slug: string): string {
+  return `${mcpUrl.replace(/\/mcp$/, "")}/m/${slug}/mcp`;
 }
 
 // "tonight" for today's date, "on Sat 1 Nov" otherwise.
 export function describeDate(date: string): string {
   const day = new Date(`${date}T12:00:00`);
   if (Number.isNaN(day.getTime())) return `on ${date}`;
-  if (day.toDateString() === new Date().toDateString()) return "tonight";
+  if (day.toDateString() === now().toDateString()) return "tonight";
   return `on ${shortDate(day)}`;
 }
 
@@ -38,7 +47,7 @@ export function describeDate(date: string): string {
 export function describeDay(date: string): string {
   const day = new Date(`${date}T12:00:00`);
   if (Number.isNaN(day.getTime())) return date;
-  const noon = new Date();
+  const noon = now();
   noon.setHours(12, 0, 0, 0);
   // Rounded: a day is 23 or 25 hours long when the clocks change.
   switch (Math.round((day.getTime() - noon.getTime()) / 86_400_000)) {

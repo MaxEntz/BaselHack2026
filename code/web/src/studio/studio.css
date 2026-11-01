@@ -85,6 +85,9 @@
 .st-hello { display: grid; gap: 14px; }
 .st-hello h1 { font-weight: 900; font-size: clamp(2.5rem, 5.4vw, 4.75rem); line-height: .98; letter-spacing: -.028em; text-wrap: balance; }
 .st-hello p { font-size: clamp(1.1875rem, 1.6vw, 1.4375rem); line-height: 1.32; color: var(--ink-2); max-width: 34em; }
+/* A page that failed to draw (RouteError.tsx); `.st-error` is the chat's error bubble. */
+.st-crash { display: grid; align-content: center; gap: 28px; padding: 32px clamp(16px, 6vw, 96px); overflow-y: auto; }
+.st-crash-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 /* The same padding in both layouts, so nothing jumps when the column narrows. */
 .st-feed { display: flex; flex-direction: column; gap: 14px; padding-block: 20px 8px; padding-inline: max(20px, calc((100% - 780px) / 2)); overflow-y: auto; overscroll-behavior: contain; font-size: 1.0625rem; line-height: 1.42; }
 .st-msg { min-width: 0; overflow-wrap: anywhere; animation: st-rise .32s ease-out both; }

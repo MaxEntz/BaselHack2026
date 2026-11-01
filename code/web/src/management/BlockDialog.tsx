@@ -28,7 +28,9 @@ export function BlockDialog({
   after?: string | null;
   open: boolean;
   onClose: () => void;
-  onSaved: (blocked: BlockedTimes) => void;
+  // The server's answer, for a page that shows the blocked times. Without it, the page reads
+  // them again through the live refresh, like after any change (#137).
+  onSaved?: (blocked: BlockedTimes) => void;
 }) {
   const client = useClient();
   const toast = useToast();
@@ -45,7 +47,7 @@ export function BlockDialog({
       setError(errorMessage(failure));
       return;
     }
-    onSaved(answer);
+    onSaved?.(answer);
     // Worded from what the server kept: it ignores a time that has passed meanwhile (#133).
     const times = answer.blocked
       .filter((b) => b.date === date)

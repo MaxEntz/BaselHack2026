@@ -9,7 +9,7 @@ const GUESTS: readonly [name: string, party: number, via: ManagedReservation["vi
   ["Nora Haas", 3, "claude"],
 ];
 
-export const SAMPLE_PREFIX = "sample-";
+const SAMPLE_PREFIX = "sample-";
 
 /** Three sample bookings on `date`, at the service's first, middle and last start (#184). */
 export function sampleBookings(date: string, service: Service): ManagedReservation[] {
