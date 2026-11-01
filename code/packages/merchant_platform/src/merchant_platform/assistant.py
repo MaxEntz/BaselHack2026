@@ -180,7 +180,11 @@ def system_prompt(
     else:
         line = f"{STATUS_LINES[status]} {STATUS_RULE}\n" if status else ""
         parts.append(
-            OPERATIONS_PROMPT.format(status=line, profile=profile.model_dump_json(indent=1))
+            # Never the knowledge: it is the crawled site's own words, which must not reach a
+            # model that holds write tools (ARCHITECTURE.md §4, #248).
+            OPERATIONS_PROMPT.format(
+                status=line, profile=profile.model_dump_json(indent=1, exclude={"knowledge"})
+            )
         )
         # Code-written from the template, merchant free text left out (#23): what agents read.
         read = "\n".join(f"- {t.name}: {t.description}" for t in generated_tools(profile))
