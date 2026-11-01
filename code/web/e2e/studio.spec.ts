@@ -34,6 +34,8 @@ test("an Enter that ends an IME composition doesn't send (#220)", async ({ page 
 
 test("a cut turn keeps the chat's error bubble, with Try again as a chip (#220)", async ({ page }) => {
   await giveAddress(page);
+  // The question about the room is on screen: the address's turn is over, so the box is ours.
+  await expect(page.getByRole("button", { name: "Skip this, use the defaults" })).toBeVisible();
   // The mock drops the stream of a description that says "cut" (#86).
   await page.getByRole("textbox", { name: "Message" }).fill("24 seats, cut short");
   await page.keyboard.press("Enter");
