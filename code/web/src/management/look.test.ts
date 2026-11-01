@@ -45,28 +45,14 @@ describe("lookStyle", () => {
     expect(cornersOf(albane)).toBe("square");
   });
 
-  it.each([
-    ["Le Petit Zinc", zinc],
-    ["Maison Albane", albane],
-  ])("%s has no text under 4.5:1", (_, look) => {
-    const v = variables(look);
-    const text: [string, string, string][] = [
-      ["ink", v["--ink"], v["--bg"]],
-      ["ink on cards", v["--ink"], v["--cream"]],
-      ["muted", v["--mut"], v["--bg"]],
-      ["muted on cards", v["--mut"], v["--cream"]],
-      ["titles", v["--olive"], v["--bg"]],
-      ["titles on cards", v["--olive"], v["--cream"]],
-      ["on the accent", v["--on"], v["--olive"]],
-      ["on the second accent", v["--on"], v["--brick"]],
-      ["on the band", v["--on"], v["--olive-band"]],
-      ["on the deep brick", v["--on"], v["--brick-deep"]],
-      ["errors", v["--red"], v["--bg"]],
-      ["errors on cards", v["--red"], v["--cream"]],
-    ];
-    for (const [pair, foreground, background] of text) {
-      expect(contrast(foreground, background), pair).toBeGreaterThanOrEqual(4.5);
-    }
+  // No text under 4.5:1, for each demo merchant: tests/look-contrast.test.ts.
+
+  it("darkens an accent too light for text, and the text on it follows", () => {
+    // A merchant's mid green under a near-white: 2.9:1 as a title, 3.1:1 under its text.
+    const v = variables({ ...zinc, accent: "#5f9f5a", on_accent: "#f4f2ea" });
+    expect(v["--olive"]).not.toBe("#5f9f5a");
+    for (const background of [v["--bg"], v["--cream"]]) expect(contrast(v["--olive"], background)).toBeGreaterThanOrEqual(4.5);
+    for (const fill of [v["--olive"], v["--olive-band"]]) expect(contrast(v["--on"], fill)).toBeGreaterThanOrEqual(4.5);
   });
 });
 

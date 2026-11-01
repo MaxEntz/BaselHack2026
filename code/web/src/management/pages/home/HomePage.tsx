@@ -338,11 +338,14 @@ function RoomCard({ dashboard, base }: { dashboard: Dashboard; base: string }) {
         <b className="num">{room.guests}</b>
         <span>of {room.seats} seats booked</span>
       </div>
-      <Link className="minis" to={`${base}/floor`} aria-label="See the floor plan">
+      {/* A picture of the room, named by where it goes: its labels are part of the picture. */}
+      <Link className="minis" to={`${base}/floor`}>
+        <span className="sr">See the floor plan</span>
         {room.tables.map((table, index) => (
           <span
             key={table.label}
             className={["mini", table.seats >= 4 ? "w" : "", table.booked ? "on" : ""].filter(Boolean).join(" ")}
+            aria-hidden="true"
           >
             <Blob index={index} />
             <span>{table.label}</span>

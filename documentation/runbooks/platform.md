@@ -96,6 +96,7 @@ cd /opt/merchant-agents/code
 - [ ] A build asks for the invite code; its profile card's secret link opens `/manage/<slug>`; a second `make deploy` doesn't sign the owner out (the cookie secret is fixed).
 - [ ] Building a merchant from `https://le-petit-zinc.191-96-88-152.sslip.io` reads 5 pages (the crawl reaches the site with `CRAWL_ALLOW_PRIVATE=0`), then publishes it.
 - [ ] A booking made from Claude appears live in the merchant's chat ("New booking via Claude").
+- [ ] Home opens in under 1 s on a laptop (#153): in Chrome's DevTools, Performance panel, reload `/manage/<slug>` and read the LCP. Locally, on the built app, it is 0.3 to 0.4 s, 1.1 s with the CPU slowed 4 times; scrolling stays at 60 frames a second under the leather texture.
 - [ ] The booking form of `https://le-petit-zinc.191-96-88-152.sslip.io/reservation.html` books (CORS from that host).
 - [ ] `curl -i https://191-96-88-152.sslip.io/mcp` from your machine still answers `403`.
 - [ ] The server's other sites still answer.
@@ -109,7 +110,7 @@ cd /opt/merchant-agents/code
 | The `crawl` step fails with "Something went wrong while reading the website" | Chromium's libraries are missing | Step 1, then `journalctl -u merchant-platform` |
 | The crawl says the address points to a private network, or that websites answer on ports 80 and 443 | `CRAWL_ALLOW_PRIVATE=0`: no private address, no port other than 80 and 443, so a build can't read the server's own services | Use the demo sites' public hosts, never `localhost` or a port |
 | The booking form switches to "call us" mode | CORS: Le Petit Zinc's host missing from `PUBLIC_CORS_ORIGINS`, or the platform down | Step 2 (`PUBLIC_CORS_ORIGINS` in `platform/.env`); `systemctl status merchant-platform` |
-| Live events stay on "Reconnecting" | `/api/events` buffered | Check `flush_interval -1` in the Caddyfile's `/api/*` block |
+| Bookings made from Claude only show after a reload | `/api/events` buffered | Check `flush_interval -1` in the Caddyfile's `/api/*` block |
 | The agent tab's Send buttons answer that the agent or token is unknown, or that the platform has no `BATP_URL` | Studio's agent isn't in the node's `BATP_TOKENS`, or `platform/.env` lacks its `BATP_URL` and `BATP_TOKEN` | Step 2, then restart `merchant-node` and `merchant-platform` |
 | An owner link starts with `http://localhost:5173` | `owner_link.py` ran from `code/`, whose `.env` has no `PLATFORM_WEB_URL` | Step 5: a new link, from `platform/` |
 | `make web-dist`: `VITE_MOCK is set` | `VITE_MOCK` in your environment or a `web/.env*` file: it would ship the mock app | Unset it for the deployment |

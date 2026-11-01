@@ -71,3 +71,34 @@ jobs:
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
       - run: npm run test:e2e
+
+  # The visual tests (#153) run in Playwright's own image, where their baselines were taken
+  # (`npm run test:visual:docker`): fonts render differently on the runner itself.
+  visual-image:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: image
+        run: echo "image=mcr.microsoft.com/playwright:v$(jq -r '.packages["node_modules/@playwright/test"].version' code/web/package-lock.json)-noble" >> "$GITHUB_OUTPUT"
+
+  visual:
+    needs: visual-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.visual-image.outputs.image }}
+      options: --ipc=host
+    defaults:
+      run:
+        working-directory: code/web
+    steps:
+      - uses: actions/checkout@v7
+      - run: npm ci
+      - run: npm run test:visual
+      # On a difference, the expected, actual and diff images.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-diffs
+          path: code/web/test-results/

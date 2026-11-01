@@ -7,7 +7,8 @@ import type { Look } from "../types.ts";
 /**
  * La Graine Verte's look. `tokens.css` holds its values as the mockup picked them by hand (its
  * darker shades follow no single formula), so this look sets no variable and the site stays the
- * mockup exactly. A merchant without a look gets it too.
+ * mockup, but for the olive, darker there as `lookStyle` would make it. A merchant without a look
+ * gets it too.
  */
 export const DEFAULT_LOOK: Look = {
   bg: "#edebe2",
@@ -43,19 +44,25 @@ const BODY: Record<Look["body_font"], string> = { Karla: `"Karla", ${SANS}`, ser
 
 export type Corners = Look["corners"];
 
-/** The CSS variables of `look` for the site's root; none for the default look. */
+/**
+ * The CSS variables of `look` for the site's root; none for the default look. Text reads at
+ * 4.5:1 whatever the merchant picked (#153): the accent, used for titles, darkens (or lightens on
+ * a dark page) until it reads on the page and the cards, and the text on it follows.
+ */
 export function lookStyle(look: Look | null | undefined): CSSProperties {
   if (!look || sameLook(look, DEFAULT_LOOK)) return {};
+  const olive = readable(look.accent, [look.bg, look.surface]);
+  const band = darker(olive, 0.08);
   const variables: Record<string, string> = {
     "--bg": look.bg,
     "--cream": look.surface,
     "--line": look.line,
     "--ink": look.ink,
     "--mut": look.muted,
-    "--olive": look.accent,
+    "--olive": olive,
     "--brick": look.accent_2,
-    "--on": look.on_accent,
-    "--olive-band": darker(look.accent, 0.08),
+    "--on": readable(look.on_accent, [olive, band]),
+    "--olive-band": band,
     "--brick-deep": darker(look.accent_2, 0.08),
     "--line-2": darker(look.line, 0.1),
     "--display": DISPLAY[look.display_font],
