@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from batp.client import BatpClient, BatpRejected, SessionLost
 from batp.codec import MAX_FRAME, encode, read_frame
 from batp.messages import IN_FLIGHT_LIMIT, AgentIdentity, Hello, NodeIdentity, Request, Response
-from batp.server import NodeServer
+from batp.server import Caller, NodeServer
 from core.errors import AgentUnavailable, InvalidInput, SlotUnavailable
 
 CALLER = AgentIdentity(
@@ -496,7 +496,7 @@ async def test_a_503_that_replaces_a_large_answer_is_recorded_when_the_session_i
     request = Request(id="r-large", intent="RECALL")
 
     with caplog.at_level(logging.WARNING, logger="batp"):
-        await server._answer((CALLER, "s-1"), request, send)
+        await server._answer(Caller(CALLER, "s-1", ()), request, send)
         await asyncio.wait_for(done.wait(), 2)
 
     assert recorded == [("r-large", 503)]
@@ -520,7 +520,7 @@ async def test_an_answer_cancelled_mid_send_is_still_recorded_once() -> None:
 
     server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token, record=record)
     answer = asyncio.create_task(
-        server._answer((CALLER, "s-1"), Request(id="r-cut", intent="PING"), send)
+        server._answer(Caller(CALLER, "s-1", ()), Request(id="r-cut", intent="PING"), send)
     )
     await asyncio.wait_for(sending.wait(), 2)
     answer.cancel()

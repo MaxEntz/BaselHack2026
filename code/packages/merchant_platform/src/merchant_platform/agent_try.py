@@ -99,6 +99,12 @@ async def _frame_for(
         case "CANCEL":
             reservation_id, _ = await _test_booking(agent, slug)
             return slug, {"reservation_id": reservation_id, "guest_name": TEST_GUEST}
+        case "TALK":
+            # Not offered by `AgentTryInput` yet: Studio shows the agents talking in #253.
+            return slug, {
+                "message": f"Do you have a table for {TEST_PARTY} tonight?",
+                "idempotency_key": f"studio-try-{uuid4()}",
+            }
 
 
 async def _free_start(agent: AgentService, slug: str, today: date, tz: ZoneInfo) -> datetime:

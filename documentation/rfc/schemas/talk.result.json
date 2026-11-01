@@ -1,0 +1,200 @@
+{
+  "$comment": "Generated from core.models.TalkOutput",
+  "$defs": {
+    "PendingAction": {
+      "additionalProperties": false,
+      "description": "A write the agent proposes and won't run before a `confirm` that names it (#247).",
+      "properties": {
+        "action": {
+          "enum": [
+            "book",
+            "change",
+            "cancel"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "summary",
+        "expires_at"
+      ],
+      "title": "PendingAction",
+      "type": "object"
+    },
+    "Reservation": {
+      "additionalProperties": false,
+      "properties": {
+        "guest_name": {
+          "title": "Guest Name",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "merchant": {
+          "pattern": "^[a-z0-9-]{3,61}$",
+          "title": "Merchant",
+          "type": "string"
+        },
+        "party_size": {
+          "exclusiveMinimum": 0,
+          "title": "Party Size",
+          "type": "integer"
+        },
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "confirmed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "table_label": {
+          "title": "Table Label",
+          "type": "string"
+        },
+        "via": {
+          "enum": [
+            "claude",
+            "merchant",
+            "website"
+          ],
+          "title": "Via",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "merchant",
+        "starts_at",
+        "party_size",
+        "table_label",
+        "status",
+        "guest_name",
+        "via"
+      ],
+      "title": "Reservation",
+      "type": "object"
+    },
+    "Slot": {
+      "additionalProperties": false,
+      "properties": {
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "table_label": {
+          "title": "Table Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "starts_at",
+        "table_label"
+      ],
+      "title": "Slot",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The agent's answer. Only `reply` is the model's text; code builds every other field from\ntool results (ADR-0003), so a guest's agent can rely on them.",
+  "properties": {
+    "conversation": {
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Conversation",
+      "type": "string"
+    },
+    "fallback_url": {
+      "anyOf": [
+        {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fallback Url"
+    },
+    "pending": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PendingAction"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reply": {
+      "maxLength": 2000,
+      "title": "Reply",
+      "type": "string"
+    },
+    "reservation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reservation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "slots": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Slot"
+      },
+      "title": "Slots",
+      "type": "array"
+    },
+    "tools_called": {
+      "default": [],
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$",
+        "type": "string"
+      },
+      "title": "Tools Called",
+      "type": "array"
+    }
+  },
+  "required": [
+    "conversation",
+    "reply"
+  ],
+  "title": "BATP TALK result",
+  "type": "object"
+}

@@ -118,6 +118,7 @@ The node answers with one of these:
 | `BOOK` | required | `CreateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.create_reservation` with `via = claude`: BATP bookings come from guests' agents, and the `kind` a caller declares is not trusted |
 | `AMEND` | required | `UpdateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.update_reservation` |
 | `CANCEL` | required | `CancelReservationInput` without `merchant` | `ReservationOutput` | `AgentService.cancel_reservation(by="guest")` |
+| `TALK` (0.2) | required | `TalkInput` without `merchant` | `TalkOutput` | the merchant's AI agent (#249); until then the node answers `503 agent_unavailable` with the fallback URL |
 | `RECALL` | — | `GetMyReservationsInput` | `GetMyReservationsOutput` | `AgentService.find_guest_reservations` |
 | `PING` | — | `{}` | `{"pong": true, "server_time": …}` | the node |
 
@@ -126,6 +127,34 @@ The node answers with one of these:
 - For a merchant marked `down`, the node itself answers `503` with the fallback URL to the addressed intents.
 - Writes (`BOOK`, `AMEND`, `CANCEL`) are only sent after the guest confirmed (AGENTS.md §6). The bridge enforces it through the MCP tool descriptions; another caller is expected to do the same.
 - Merchant-side operations (`list_reservations`, `block_slot`, …) are **not** BATP intents: they stay on the merchant platform (AGENTS.md §8.2).
+
+### `TALK` (since 0.2, #245)
+
+A guest's agent talks to the merchant's agent in natural language. A `0.1` session is neither
+offered nor served `TALK` (§14).
+
+```json
+{"type": "request", "id": "r-1", "intent": "TALK", "merchant": "le-petit-zinc",
+ "params": {"message": "Table for 4 tonight around 8pm? Do you have vegetarian dishes?",
+            "idempotency_key": "m-1"}}
+```
+
+```json
+{"type": "response", "id": "r-1", "status": 200,
+ "result": {"conversation": "c-9f2c…",
+            "reply": "Yes, two vegetarian mains tonight. I can do 20:00 or 20:30. Which name?",
+            "slots": [{"starts_at": "2026-11-01T20:00:00+01:00", "table_label": "T5"}],
+            "pending": null, "reservation": null, "fallback_url": null,
+            "tools_called": ["get_availability"]}}
+```
+
+- `params`: `message` (1 to 2000 characters after trimming, no control character except a newline), `idempotency_key` (required), `conversation` (absent on the first message), `confirm` (the `id` of a `pending` proposal of that conversation, sent only after the guest's explicit yes, #247; it needs `conversation`). Ids are opaque tokens of 1 to 64 characters `[A-Za-z0-9_-]`.
+- `result`: `reply` (at most 2000 characters) is the model's text. Every other field is **built by code from tool results**, never written by the model: `slots`, `pending` (`id`, `action` `book`/`change`/`cancel`, `summary`, `expires_at`), `reservation`, `fallback_url`, `tools_called` (tool names only).
+- **`200` means the agent answered**, even "we're full". A tool's refusal (`party_too_large`, `slot_unavailable`) goes to the model, and code sets `fallback_url`.
+- Any other status means the agent could not answer: `400 invalid_input`, `404 not_found` (unknown or not live merchant, unknown or expired conversation), `429 too_many_requests`, `503 agent_unavailable` with the fallback URL.
+- `conversation` is random, with at least 128 bits, and bound to the merchant and the session's `agent.id`. It can't be tied to a BATP session: the gateway carries all its users on one session under one `agent.id`, so the unguessable id is what separates them.
+- A replay with the same `idempotency_key` returns the stored answer, with no model call and no write.
+- `TALK` is not read-only: `BatpClient` never sends it again by itself after a lost session. The caller retries with the same key.
 
 ## 8. Status codes
 
