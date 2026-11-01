@@ -181,7 +181,7 @@ Before 0.3, `409 slot_unavailable` and `413 party_too_large` answered `BOOK` and
 ## 9. Events (reserved)
 
 `{"type": "event", …}` frames, pushed by the node without a request, are reserved for a later
-minor version: 0.2 doesn't define them. One use would be to tell a guest's agent that the
+minor version: 0.3 doesn't define them. One use would be to tell a guest's agent that the
 merchant cancelled their booking. Today that goes through the guest notice returned by `RECALL`.
 
 ## 10. Security

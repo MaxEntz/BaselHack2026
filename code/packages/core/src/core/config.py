@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     # talk_to_merchant's deadline: above the node's 25 s for TALK, since a model turn is slow.
     agent_talk_timeout_ms: int = 30000
     # Where the gateway reaches the merchant agents: `batp://host[:port]`, with this agent's token.
-    # Unset: they run in the gateway's process.
+    # Unset: the search and the guest's bookings run in the gateway's process, and talk_to_merchant
+    # gives the fallback URL, since only the node runs the agent.
     batp_url: str | None = None
     batp_token: SecretStr | None = None
     # Fault injection for demos and tests (#13): delay before each agent call, only for these
