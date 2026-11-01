@@ -57,6 +57,7 @@ function client(frames?: AgentTryOutput) {
     agentRequests: vi.fn(async () => ({ requests: [] })),
     slots: vi.fn(async () => day),
     tryAgent: vi.fn(async () => frames ?? { request: "{}", response: "{}", status: 200 }),
+    talkToAgent: vi.fn(async (): Promise<AgentTryOutput> => ({ request: "{}", response: "{}", status: 200 })),
   };
 }
 
@@ -171,6 +172,103 @@ describe("Studio's canvas", () => {
     await waitFor(() => expect(container.querySelector(".st-w-log")?.textContent).toContain('"intent":"BOOK"'));
     const statuses = [...container.querySelectorAll(".st-w-s.bad")].map((item) => item.textContent);
     expect(statuses).toEqual(["404"]);
+  });
+
+  describe("asking the merchant's agent", () => {
+    const answer = {
+      conversation: "c-1",
+      reply: "Yes, two vegetarian mains tonight. Shall I book 20:00?",
+      slots: [],
+      pending: {
+        id: "p-1",
+        action: "book" as const,
+        summary: "Book a table for 2 tonight at 20:00.",
+        expires_at: "2026-10-31T20:00:00+01:00",
+      },
+      reservation: null,
+      fallback_url: null,
+      tools_called: ["get_availability", "propose_booking"],
+    };
+    const proposed = {
+      request: '{"type":"request","id":"r-1","intent":"TALK"}',
+      response: '{"type":"response","id":"r-1","status":200}',
+      status: 200,
+      talk: answer,
+    };
+
+    it("sends the message and shows the reply, the tools and both frames", async () => {
+      const fake = client();
+      fake.talkToAgent.mockResolvedValueOnce(proposed);
+      const { container } = canvas({ view: "agent", client: fake });
+      await userEvent.type(screen.getByLabelText("Ask your agent"), "Vegetarian dishes?");
+      await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+      expect(fake.talkToAgent).toHaveBeenCalledWith("la-graine-verte", {
+        message: "Vegetarian dishes?",
+        conversation: null,
+        confirm: null,
+      });
+      expect(await screen.findByText(answer.reply)).toBeTruthy();
+      expect([...container.querySelectorAll(".st-w-reply code")].map((c) => c.textContent)).toEqual(
+        answer.tools_called,
+      );
+      expect(container.querySelector(".st-w-log")?.textContent).toContain('"intent":"TALK"');
+      expect([...container.querySelectorAll(".st-w-s.ok")].length).toBeGreaterThan(0);
+      expect((screen.getByLabelText("Ask your agent") as HTMLInputElement).value).toBe("");
+    });
+
+    it("offers Confirm while a proposal waits, and a confirm carries its conversation", async () => {
+      const fake = client();
+      fake.talkToAgent.mockResolvedValueOnce(proposed);
+      canvas({ view: "agent", client: fake });
+      expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+      await userEvent.type(screen.getByLabelText("Ask your agent"), "A table for 2?");
+      await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+      await screen.findByText("Book a table for 2 tonight at 20:00.");
+      fake.talkToAgent.mockResolvedValueOnce({
+        ...proposed,
+        talk: { ...answer, reply: "It's booked.", pending: null, tools_called: ["create_reservation"] },
+      });
+      await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+      expect(fake.talkToAgent).toHaveBeenLastCalledWith("la-graine-verte", {
+        message: "Yes, please go ahead.",
+        conversation: "c-1",
+        confirm: "p-1",
+      });
+      await screen.findByText("It's booked.");
+      expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+    });
+
+    it("shows a refusal's frames, and the next message starts a new conversation", async () => {
+      const fake = client();
+      fake.talkToAgent.mockResolvedValueOnce(proposed).mockResolvedValueOnce({
+        request: '{"type":"request","id":"r-2","intent":"TALK"}',
+        response: '{"type":"response","id":"r-2","status":404}',
+        status: 404,
+      });
+      const { container } = canvas({ view: "agent", client: fake });
+      const box = screen.getByLabelText("Ask your agent");
+      await userEvent.type(box, "One");
+      await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+      await screen.findByText(answer.reply);
+      await userEvent.type(box, "Two");
+      await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+      await waitFor(() => expect(container.querySelector(".st-w-s.bad")?.textContent).toBe("404"));
+      expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+      await userEvent.type(box, "Three");
+      await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+      expect(fake.talkToAgent).toHaveBeenLastCalledWith("la-graine-verte", {
+        message: "Three",
+        conversation: null,
+        confirm: null,
+      });
+    });
+
+    it("keeps an empty message from being sent", async () => {
+      const fake = client();
+      canvas({ view: "agent", client: fake });
+      await userEvent.type(screen.getByLabelText("Ask your agent"), "   ");
+      expect((screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled).toBe(true);
+    });
   });
 
   it("shows the dock on the management site and on both, with each moment's time", () => {

@@ -1,17 +1,19 @@
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import type { ManagementClient } from "../management/client.ts";
 import { ASSISTANT } from "../strings.ts";
-import type { AgentIntent, AgentRequest, AgentTryOutput, DaySlots, GeneratedTool } from "../types.ts";
+import type { AgentIntent, AgentRequest, AgentTryOutput, DaySlots, GeneratedTool, PendingAction, TalkOutput } from "../types.ts";
 import type { Addresses } from "./feed.tsx";
 
 const INTENTS: readonly AgentIntent[] = ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"];
 const PREVIEW_PARTY = 2;
 const PREVIEW_SLOTS = 3;
+const MAX_MESSAGE = 2000;
+const YES = "Yes, please go ahead.";
 
 // How a session opens (PROTOCOL.md §5). The token is the agent's own: it is never shown.
 const HELLO = JSON.stringify({
   type: "hello",
-  batp: "0.1",
+  batp: "0.2",
   agent: {
     id: "urn:batp:agent:claude-gateway",
     name: `${ASSISTANT} via the Sésame gateway`,
@@ -22,9 +24,9 @@ const HELLO = JSON.stringify({
 });
 const WELCOME = JSON.stringify({
   type: "welcome",
-  batp: "0.1",
+  batp: "0.2",
   node: { id: "urn:batp:node:merchant-agents", name: "Sésame" },
-  intents: INTENTS,
+  intents: [...INTENTS, "TALK"],
   session: "s-1",
 });
 
@@ -68,7 +70,7 @@ function previewFrames(slug: string, day: DaySlots): [string, string] {
   return [JSON.stringify(request), JSON.stringify(response)];
 }
 
-type Client = Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent">;
+type Client = Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent" | "talkToAgent">;
 
 type AgentSheetProps = {
   client: Client;
@@ -112,11 +114,13 @@ function useTodaysFrames(client: Client, slug: string, live: boolean, today: str
   return { logged, previewed: !live && preview ? previewFrames(slug, preview) : null };
 }
 
-// The Send buttons: one real frame each, through the node (#151).
+// The Send buttons and the message box: one real frame each, through the node (#151, #253).
 function useTryAgent(client: Client, slug: string) {
   const [sent, setSent] = useState<readonly AgentTryOutput[]>([]);
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [conversation, setConversation] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
   async function send(intent: AgentIntent) {
     setSending(true);
     setProblem(null);
@@ -129,13 +133,73 @@ function useTryAgent(client: Client, slug: string) {
       setSending(false);
     }
   }
-  return { sent, sending, problem, send };
+  async function talk(message: string, confirm: string | null): Promise<boolean> {
+    setSending(true);
+    setProblem(null);
+    try {
+      const frames = await client.talkToAgent(slug, { message, conversation, confirm });
+      setSent((earlier) => [...earlier, frames]);
+      // A refusal has no conversation: the next message starts a new one.
+      setConversation(frames.talk?.conversation ?? null);
+      setPending(frames.talk?.pending ?? null);
+      return true;
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : "That message couldn't be sent.");
+      return false;
+    } finally {
+      setSending(false);
+    }
+  }
+  return { sent, sending, problem, pending, send, talk };
+}
+
+function TalkReply({ talk }: { talk: TalkOutput }) {
+  return (
+    <div className="st-w-reply">
+      <p>{talk.reply}</p>
+      {talk.tools_called.length > 0 && (
+        <small>
+          Tools it called:{" "}
+          {talk.tools_called.map((tool) => (
+            <code key={tool}>{tool}</code>
+          ))}
+        </small>
+      )}
+    </div>
+  );
+}
+
+// `ask` answers whether the message went: if not, the owner keeps what they typed.
+function AskBox({ sending, ask }: { sending: boolean; ask: (message: string) => Promise<boolean> }) {
+  const [draft, setDraft] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const message = draft.trim();
+    if (message && (await ask(message))) setDraft("");
+  }
+
+  return (
+    <form className="st-w-talk" onSubmit={(event) => void submit(event)}>
+      <label htmlFor="st-w-message">Ask your agent</label>
+      <input
+        id="st-w-message"
+        value={draft}
+        maxLength={MAX_MESSAGE}
+        placeholder="Do you have vegetarian dishes?"
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <button type="submit" disabled={sending || !draft.trim()}>
+        Ask
+      </button>
+    </form>
+  );
 }
 
 /** The agent site has no pages: this is what agents exchange with it (#151). */
 export function AgentSheet({ client, slug, live, today, addresses, tools, fallback }: AgentSheetProps) {
   const { logged, previewed } = useTodaysFrames(client, slug, live, today);
-  const { sent, sending, problem, send } = useTryAgent(client, slug);
+  const { sent, sending, problem, pending, send, talk } = useTryAgent(client, slug);
 
   return (
     <div className="st-w">
@@ -145,7 +209,8 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
       </div>
       <p className="st-w-note">
         No pages, no buttons, no design. Agents open a session on port 4710 and exchange one JSON frame
-        per line. This is the whole site.
+        per line, and an AI agent answers them in natural language, inside those frames. This is the
+        whole site.
       </p>
       {!live && (
         <p className="st-w-warn">
@@ -173,9 +238,19 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
             <div key={index} className="st-w-pair">
               <FrameLine out text={frames.request} />
               <FrameLine out={false} text={frames.response} />
+              {frames.talk && <TalkReply talk={frames.talk} />}
             </div>
           ))}
         </div>
+        {pending && (
+          <div className="st-w-confirm" role="group" aria-label="Your agent is waiting for a yes">
+            <p>{pending.summary}</p>
+            <button type="button" disabled={sending} onClick={() => void talk(YES, pending.id)}>
+              Confirm
+            </button>
+          </div>
+        )}
+        <AskBox sending={sending} ask={(message) => talk(message, null)} />
         <div className="st-w-send" role="group" aria-label="Send a request">
           <span>Send</span>
           {INTENTS.map((intent) => (

@@ -227,3 +227,95 @@ def test_frames_it_cant_read_still_get_a_title(request_frame: str, response_fram
     )
 
     assert title == "A guest booked through Claude"
+
+
+# A turn with the merchant's agent (#253): from what code wrote, never from `reply`.
+
+TALKED = {"conversation": "c-1", "reply": "THE MODEL'S TEXT", "tools_called": []}
+QUESTION = {"message": "Do you have\nvegetarian dishes?", "idempotency_key": "k"}
+
+
+def talked(**fields: Any) -> tuple[str, str]:
+    return word("TALK", 200, QUESTION, {"result": TALKED | fields})
+
+
+def test_a_question_quotes_what_the_guests_agent_asked() -> None:
+    assert talked() == ("Claude asked your agent", '"Do you have vegetarian dishes?"')
+
+
+def test_a_long_question_is_cut_to_fit_the_row() -> None:
+    title, text = word("TALK", 200, {"message": "a" * 500}, {"result": TALKED})
+
+    assert title == "Claude asked your agent"
+    assert len(text) == 122
+    assert text.endswith('…"')
+
+
+def test_offered_times_are_said() -> None:
+    slot = {"starts_at": "2026-10-31T19:00:00+00:00", "table_label": "T1"}
+
+    assert talked(slots=[slot])[1] == (
+        '"Do you have vegetarian dishes?" Your agent offered free times.'
+    )
+
+
+def test_a_proposal_waits_for_the_guests_yes() -> None:
+    pending = {
+        "id": "p-1",
+        "action": "book",
+        "summary": "Book a table for 2 on Sat 31 Oct at 20:00, under the name Emma Roth.",
+        "expires_at": "2026-10-31T19:10:00+00:00",
+    }
+
+    assert talked(pending=pending) == (
+        "Claude is waiting for its guest's yes",
+        "Book a table for 2 on Sat 31 Oct at 20:00, under the name Emma Roth. "
+        "Nothing changes before they say yes.",
+    )
+
+
+def test_a_booking_made_in_a_conversation_is_said_like_a_direct_one() -> None:
+    booking = BOOKED["result"]["reservation"]
+
+    assert talked(reservation=booking, tools_called=["create_reservation"]) == (
+        "Emma Roth booked through Claude",
+        "Sat 31 Oct, 20:00, 3 guests, table T9.",
+    )
+
+
+def test_a_change_made_in_a_conversation_is_said() -> None:
+    booking = BOOKED["result"]["reservation"]
+
+    assert talked(reservation=booking, tools_called=["update_reservation"])[0] == (
+        "Emma Roth changed their booking through Claude"
+    )
+
+
+def test_a_cancellation_made_in_a_conversation_is_said() -> None:
+    booking = BOOKED["result"]["reservation"] | {"status": "cancelled"}
+
+    assert talked(reservation=booking, tools_called=["cancel_reservation"])[0] == (
+        "Emma Roth cancelled through Claude"
+    )
+
+
+def test_an_answer_with_the_fallback_link_says_the_guest_got_it() -> None:
+    assert talked(fallback_url="https://zinc.example/reservation") == (
+        "Claude was sent to your booking page",
+        '"Do you have vegetarian dishes?" The guest got your link.',
+    )
+
+
+def test_a_row_never_words_the_models_reply() -> None:
+    cases = [talked(), talked(fallback_url="https://zinc.example/")]
+
+    assert not [case for case in cases if "THE MODEL'S TEXT" in " ".join(case)]
+
+
+def test_an_ended_conversation_is_not_a_booking_you_dont_have() -> None:
+    answer = {"error": {"code": "not_found", "message": "Unknown conversation"}}
+
+    assert word("TALK", 404, QUESTION, answer) == (
+        "Claude wrote in a conversation that had ended",
+        "Nothing was changed.",
+    )
