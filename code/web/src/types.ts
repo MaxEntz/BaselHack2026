@@ -447,7 +447,8 @@ export type ManagementErrorCode =
   | "not_signed_in"
   | "other_merchant"
   | "needs_invite"
-  | "not_built_yet";
+  | "not_built_yet"
+  | "too_many_requests";
 export type Problem = {
   code: ProblemCode;
   services?: number[];

@@ -149,15 +149,16 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 | `POST /chat` | `{session_id: str \| null, message: str}` (1–4000 characters) | `ChatEvent` SSE stream, exactly one final `done` | `409` while the session is still answering; `403` `needs_invite` for an onboarding without the invitation; a failing turn sends a generic `error` before `done` |
 | `GET /session?session_id=` | — | `SessionOutput`: `{merchant: {slug, name} \| null}` | — |
 | `GET /events?merchant=<slug>` | — | `LiveEvent` SSE stream | `401` `not_signed_in`, `403` `other_merchant` |
-| `GET /login?token=` | — | `303` to `/manage/<slug>`, with the owner cookie | `401` `not_signed_in` for an unknown link |
+| `GET /login?token=` | — | `303` to `/manage/<slug>`, with the owner cookie | `401` `not_signed_in` for an unknown link; `429` `too_many_requests` |
 | `POST /logout` | — | `204`, the owner cookie removed | — |
-| `POST /invite` | `{code: str}` | `204`, with the invite cookie (nothing when no code is set) | `403` `needs_invite` for a wrong code |
+| `POST /invite` | `{code: str}` | `204`, with the invite cookie (nothing when no code is set) | `403` `needs_invite` for a wrong code; `429` `too_many_requests` |
 | `POST /session/claim` | `{session_id: str}` | `204`, with the owner cookie | `401` `not_signed_in` unless a build in this process attached that session within 5 minutes, its link is current, and it wasn't claimed yet |
-| `POST /public/{slug}/reservations` | `{starts_at, party_size, guest_name, idempotency_key}` | `201` + `{reservation}`, `via="website"` | `ToolError` body: `404` `not_found`, `409` `slot_unavailable`, `422` `party_too_large` / `invalid_input`, `503` `agent_unavailable` |
+| `POST /public/{slug}/reservations` | `{starts_at, party_size, guest_name, idempotency_key}` | `201` + `{reservation}`, `via="website"` | `ToolError` body: `404` `not_found`, `409` `slot_unavailable`, `422` `party_too_large` / `invalid_input`, `503` `agent_unavailable`; `429` `too_many_requests` |
 | `POST /dev/reset-session` | `{session_id: str \| null}` | Restarts onboarding | Disabled with `PLATFORM_DEV_ROUTES=0`; the platform refuses to start with it on beside an https `PLATFORM_WEB_URL`, a cookie secret or an invite code |
 | `GET /health` | — | Status | — |
 
 - Request validation errors on any route: `422` + `ToolError` (`invalid_input`).
+- **Rate limits (#232).** `POST /invite` (10), `GET /login` (30) and `POST /public/{slug}/reservations` (10) each take that many requests per 10 minutes from one address (`merchant_platform.limits.LIMITS`); past it, `429` `too_many_requests` with `Retry-After` in seconds, before any lookup, model or agent call. A refused request isn't counted, and a body outside the schema is. Counted in the platform's process, which is enough with its one worker ([ADR-0016](adr/0016-serve-the-web-app-and-the-platform-from-the-team-server.md)); the address is the visitor's, through uvicorn's `--proxy-headers` behind Caddy. The log line (`rate_limited`) names the route, never the address.
 - A `null` chat session is the development merchant's shared session: without `PLATFORM_MERCHANT`, `POST /chat` needs a `session_id` other than `default` (`422` otherwise).
 - **Accounts (#132, [ADR-0018](adr/0018-open-a-merchants-site-with-a-secret-link.md)).**
   - A build gives its merchant an owner and a secret link, `<PLATFORM_WEB_URL>/api/login?token=…`. The link is shown once, as the profile card's `login_url`; the model and the chat history never see it. Only the token's SHA-256 is stored (`public.merchant_owners`). `make owner-link SLUG=… [NAME=…]` issues a new one, and the old link stops working.
@@ -279,7 +280,8 @@ for it in local development only.
 
 **Errors**
 - Errors are a `ManagementError`: a `ToolError`'s fields, `problem`, and `error` as one of the
-  §8.4 codes or the management site's own (`not_signed_in`, `other_merchant`, `not_built_yet`).
+  §8.4 codes or the management site's own (`not_signed_in`, `other_merchant`, `needs_invite`,
+  `not_built_yet`, `too_many_requests`).
   `ErrorCode` stays the list the tools answer. Statuses otherwise are those of the public
   booking API.
 
