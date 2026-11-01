@@ -5,7 +5,7 @@ DEPLOY_SSH ?= ssh -i ~/.ssh/baselhack2026_lxc -o IdentitiesOnly=yes
 DEPLOY_DIR := /opt/merchant-agents/code
 PLATFORM_ENV := /opt/merchant-agents/platform/.env
 
-.PHONY: setup db migrate gateway node platform web web-dist site sites tunnel deploy seed demo-reset owner-link test test-stack lint fmt rfc
+.PHONY: setup db migrate gateway node guest platform web web-dist site sites tunnel deploy seed demo-reset owner-link test test-stack lint fmt rfc
 
 setup: ## .env, Python deps, Chromium for the crawler, web deps
 	test -f .env || cp .env.example .env
@@ -24,6 +24,10 @@ gateway: ## MCP server -> http://localhost:8001/mcp
 
 node: ## BATP node (our agent protocol) -> batp://127.0.0.1:4710
 	uv run python -m merchant_node
+
+guest: ## A guest's own AI agent talking to the merchants' agents over BATP (MESSAGE="Table for 2 tonight")
+	@test -n "$(MESSAGE)" || { echo 'Say what the guest wants: make guest MESSAGE="Table for 2 tonight at 8pm"' >&2; exit 1; }
+	uv run python scripts/batp_guest.py "$(MESSAGE)"
 
 platform: ## Platform API -> http://localhost:8002
 	uv run uvicorn merchant_platform.api:app --port 8002

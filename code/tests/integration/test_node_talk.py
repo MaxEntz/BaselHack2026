@@ -13,19 +13,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import set_status
-from agent.service import PgAgentService
-from agent.talk import MerchantAgent, registry_merchants
-from batp.client import BatpClient
-from batp.messages import AgentIdentity, Response
-from batp.server import NodeServer
+from batp.messages import Response
 from core.db import agent_requests_t, merchant_activity_t, merchant_conn, reservations_t
 from core.llm import LLMReply
-from merchant_node.__main__ import NODE
-from merchant_node.agents import MerchantAgents
 from merchant_node.limits import TalkLimits
-from merchant_node.requests_log import RequestLog
 from merchant_platform.events import LiveBus, LiveListener
-from tests.integration.agent_fakes import ScriptedLLM, call, calls, says
+from tests.integration.agent_fakes import (
+    FALLBACK,
+    TOKEN,
+    Node,
+    ScriptedLLM,
+    call,
+    calls,
+    says,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -35,14 +36,6 @@ TZ = ZoneInfo("Europe/Zurich")
 NOW = datetime(2026, 10, 31, 9, tzinfo=TZ)
 DAY = date(2026, 11, 2)
 GUEST = "Lena Koch"
-FALLBACK = "http://localhost:8080/reservation.html"
-TOKEN = "gw-token-for-the-talk-tests"
-GATEWAY = AgentIdentity(
-    id="urn:batp:agent:claude-gateway",
-    name="Claude via the Sésame gateway",
-    kind="user-agent",
-    operator="merchant-agents",
-)
 DEADLINE_S = 2  # AGENTS.md §9: a booking shows up in the merchant chat within 2 s.
 
 
@@ -52,35 +45,6 @@ def at(hhmm: str) -> str:
 
 def talk(text: str, **fields: Any) -> dict[str, Any]:
     return {"message": text, "idempotency_key": str(uuid4()), **fields}
-
-
-class Node:
-    """A node serving `MerchantAgents` with the agent on `llm` (none: no OPENAI_API_KEY)."""
-
-    def __init__(
-        self, engine: AsyncEngine, llm: ScriptedLLM | None, limits: TalkLimits | None = None
-    ) -> None:
-        service = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
-        talker = None
-        if llm is not None:
-            talker = MerchantAgent(llm, service, registry_merchants(engine), TZ, clock=lambda: NOW)
-        agents = MerchantAgents(engine, service, talker, limits)
-        self.server = NodeServer(
-            node=NODE,
-            handle=agents,
-            authenticate=lambda hello: hello.token == TOKEN,
-            fallback_url=agents.fallback_url,
-            record=RequestLog(engine),
-        )
-
-    async def __aenter__(self) -> BatpClient:
-        await self.server.start("127.0.0.1", 0)
-        self._client = BatpClient("127.0.0.1", self.server.port, GATEWAY, token=TOKEN)
-        return await self._client.__aenter__()
-
-    async def __aexit__(self, *exc: Any) -> None:
-        await self._client.__aexit__(*exc)
-        await self.server.stop()
 
 
 @pytest.fixture
