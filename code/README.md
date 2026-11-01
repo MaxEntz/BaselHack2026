@@ -36,6 +36,19 @@ Le Petit Zinc's booking form posts to `http://localhost:8002/public/le-petit-zin
 
 Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md). The web app, the platform and the demo sites run on the same server, each on its own host (#142): see [`documentation/runbooks/platform.md`](../documentation/runbooks/platform.md).
 
+## Run it for real
+
+On demo data, `VITE_MOCK=1 make web` is enough. With the agent and a model, after [First run](#first-run), set `OPENAI_API_KEY` and `BATP_URL=batp://127.0.0.1:4710` in `.env` (`make setup` copied it from `.env.example`, which already lets the crawler read the local sites), then:
+
+```bash
+make demo-reset   # La Graine Verte and Maison Albane with their data (Le Petit Zinc is built live)
+make node         # terminal 1: the BATP node -> batp://127.0.0.1:4710
+make gateway      # terminal 2: MCP server -> http://localhost:8001/mcp
+make platform     # terminal 3: platform API -> http://localhost:8002
+make sites        # terminal 4: the 3 demo websites on :8080, :8081, :8082
+make web          # terminal 5: Studio -> http://localhost:5173, then build from http://localhost:8080
+```
+
 ## Demo data
 
 The demo's script, checklist and plan B: [`documentation/runbooks/demo.md`](../documentation/runbooks/demo.md). Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_profiles` pytest fixture):
