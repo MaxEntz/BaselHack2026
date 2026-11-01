@@ -149,7 +149,7 @@ The real Claude.ai checks stay manual: [connector.md](connector.md), step 4, wit
 
 | Question | Short answer | Where |
 |---|---|---|
-| Can Claude book without asking? | No. Every write needs the guest's explicit yes, after Claude has shown what it will book; a yes given in advance doesn't count. A booking or a change carries an `idempotency_key`, so a retry never books twice | AGENTS.md §6, #14, #109, [ADR-0013](../adr/0013-store-update-idempotency-keys-in-public.md) |
+| Can Claude book without asking? | No. Every write needs the guest's explicit yes, after Claude has shown what it will book; a yes given in advance doesn't count. A booking or a change carries an `idempotency_key`, so a retry with the same key never books twice | AGENTS.md §6, #14, #109, [ADR-0013](../adr/0013-store-update-idempotency-keys-in-public.md) |
 | Two guests on the last table? | Postgres decides: an exclusion constraint forbids two confirmed bookings overlapping on one table, and each booking locks its table's row. Ten concurrent bookings on one table give exactly one success (`test_agent_booking.py`) | AGENTS.md §7.2, [ADR-0001](../adr/0001-one-postgres-schema-per-merchant.md) |
 | What if the AI misreads the website? | The model only fills a validated schema, never code or SQL. What the site doesn't say becomes a stated default the merchant sees. The agent stays hidden until the merchant has checked the review and published | [ADR-0003](../adr/0003-llm-fills-a-schema-never-generates-code.md), #136 |
 | What if your agent is down or slow? | One 2-second deadline per call; past it, or when the merchant is paused, Claude gets the merchant's own booking page | AGENTS.md §8.4, #92 |

@@ -158,7 +158,7 @@
     <p class="kicker">Why it holds</p>
     <h2>Built so that a demo can't double-book</h2>
     <div class="rows">
-      <div class="row"><h3>The guest says yes</h3><p>Claude's tools tell it to show what it will book and wait for the guest's yes. A booking or a change carries an idempotency key, so a retry never books twice.</p><span class="ref">#14 · #109</span></div>
+      <div class="row"><h3>The guest says yes</h3><p>Claude's tools tell it to show what it will book and wait for the guest's yes. A booking or a change carries an idempotency key, so a retry with the same key never books twice.</p><span class="ref">#14 · #109</span></div>
       <div class="row"><h3>One table, one time</h3><p>A Postgres exclusion constraint on table and time range. Two bookings at once for the last table: exactly one wins.</p><span class="ref">ADR-0001</span></div>
       <div class="row"><h3>The LLM fills a form</h3><p>It never writes code, SQL or tools. Its answer is validated, and every assumption is shown to the merchant.</p><span class="ref">ADR-0003</span></div>
       <div class="row"><h3>A way out</h3><p>A slow or paused agent, or a group too large: the guest gets the restaurant's own booking page.</p><span class="ref">§8.4</span></div>
