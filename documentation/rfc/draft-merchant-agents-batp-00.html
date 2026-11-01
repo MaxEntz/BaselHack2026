@@ -2711,9 +2711,11 @@ refused it (<a href="#talk-status" class="auto internal xref">Section 8.6.3</a>)
 </li>
           <li class="normal" id="section-8.6-11.5">
             <p id="section-8.6-11.5.1"><code>tools_called</code>: the names of the tools the agent called while answering,
-in the order of the calls, without their arguments or results. Each name
-is 1 to 64 characters: a lowercase ASCII letter, then lowercase ASCII
-letters, digits and "_".<a href="#section-8.6-11.5.1" class="pilcrow">¶</a></p>
+in the order of the calls, without their arguments or results. When a
+<code>confirm</code> carried out a proposal, it also names the write the node's code
+ran (for example "create_reservation"), although the model has no tool
+that writes (<a href="#talk-confirm" class="auto internal xref">Section 8.6.1</a>). Each name is 1 to 64 characters: a
+lowercase ASCII letter, then lowercase ASCII letters, digits and "_".<a href="#section-8.6-11.5.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
 <p id="section-8.6-12"><code>conversation</code> and <code>reply</code> are always present. A caller handles an absent
@@ -3605,7 +3607,7 @@ N: {"type": "response", "id": "r-8", "status": 200,
         "starts_at": "2026-11-03T19:30:00+01:00", "party_size": 2,
         "table_label": "T2", "status": "confirmed",
         "guest_name": "Noah Weber", "via": "claude"},
-      "fallback_url": null, "tools_called": []}}
+      "fallback_url": null, "tools_called": ["create_reservation"]}}
 </pre>
 </div>
 <figcaption><a href="#figure-6" class="selfRef">Figure 6</a>:

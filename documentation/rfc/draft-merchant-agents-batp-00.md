@@ -646,9 +646,11 @@ that a caller can rely on them:
   cannot serve what the guest asked, for example after one of its tools
   refused it ({{talk-status}}); null otherwise.
 - `tools_called`: the names of the tools the agent called while answering,
-  in the order of the calls, without their arguments or results. Each name
-  is 1 to 64 characters: a lowercase ASCII letter, then lowercase ASCII
-  letters, digits and "_".
+  in the order of the calls, without their arguments or results. When a
+  `confirm` carried out a proposal, it also names the write the node's code
+  ran (for example "create_reservation"), although the model has no tool
+  that writes ({{talk-confirm}}). Each name is 1 to 64 characters: a
+  lowercase ASCII letter, then lowercase ASCII letters, digits and "_".
 
 `conversation` and `reply` are always present. A caller handles an absent
 `pending`, `reservation` or `fallback_url` as null, and an absent `slots` or
@@ -1165,7 +1167,7 @@ N: {"type": "response", "id": "r-8", "status": 200,
         "starts_at": "2026-11-03T19:30:00+01:00", "party_size": 2,
         "table_label": "T2", "status": "confirmed",
         "guest_name": "Noah Weber", "via": "claude"},
-      "fallback_url": null, "tools_called": []}}
+      "fallback_url": null, "tools_called": ["create_reservation"]}}
 ~~~
 {: title="Confirming the proposal"}
 
