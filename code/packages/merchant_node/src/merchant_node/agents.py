@@ -1,7 +1,8 @@
 """The merchant agents behind the BATP node: one handler per intent (PROTOCOL.md §7).
 
-`TALK` answers `503 agent_unavailable` with the fallback URL until the merchant's AI agent is
-served here (#249): the frames are fixed (#245), the agent behind them is not there yet.
+`TALK` goes to the merchant's AI agent (`agent.talk`, #246, #249), within the node's limits
+(`limits.py`); without OPENAI_API_KEY there is no agent, and it answers `503 agent_unavailable`
+with the fallback URL while the other intents work as before.
 
 Params and results are the tool contracts of `core.models`, so BATP and the MCP tools agree by
 construction. A merchant marked `down` refuses agent traffic with its fallback URL, as the
@@ -18,9 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.discovery import RegistryEntry, find_merchant, routable, search
 from agent.service import AgentService
+from agent.talk import MerchantAgent
 from batp.messages import AgentIdentity, Intent, Request
 from batp.server import FAILED
-from batp.status import WITH_FALLBACK, Refused
+from batp.status import WITH_FALLBACK, Refused, TooManyRequests
 from core.errors import AgentError, AgentUnavailable, InvalidInput, NotFound
 from core.models import (
     CancelReservationInput,
@@ -35,11 +37,12 @@ from core.models import (
     UpdateReservationInput,
     Via,
 )
+from merchant_node.limits import TalkLimits
 
 # Bookings over BATP come from guests' agents. The `kind` a caller declares is not trusted, and
 # `Via` has no value for agents other than Claude yet: every BATP booking is `claude`.
 VIA: Via = "claude"
-NO_AGENT_YET = "{name}'s agent can't talk yet; book on its website"
+NO_AGENT = "{name}'s agent can't talk right now; book on its website"
 
 log = logging.getLogger("merchant_node")
 
@@ -50,9 +53,18 @@ IntentHandler = Callable[[AgentIdentity, Request], Awaitable[Result]]
 class MerchantAgents:
     """`NodeServer`'s handler: validates params, calls the service, maps refusals."""
 
-    def __init__(self, engine: AsyncEngine, service: AgentService) -> None:
+    def __init__(
+        self,
+        engine: AsyncEngine,
+        service: AgentService,
+        talker: MerchantAgent | None = None,
+        limits: TalkLimits | None = None,
+    ) -> None:
+        """`talker` answers `TALK`: none without OPENAI_API_KEY."""
         self.engine = engine
         self.service = service
+        self.talker = talker
+        self.limits = limits if limits is not None else TalkLimits()
         self._handlers: dict[Intent, IntentHandler] = {
             "PING": self._ping,
             "DISCOVER": self._discover,
@@ -67,11 +79,7 @@ class MerchantAgents:
     async def __call__(self, agent: AgentIdentity, request: Request) -> Result:
         try:
             return await self._handlers[request.intent](agent, request)
-        except ValidationError as error:
-            fields = sorted({".".join(map(str, e["loc"]))[:60] for e in error.errors()})
-            listed = ", ".join(fields[:5]) or "params"
-            raise InvalidInput(f"Invalid params for {request.intent}: {listed}") from None
-        except (Refused, AgentError):
+        except (Refused, AgentError, TooManyRequests):
             raise
         except Exception:
             # Never a trace for the caller, but still the merchant's fallback URL (§8).
@@ -83,14 +91,14 @@ class MerchantAgents:
         return {"pong": True, "server_time": datetime.now(UTC).isoformat()}
 
     async def _discover(self, agent: AgentIdentity, request: Request) -> Result:
-        inp = SearchMerchantsInput.model_validate(request.params)
+        inp = _params(SearchMerchantsInput, request, request.params)
         # `search` refuses a query or filters beyond its bounds before reading the registry.
         found = await search(inp.query, inp.near, inp.date, inp.filters, engine=self.engine)
         return _dump(found)
 
     async def _availability(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        inp = GetAvailabilityInput.model_validate(params)
+        inp = _params(GetAvailabilityInput, request, params)
         slots = await self._refusing(
             slug, self.service.get_availability(slug, inp.date, inp.party_size, inp.time)
         )
@@ -98,7 +106,7 @@ class MerchantAgents:
 
     async def _book(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        inp = CreateReservationInput.model_validate(params)
+        inp = _params(CreateReservationInput, request, params)
         reservation = await self._refusing(
             slug,
             self.service.create_reservation(
@@ -114,7 +122,7 @@ class MerchantAgents:
 
     async def _amend(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        inp = UpdateReservationInput.model_validate(params)
+        inp = _params(UpdateReservationInput, request, params)
         reservation = await self._refusing(
             slug,
             self.service.update_reservation(
@@ -130,7 +138,7 @@ class MerchantAgents:
 
     async def _cancel(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        inp = CancelReservationInput.model_validate(params)
+        inp = _params(CancelReservationInput, request, params)
         reservation = await self._refusing(
             slug,
             self.service.cancel_reservation(
@@ -141,14 +149,18 @@ class MerchantAgents:
 
     async def _talk(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        TalkInput.model_validate(params)
-        merchant = await self._registry(slug)
-        raise Refused(
-            AgentUnavailable(NO_AGENT_YET.format(name=merchant.name)), merchant.fallback_url
-        )
+        inp = _params(TalkInput, request, params)
+        if self.talker is None:
+            merchant = await self._registry(slug)
+            raise Refused(
+                AgentUnavailable(NO_AGENT.format(name=merchant.name)), merchant.fallback_url
+            )
+        async with self.limits.turn(slug):
+            output = await self._refusing(slug, self.talker.talk(slug, agent.id, inp))
+        return _dump(output)
 
     async def _recall(self, agent: AgentIdentity, request: Request) -> Result:
-        inp = GetMyReservationsInput.model_validate(request.params)
+        inp = _params(GetMyReservationsInput, request, request.params)
         reservations, notices = await self.service.find_guest_reservations(inp.guest_name)
         return _dump(
             GetMyReservationsOutput(reservations=tuple(reservations), notices=tuple(notices))
@@ -202,6 +214,18 @@ class MerchantAgents:
             if error.code not in WITH_FALLBACK:
                 raise
             raise Refused(error, (await self._registry(slug)).fallback_url) from None
+
+
+def _params[M: BaseModel](model: type[M], request: Request, params: dict[str, Any]) -> M:
+    """The request's params for the contract; `InvalidInput` naming the fields that fail. Only
+    these are the caller's error: any other `ValidationError` (a stored profile that no longer
+    validates) is the node's, answered `503` with the fallback URL (§8)."""
+    try:
+        return model.model_validate(params)
+    except ValidationError as error:
+        fields = sorted({".".join(map(str, e["loc"]))[:60] for e in error.errors()})
+        listed = ", ".join(fields[:5]) or "params"
+        raise InvalidInput(f"Invalid params for {request.intent}: {listed}") from None
 
 
 def _dump(model: BaseModel) -> Result:

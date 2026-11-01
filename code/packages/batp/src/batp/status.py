@@ -49,6 +49,11 @@ class Refused(Exception):
         self.fallback_url = fallback_url
 
 
+class TooManyRequests(Exception):
+    """A node backend's own limit (§10): the request is not carried out, the caller gets
+    `429 too_many_requests` and may send it again later."""
+
+
 def status_for(error: AgentError) -> int:
     return STATUS_BY_CODE[error.code]
 
