@@ -110,6 +110,6 @@ To run it for real, with the agent and a model, see [`code/README.md`](code/READ
 
 ## Team
 
-[Enzo Laugel](https://github.com/Boz0o0) · [Maxime Entz](https://github.com/MaxEntz) · [Matteo Tutti](https://github.com/matteoepitech) · [Matthias Yildirim](https://github.com/Rimapus) · [Nicolas Bach](https://github.com/TheNotSoChosen0ne) · [Valentino Zarrillo](https://github.com/Chrystoval1) · [Yann Toison-Chabane](https://github.com/Yann-TC)
+[Antoine Malgat](https://github.com/ToadBleu) · [Enzo Laugel](https://github.com/Boz0o0) · [Maxime Entz](https://github.com/MaxEntz) · [Matteo Tutti](https://github.com/matteoepitech) · [Matthias Yildirim](https://github.com/Rimapus) · [Nicolas Bach](https://github.com/TheNotSoChosen0ne) · [Valentino Zarrillo](https://github.com/Chrystoval1) · [Yann Toison-Chabane](https://github.com/Yann-TC)
 
 MIT licensed, see [`license.txt`](license.txt).
