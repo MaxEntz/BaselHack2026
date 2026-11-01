@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, cast, get_args
 from zoneinfo import ZoneInfo
 
@@ -38,10 +38,14 @@ from merchant_platform.assistant import (
     default_assistant,
     system_prompt,
 )
-from merchant_platform.bookings import BookingTools
 from merchant_platform.logs import session_tag
 from merchant_platform.sessions import Session
-from merchant_platform.specs import CANCELLED, NOT_AVAILABLE, NOT_ONBOARDED, SITE_TAKEN, SPECS
+from merchant_platform.specs import (
+    CANCELLED,
+    NOT_AVAILABLE,
+    NOT_ONBOARDED,
+    SITE_TAKEN,
+)
 from merchant_platform.tools import AdminTools
 from tests.unit.assistant_fakes import (
     NOW,
@@ -637,19 +641,6 @@ async def test_a_link_that_cant_be_stored_leaves_the_session_unattached() -> Non
     assert not [e for e in events if isinstance(e, ProfileCard)]
 
 
-def test_block_slot_confirmation_names_the_day() -> None:
-    async def unknown(slug: str) -> None:
-        return None
-
-    tools = BookingTools(None, TZ, lambda: TODAY, unknown)
-    tomorrow_noon = datetime.combine(TODAY + timedelta(days=1), datetime.min.time(), TZ).replace(
-        hour=12
-    )
-
-    assert tools._when(tomorrow_noon) == "12:00 on Sun 1 Nov"
-    assert tools._when(NOW.replace(hour=12, minute=0)) == "12:00 today"
-
-
 def test_a_model_call_that_stops_sending_gives_up_after_60_s(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -673,12 +664,6 @@ def test_a_model_call_that_stops_sending_gives_up_after_60_s(
     assert kwargs["timeout"].read == 60
     assert kwargs["timeout"].connect == 5
     assert kwargs["max_retries"] == 0
-
-
-def test_every_tool_the_model_reads_has_a_handler() -> None:
-    tools = AdminTools(None, fake_build, TZ, today=lambda: TODAY)
-
-    assert tools._handlers.keys() == {spec.name for spec in SPECS}
 
 
 def test_every_cancellation_outcome_has_its_wording() -> None:

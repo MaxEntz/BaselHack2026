@@ -12,9 +12,10 @@ from core.errors import InvalidInput
 USEFUL_LINK = re.compile(
     r"menu|carte|karte|hours|horaires|zeiten|contact|kontakt|book|reserv", re.IGNORECASE
 )
-DEFAULT_PORTS = (80, 443)
+# A port is the default one only for its own scheme: `http://x:443/` is not `http://x/`.
+DEFAULT_PORTS = {"http": 80, "https": 443}
 
-# Host without `www.`, and the port unless it is the default one.
+# Host without `www.`, and the port unless it is its scheme's default.
 Site = tuple[str, int | None]
 # A page: its site, its path without a trailing slash, its query.
 PageKey = tuple[Site, str, str]
@@ -42,10 +43,12 @@ def normalize_url(url: str) -> str:
 
 
 def site_of(url: str) -> Site:
-    """`http://x` and `https://www.x` are one site; `ValueError` for a port that doesn't parse."""
+    """`http://x`, `https://www.x` and `https://x:443` are one site, `http://x:443` another;
+    `ValueError` for a port that doesn't parse."""
     parts = urlsplit(url)
     port = parts.port
-    return (parts.hostname or "").removeprefix("www."), None if port in DEFAULT_PORTS else port
+    default = DEFAULT_PORTS.get(parts.scheme.lower())
+    return (parts.hostname or "").removeprefix("www."), None if port == default else port
 
 
 def same_site(url: str, website: str) -> bool:

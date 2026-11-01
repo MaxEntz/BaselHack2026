@@ -6,23 +6,15 @@ import pytest
 
 from merchant_platform.accounts import (
     Accounts,
-    MemoryOwnerStore,
     Owner,
     Signer,
     hash_token,
     login_url,
 )
+from tests.unit.account_fakes import ForgettingStore
 
 SECRET = b"s" * 32
 NOW = datetime(2026, 10, 31, 19, 40, tzinfo=UTC)
-
-
-class ForgettingStore(MemoryOwnerStore):
-    """An owner store whose merchant can be deleted, as `merchant_owners` loses its row when the
-    registry's does (ON DELETE CASCADE)."""
-
-    def forget(self, slug: str) -> None:
-        self._owners.pop(slug, None)
 
 
 def accounts(clock: datetime = NOW, invite: str | None = None) -> tuple[Accounts, ForgettingStore]:

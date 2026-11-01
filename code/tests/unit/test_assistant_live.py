@@ -8,14 +8,10 @@ from typing import Any
 import pytest
 from openai import AsyncOpenAI
 
-from builder.llm import (
-    OpenAIClient,
-)
+from builder.llm import OpenAIClient
 from core.config import Settings
 from merchant_platform.sessions import Session
 from tests.unit.assistant_fakes import SLUG, TODAY, TZ, FakeAgent, Harness, onboarded
-
-# Mini-evaluation against the real API (`llm` marker): rerun after every prompt change.
 
 
 def real_llm() -> OpenAIClient:

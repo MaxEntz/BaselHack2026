@@ -23,7 +23,7 @@ from merchant_platform.accounts import (
 from merchant_platform.api import create_app
 from merchant_platform.logs import RedactTokens
 from merchant_platform.sessions import Emit, Session
-from tests.unit.test_accounts import ForgettingStore
+from tests.unit.account_fakes import ForgettingStore
 
 SLUG = "la-graine-verte"
 SECRET = b"k" * 32

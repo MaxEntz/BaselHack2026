@@ -67,8 +67,6 @@ BuildAgent = Callable[
     [BuildAgentInput, Callable[[StepEvent | SitePageEvent], Awaitable[None]]],
     Awaitable[BuildAgentOutput],
 ]
-# How long after a build its browser may claim the owner cookie (`POST /session/claim`).
-CLAIM_SECONDS = 300
 # The secret link of a merchant just built, for its owner (#132).
 IssueLink = Callable[[str], Awaitable[IssuedLink]]
 # Publishes a merchant a build left waiting, streaming the `deploy` step (#136).
@@ -231,11 +229,7 @@ class AdminTools:
         # The link first: if it can't be stored, the session isn't attached to a merchant
         # nobody owns (`make owner-link` then gives it one).
         link = await self._issue_link(output.profile.slug) if self._issue_link else None
-        session.merchant_slug = output.profile.slug
-        session.built_at = len(session.messages)
-        session.link = link.fingerprint if link else None
-        # The building browser may claim its owner cookie once, shortly after (#132).
-        session.claimable_until = time.monotonic() + CLAIM_SECONDS if link else None
+        session.built(output.profile.slug, link.fingerprint if link else None)
         # Never the facts: their values and quotes are the crawled site's own words, which must
         # not reach a model that holds write tools (ARCHITECTURE.md §4). It reads the flags,
         # which code writes; the merchant sees the facts on the card.

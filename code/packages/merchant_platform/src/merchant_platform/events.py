@@ -23,9 +23,9 @@ from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from builder.slugs import MAX_SLUG, MIN_SLUG
 from core.db import merchant_conn, merchants_t, reservations_t, tables_t
 from core.models import AdminReservationRow, LiveEvent, ReservationStatus, Via
+from core.models.base import SLUG_MAX, SLUG_MIN
 
 log = logging.getLogger("merchant_platform.events")
 
@@ -34,7 +34,7 @@ CHANNEL = "reservations"
 QUEUE_SIZE = 100
 BACKOFF_SECONDS = (1, 2, 4, 10)
 # `schema_for` in reverse: `m_` + slug with `-` replaced by `_` (slugs have no `_`).
-_MERCHANT_SCHEMA = re.compile(rf"^m_([a-z0-9_]{{{MIN_SLUG},{MAX_SLUG}}})$")
+_MERCHANT_SCHEMA = re.compile(rf"^m_([a-z0-9_]{{{SLUG_MIN},{SLUG_MAX}}})$")
 
 
 class LiveBus:

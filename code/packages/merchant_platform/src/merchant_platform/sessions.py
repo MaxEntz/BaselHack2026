@@ -42,6 +42,8 @@ Emit = Callable[[ChatEvent], Awaitable[None]]
 DEFAULT_SESSION = "default"
 # What the management site's panel gets back after a reload (#140): the last items only.
 MAX_ITEMS = 200
+# How long after a build its browser may claim the owner cookie (`POST /session/claim`).
+CLAIM_SECONDS = 300
 
 
 @dataclass(eq=False)
@@ -69,6 +71,15 @@ class Session:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # The running turn, kept referenced so it isn't garbage-collected mid-flight.
     turn: asyncio.Task[None] | None = None
+
+    def built(self, slug: str, link: str | None) -> None:
+        """The session just built `slug`'s agent: it now acts with the merchant's new link
+        (`Owner.fingerprint`, none for a merchant nobody owns), and its browser may claim the
+        owner cookie once, within `CLAIM_SECONDS` (#132)."""
+        self.merchant_slug = slug
+        self.built_at = len(self.messages)
+        self.link = link
+        self.claimable_until = time.monotonic() + CLAIM_SECONDS if link else None
 
     def said(self, text: str) -> None:
         self._keep(UserItem(text=text))

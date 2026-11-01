@@ -152,6 +152,10 @@ def test_a_trailing_slash_or_a_default_port_is_the_same_page() -> None:
     # One page key for the crawl and the extraction (#220).
     assert page_key(f"{HOME}menu/") == page_key("https://bistrot.example:443/menu#plats")
     assert page_key(f"{HOME}menu?lang=de") != page_key(f"{HOME}menu")
+    # A default port only for its own scheme: plain HTTP on the TLS port is a dead link.
+    assert page_key("http://bistrot.example:80/menu") == page_key(f"{HOME}menu")
+    assert page_key("http://bistrot.example:443/menu") != page_key(f"{HOME}menu")
+    assert not same_site("http://bistrot.example:443/x", HOME)
     assert same_site("http://bistrot.example/x", HOME)
     assert not same_site("https://www.bistrot.example:8443/menu", HOME)
     assert useful_links([(f"{HOME}menu/", "Menu"), (f"{HOME}menu", "Menu")], HOME, 5) == [

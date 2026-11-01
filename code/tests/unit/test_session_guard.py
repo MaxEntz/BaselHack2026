@@ -9,8 +9,8 @@ from core.errors import InvalidInput
 from core.models import MerchantProfile
 from merchant_platform.accounts import Accounts, NeedsInvite, NotSignedIn, OtherMerchant, Signer
 from merchant_platform.registry import ProfileLookup
-from merchant_platform.sessions import Session, SessionGuard, SessionStore
-from tests.unit.test_accounts import ForgettingStore
+from merchant_platform.sessions import CLAIM_SECONDS, Session, SessionGuard, SessionStore
+from tests.unit.account_fakes import ForgettingStore
 
 SECRET = b"g" * 32
 SLUG = "la-graine-verte"
@@ -70,6 +70,17 @@ async def test_an_anonymous_onboarding_needs_the_invitation_and_keeps_no_session
     assert world.sessions.find("s") is None
     invited = await world.open(invite=world.accounts.invite_cookie())
     assert invited.merchant_slug is None
+
+
+async def test_a_known_session_still_needs_the_invitation_to_onboard() -> None:
+    # The second gate: the session exists already, but works on no merchant and wasn't invited.
+    world = World(invite=INVITE)
+    world.sessions.get("s")
+
+    with pytest.raises(NeedsInvite):
+        await world.open()
+
+    assert world.sessions.find("s") is not None  # an existing session isn't dropped
 
 
 async def test_without_an_invite_code_anyone_may_onboard() -> None:
@@ -136,19 +147,74 @@ async def test_the_development_merchants_sessions_need_no_link() -> None:
     assert not await world.guard.acts_for_its_merchant(session)
 
 
-async def test_the_building_browser_claims_its_cookie_once() -> None:
-    world = World()
+async def built(world: World, session_id: str = "builder") -> Session:
+    """A session that just built SLUG, as `build_agent` leaves it."""
     await world.cookie()
     owner = await world.accounts.owner(SLUG)
     assert owner is not None
-    session = world.sessions.get("builder")
-    session.merchant_slug, session.link = SLUG, owner.fingerprint
-    session.claimable_until = time.monotonic() + 60
+    session = world.sessions.get(session_id)
+    session.built(SLUG, owner.fingerprint)
+    return session
+
+
+async def test_a_build_may_claim_its_cookie_for_five_minutes() -> None:
+    before = time.monotonic()
+    session = await built(World())
+
+    assert session.claimable_until is not None
+    assert before + CLAIM_SECONDS <= session.claimable_until <= time.monotonic() + CLAIM_SECONDS
+    assert CLAIM_SECONDS == 300  # CONTRACTS.md: "within 5 minutes"
+    assert session.merchant_slug == SLUG
+    assert not session.needs_cookie  # until it claims
+
+
+async def test_a_build_without_a_link_has_nothing_to_claim() -> None:
+    session = World().sessions.get("builder")
+
+    session.built(SLUG, None)
+
+    assert session.claimable_until is None
+
+
+async def test_the_building_browser_claims_its_cookie_once() -> None:
+    world = World()
+    session = await built(world)
+    owner = await world.accounts.owner(SLUG)
 
     cookie = await world.guard.claim("builder")
 
     assert await world.accounts.owner_from_cookie(cookie) == owner
     assert session.needs_cookie
+    with pytest.raises(NotSignedIn):
+        await world.guard.claim("builder")
+
+
+async def test_a_claim_after_a_new_link_is_refused() -> None:
+    world = World()
+    await built(world)
+
+    await world.cookie()  # the owner opened a new link meanwhile
+
+    with pytest.raises(NotSignedIn):
+        await world.guard.claim("builder")
+
+
+async def test_a_claim_for_a_deleted_merchant_is_refused() -> None:
+    world = World()
+    await built(world)
+
+    world.store.forget(SLUG)
+
+    with pytest.raises(NotSignedIn):
+        await world.guard.claim("builder")
+
+
+async def test_a_development_session_has_no_owner_to_claim() -> None:
+    # A link-less session of PLATFORM_MERCHANT acts for it, but no owner cookie exists for it.
+    world = World(development=SLUG)
+    session = world.sessions.get("builder")
+    session.merchant_slug, session.claimable_until = SLUG, time.monotonic() + 60
+
     with pytest.raises(NotSignedIn):
         await world.guard.claim("builder")
 
