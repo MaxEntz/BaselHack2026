@@ -548,6 +548,7 @@ def summary_row(case: Case, runs: list[Extraction], model: str) -> str:
     profiles = [r.profile for r in runs if r.profile is not None]
     passed = sum(check(p) for p in profiles for _, check in case.checks)
     costs = [cost_usd(model, r.input_tokens, r.output_tokens) for r in called]
+    known_costs = [cost for cost in costs if cost is not None]
     cells = [
         case.name,
         f"{sum(r.final is not None for r in runs)}/{len(runs)}",
@@ -558,7 +559,7 @@ def summary_row(case: Case, runs: list[Extraction], model: str) -> str:
         f"{statistics.mean(r.output_tokens for r in called):.0f}"
         if called
         else "-",
-        f"${statistics.mean(costs):.4f}" if costs and None not in costs else "-",
+        f"${statistics.mean(known_costs):.4f}" if costs and len(known_costs) == len(costs) else "-",
         f"{passed}/{len(profiles) * len(case.checks)}" if case.checks else "-",
     ]
     return "| " + " | ".join(cells) + " |"

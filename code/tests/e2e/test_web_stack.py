@@ -4,7 +4,8 @@ Studio builds and publishes a merchant, its private link opens the management si
 browser, a guest books through the gateway and the booking shows up live, a time blocked on
 the Reservations page leaves the agent's answers, and a pause sends guests to the fallback.
 Real Postgres, platform (`default_app`), gateway and web app; only the model and the crawl are
-fakes. Needs `npm run build` in `web/` first: CI builds it, a local run without it is skipped.
+fakes. Needs a build of the current web sources (`make web-dist`, or `make test-stack`): CI
+builds it and fails without it, a local run without it, or with an older one, is skipped.
 """
 
 import json
@@ -45,7 +46,10 @@ from tests.e2e.conftest import (
 pytestmark = [pytest.mark.integration, pytest.mark.browser]
 
 TZ = ZoneInfo("Europe/Zurich")
-DIST = Path(__file__).parents[2] / "web" / "dist"
+WEB = Path(__file__).parents[2] / "web"
+DIST = WEB / "dist"
+# What `npm run build` reads: a `dist` older than one of them was built from other code.
+WEB_SOURCES = ("src", "public", "index.html", "package.json", "vite.config.ts")
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())
 WEBSITE = "http://zinc-e2e.example/"
 NAME = "Zinc E2E"
@@ -119,10 +123,31 @@ def web_app(platform: FastAPI) -> Starlette:
     )
 
 
+def newest_web_source() -> tuple[float, Path]:
+    """The most recently changed file the build reads, with its modification time."""
+    files = (
+        file
+        for source in (WEB / name for name in WEB_SOURCES)
+        for file in (source.rglob("*") if source.is_dir() else [source])
+        if file.is_file()
+    )
+    return max((file.stat().st_mtime, file) for file in files)
+
+
+def stale_web_dist() -> str | None:
+    """Why `dist` can't be tested, if it can't: missing, or older than the sources."""
+    index = DIST / "index.html"
+    if not index.exists():
+        return "no web/dist: run `make web-dist` first"
+    changed_at, changed = newest_web_source()
+    if changed_at > index.stat().st_mtime:
+        return f"web/dist is older than web/{changed.relative_to(WEB)}: run `make web-dist`"
+    return None
+
+
 @pytest.fixture(scope="module")
 def built_web() -> None:
-    if not (DIST / "index.html").exists():
-        message = "no web/dist: run `npm run build` in web/ first"
+    if message := stale_web_dist():
         if os.environ.get("CI"):
             pytest.fail(message)
         pytest.skip(message)

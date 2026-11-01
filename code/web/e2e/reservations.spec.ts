@@ -1,12 +1,9 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type Page, expect, test } from "@playwright/test";
-import { openMockup } from "./mockup.ts";
+import { MOCKUP, mockupMissing, openMockup } from "./mockup.ts";
 
 // The Reservations page (#139) beside the v10 mockup, at 1440 and 390 px, with the demo fixture
 // and its clock at 19:40; then add, move, cancel and block against the mock client.
-const MOCKUP = process.env.SESAME_MOCKUP ?? resolve(import.meta.dirname, "../../../documentation/design/poc-v10/sesame-management.html");
 const DEMO_NOW = new Date("2026-10-31T19:40:00+01:00");
 const PAGE = "/manage/la-graine-verte/reservations";
 
@@ -64,7 +61,7 @@ async function settle(page: Page) {
 
 for (const width of [1440, 390]) {
   test.describe(`reservations at ${width} px`, () => {
-    test.skip(!existsSync(MOCKUP), `mockup not found: ${MOCKUP}`);
+    test.skip(mockupMissing(), `mockup not found: ${MOCKUP}`);
     test.use({ viewport: { width, height: 900 } });
 
     test("matches the mockup", async ({ page, browser }) => {

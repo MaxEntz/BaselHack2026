@@ -37,13 +37,43 @@ async def fake_backend(agent: AgentIdentity, request: Request) -> dict[str, Any]
     raise InvalidInput(f"{request.intent} is not served here")
 
 
+class Held:
+    """`fake_backend`, except that a request with `hold` in its params waits for `release`.
+
+    `started` is set once `expected` held requests are running on the node: a test waits for
+    it to know they are in flight, rather than sleeping and hoping.
+    """
+
+    def __init__(self, expected: int = 1) -> None:
+        self.expected = expected
+        self.running = 0
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __call__(self, agent: AgentIdentity, request: Request) -> dict[str, Any]:
+        if not request.params.get("hold"):
+            return await fake_backend(agent, request)
+        self.running += 1
+        if self.running >= self.expected:
+            self.started.set()
+        await self.release.wait()
+        if request.intent == "BOOK":
+            return {"booked": True}
+        return {"pong": True, "agent": agent.id}
+
+
 def accept_token(hello: Hello) -> bool:
     return hello.token == "s3cret"
 
 
 @pytest.fixture
-async def node() -> AsyncIterator[NodeServer]:
-    server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token)
+def held() -> Held:
+    return Held()
+
+
+@pytest.fixture
+async def node(held: Held) -> AsyncIterator[NodeServer]:
+    server = NodeServer(node=NODE, handle=held, authenticate=accept_token)
     await server.start("127.0.0.1", 0)
     yield server
     await server.stop()
@@ -121,16 +151,17 @@ async def test_the_caller_can_name_its_request(
     assert [line["request"] for line in lines] == ["r-mine"]
 
 
-async def test_an_id_already_in_flight_is_refused(node: NodeServer) -> None:
+async def test_an_id_already_in_flight_is_refused(node: NodeServer, held: Held) -> None:
     async with client_for(node) as client:
         first = asyncio.create_task(
-            client.request("PING", params={"delay": 0.2}, request_id="r-same")
+            client.request("PING", params={"hold": True}, request_id="r-same")
         )
-        await asyncio.sleep(0.05)
+        await held.started.wait()
 
         with pytest.raises(ValueError, match="r-same"):
             await client.request("PING", request_id="r-same")
 
+        held.release.set()
         assert (await first)["pong"] is True
 
 
@@ -244,15 +275,16 @@ async def test_requests_beyond_the_in_flight_limit_get_429_without_being_run() -
         await server.stop()
 
 
-async def test_a_429_is_agent_unavailable_for_the_caller() -> None:
-    server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token, max_in_flight=1)
+async def test_a_429_is_agent_unavailable_for_the_caller(held: Held) -> None:
+    server = NodeServer(node=NODE, handle=held, authenticate=accept_token, max_in_flight=1)
     await server.start("127.0.0.1", 0)
     try:
         async with BatpClient("127.0.0.1", server.port, CALLER, token="s3cret") as client:
-            slow = asyncio.create_task(client.request("PING", params={"delay": 0.3}))
-            await asyncio.sleep(0.05)
+            slow = asyncio.create_task(client.request("PING", params={"hold": True}))
+            await held.started.wait()
             with pytest.raises(AgentUnavailable, match="in flight"):
                 await client.request("PING")
+            held.release.set()
             assert (await slow)["pong"] is True
     finally:
         await server.stop()
@@ -267,9 +299,12 @@ async def test_the_client_stays_under_the_node_s_in_flight_limit(node: NodeServe
 
 
 async def test_a_429_on_one_request_leaves_the_others_on_the_session_answered() -> None:
+    book_arrived = asyncio.Event()
+
     async def script(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
         # BOOK is held until PING arrives; PING gets the draft's 429, then BOOK its answer.
         if len(requests) < 2:
+            book_arrived.set()
             return []
         book, ping = requests
         return [
@@ -288,7 +323,7 @@ async def test_a_429_on_one_request_leaves_the_others_on_the_session_answered() 
         BatpClient("127.0.0.1", port, CALLER) as client,
     ):
         book = asyncio.create_task(client.request("BOOK", "le-petit-zinc"))
-        await asyncio.sleep(0.05)
+        await book_arrived.wait()
         with pytest.raises(AgentUnavailable):
             await client.request("PING")
         assert await book == {"booked": True}
@@ -477,15 +512,17 @@ async def test_a_cancelled_request_leaves_nothing_pending(node: NodeServer) -> N
 
 
 async def test_a_read_survives_a_dropped_session_but_a_write_is_not_resent(
-    node: NodeServer,
+    node: NodeServer, held: Held
 ) -> None:
+    held.expected = 2
     client = client_for(node)
     try:
-        read = asyncio.create_task(client.request("PING", params={"delay": 0.5}))
-        write = asyncio.create_task(client.request("BOOK", "le-petit-zinc", {"delay": 0.5}))
-        await asyncio.sleep(0.1)
+        read = asyncio.create_task(client.request("PING", params={"hold": True}))
+        write = asyncio.create_task(client.request("BOOK", "le-petit-zinc", {"hold": True}))
+        await held.started.wait()
         for writer in list(node._writers):  # the session drops, the node keeps listening
             writer.close()
+        held.release.set()  # their answers go nowhere; the read's second try is answered
 
         assert (await read)["pong"] is True
         with pytest.raises(AgentUnavailable, match="closed before the answer"):

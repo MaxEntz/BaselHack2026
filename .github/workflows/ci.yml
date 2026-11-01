@@ -13,8 +13,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Timeouts well above the usual runs (python and web about 3 min, visual under 1 min), so
+  # that a hung test fails its job instead of holding a runner for GitHub's 6 hours.
   python:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: code
@@ -25,9 +28,8 @@ jobs:
           working-directory: code
           enable-cache: true
       - run: uv sync --locked
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node
+      # ruff check, ruff format --check, mypy: the same commands as a local run.
+      - run: make lint
       # Chromium for the crawler's `browser` tests (#21).
       - run: uv run playwright install --with-deps chromium
       # The built web app, for the browser test of the whole stack (tests/e2e/test_web_stack.py, #153).
@@ -43,6 +45,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: code/web
@@ -76,6 +79,7 @@ jobs:
   # (`npm run test:visual:docker`): fonts render differently on the runner itself.
   visual-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
@@ -86,6 +90,7 @@ jobs:
   visual:
     needs: visual-image
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: ${{ needs.visual-image.outputs.image }}
       options: --ipc=host

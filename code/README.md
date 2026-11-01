@@ -74,7 +74,7 @@ uv run pytest tests/e2e/test_demo_scenario.py   # the demo's order over HTTP, be
 make test-stack                   # Chromium on the built web app, the platform and the gateway: build, publish, book, block, pause (#153)
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
 uv run scripts/bench_extract.py    # builder extraction, 5 runs on 6 sites (needs OPENAI_API_KEY; `--local` for the 4 local ones)
-uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node
+uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node packages/builder packages/merchant_platform
 make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 ```
