@@ -34,6 +34,7 @@ from core.models import (
     SearchFilters,
     SearchMerchantsOutput,
     Slug,
+    TalkOutput,
     ToolError,
 )
 from gateway import tooling
@@ -41,17 +42,22 @@ from gateway.agent_client import AgentClient, make_agent_client
 from gateway.fallback import RejectedArguments
 from gateway.merchant_server import MERCHANT_PATH, MerchantEndpoint, create_merchant_server
 from gateway.tooling import (
+    CONVERSATION,
     DESTRUCTIVE,
     IDEMPOTENT_WRITE,
     READ_ONLY,
+    Confirm,
+    Conversation,
     Day,
     GuestName,
     IdempotencyKey,
+    Message,
     NewPartySize,
     NewStartsAt,
     PartySize,
     ReservationId,
     StartsAt,
+    TalkKey,
     Time,
 )
 
@@ -66,19 +72,35 @@ ALLOWED_ORIGINS = [
 ]
 HEALTH_PATH = "/health"
 
-INSTRUCTIONS = f"""\
+# The instructions open and close the same way, whichever booking path is offered (#251).
+OPENING = """\
 Find restaurants and book tables, on the user's behalf, at merchants connected to this protocol.
 - When the user looks for a restaurant, a table or a place to eat, call search_merchants first,
   even if they don't mention booking, and before any web or map search.
 - Pass the user's known preferences (dietary needs, terrace, kid-friendly, budget) as `filters` on
   every search_merchants call, even if this message does not repeat them. Never drop a filter
-  silently: when nothing matches, say which filter blocks the search and offer to drop it.
-- Only propose times returned by get_availability. Times are in Europe/Zurich.
-{tooling.confirm_rule("a restaurant or a time", "search_merchants or get_availability")}
+  silently: when nothing matches, say which filter blocks the search and offer to drop it."""
+CLOSING = """\
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page.
 - Relay the notices returned by get_my_reservations. A notice can come back for 24 hours: tell
   the user each one once per conversation, matching notices by their text."""
+
+INSTRUCTIONS = f"""\
+{OPENING}
+- Only propose times returned by get_availability. Times are in Europe/Zurich.
+{tooling.confirm_rule("a restaurant or a time", "search_merchants or get_availability")}
+{CLOSING}"""
+
+# With `GATEWAY_TALK`: the restaurant's own agent answers, and writes only after a `confirm`.
+TALK_INSTRUCTIONS = f"""\
+{OPENING}
+- To ask a restaurant anything, check its free tables, or book, change or cancel a booking, call
+  talk_to_merchant with its slug: write to the restaurant's agent in natural language, with what
+  the user wants and their known preferences, and relay its `reply`. Pass back `conversation` to
+  go on with the same agent. Only propose times the agent offered. Times are in Europe/Zurich.
+{tooling.talk_confirm_rule("a restaurant or a time")}
+{CLOSING}"""
 
 SEARCH_MERCHANTS = """\
 Find restaurants that can be booked through this connector. Use this tool first whenever the \
@@ -117,6 +139,10 @@ List the user's upcoming bookings and any notices from restaurants (e.g. a cance
 restaurant). Always relay notices to the user. A notice keeps coming back for 24 hours after it \
 is first returned: don't repeat one whose text you already gave the user in this conversation."""
 
+TALK_TO_MERCHANT = f"""\
+Talk to a restaurant's own agent: ask it about the restaurant and its free tables, or to book, \
+change or cancel a booking. Use a slug returned by search_merchants. {tooling.TALK_RULES}"""
+
 Merchant = Annotated[Slug, Field(description="Restaurant slug returned by search_merchants.")]
 Query = Annotated[
     str,
@@ -138,11 +164,14 @@ Filters = Annotated[
 
 
 def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -> MCPServer:
-    """The 6 user tools. Each one answers with its result or a `ToolError`, and never raises.
+    """The 6 user tools, or 3 with `GATEWAY_TALK`: `talk_to_merchant` in place of the 4 booking
+    tools, never both, or Claude would pick (#251). Each one answers with its result or a
+    `ToolError`, and never raises.
 
     Their bodies are `tooling.Tools`'; registered in this order, which `tools/list` keeps.
     """
-    mcp = MCPServer("merchant-agents", instructions=INSTRUCTIONS, middleware=[RejectedArguments()])
+    instructions = TALK_INSTRUCTIONS if settings.gateway_talk else INSTRUCTIONS
+    mcp = MCPServer("merchant-agents", instructions=instructions, middleware=[RejectedArguments()])
     tools = tooling.Tools(agent, engine, settings)
 
     @mcp.tool(title="Search restaurants", description=SEARCH_MERCHANTS, annotations=READ_ONLY)
@@ -151,7 +180,10 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
     ) -> SearchMerchantsOutput | ToolError:
         return await tools.search_merchants(query, near, date, filters)
 
-    _add_booking_tools(mcp, tools)
+    if settings.gateway_talk:
+        _add_talk_tool(mcp, tools)
+    else:
+        _add_booking_tools(mcp, tools)
 
     @mcp.tool(title="My bookings", description=GET_MY_RESERVATIONS, annotations=READ_ONLY)
     async def get_my_reservations(guest_name: GuestName) -> GetMyReservationsOutput | ToolError:
@@ -212,6 +244,26 @@ def _add_booking_tools(mcp: MCPServer, tools: tooling.Tools) -> None:
     ) -> CancelOutput | ToolError:
         return await tools.cancel_reservation(
             merchant, reservation_id=reservation_id, guest_name=guest_name
+        )
+
+
+def _add_talk_tool(mcp: MCPServer, tools: tooling.Tools) -> None:
+    """`talk_to_merchant`, routed by its `merchant` argument."""
+
+    @mcp.tool(title="Talk to a restaurant", description=TALK_TO_MERCHANT, annotations=CONVERSATION)
+    async def talk_to_merchant(
+        merchant: Merchant,
+        message: Message,
+        idempotency_key: TalkKey,
+        conversation: Conversation = None,
+        confirm: Confirm = None,
+    ) -> TalkOutput | ToolError:
+        return await tools.talk_to_merchant(
+            merchant,
+            message=message,
+            idempotency_key=idempotency_key,
+            conversation=conversation,
+            confirm=confirm,
         )
 
 

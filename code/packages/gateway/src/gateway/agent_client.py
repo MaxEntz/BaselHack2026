@@ -32,6 +32,8 @@ from core.models import (
     SearchMerchantsInput,
     SearchMerchantsOutput,
     Slot,
+    TalkInput,
+    TalkOutput,
     UpdateReservationInput,
 )
 from gateway.fallback import batp_request
@@ -42,6 +44,8 @@ GATEWAY_AGENT = AgentIdentity(
     kind="user-agent",
     operator="merchant-agents",
 )
+# The merchants' agents are LLMs served by the node (#249): this process has none to talk to.
+NO_TALK_IN_PROCESS = "The merchant's agent only answers through a BATP node: set BATP_URL."
 
 
 class AgentClient(Protocol):
@@ -79,6 +83,10 @@ class AgentClient(Protocol):
     ) -> Reservation: ...
 
     async def get_my_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]: ...
+
+    async def talk(self, turn: TalkInput) -> TalkOutput:
+        """One message to the merchant's agent, and its answer (`TALK`, #245)."""
+        ...
 
     async def close(self) -> None: ...
 
@@ -134,6 +142,10 @@ class LocalAgentClient:
 
     async def get_my_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
         return await self.service.find_guest_reservations(guest_name)
+
+    async def talk(self, turn: TalkInput) -> TalkOutput:
+        """Never: the gateway has no LLM. The guest gets the fallback URL; dev runs `make node`."""
+        raise AgentUnavailable(NO_TALK_IN_PROCESS)
 
     async def close(self) -> None:
         pass
@@ -222,6 +234,10 @@ class BatpAgentClient:
         params = GetMyReservationsInput(guest_name=guest_name)
         result = await self._request("RECALL", None, params, GetMyReservationsOutput)
         return list(result.reservations), list(result.notices)
+
+    async def talk(self, turn: TalkInput) -> TalkOutput:
+        """A `TALK`. The client never resends it on a lost session: the caller retries, same key."""
+        return await self._request("TALK", turn.merchant, turn, TalkOutput)
 
     async def close(self) -> None:
         await self.client.close()

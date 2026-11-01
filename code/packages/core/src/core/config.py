@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-6.1-terra"
     merchant_tz: str = "Europe/Zurich"
     agent_timeout_ms: int = 2000
+    # talk_to_merchant's deadline: above the node's 25 s for TALK, since a model turn is slow.
+    agent_talk_timeout_ms: int = 30000
+    # Which booking path the gateway offers (#251): talk_to_merchant when on, the 4 booking tools
+    # when off. Never both, or Claude would pick.
+    gateway_talk: bool = False
     # Where the gateway reaches the merchant agents: `batp://host[:port]`, with this agent's token.
     # Unset: they run in the gateway's process.
     batp_url: str | None = None
