@@ -56,14 +56,15 @@ This document specifies the Broad Agent Transfer Protocol (BATP), an
 application protocol reserved for software agents that book with merchants
 on behalf of people or businesses. A BATP session runs over TCP, starts with
 a handshake that names the calling agent, and carries newline-delimited JSON
-frames. Each request states an intent (discover merchants, check
-availability, book, amend, cancel, talk with the merchant's agent in natural
-language, recall bookings, ping) and the merchant it addresses. Responses
-carry numeric status codes and, when the merchant's own agent cannot serve
-the request, a fallback URL to the merchant's website. A write proposed in a
-conversation is carried out only once the caller confirms it. BATP is
-designed to sit behind a Model Context Protocol (MCP) server, which acts as
-a bridge for assistants that only speak MCP.
+frames. Each request states an intent: discover merchants, talk with a
+merchant's agent in natural language, recall a guest's bookings, or ping.
+A caller checks availability and books, changes or cancels a booking only
+by talking with the merchant's agent, which proposes each write and carries
+it out only once the caller confirms it. Responses carry numeric status
+codes and, when the merchant's agent cannot serve the request, a fallback
+URL to the merchant's website. BATP is designed to sit behind a Model
+Context Protocol (MCP) server, which acts as a bridge for assistants that
+only speak MCP.
 
 --- middle
 
@@ -75,19 +76,25 @@ tell it apart from a browser, so it cannot identify the calling agent,
 route agent traffic separately, or apply rules meant for agents.
 
 BATP gives that traffic its own channel. Every frame says which agent is
-talking (established once per session), what it intends to do, and to which
-merchant. The protocol is deliberately small: it covers what a network of
-merchant agents needs to take bookings, and nothing else.
+talking (established once per session), what it intends to do, and, when
+it addresses one, to which merchant. The protocol is deliberately small: it
+covers what a network of merchant agents needs to take bookings, and
+nothing else.
 
-This document defines version 0.2 of BATP. Version 0.2 adds one intent to
-version 0.1: TALK, with which a guest's agent talks with the merchant's agent
-in natural language ({{talk}}). The changes are listed in {{changes}}.
+This document defines version 0.3 of BATP. Version 0.2 added TALK, with
+which a guest's agent talks with the merchant's agent in natural language
+({{talk}}). Version 0.3 removes the four intents with which a caller
+checked availability and booked, changed or cancelled directly: a caller
+now does all of that through TALK. Only the merchant's agent, under the
+control of the node's code, uses the merchant's booking operations, and
+every write follows a proposal that the node built and a confirmation that
+names it, whoever the caller is. The changes are listed in {{changes}}.
 
 ## Scope
 
-This version covers the guest side of booking with restaurants: discovery,
-availability, booking, amending, cancelling and recalling a guest's
-bookings, and a conversation with the merchant's agent about any of these.
+This version covers the guest side of booking with restaurants: discovering
+merchants, a conversation with the merchant's agent to check availability
+and to book, change or cancel a booking, and recalling a guest's bookings.
 Merchant-side operations (listing a day's bookings, blocking a
 slot, changing a policy) are out of scope: they stay on the merchant's own
 platform.
@@ -119,9 +126,10 @@ Node:
 
 Merchant agent:
 : One merchant's booking logic and data, served by a node and addressed by
-  the merchant's slug. Since version 0.2, it also includes the
-  conversational agent, built on a language model, that answers TALK
-  ({{talk}}).
+  the merchant's slug, together with the conversational agent, built on a
+  language model, that answers TALK for that merchant ({{talk}}). Since
+  version 0.3, that conversational agent is the only way a caller reaches
+  the merchant's booking operations.
 
 Caller:
 : An agent that opens a session with a node: a user's assistant, a
@@ -135,7 +143,7 @@ Frame:
 : One JSON object followed by a line feed ({{framing}}).
 
 Intent:
-: What a request asks the node to do, for example `BOOK`.
+: What a request asks the node to do, for example `TALK`.
 
 Slug:
 : The stable identifier of a merchant on a node: 3 to 61 characters among
@@ -182,9 +190,9 @@ in any order.
 
 ~~~ ascii-art
   Caller                                        Node
-    |  hello {agent, token, batp: "0.2"}         |
+    |  hello {agent, token, batp: "0.3"}         |
     |------------------------------------------->|
-    |  welcome {batp: "0.2", node, intents,      |
+    |  welcome {batp: "0.3", node, intents,      |
     |           session}                         |
     |<-------------------------------------------|
     |  request {id: "r-1", intent: TALK}         |
@@ -216,7 +224,7 @@ name it connected to. TLS is set up before the first frame.
 Either side MAY close the connection at any time. Closing the connection
 ends the session. A request in flight when the session ends has no
 response, and the caller MUST NOT assume it was or was not carried out
-(see {{idempotency}} for retrying writes safely).
+(see {{idempotency}} for retrying a TALK safely).
 
 ## Addressing
 
@@ -298,7 +306,8 @@ session.
   registered URN namespace {{RFC8141}}, so these identifiers are only
   meaningful between parties that agreed on them.
 - `agent.kind` is `user-agent` when the caller acts for a guest, and
-  `merchant-agent` when it acts for a business.
+  `merchant-agent` when it acts for a business. The caller only declares
+  it: the token proves `agent.id`, not `agent.kind` ({{talk-writes}}).
 - `token` is the caller's credential on this node, issued out of band. A
   node MUST refuse a `hello` from a non-loopback peer that has no `token`.
   A node MAY accept a `hello` without `token` on the loopback interface.
@@ -316,11 +325,13 @@ The node MUST answer a `hello` with exactly one `welcome` or `reject`.
 | `session` | string, the node's identifier for this session | REQUIRED |
 {: title="Members of welcome"}
 
-`intents` lists only intents that the session's version defines: in a
-session of version 0.1, a node that speaks 0.2 does not list TALK
-({{versioning}}). A caller MUST NOT send a request whose intent is not in
-`intents`. A node that receives one MUST answer it with status 400 and code
-`invalid_input`, without carrying it out.
+`intents` lists only intents that the session's version defines and that
+the node's version has not removed: in a session of version 0.1, a node
+does not list TALK, and a node of version 0.3 lists none of the intents
+that version 0.3 removed, in a session of any version ({{versioning}}). A
+caller MUST NOT send a request whose intent is not in `intents`. A node
+that receives one MUST answer it with status 400 and code `invalid_input`,
+without carrying it out; the session stays open.
 
 ## reject
 
@@ -349,7 +360,7 @@ After sending `reject`, the node MUST close the connection.
 | `type` | `"request"` | REQUIRED |
 | `id` | string, 1 to 64 characters | REQUIRED |
 | `intent` | intent name ({{intents}}) | REQUIRED |
-| `merchant` | slug | REQUIRED for AVAILABILITY, BOOK, AMEND, CANCEL and TALK; absent otherwise |
+| `merchant` | slug | REQUIRED for TALK; absent otherwise |
 | `params` | object | REQUIRED (`{}` when the intent takes none) |
 {: title="Members of request"}
 
@@ -378,7 +389,7 @@ After sending `reject`, the node MUST close the connection.
 |---|---|---|
 | `code` | error code ({{status-codes}}) | REQUIRED |
 | `message` | string, for the guest or the caller | REQUIRED |
-| `fallback_url` | absolute URI | REQUIRED for `party_too_large` and `agent_unavailable`; absent otherwise |
+| `fallback_url` | absolute URI | REQUIRED for `agent_unavailable`; absent otherwise |
 {: title="Members of response.error"}
 
 - A node MUST send exactly one response to each request it accepted, unless
@@ -387,7 +398,9 @@ After sending `reject`, the node MUST close the connection.
   ({{json-schemas}}).
 - `fallback_url` is the merchant's own booking page. A caller SHOULD give
   it to the guest, so that the guest can still book when the merchant
-  agent cannot serve the request.
+  agent cannot serve the request. The result of TALK has a `fallback_url`
+  of its own, for a request that the agent answered but cannot serve
+  ({{talk}}).
 - `message` MUST NOT contain stack traces or internal identifiers
   ({{security}}).
 
@@ -445,71 +458,67 @@ versions can add frames sent by the node ({{events}}).
 
 ## Idempotency {#idempotency}
 
-A write sent again after a lost session must not book twice.
+A message sent again after a lost session must not book twice. In this
+version, only TALK can carry out a write ({{talk-writes}}): DISCOVER,
+RECALL and PING change nothing.
 
-- BOOK, AMEND and TALK carry `params.idempotency_key`, chosen by the
-  caller. A caller retrying one of them MUST reuse the key of the first
-  attempt, with the same params, and SHOULD use a fresh unpredictable key
-  for every new write and every new TALK message.
-- For BOOK, the key is scoped to the merchant. A node that receives a BOOK
-  with a key already used at that merchant, and the same `starts_at`,
-  `party_size` and guest, MUST return status 200 with the reservation the
-  first request created, and MUST NOT create another. If the params differ,
-  it MUST answer status 400 with code `invalid_input`.
-- For AMEND, the key is scoped to the merchant too. A node that receives an
-  AMEND with a key it already applied, for the same booking and the same
-  `starts_at` and `party_size`, MUST NOT change the booking again and MUST
-  return it as it is now, with status 200: a late retry never undoes a
-  later change. If the booking or the params differ, it MUST answer status
-  400 with code `invalid_input`. An AMEND that failed does not use up its
-  key.
-- CANCEL is idempotent without a key: cancelling a booking already
-  cancelled by the guest returns it again, with status 200.
-- For TALK, the key is scoped to the merchant and to the session's
-  `agent.id`. A node that receives a TALK with a key it already answered
-  with status 200, for that merchant and that `agent.id`, MUST return the
-  result it returned then, with status 200, without calling its model again
-  and without carrying out any write. A TALK answered with another status
-  does not use up its key.
-- TALK is not read-only: it can carry out a write ({{talk}}). A client
-  library MUST NOT send a TALK again by itself after a lost session, as it
-  may for DISCOVER, AVAILABILITY, RECALL and PING; the caller decides, and
-  retries with the same key.
+- TALK carries `params.idempotency_key`, chosen by the caller. A caller
+  retrying a TALK MUST reuse the key of the first attempt, with the same
+  params, and SHOULD use a fresh unpredictable key for every new message.
+- The key is scoped to the merchant, the session's `agent.id` and the
+  conversation; the key of a first message, which names no conversation
+  yet, is scoped to the merchant and the `agent.id`. A node that receives a
+  TALK with a key it already answered with status 200 in that scope, with
+  the same `message`, `conversation` and `confirm`, MUST return the result
+  it returned then, with status 200, without calling its model again and
+  without carrying out any write. If one of them differs, the node MUST
+  answer status 400 with code `invalid_input`, without carrying out
+  anything. A TALK answered with another status does not use up its key.
+- The node cannot tell a retry from another guest of the same caller who
+  sends the same message with the same key. A caller that carries the
+  messages of several guests under one `agent.id`, as a bridge does
+  ({{mcp-bridge}}), MUST therefore choose keys that they cannot guess.
+- A confirmed proposal has its own protection: the node carries it out at
+  most once, whatever key the TALK that confirms it carries
+  ({{talk-confirm}}).
+- TALK is not read-only. A client library MUST NOT send a TALK again by
+  itself after a lost session, as it may for DISCOVER, RECALL and PING; the
+  caller decides, and retries with the same key.
 
 ## Confirmation before writes {#confirmation}
 
-BOOK, AMEND and CANCEL change a guest's plans. A caller acting for a guest
-MUST obtain the guest's explicit confirmation of the merchant, time, party
-size and name before sending any of them. A node cannot verify this; it is
-a requirement on callers, and a bridge enforces it through what it tells
-the assistant ({{mcp-bridge}}).
+A booking, a change or a cancellation changes a guest's plans. In this
+version, a caller can only obtain one through TALK, and the node's code
+carries it out only on a `confirm` that names a proposal the node returned,
+before the proposal expires ({{talk-confirm}}). This holds for every
+caller, whatever it declared in `hello`.
 
-In a TALK conversation, the same requirement applies to `confirm`: a caller
-acting for a guest MUST NOT send `confirm` before the guest explicitly
-accepted the proposal's `summary`, after the caller showed it to them. A
-"yes" given before the proposal was shown does not count. Here the node
-enforces the other half: it carries out a proposed write only on a
-`confirm` that names it ({{talk-confirm}}).
+What the node cannot check is that the guest agreed. A caller acting for a
+guest MUST NOT send `confirm` before the guest explicitly accepted the
+proposal's `summary`, after the caller showed it to them. A "yes" given
+before the proposal was shown does not count.
 
 # Intents {#intents}
 
 Times are RFC 3339 {{RFC3339}} `date-time` values with an explicit offset.
-`date` is an RFC 3339 `full-date` and `time` is `HH:MM` (24-hour clock),
-both in the merchant's local time zone. The params and result of each
-intent are defined by the JSON Schemas of {{json-schemas}}; this section
-states their meaning and errors.
+`date` is an RFC 3339 `full-date`, in the merchant's local time zone. The
+params and result of each intent are defined by the JSON Schemas of
+{{json-schemas}}; this section states their meaning and errors.
 
 | Intent | `merchant` | Purpose |
 |---|---|---|
 | DISCOVER | absent | Find merchants matching a query and preferences |
-| AVAILABILITY | required | Up to 3 start times with a free table |
-| BOOK | required | Create a booking |
-| AMEND | required | Move a booking or change its party size |
-| CANCEL | required | Cancel a booking as the guest |
-| TALK | required | Talk with the merchant's agent in natural language (since 0.2) |
+| TALK | required | Talk with the merchant's agent in natural language: ask, check availability, book, change or cancel (since 0.2) |
 | RECALL | absent | A guest's upcoming bookings and notices |
 | PING | absent | Liveness check, keeps the session open |
-{: title="BATP 0.2 intents"}
+{: title="BATP 0.3 intents"}
+
+Versions 0.1 and 0.2 also defined AVAILABILITY, BOOK, AMEND and CANCEL,
+with which a caller checked availability and booked, changed or cancelled
+without the merchant's agent. Version 0.3 removes them ({{versioning}}). A
+node MUST answer a request for one of them as for an unknown intent, with
+status 400 and code `invalid_input`, in a session of any version, without
+carrying it out; the session stays open.
 
 ## DISCOVER
 
@@ -528,57 +537,6 @@ store them beyond the request.
 
 Errors: 400.
 
-## AVAILABILITY
-
-Params: `date`, `party_size` (integer, at least 1), and optionally `time`.
-
-Result: `slots`, at most 3, each with `starts_at` and `table_label`. When
-`time` is given, the node returns the start times closest to it (the
-earlier one at equal distance); otherwise, the earliest ones. Start times
-already past are never returned. The result is sorted by `starts_at`. An empty `slots` array means nothing is
-free that day for that party.
-
-Errors: 400, 404, 413, 503.
-
-## BOOK
-
-Params: `starts_at`, `party_size`, `guest_name` (non-empty string),
-`idempotency_key` (non-empty string).
-
-Result: `reservation`, with `id` (the merchant's reference, for example
-"R-001"), `merchant`, `starts_at`, `party_size`, `table_label`, `status`
-("confirmed"), `guest_name` and `via`.
-
-`via` is the booking channel, as the merchant sees it. Versions 0.1 and 0.2
-define "claude", "merchant" and "website"; "website" is never set by BATP.
-The same rule applies to a booking made through TALK ({{talk}}). A node
-MUST record "merchant" when the caller's `agent.kind` is `merchant-agent`,
-and "claude" when it is `user-agent`, whatever assistant the caller is. So
-in this version, `via` is only accurate for callers behind the reference
-bridge ({{security}}). A later version may add a value for other
-assistants.
-
-`starts_at` MUST be a start time the merchant offers; AVAILABILITY returns
-such times. Errors: 400, 404, 409, 413, 503.
-
-## AMEND
-
-Params: `reservation_id`, `guest_name`, `idempotency_key`, and at least one
-of `starts_at` and `party_size`.
-
-The booking MUST be confirmed and MUST belong to `guest_name`; otherwise
-the node answers 404, without saying which check failed. Result:
-`reservation`, as amended.
-
-Errors: 400, 404, 409, 413, 503.
-
-## CANCEL
-
-Params: `reservation_id`, `guest_name`. The same ownership rule as AMEND
-applies. Result: `reservation`, with `status` "cancelled".
-
-Errors: 400, 404, 503.
-
 ## TALK {#talk}
 
 TALK is defined since version 0.2. A node MUST NOT offer or serve it in a
@@ -589,7 +547,8 @@ language: it passes on what the guest wants, with the guest's preferences,
 and the merchant's agent answers. To answer, the merchant's agent can check
 availability, look up the guest's bookings at this merchant, and propose a
 booking, a change or a cancellation. It carries out a proposal only when the
-caller confirms it in a later TALK ({{talk-confirm}}).
+caller confirms it in a later TALK ({{talk-confirm}}). Since version 0.3,
+TALK is the only intent with which a caller can book, change or cancel.
 
 Params:
 
@@ -597,8 +556,8 @@ Params:
   leading and trailing white space is removed, it MUST be 1 to 2000
   characters long, and it MUST NOT contain a control character (Unicode
   general category Cc) other than LF (U+000A).
-- `idempotency_key` (REQUIRED): as for BOOK, with the same bounds
-  ({{idempotency}}).
+- `idempotency_key` (REQUIRED): a string of 1 to 200 characters, chosen by
+  the caller ({{idempotency}}).
 - `conversation`: absent on the first message of a conversation. On every
   later message, the `conversation` that the node returned
   ({{conversations}}).
@@ -630,9 +589,11 @@ The other members are built by the node's code from the results of the
 tools that the merchant's agent called, never from the model's text, so
 that a caller can rely on them:
 
-- `slots`: the start times the agent found free while answering, each as in
-  the result of AVAILABILITY; an empty array when it found none or did not
-  look.
+- `slots`: the start times the agent found free in its last check of
+  availability while answering, sorted by `starts_at`, each with
+  `starts_at` and `table_label` (the table that start time would get); an
+  empty array when it found none or did not look. A slot is not held:
+  another guest may take it before a proposal for it is confirmed.
 - `pending`: the write the agent proposes, or null. It has `id` (an
   `opaque-id`), `action` ("book", "change" or "cancel"), `summary` (1 to 500
   characters, built by code from the proposal's own arguments, for the
@@ -640,15 +601,20 @@ that a caller can rely on them:
   an offset). A conversation has at most one pending proposal: a new one
   replaces the previous one.
 - `reservation`: the booking that a write carried out by this TALK created,
-  changed or cancelled, as in the result of BOOK; null when this TALK
-  carried out no write.
+  changed or cancelled ({{talk-writes}}), with `id` (the merchant's
+  reference, for example "R-001"), `merchant`, `starts_at`, `party_size`,
+  `table_label`, `status` ("confirmed" or "cancelled"), `guest_name` and
+  `via`; null when this TALK carried out no write.
 - `fallback_url`: the merchant's own booking page, set when the agent
   cannot serve what the guest asked, for example after one of its tools
   refused it ({{talk-status}}); null otherwise.
 - `tools_called`: the names of the tools the agent called while answering,
-  in the order of the calls, without their arguments or results. Each name
-  is 1 to 64 characters: a lowercase ASCII letter, then lowercase ASCII
-  letters, digits and "_".
+  in the order of the calls, without their arguments or results. On a TALK
+  whose `confirm` names the conversation's pending proposal, the first name
+  is that of the write the node's code ran or tried for it
+  ({{talk-writes}}), although the model did not call it. Each name is 1 to
+  64 characters: a lowercase ASCII letter, then lowercase ASCII letters,
+  digits and "_".
 
 `conversation` and `reply` are always present. A caller handles an absent
 `pending`, `reservation` or `fallback_url` as null, and an absent `slots` or
@@ -680,6 +646,36 @@ cancellation is first a proposal, returned in `pending`.
 - When this TALK carried out a write, the node MUST set `reservation`, even
   if its model fails afterwards.
 
+### Writes {#talk-writes}
+
+A confirmed proposal runs one of the merchant's booking operations, with
+the arguments stored with the proposal. Its `action` says which:
+
+- "book" creates a booking for the proposal's start time, party size and
+  guest name. A node MUST NOT create it unless the start time is one the
+  merchant offers and a table that fits the party is free at that time
+  when the write runs; the node chooses the table. The write is named
+  "create_reservation" in `tools_called`.
+- "change" moves a booking, changes its party size, or both, with the same
+  conditions for the new start time and party size. It is named
+  "update_reservation".
+- "cancel" cancels a booking, as the guest. It is named
+  "cancel_reservation".
+
+A change or a cancellation applies only to an upcoming confirmed booking at
+this merchant, under the guest name given in the proposal, and only before
+the booking starts. The merchant's agent cannot propose one otherwise, and
+the node does not say which of these conditions failed.
+
+`via` is the booking channel, as the merchant sees it. Versions 0.1 to 0.3
+define "claude", "merchant" and "website"; "website" is never set by BATP.
+A node MUST record a booking that a TALK creates with `via` "claude",
+whatever `agent.kind` the session declared: the caller declares its kind,
+and its token does not prove it, so the node does not trust it. A change or
+a cancellation keeps the booking's `via`. In this version, `via` therefore
+names the channel rather than the calling assistant ({{security}}); a later
+version may add a value for other assistants.
+
 ### Conversations {#conversations}
 
 - A node MUST choose each `conversation` at random, with at least 128 bits
@@ -694,20 +690,25 @@ cancellation is first a proposal, returned in `pending`.
   session, under one `agent.id` ({{mcp-bridge}}), so only the unguessable
   identifier separates them.
 - A node MAY expire a conversation, for example after a period without
-  messages, or lose it when it restarts. A caller that gets status 404 for
-  a conversation MAY start a new one, without `conversation`.
+  messages or once it has had a number of messages, or lose it when it
+  restarts. A caller that gets status 404 for a conversation MAY start a
+  new one, without `conversation`.
 
 ### Status {#talk-status}
 
 Status 200 means that the merchant's agent answered, whatever the answer,
 including a refusal such as "we are full". When one of the agent's tools
-refuses, for example with `party_too_large` or `slot_unavailable`, the
-refusal goes to the model, which words it in `reply`, and the node's code
-sets `fallback_url`: the TALK still gets status 200. Any other status means
-that the agent could not answer:
+refuses, for example because the time is taken or the party is above the
+merchant's online limit, the refusal goes to the model, which words it in
+`reply`. When the agent cannot serve the request at all, as for a party
+above that limit, the node's code also sets `fallback_url`. The TALK still
+gets status 200: since version 0.3, no request is answered with status 409
+or 413 ({{status-codes}}). Any other status means that the agent could not
+answer:
 
-- 400 `invalid_input`: invalid params, `confirm` without `conversation`, or
-  a TALK in a session of version 0.1.
+- 400 `invalid_input`: invalid params, `confirm` without `conversation`, a
+  key already used with other params ({{idempotency}}), or a TALK in a
+  session of version 0.1.
 - 404 `not_found`: the merchant is unknown or not yet live, or the
   conversation is unknown, has expired, or belongs to another merchant or
   another `agent.id`.
@@ -727,7 +728,8 @@ Errors: 400, 404, 429, 503.
 Params: `guest_name`.
 
 Result: `reservations`, the guest's upcoming confirmed bookings at every
-live merchant of the node, and `notices`, messages for the guest (for
+live merchant of the node, each as `reservation` in the result of TALK
+({{talk}}), and `notices`, messages for the guest (for
 example, that a merchant cancelled a booking). A node MUST return a notice
 in every RECALL for the guest during 24 hours after the first RECALL that
 returned it, and MUST NOT return it after that. An answer lost on its way
@@ -747,25 +749,30 @@ Errors: none defined.
 | Status | `error.code` | Meaning | `fallback_url` |
 |---|---|---|---|
 | 200 | none | Success | no |
-| 400 | `invalid_input` | Invalid params, unknown intent or one the session's version does not define, missing or unexpected `merchant` | no |
+| 400 | `invalid_input` | Invalid params, unknown intent (including one that version 0.3 removed) or one the session's version does not define, missing or unexpected `merchant` | no |
 | 401 | none | `hello` refused (in `reject` only) | no |
-| 404 | `not_found` | Unknown merchant, merchant not yet live, unknown booking, a booking that is not the guest's, or an unknown or expired conversation | no |
-| 409 | `slot_unavailable` | The time is taken, blocked, in the past, or not one the merchant offers | no |
-| 413 | `party_too_large` | The party is above the merchant's online limit, or no table fits it | yes |
+| 404 | `not_found` | Unknown merchant, merchant not yet live, or an unknown or expired conversation | no |
+| 413 | none | Frame above the size limit (in `error` frames only) | no |
 | 426 | none | Unsupported major version (in `reject` only) | no |
 | 429 | `too_many_requests` | Too many requests in flight in the session, or a TALK beyond the node's limits; retry later | no |
 | 503 | `agent_unavailable` | The merchant agent is down, failed, or did not answer by its deadline | yes |
-{: title="BATP 0.2 status codes"}
+{: title="BATP 0.3 status codes"}
 
-The `status` values 400 and 413 also appear in `error` frames
-({{error-frames}}), which carry no `error.code`; there, 413 means a frame
-above the size limit.
+The status 400 also appears in `error` frames ({{error-frames}}), and 413
+only there; `error` frames carry no `error.code`.
 
-A node MUST answer 503 to AVAILABILITY, BOOK, AMEND, CANCEL and TALK when
-the merchant is marked as down, without consulting the merchant agent (for
-TALK, without calling its model). A
-caller that gets 413 or 503 MUST NOT retry the same request to the same
-merchant in a loop; it SHOULD offer the guest the `fallback_url`.
+Versions 0.1 and 0.2 also answered status 409 with code `slot_unavailable`
+(the time is taken, blocked, in the past, or not offered) and status 413 with code
+`party_too_large` (the party is above the merchant's online limit, or no
+table fits it) to the intents that version 0.3 removed. A node of version
+0.3 answers neither to any request: inside TALK, the refusals they stood
+for are part of an answer with status 200 ({{talk-status}}). A later
+version MUST NOT give these two codes another meaning.
+
+A node MUST answer 503 to a TALK addressed to a merchant marked as down,
+without calling its model. A caller that gets 503 MUST NOT retry the same
+request to the same merchant in a loop; it SHOULD offer the guest the
+`fallback_url`.
 
 A caller that receives a status it does not know MUST handle it as the
 class of its first digit: 2 as success, 4 as a caller error, 5 as a node
@@ -774,10 +781,10 @@ error.
 # Events {#events}
 
 Frames of type `event`, sent by the node without a request, are reserved
-for a later minor version: version 0.2 does not define them. One intended
+for a later minor version: version 0.3 does not define them. One intended
 use is to tell a guest's agent that a merchant cancelled a booking; in this
 version, that reaches the guest as a notice returned by RECALL. A caller of
-version 0.1 or 0.2 ignores them ({{error-frames}}).
+versions 0.1 to 0.3 ignores them ({{error-frames}}).
 
 # Versioning and Extensibility {#versioning}
 
@@ -787,32 +794,46 @@ A version is written `major.minor`:
 version = 1*DIGIT "." 1*DIGIT
 ~~~
 
-This document defines version 0.2. Version 0.2 adds TALK to version 0.1,
-and changes nothing that version 0.1 defined.
+This document defines version 0.3. Version 0.2 added TALK to version 0.1.
+Version 0.3 removes AVAILABILITY, BOOK, AMEND and CANCEL ({{intents}}), and
+records every booking made through TALK with `via` "claude", where version
+0.2 recorded "merchant" for a caller that declared itself a
+`merchant-agent` ({{talk-writes}}). Its other changes state more precisely
+what version 0.2 defined for TALK ({{changes}}).
 
 In `hello`, the caller sends the highest version it speaks. If the node
 speaks the same major version, it answers `welcome` with the highest minor
 version both speak, which is the lower of the caller's minor version and
 its own, and both sides use that version for the session. Otherwise it
 answers `reject` with status 426. A node speaks every earlier minor version
-of its major version, since each one only adds to the previous one. For
-example, a node of version 0.2 answers a `hello` with `"batp": "0.1"` with
+of its major version: a session of an earlier version gets the intents
+that version defined, less those that the node's version removed. For
+example, a node of version 0.3 answers a `hello` with `"batp": "0.1"` with
 a `welcome` with `"batp": "0.1"`, and the session is a session of version
-0.1.
+0.1, whose intents are DISCOVER, RECALL and PING.
 
 A node MUST NOT list in `welcome.intents` an intent that the session's
-version does not define, and MUST answer a request for one with status 400
-and code `invalid_input` ({{welcome}}). In a session of version 0.1, a node
-of version 0.2 therefore neither offers nor serves TALK, and a caller of
-version 0.1 keeps working unchanged.
+version does not define or that the node's version removed, and MUST
+answer a request for one with status 400 and code `invalid_input`
+({{welcome}}). In a session of version 0.1, a node of version 0.3
+therefore offers and serves neither TALK nor the removed intents: a caller
+of version 0.1 can still discover merchants and recall bookings, but can no
+longer book. In a session of version 0.2 or 0.3, it offers DISCOVER, TALK,
+RECALL and PING.
 
 Within a major version, a later minor version MAY add intents, optional
 frame members, optional params, result members and status codes: adding an
-intent, as version 0.2 does with TALK, is a minor change. It MUST NOT
-change the meaning of what an earlier minor version defined. Because
-unknown `params` members are invalid ({{requests}}), a caller MUST NOT send
-params that the session's version does not define. A caller MUST ignore
-result members it does not know.
+intent, as version 0.2 did with TALK, is a minor change. It MUST NOT
+change the meaning of what an earlier minor version defined. While the
+major version is 0, a minor version MAY also remove intents, as version 0.3
+does, and correct a rule of an earlier minor version, as version 0.3 does
+for `via`. Removing an intent is not backward compatible: a caller that
+relied on it can no longer use it. It is accepted only because version 0
+is experimental; from version 1.0, it would need a new major version. A
+node answers a removed intent as an unknown one, with status 400 and code
+`invalid_input`. Because unknown `params` members are invalid
+({{requests}}), a caller MUST NOT send params that the session's version
+does not define. A caller MUST ignore result members it does not know.
 
 # Security Considerations {#security}
 
@@ -822,7 +843,9 @@ Agent identity and tokens:
   token to one `agent.id` and refuse a `hello` whose token does not match.
   A node SHOULD compare tokens in constant time. Tokens MUST NOT be sent
   outside TLS except on the loopback interface, and SHOULD be long random
-  strings that a node can revoke individually.
+  strings that a node can revoke individually. A token proves `agent.id`
+  only: `agent.kind` is the caller's claim, and a node does not grant or
+  record anything on the strength of it ({{talk-writes}}).
 
 Transport:
 : Without TLS, anyone on the path reads guest names, bookings and tokens,
@@ -842,19 +865,22 @@ Limits and denial of service:
   ({{talk-status}}).
 
 Booking channel:
-: In this version, as in version 0.1, a node records every `user-agent`
-  booking with `via` "claude" ({{intents}}), and the merchant is told the booking came
-  through Claude. With other assistants, that is wrong. A merchant SHOULD
-  read `via` as "an assistant" until a later version names the calling
-  agent in it.
+: In this version, a node records every booking made through TALK with
+  `via` "claude" ({{talk-writes}}), whatever `agent.kind` the caller
+  declared, and the merchant is told the booking came through Claude. With
+  other assistants, that is wrong. A merchant SHOULD read `via` as "an
+  assistant" until a later version names the calling agent in it.
 
 Writes without confirmation:
-: A misbehaving caller can book, amend or cancel without asking the guest.
-  The node cannot detect it. Idempotency keys prevent duplicate bookings
-  on retries, not unwanted ones. Through TALK, a node does enforce that a
-  write follows a `confirm` naming a proposal it returned
-  ({{talk-confirm}}), but it still cannot tell whether the caller asked the
-  guest before sending `confirm`.
+: Since version 0.3, no caller can book, change or cancel except through
+  TALK, and the node's code carries out a write only on a `confirm` that
+  names a proposal it returned, before the proposal expires
+  ({{talk-confirm}}). This holds for every caller, whatever its
+  `agent.kind`, and no longer depends on what a bridge tells its
+  assistant. A misbehaving caller can still send `confirm` without asking
+  the guest: the node cannot tell whether the guest agreed. Idempotency
+  keys and the rule that a proposal runs at most once prevent duplicate
+  writes on retries, not unwanted ones.
 
 A language model reading untrusted text:
 : The merchant's agent that answers TALK is a language model, and
@@ -907,8 +933,8 @@ Model output:
 
 Guest identity:
 : In this version, a booking belongs to whoever gives its guest name and
-  reference. Any authenticated caller that knows both can amend or cancel
-  it, and RECALL returns the bookings of any name. This is acceptable only
+  reference. Any authenticated caller that knows both can have it changed
+  or cancelled through TALK, and RECALL returns the bookings of any name. This is acceptable only
   in an experiment with trusted callers. A deployment beyond that needs
   guest authentication, which a later version would define.
 
@@ -996,35 +1022,36 @@ tools to intents:
 | MCP tool | BATP intent | Notes |
 |---|---|---|
 | `search_merchants` | DISCOVER | |
-| `get_availability` | AVAILABILITY | the tool's `merchant` becomes the request's `merchant` |
-| `create_reservation` | BOOK | idem |
-| `update_reservation` | AMEND | idem |
-| `cancel_reservation` | CANCEL | the tool returns `{"status": "cancelled"}` |
 | `talk_to_merchant` | TALK | the tool's `merchant` becomes the request's `merchant` |
 | `get_my_reservations` | RECALL | |
 {: title="MCP tools and BATP intents"}
 
-For TALK, the bridge has one tool, `talk_to_merchant(merchant, message,
-idempotency_key, conversation?, confirm?)`, whose arguments other than
-`merchant` become the params of TALK, and whose result is the result of
-TALK. In this version, the four booking tools (`get_availability`,
-`create_reservation`, `update_reservation` and `cancel_reservation`) stay
-mapped to their intents as above, until a later version closes the direct
-intents to guests' agents in favor of TALK.
+The tool `talk_to_merchant(merchant, message, idempotency_key,
+conversation?, confirm?)` passes its arguments other than `merchant` as the
+params of TALK, and returns the result of TALK. Since version 0.3, it is
+the only tool with which the assistant can check availability or book,
+change or cancel. The reference bridge also serves one MCP endpoint per
+merchant, whose only tool is `talk_to_merchant` without `merchant`: the
+request's `merchant` is the endpoint's.
 
-- The tool descriptions tell the assistant to confirm with the guest before
-  `create_reservation`, `update_reservation` and `cancel_reservation`,
-  which is how the bridge meets the confirmation requirement of
-  {{confirmation}}. The description of `talk_to_merchant` tells it to
-  relay `reply`, to show `pending.summary` and ask the guest when `pending`
-  is set, to send `confirm` only after the guest's explicit yes, and to
-  give the guest any `fallback_url`.
+- The description of `talk_to_merchant` tells the assistant to relay
+  `reply`, to show `pending.summary` and ask the guest when `pending` is
+  set, to send `confirm` only after the guest's explicit yes to that
+  summary, never in the same reply as the call that returned `pending`,
+  and to give the guest any `fallback_url`. That is how the bridge meets
+  the caller's part of {{confirmation}}; the node's code enforces the rest.
+- The tool takes a random UUID as `idempotency_key`, one per message: the
+  bridge carries all its users under one `agent.id`, so their keys must not
+  be guessable ({{idempotency}}).
 - The bridge answers each tool call within 2 seconds, including the round
   trip to the node, except `talk_to_merchant`, which it gives 30 seconds:
   longer than the node's deadline for TALK ({{deadlines}}), so that the
   node's 503 and its `fallback_url` arrive before the bridge gives up. A
   timeout, a lost session or a 503 becomes an `agent_unavailable` tool
-  error with the merchant's `fallback_url`.
+  error with the merchant's `fallback_url`. When the call carried
+  `confirm`, the error adds that the write may have gone through, and that
+  the assistant should check with `get_my_reservations` before sending the
+  message again with the same key.
 - The bridge carries the conversations of all its users on its one
   session, under one `agent.id`: only the conversation identifier, which
   the node makes unguessable ({{conversations}}), keeps one user from
@@ -1046,16 +1073,15 @@ Long frames are wrapped here for readability: on the wire, each is one
 line.
 
 ~~~
-C: {"type": "hello", "batp": "0.2",
+C: {"type": "hello", "batp": "0.3",
     "agent": {"id": "urn:batp:agent:claude-gateway",
-              "name": "Claude via the S\u00e9same gateway",
+              "name": "Claude via the Sésame gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
-N: {"type": "welcome", "batp": "0.2",
+N: {"type": "welcome", "batp": "0.3",
     "node": {"id": "urn:batp:node:merchant-agents",
-             "name": "S\u00e9same"},
-    "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
-                "TALK", "RECALL", "PING"],
+             "name": "Sésame"},
+    "intents": ["DISCOVER", "TALK", "RECALL", "PING"],
     "session": "s-2f6c"}
 C: {"type": "request", "id": "r-1", "intent": "DISCOVER",
     "params": {"query": "bistro", "filters": {"tags": ["vegetarian"],
@@ -1066,116 +1092,110 @@ N: {"type": "response", "id": "r-1", "status": 200,
       "tags": ["vegetarian", "terrace"], "price_level": "€€",
       "website": "https://le-petit-zinc.example/"}],
       "suggestions": [], "ignored_filters": []}}
-C: {"type": "request", "id": "r-2", "intent": "AVAILABILITY",
-    "merchant": "le-petit-zinc",
-    "params": {"date": "2026-11-02", "time": "20:00", "party_size": 4}}
-N: {"type": "response", "id": "r-2", "status": 200,
-    "result": {"slots": [
-      {"starts_at": "2026-11-02T19:30:00+01:00", "table_label": "T5"},
-      {"starts_at": "2026-11-02T20:00:00+01:00", "table_label": "T5"},
-      {"starts_at": "2026-11-02T20:30:00+01:00", "table_label": "T5"}]}}
 ~~~
-{: title="Opening the session, discovery and availability"}
+{: title="Opening the session and discovery"}
 
-The caller then books, and checks a larger party while the booking is in
-flight: the second answer arrives first.
+The caller then talks with the merchant's agent. Its first message opens a
+conversation. While the TALK waits for the agent's model turn, the caller
+sends a ping, which is answered first.
 
 ~~~
-C: {"type": "request", "id": "r-3", "intent": "BOOK",
-    "merchant": "le-petit-zinc",
-    "params": {"starts_at": "2026-11-02T20:00:00+01:00",
-               "party_size": 4, "guest_name": "Ada Martin",
-               "idempotency_key": "b1f0c2d4-3a9e"}}
-C: {"type": "request", "id": "r-4", "intent": "AVAILABILITY",
-    "merchant": "le-petit-zinc",
-    "params": {"date": "2026-11-02", "party_size": 9}}
-N: {"type": "response", "id": "r-4", "status": 413,
-    "error": {"code": "party_too_large",
-      "message":
-        "Le Petit Zinc takes online bookings for up to 6 guests",
-      "fallback_url": "https://le-petit-zinc.example/reservation.html"}}
-N: {"type": "response", "id": "r-3", "status": 200,
-    "result": {"reservation": {"id": "R-001",
-      "merchant": "le-petit-zinc",
-      "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
-      "table_label": "T5", "status": "confirmed",
-      "guest_name": "Ada Martin", "via": "claude"}}}
-C: {"type": "request", "id": "r-5", "intent": "PING", "params": {}}
-N: {"type": "response", "id": "r-5", "status": 200,
-    "result": {"pong": true,
-               "server_time": "2026-10-31T18:02:11+01:00"}}
-~~~
-{: title="Two requests in flight, and a ping"}
-
-Another guest asks, in the same session, for a table on another day. The
-caller talks with the merchant's agent: a first message, which opens a
-conversation, then the guest's choice, which the agent turns into a
-proposal.
-
-~~~
-C: {"type": "request", "id": "r-6", "intent": "TALK",
+C: {"type": "request", "id": "r-2", "intent": "TALK",
     "merchant": "le-petit-zinc",
     "params": {"message":
-      "Table for 2 on Tuesday around 19:30? Any vegetarian dishes?",
-      "idempotency_key": "6f3a9c1e-01"}}
-N: {"type": "response", "id": "r-6", "status": 200,
-    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
+      "Table for 4 on Monday around 20:00? Any vegetarian dishes?",
+      "idempotency_key": "0b6f3a9c-1e2d-4c5b-9a8f-7e6d5c4b3a21"}}
+C: {"type": "request", "id": "r-3", "intent": "PING", "params": {}}
+N: {"type": "response", "id": "r-3", "status": 200,
+    "result": {"pong": true,
+               "server_time": "2026-10-31T18:02:11+01:00"}}
+N: {"type": "response", "id": "r-2", "status": 200,
+    "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
       "reply":
-        "Yes, two vegetarian mains. I can do 19:00, 19:30 or 20:00.",
+        "Yes, two vegetarian mains. I can do 19:30, 20:00 or 20:30.",
       "slots": [
-      {"starts_at": "2026-11-03T19:00:00+01:00", "table_label": "T2"},
-      {"starts_at": "2026-11-03T19:30:00+01:00", "table_label": "T2"},
-      {"starts_at": "2026-11-03T20:00:00+01:00", "table_label": "T2"}],
+      {"starts_at": "2026-11-02T19:30:00+01:00", "table_label": "T5"},
+      {"starts_at": "2026-11-02T20:00:00+01:00", "table_label": "T5"},
+      {"starts_at": "2026-11-02T20:30:00+01:00", "table_label": "T5"}],
       "pending": null, "reservation": null, "fallback_url": null,
       "tools_called": ["get_availability"]}}
-C: {"type": "request", "id": "r-7", "intent": "TALK",
+~~~
+{: title="A first message, with a ping in flight"}
+
+The guest picks a time and gives a name, which the caller passes on. The
+merchant's agent turns the request into a proposal.
+
+~~~
+C: {"type": "request", "id": "r-4", "intent": "TALK",
     "merchant": "le-petit-zinc",
-    "params": {"message": "19:30 please, for Noah Weber.",
-               "conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-               "idempotency_key": "6f3a9c1e-02"}}
-N: {"type": "response", "id": "r-7", "status": 200,
-    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-      "reply": "Shall I book a table for 2 at 19:30 for Noah Weber?",
+    "params": {"message": "20:00 please, for Ada Martin.",
+      "conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "idempotency_key": "5d2e8f41-7a3b-4e6c-8d9f-0a1b2c3d4e5f"}}
+N: {"type": "response", "id": "r-4", "status": 200,
+    "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply": "Shall I book a table for 4 at 20:00 for Ada Martin?",
       "slots": [],
-      "pending": {"id": "pKq81sVd0LmZr6TfXe2NbA", "action": "book",
+      "pending": {"id": "p-Kq81sVd0LmZr6TfXe2NbA", "action": "book",
         "summary":
-          "Table for 2 on Tuesday 3 November 2026 at 19:30, Noah Weber",
+          "Table for 4 on Monday 2 November 2026 at 20:00, Ada Martin",
         "expires_at": "2026-10-31T18:14:05+01:00"},
       "reservation": null, "fallback_url": null,
       "tools_called": ["propose_booking"]}}
 ~~~
-{: title="A conversation with the merchant's agent, up to a proposal"}
+{: title="Up to a proposal"}
 
 The caller shows the guest the proposal's `summary`. Once the guest has
 said yes, the caller confirms the proposal, and the node books the table
 with the proposal's own arguments, before its model words the answer.
+`tools_called` names that write, although the model called no tool.
 
 ~~~
-C: {"type": "request", "id": "r-8", "intent": "TALK",
+C: {"type": "request", "id": "r-5", "intent": "TALK",
     "merchant": "le-petit-zinc",
     "params": {"message": "Yes, please book it.",
-               "conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-               "confirm": "pKq81sVd0LmZr6TfXe2NbA",
-               "idempotency_key": "6f3a9c1e-03"}}
-N: {"type": "response", "id": "r-8", "status": 200,
-    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-      "reply": "Booked for Tuesday at 19:30. Your reference is R-002.",
+      "conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "confirm": "p-Kq81sVd0LmZr6TfXe2NbA",
+      "idempotency_key": "9c4b7e2a-3f1d-4a8b-b6e5-2d7c1f0e9a83"}}
+N: {"type": "response", "id": "r-5", "status": 200,
+    "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply": "Booked for Monday at 20:00. Your reference is R-001.",
       "slots": [], "pending": null,
-      "reservation": {"id": "R-002", "merchant": "le-petit-zinc",
-        "starts_at": "2026-11-03T19:30:00+01:00", "party_size": 2,
-        "table_label": "T2", "status": "confirmed",
-        "guest_name": "Noah Weber", "via": "claude"},
-      "fallback_url": null, "tools_called": []}}
+      "reservation": {"id": "R-001", "merchant": "le-petit-zinc",
+        "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
+        "table_label": "T5", "status": "confirmed",
+        "guest_name": "Ada Martin", "via": "claude"},
+      "fallback_url": null, "tools_called": ["create_reservation"]}}
 ~~~
 {: title="Confirming the proposal"}
+
+The guest then asks for a party above the merchant's online limit. The
+agent's availability check refuses it: the answer still has status 200,
+with the merchant's own booking page in `fallback_url`.
+
+~~~
+C: {"type": "request", "id": "r-6", "intent": "TALK",
+    "merchant": "le-petit-zinc",
+    "params": {"message": "And a table for 9 on Friday at 20:00?",
+      "conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "idempotency_key": "e1a7c3f5-8b2d-4f6a-9c0e-4b3a2d1c0f97"}}
+N: {"type": "response", "id": "r-6", "status": 200,
+    "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply":
+        "We take online bookings for up to 6. Please book on our site.",
+      "slots": [], "pending": null, "reservation": null,
+      "fallback_url":
+        "https://le-petit-zinc.example/reservation.html",
+      "tools_called": ["get_availability"]}}
+~~~
+{: title="A refusal inside the conversation"}
 
 # JSON Schemas {#json-schemas}
 
 These schemas use JSON Schema 2020-12 {{I-D.bhutton-json-schema}}. They are
 generated from the reference implementation's contract models, so this
 appendix and the implementation cannot drift {{BATP-SCHEMAS}}. In the
-params of AVAILABILITY, BOOK, AMEND, CANCEL and TALK, the merchant is not a
-member: it is the request's `merchant`.
+params of TALK, the merchant is not a member: it is the request's
+`merchant`.
 
 ## DISCOVER params
 
@@ -1187,44 +1207,6 @@ member: it is the request's `merchant`.
 
 ~~~ json
 {::include schemas/discover.result.json}
-~~~
-
-## AVAILABILITY params
-
-~~~ json
-{::include schemas/availability.params.json}
-~~~
-
-## AVAILABILITY result
-
-~~~ json
-{::include schemas/availability.result.json}
-~~~
-
-## BOOK params
-
-~~~ json
-{::include schemas/book.params.json}
-~~~
-
-## BOOK, AMEND and CANCEL result
-
-The three intents return the same `reservation` object.
-
-~~~ json
-{::include schemas/book.result.json}
-~~~
-
-## AMEND params
-
-~~~ json
-{::include schemas/amend.params.json}
-~~~
-
-## CANCEL params
-
-~~~ json
-{::include schemas/cancel.params.json}
 ~~~
 
 ## TALK params
@@ -1265,7 +1247,36 @@ once leading and trailing white space is removed, and `confirm` requires
 {::include schemas/ping.result.json}
 ~~~
 
-# Changes from Version 0.1 {#changes}
+# Changes from Earlier Versions {#changes}
+
+## Version 0.3
+
+- Removed the intents AVAILABILITY, BOOK, AMEND and CANCEL: a caller checks
+  availability and books, changes or cancels only through TALK. A node
+  answers them as unknown intents, with status 400 and code
+  `invalid_input`, in a session of any version ({{intents}}).
+- TALK is the only intent that takes `merchant` ({{requests}}).
+- Stated what a confirmed proposal writes, and that a booking made through
+  TALK is recorded with `via` "claude" whatever `agent.kind` the caller
+  declares, since no token proves it; version 0.2 required "merchant" for a
+  `merchant-agent` ({{talk-writes}}).
+- `tools_called` names the write that the node's code ran on a `confirm`
+  ({{talk}}).
+- No request is answered with status 409 or 413 any more; 413 remains for
+  frames above the size limit, and a later version cannot give
+  `slot_unavailable` or `party_too_large` another meaning
+  ({{status-codes}}).
+- Idempotency keys are those of TALK only, scoped to the conversation; a
+  key sent again with other params is invalid, and a caller that carries
+  several guests chooses keys they cannot guess ({{idempotency}}).
+- Confirmation of writes is enforced by the node's code for every caller
+  ({{confirmation}}).
+- While the major version is 0, a minor version may remove intents
+  ({{versioning}}).
+- The MCP bridge maps three tools, and books only through
+  `talk_to_merchant` ({{mcp-bridge}}).
+
+## Version 0.2
 
 - Added the TALK intent ({{talk}}), with its conversations and its
   proposals, which the node carries out only on `confirm`; TALK is
