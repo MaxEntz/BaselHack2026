@@ -121,7 +121,8 @@ function scriptedAnswer(mock: Mock, input: AgentTalkInput): TalkOutput {
         status: "confirmed",
         guest_name: "Test booking",
       },
-      tools_called: [],
+      // Like the agent: code ran the write on the confirm, and names it (#247).
+      tools_called: ["create_reservation"],
     };
   }
   if (/table|book|reserv/i.test(input.message)) {
