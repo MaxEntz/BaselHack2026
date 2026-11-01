@@ -3,6 +3,7 @@
 # in: fonts render differently from one system to another, so the baselines are taken there.
 #   npm run test:visual:docker                          check against the baselines
 #   npm run test:visual:docker -- --update-snapshots    take them again
+# On a Linux host the container writes as root: `sudo chown -R "$USER" e2e test-results dist-visual`.
 set -eu
 cd "$(dirname "$0")/../.."
 version=$(node -p 'require("./web/node_modules/@playwright/test/package.json").version')

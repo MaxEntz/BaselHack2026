@@ -275,4 +275,4 @@ In this order, to rebuild the project yourself:
 
 ---
 
-*Last updated: 2026-10-31, describing `main` at commit `110b18a`.*
+*Last updated: 2026-11-01, describing `main` at commit `ef6e462`.*

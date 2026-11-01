@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 import maisonAlbane from "../../tests/fixtures/maison-albane.json" with { type: "json" };
 import petitZinc from "../../tests/fixtures/le-petit-zinc.json" with { type: "json" };
-import { contrast, lookStyle } from "../src/management/look.ts";
+import { DEFAULT_LOOK, contrast, lookStyle } from "../src/management/look.ts";
 import type { Look } from "../src/types.ts";
 
 const css = readFileSync(new URL("../src/management/tokens.css", import.meta.url), "utf8");
@@ -18,6 +18,13 @@ const MERCHANTS: [string, Record<string, string>][] = [
   ["Le Petit Zinc", variables(petitZinc.look as Look)],
   ["Maison Albane", variables(maisonAlbane.look as Look)],
 ];
+
+test("tokens.css holds the olive lookStyle would give La Graine Verte", () => {
+  // The default look sets no variable; one pixel of radius more and lookStyle computes them all.
+  const computed = variables({ ...DEFAULT_LOOK, radius_px: DEFAULT_LOOK.radius_px + 1 });
+  assert.equal(tokens["--olive"], computed["--olive"]);
+  assert.equal(tokens["--olive-band"], computed["--olive-band"]);
+});
 
 for (const [name, v] of MERCHANTS) {
   test(`${name} has no text under 4.5:1`, () => {

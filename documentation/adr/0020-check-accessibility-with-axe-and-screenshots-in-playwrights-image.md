@@ -29,8 +29,10 @@ A first run of axe-core on the app found real failures, which none of the tests 
   - the CI job `visual` runs in that image, and `npm run test:visual:docker` runs it locally;
   - the page's clock is stopped at 19:40 and moved by hand, so the agent's live booking never arrives in a shot.
   - The mockup stays the reference through ADR-0017's style comparisons. The screenshots keep the pages from drifting after that.
-- **Text reads at 4.5:1 whatever the merchant's colours:**
-  - `lookStyle` darkens the accent with `readable` until it reads as text, and the text on the accent follows;
+- **Titles in the accent, and the text on it, read at 4.5:1 whatever the merchant's colours:**
+  - `lookStyle` moves the accent away from the page (darker, or lighter on a dark page) until titles in it read on the page and the cards, and further if no text colour reads on both the accent and its band;
+  - the text on the accent follows, and becomes black or white when its own colour never gets there;
+  - the second accent stays the platform's to check (#209);
   - `tokens.css` gives La Graine Verte the result (`#616c48`);
   - the comparisons with the mockup give the mockup the same olive (`e2e/mockup.ts`), so every other colour still has to match.
 

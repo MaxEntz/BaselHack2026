@@ -19,11 +19,25 @@ async function violations(page: Page): Promise<string[]> {
   );
 }
 
+/** Until the page stops growing: the mock answers each call after a delay. */
+async function settled(page: Page) {
+  let last = -1;
+  await expect
+    .poll(async () => {
+      const now = await page.evaluate(() => document.querySelectorAll("*").length);
+      const same = now === last;
+      last = now;
+      return same;
+    }, { intervals: [300] })
+    .toBe(true);
+}
+
 async function openPage(page: Page, id: PageId) {
   await page.clock.install({ time: DEMO_NOW });
   await page.goto(pagePath(SLUG, id));
   await expect(page.locator(".brand-sub")).toHaveText("Mulhouse, €");
   await expect(page.locator("h1, .asst h2").first()).toBeVisible();
+  await settled(page);
 }
 
 async function giveAddress(page: Page) {
@@ -73,43 +87,52 @@ for (const width of [1440, 390]) {
   });
 }
 
-/** Whether the focused element, or the box around it, draws a ring of at least 2 px. */
-async function ringed(page: Page): Promise<{ what: string; ring: boolean }> {
+/**
+ * The focused element, marked as seen, and whether it or the box around it draws an outline of at
+ * least 2 px. `again` once the focus comes back to an element already seen.
+ */
+async function focused(page: Page): Promise<{ what: string; ring: boolean; again: boolean }> {
   return page.evaluate(() => {
-    const focused = document.activeElement as HTMLElement | null;
-    if (!focused || focused === document.body) return { what: "body", ring: false };
-    const draws = (node: Element) => {
+    const element = document.activeElement as HTMLElement | null;
+    if (!element || element === document.body) return { what: "body", ring: false, again: false };
+    if (element.tagName === "IFRAME") return { what: "iframe", ring: true, again: false };
+    const again = element.dataset.a11ySeen === "1";
+    element.dataset.a11ySeen = "1";
+    const outlined = (node: Element) => {
       const style = getComputedStyle(node);
-      const outline = style.outlineStyle !== "none" && parseFloat(style.outlineWidth) >= 2;
-      return outline || style.boxShadow !== "none";
+      return style.outlineStyle !== "none" && parseFloat(style.outlineWidth) >= 2;
     };
     // A radio draws its ring on its label, a composer's textarea on its box.
-    const ring = [focused, focused.parentElement, focused.parentElement?.parentElement].some((node) => node && draws(node));
-    const name = focused.getAttribute("aria-label") ?? focused.innerText?.trim().split("\n")[0] ?? "";
-    return { what: `${focused.tagName.toLowerCase()}.${focused.className} "${name.slice(0, 40)}"`, ring };
+    const ring = [element, element.parentElement, element.parentElement?.parentElement].some((node) => node && outlined(node));
+    const name = element.getAttribute("aria-label") ?? element.innerText?.trim().split("\n")[0] ?? "";
+    return { what: `${element.tagName.toLowerCase()}.${element.className} "${name.slice(0, 40)}"`, ring, again };
   });
 }
 
 test.describe("keyboard", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
+  /** One full round of Tab from wherever the focus is, every element checked once. */
   async function everyStopRinged(page: Page) {
-    const seen = new Set<string>();
+    await page.evaluate(() => document.querySelectorAll("[data-a11y-seen]").forEach((node) => node.removeAttribute("data-a11y-seen")));
+    let stops = 0;
     let left = 0;
-    for (let stop = 0; stop < 80; stop++) {
+    for (let press = 0; press < 400; press++) {
       await page.keyboard.press("Tab");
-      const { what, ring } = await ringed(page);
-      // Past the last stop the focus leaves the page, then comes back to the first: one full
-      // round from wherever it started.
+      const { what, ring, again } = await focused(page);
+      // Past the last stop the focus leaves the page, then comes back to the first. A site in
+      // an iframe (Studio's canvas) has its own stops: its pages are walked on their own.
       if (what === "body") {
         if (++left === 2) break;
         continue;
       }
-      if (seen.has(what)) break;
-      seen.add(what);
+      if (what === "iframe") continue;
+      if (again) break;
+      stops += 1;
       expect.soft(ring, what).toBe(true);
     }
-    expect(seen.size).toBeGreaterThan(3);
+    expect(stops).toBeGreaterThan(3);
+    return stops;
   }
 
   for (const id of Object.keys(PAGES) as PageId[]) {
@@ -124,6 +147,11 @@ test.describe("keyboard", () => {
     await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
     await everyStopRinged(page);
     await giveAddress(page);
+    await everyStopRinged(page);
+    await page.getByRole("button", { name: "Skip this, use the defaults" }).click();
+    await expect(page.getByText("What went into your profile")).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("group", { name: "Which site to show" }).getByRole("button", { name: /Management/ }).click();
+    await expect(page.getByRole("group", { name: "Time of day" })).toBeVisible();
     await everyStopRinged(page);
   });
 

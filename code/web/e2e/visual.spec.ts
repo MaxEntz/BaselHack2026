@@ -26,14 +26,21 @@ async function stopped(page: Page) {
   await page.clock.pauseAt(DEMO_NOW);
 }
 
-/** Moves the clock `step` ms at a time until `what` shows: the mock answers on timers. */
-async function until(page: Page, what: Locator, step = 250) {
+/**
+ * Moves the clock `step` ms at a time until `what` shows: the mock answers on timers. At most
+ * `budget` ms in all, so that a slow machine can't carry a page to its live booking (6 s after
+ * the page listens, `shoot` adding 1 s).
+ */
+async function until(page: Page, what: Locator, step = 250, budget = 4000) {
+  let moved = 0;
   await expect
     .poll(async () => {
+      if (moved >= budget) return `not shown after ${budget} ms of the page's clock`;
       await page.clock.runFor(step);
-      return what.isVisible();
+      moved += step;
+      return (await what.isVisible()) ? "shown" : "waiting";
     }, { timeout: 60_000 })
-    .toBe(true);
+    .toBe("shown");
 }
 
 /**
@@ -76,8 +83,9 @@ for (const width of [1440, 390]) {
       await shoot(page, `studio-asking-${width}`);
 
       await skip.click();
-      await until(page, page.getByText("What went into your profile"), 500);
-      // The management site in the canvas loads on its own time; its pages have their own shots.
+      // The management site in the canvas is masked below, so its live booking may come.
+      await until(page, page.getByText("What went into your profile"), 500, 120_000);
+      // It loads on its own time, too; its pages have their own shots.
       await shoot(page, `studio-built-${width}`, [page.locator(".st-bw iframe")]);
     });
   });
