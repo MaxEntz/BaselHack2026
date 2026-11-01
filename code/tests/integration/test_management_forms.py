@@ -14,6 +14,7 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.discovery import load_profile
 from agent.provisioning import described_tools
 from agent.service import PgAgentService
 from core.config import Settings
@@ -37,7 +38,6 @@ from core.models import (
     Service,
     TableSpec,
 )
-from gateway.merchant_server import load_profile
 from merchant_platform.api import create_app
 
 pytestmark = pytest.mark.integration

@@ -64,7 +64,8 @@ class BuildCache:
             return CrawlResult(
                 website=data["website"], pages=[Page(**page) for page in data["pages"]]
             )
-        except (KeyError, TypeError):
+        except (KeyError, TypeError) as error:
+            _skipped("crawl", key, error)
             return None
 
     def put_crawl(self, key: str, result: CrawlResult) -> None:
@@ -82,7 +83,8 @@ class BuildCache:
                 facts=[BuildFact.model_validate(fact) for fact in data["facts"]],
                 flags=[BuildFlag.model_validate(flag) for flag in data["flags"]],
             )
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError) as error:
+            _skipped("extraction", key, error)
             return None
 
     def put_extraction(self, key: str, result: ExtractionResult) -> None:
@@ -105,9 +107,15 @@ class BuildCache:
             return None
         try:
             data = json.loads(self._path(kind, key).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            return None  # not cached yet: a plain miss
+        except (OSError, ValueError) as error:
+            _skipped(kind, key, error)
             return None
-        return data if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            _skipped(kind, key, TypeError("not a JSON object"))
+            return None
+        return data
 
     def _write(self, kind: str, key: str, data: dict[str, Any]) -> None:
         if self.mode != "read_write":
@@ -121,3 +129,12 @@ class BuildCache:
             temporary.replace(path)
         except OSError:
             log.warning("builder_cache_write_failed", extra={"kind": kind})
+
+
+def _skipped(kind: str, key: str, error: Exception) -> None:
+    """An entry that can't be read counts as a miss, but says so: a corrupt cache would
+    otherwise rebuild in silence on every onboarding."""
+    log.warning(
+        "builder_cache_entry_skipped",
+        extra={"kind": kind, "key": key, "error": type(error).__name__},
+    )

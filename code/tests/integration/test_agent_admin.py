@@ -417,7 +417,7 @@ async def test_invalid_floor_plans_are_refused(
         await service.update_tables(slug, plan)
 
 
-# cancel_reservation(by="merchant")
+# Cancellation by the merchant: `cancel_reservation(by="merchant")`.
 
 
 async def test_merchant_cancellation_leaves_one_notice_for_the_guest(

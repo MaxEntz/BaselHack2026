@@ -1,22 +1,31 @@
 """`uv run python -m merchant_node`: the BATP node on BATP_HOST:BATP_PORT (127.0.0.1:4710)."""
 
 import asyncio
+import logging
 import secrets
+import signal
 import ssl
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from contextlib import AsyncExitStack
 from zoneinfo import ZoneInfo
+
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import PgAgentService
 from batp.messages import Hello, NodeIdentity
-from batp.server import NodeServer
+from batp.server import STOP_GRACE, NodeServer
 from core.config import Settings, get_settings
 from core.db import make_engine
 from core.logs import use_json_logs
 from merchant_node.agents import MerchantAgents
 from merchant_node.requests_log import RequestLog, log_engine
 
+log = logging.getLogger("merchant_node")
+
 NODE = NodeIdentity(id="urn:batp:node:merchant-agents", name="Sésame")
+# What systemd sends to stop the service, and Ctrl+C in a terminal.
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 MIN_TOKEN = 16
 
@@ -65,12 +74,42 @@ def token_check(settings: Settings) -> Callable[[Hello], bool]:
     return authenticate
 
 
-def main() -> None:
-    use_json_logs()
-    settings = get_settings()
-    if problems := exposure_problems(settings):
-        sys.exit("; ".join(problems))
+async def run(
+    server: NodeServer,
+    host: str,
+    port: int,
+    *,
+    tls: ssl.SSLContext | None = None,
+    engines: Sequence[AsyncEngine] = (),
+) -> None:
+    """Serve until SIGTERM or SIGINT, then drain (`NodeServer.stop`): no new session, the
+    answers in flight finish within the grace, the sessions close, the recorders get up to
+    `RECORD_TIMEOUT` to write their rows; then the engines are disposed.
+
+    So a redeploy (`systemctl restart` sends SIGTERM) loses neither an answer on its way nor
+    its request log row. The handlers stay until the end: a second signal while draining
+    changes nothing, where the default one would kill the process before the engines close.
+    The exit stack unwinds in reverse, each step even when the one before failed.
+    """
+    loop = asyncio.get_running_loop()
+    stopping = asyncio.Event()
+    async with AsyncExitStack() as cleanup:
+        for signum in STOP_SIGNALS:
+            loop.add_signal_handler(signum, stopping.set)
+            cleanup.callback(loop.remove_signal_handler, signum)
+        for engine in engines:
+            cleanup.push_async_callback(engine.dispose)
+        cleanup.push_async_callback(server.stop)
+        await server.start(host, port, tls=tls)
+        await stopping.wait()
+        log.info("node stopping")
+
+
+async def serve(settings: Settings) -> None:
+    """The node these settings describe, until it is told to stop (`run`)."""
+    tls = tls_context(settings)
     engine = make_engine(settings.database_url)
+    records = log_engine(settings.database_url)
     service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
     agents = MerchantAgents(engine, service)
     server = NodeServer(
@@ -78,9 +117,19 @@ def main() -> None:
         handle=agents,
         authenticate=token_check(settings),
         fallback_url=agents.fallback_url,
-        record=RequestLog(log_engine(settings.database_url)),
+        record=RequestLog(records),
+        # Never shorter than the gateway's whole tool call, which waits for these answers.
+        stop_grace=max(STOP_GRACE, settings.agent_timeout_ms / 1000),
     )
-    asyncio.run(server.serve(settings.batp_host, settings.batp_port, tls=tls_context(settings)))
+    await run(server, settings.batp_host, settings.batp_port, tls=tls, engines=(engine, records))
+
+
+def main() -> None:
+    use_json_logs()
+    settings = get_settings()
+    if problems := exposure_problems(settings):
+        sys.exit("; ".join(problems))
+    asyncio.run(serve(settings))
 
 
 if __name__ == "__main__":

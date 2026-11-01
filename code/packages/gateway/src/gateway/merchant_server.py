@@ -8,15 +8,12 @@ the same `fallback.call_merchant`, timeout, `down` status and log line.
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
-from functools import partial
 from typing import Any
 
 from mcp.server import MCPServer
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.mcpserver import Context
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -24,8 +21,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from agent import discovery
 from agent.provisioning import described_tools
 from core.config import Settings
-from core.db import merchants_t
 from core.models import (
+    MAX_SLOTS,
     CancelOutput,
     GetAvailabilityOutput,
     MerchantProfile,
@@ -35,7 +32,7 @@ from core.models import (
 )
 from gateway import tooling
 from gateway.agent_client import AgentClient
-from gateway.fallback import RejectedArguments, call_merchant, deadline_in
+from gateway.fallback import RejectedArguments, deadline_in
 from gateway.tooling import (
     DESTRUCTIVE,
     IDEMPOTENT_WRITE,
@@ -67,11 +64,11 @@ group are in each tool's description.
   booking page."""
 
 # What every merchant's tool says after its own sentence from the template.
-GET_AVAILABILITY = """\
-Returns up to 3 available start times close to the requested time, in Europe/Zurich. Never invent \
-availability: only propose slots returned here. If `slots` is empty, say so and offer another \
-date or time. `table_label` is indicative. If the result contains `fallback_url`, give that link \
-to the user."""
+GET_AVAILABILITY = f"""\
+Returns up to {MAX_SLOTS} available start times close to the requested time, in \
+Europe/Zurich. Never invent availability: only propose slots returned here. If `slots` is \
+empty, say so and offer another date or time. `table_label` is indicative. If the result \
+contains `fallback_url`, give that link to the user."""
 
 CREATE_RESERVATION = f"""\
 This takes two messages. First show the user a summary (date, time, party size, name), ask them \
@@ -107,23 +104,6 @@ def deadline_of(request: Any) -> float | None:
     return deadline if isinstance(deadline, float) else None
 
 
-async def load_profile(slug: str, *, engine: AsyncEngine) -> MerchantProfile | None:
-    """The profile behind the merchant's descriptions: the registry's copy, kept in sync (#9)."""
-    query = select(merchants_t.c.profile).where(merchants_t.c.slug == slug)
-    async with engine.connect() as conn:
-        profile = (await conn.execute(query)).scalar_one_or_none()
-    if profile is None:
-        return None
-    try:
-        return MerchantProfile.model_validate(profile)
-    except ValidationError as error:
-        log.warning(
-            "registry profile skipped",
-            extra={"slug": slug, "errors": error.errors(include_input=False)},
-        )
-        return None
-
-
 def describe(tools: list[dict[str, Any]], profile: MerchantProfile) -> list[dict[str, Any]]:
     """Each tool's description, prefixed with the merchant's sentence from the template."""
     own = {tool.name: tool.description for tool in described_tools(profile)}
@@ -152,9 +132,16 @@ class MerchantDescriptions:
         result = await call_next(ctx)
         if ctx.method != "tools/list" or not isinstance(result, dict):
             return result
+        slug = slug_of(ctx.request)
         try:
             async with asyncio.timeout_at(deadline_of(ctx.request) or deadline_in(self.settings)):
-                profile = await load_profile(slug_of(ctx.request), engine=self.engine)
+                profile = await discovery.load_profile(slug, engine=self.engine)
+        except ValidationError as error:
+            log.warning(
+                "registry profile skipped",
+                extra={"slug": slug, "errors": error.errors(include_input=False)},
+            )
+            return result
         except Exception:
             log.warning("merchant profile unavailable", exc_info=True)
             return result
@@ -163,35 +150,29 @@ class MerchantDescriptions:
         return {**result, "tools": describe(result.get("tools", []), profile)}
 
 
+def route_of(ctx: Context) -> tuple[str, float | None]:
+    """The merchant a tool call is for, from the request's path, and the request's deadline."""
+    request = ctx.request_context.request
+    return slug_of(request), deadline_of(request)
+
+
 def create_merchant_server(
     agent: AgentClient, engine: AsyncEngine, settings: Settings
 ) -> MCPServer:
-    """The 4 booking tools of the merchant named by the path. They never raise."""
+    """The 4 booking tools of the merchant named by the path (`tooling.Tools`). They never raise."""
     mcp = MCPServer(
         "merchant-agents-restaurant",
         instructions=INSTRUCTIONS,
         middleware=[RejectedArguments(), MerchantDescriptions(engine, settings)],
     )
-
-    async def routed[T](
-        tool: str, ctx: Context, op: Callable[[str], Awaitable[T]]
-    ) -> T | ToolError:
-        request = ctx.request_context.request
-        slug = slug_of(request)
-        find = partial(discovery.find_merchant, slug, engine=engine)
-        return await call_merchant(
-            slug, tool, find, partial(op, slug), settings=settings, deadline=deadline_of(request)
-        )
+    tools = tooling.Tools(agent, engine, settings)
 
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
         date: Day, party_size: PartySize, ctx: Context, time: Time = None
     ) -> GetAvailabilityOutput | ToolError:
-        return await routed(
-            "get_availability",
-            ctx,
-            lambda slug: tooling.availability(agent, slug, date, party_size, time),
-        )
+        slug, deadline = route_of(ctx)
+        return await tools.get_availability(slug, date, party_size, time, deadline=deadline)
 
     @mcp.tool(title="Book a table", description=CREATE_RESERVATION, annotations=IDEMPOTENT_WRITE)
     async def create_reservation(
@@ -201,18 +182,22 @@ def create_merchant_server(
         idempotency_key: IdempotencyKey,
         ctx: Context,
     ) -> ReservationOutput | ToolError:
-        return await routed(
-            "create_reservation",
-            ctx,
-            lambda slug: tooling.book(
-                agent,
-                merchant=slug,
-                starts_at=starts_at,
-                party_size=party_size,
-                guest_name=guest_name,
-                idempotency_key=idempotency_key,
-            ),
+        slug, deadline = route_of(ctx)
+        return await tools.create_reservation(
+            slug,
+            starts_at=starts_at,
+            party_size=party_size,
+            guest_name=guest_name,
+            idempotency_key=idempotency_key,
+            deadline=deadline,
         )
+
+    _add_changes(mcp, tools)
+    return mcp
+
+
+def _add_changes(mcp: MCPServer, tools: tooling.Tools) -> None:
+    """The tools that change a booking the guest already has."""
 
     @mcp.tool(
         title="Change a booking", description=UPDATE_RESERVATION, annotations=IDEMPOTENT_WRITE
@@ -225,33 +210,25 @@ def create_merchant_server(
         starts_at: NewStartsAt = None,
         party_size: NewPartySize = None,
     ) -> ReservationOutput | ToolError:
-        return await routed(
-            "update_reservation",
-            ctx,
-            lambda slug: tooling.update(
-                agent,
-                merchant=slug,
-                reservation_id=reservation_id,
-                guest_name=guest_name,
-                idempotency_key=idempotency_key,
-                starts_at=starts_at,
-                party_size=party_size,
-            ),
+        slug, deadline = route_of(ctx)
+        return await tools.update_reservation(
+            slug,
+            reservation_id=reservation_id,
+            guest_name=guest_name,
+            idempotency_key=idempotency_key,
+            starts_at=starts_at,
+            party_size=party_size,
+            deadline=deadline,
         )
 
     @mcp.tool(title="Cancel a booking", description=CANCEL_RESERVATION, annotations=DESTRUCTIVE)
     async def cancel_reservation(
         reservation_id: ReservationId, guest_name: GuestName, ctx: Context
     ) -> CancelOutput | ToolError:
-        return await routed(
-            "cancel_reservation",
-            ctx,
-            lambda slug: tooling.cancel(
-                agent, merchant=slug, reservation_id=reservation_id, guest_name=guest_name
-            ),
+        slug, deadline = route_of(ctx)
+        return await tools.cancel_reservation(
+            slug, reservation_id=reservation_id, guest_name=guest_name, deadline=deadline
         )
-
-    return mcp
 
 
 class MerchantEndpoint:

@@ -20,7 +20,6 @@ from agent.provisioning import (
     MerchantRecord,
     NotBuilding,
     SlugTaken,
-    SwitchableStatus,
     deploy,
     deprovision,
     provision,
@@ -29,7 +28,7 @@ from agent.provisioning import (
 from core.config import get_settings
 from core.db import merchant_conn, merchants_t, policy_t, reservations_t, schema_for, tables_t
 from core.errors import InvalidInput, NotFound
-from core.models import MerchantProfile, TableSpec
+from core.models import AgentStatus, MerchantProfile, TableSpec
 
 pytestmark = pytest.mark.integration
 
@@ -144,7 +143,7 @@ async def test_deploy_only_publishes_a_merchant_still_building(
     engine: AsyncEngine,
     profile: MerchantProfile,
     provisioned: MerchantRecord,
-    since: list[SwitchableStatus],
+    since: list[AgentStatus],
 ) -> None:
     # #220: a pause made after the caller read `building` must survive its deploy.
     for status in since:
