@@ -309,7 +309,6 @@ async def book(
             )
         ),
         says("Shall I book it?"),
-        says("Booked: see you then."),
     )
     url = f"{gateway}/mcp"
     proposed = await talk(url, f"{party_size} at {starts_at:%H:%M}, {guest}.", merchant=slug)

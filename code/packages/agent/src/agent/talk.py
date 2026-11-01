@@ -97,7 +97,9 @@ speaks for one guest. You never talk with the restaurant's staff.
 Rules:
 - Answer only from your tools' results, the restaurant's profile and what its website says, \
 below. When they don't say, say you don't know. Never invent a time, a price, a dish or a rule.
-- Offer only times get_availability returned.
+- Offer only times get_availability returned. For any request for a table, call it first, even \
+when the group looks too large or the time looks closed: its answer decides, and only its refusal \
+gives the guest the restaurant's booking page.
 - You can't book, move or cancel anything yourself. propose_booking, propose_change and \
 propose_cancellation check the request and prepare it; it happens only when the guest's agent \
 confirms it, after the guest's yes. A yes in words changes nothing. Never say a booking is \
@@ -291,6 +293,11 @@ class MerchantAgent:
             conversation.keep(inp, self._output(conversation, merchant, turn, confirmed.reply))
         start = len(conversation.messages)
         conversation.messages.append({"role": "user", "content": inp.message})
+        if confirmed is not None and turn.reservation is not None:
+            # Done, so code says it. A model reading "Yes, please book it" beside "it is done"
+            # took it for a new request, and offered a second table (#255).
+            _say(conversation, confirmed.reply)
+            return self._output(conversation, merchant, turn, confirmed.reply)
         try:
             async with asyncio.timeout(self._turn_seconds):
                 event = confirmed.event if confirmed else None
@@ -310,14 +317,7 @@ class MerchantAgent:
                 extra={"merchant": merchant.slug, "error": type(error).__name__},
             )
             del conversation.messages[start + 1 :]
-            conversation.messages.append(
-                {
-                    "role": "assistant",
-                    "content": confirmed.reply,
-                    "tool_calls": [],
-                    "provider_items": [],
-                }
-            )
+            _say(conversation, confirmed.reply)
             if not isinstance(error, Exception):
                 raise
             turn.outcome += "_without_model"
@@ -468,6 +468,13 @@ def _done(action: PendingKind, reservation: Reservation, name: str, tz: ZoneInfo
     return (
         f"{verb}: booking {reservation.id}, a table for {reservation.party_size} at {name} on "
         f"{when(reservation.starts_at, tz)}, under the name {reservation.guest_name}."
+    )
+
+
+def _say(conversation: Conversation, text: str) -> None:
+    """Code's own answer, in the history as the agent's."""
+    conversation.messages.append(
+        {"role": "assistant", "content": text, "tool_calls": [], "provider_items": []}
     )
 
 

@@ -168,16 +168,15 @@ async def test_a_confirm_whose_answer_is_lost_is_sent_again_with_its_key(
     engine: AsyncEngine, make_merchant: MerchantFactory
 ) -> None:
     slug, person, merchant, guest = await a_proposal(engine, make_merchant, Person("yes"))
-    merchant.then(says("Booked: see you on Monday at 20:00."))
     guest.then(says("Your table is booked for Monday at 20:00."))
     client = await converse(engine, slug, person, merchant, guest, LosesTheConfirmsAnswer)
 
     assert isinstance(client, LosesTheConfirmsAnswer)
     first, again = client.confirms
     assert first == again
-    # The node replayed its answer: one booking, and the merchant's model called once for it.
+    # The node replayed its answer: one booking, and no call to the merchant's model for it.
     assert await booked(engine, slug) == [(GUEST, "claude")]
-    assert len(merchant.calls) == 3
+    assert len(merchant.calls) == 2
     assert f"✗ TALK: {CLOSED}" in person.printed
     assert any(line.startswith("✓ R-") and "confirmed" in line for line in person.printed)
 

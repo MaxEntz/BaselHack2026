@@ -443,7 +443,7 @@ async def test_a_confirm_books_once_and_a_replay_doesnt_book_again(
     agent = agent_for(llm, service, engine, clock)
     first = await proposed(agent, llm, slug)
     assert first.pending is not None
-    llm.then(says("Done: see you Monday at 20:00."))
+    calls_at_yes = len(llm.calls)
     yes = message(slug, "Yes", conversation=first.conversation, confirm=first.pending.id)
     confirmed = await agent.talk(slug, CALLER, yes)
 
@@ -451,7 +451,10 @@ async def test_a_confirm_books_once_and_a_replay_doesnt_book_again(
     assert confirmed.reservation.via == "claude"
     assert confirmed.pending is None
     assert confirmed.tools_called == ("create_reservation",)
-    assert "it is done" in llm.calls[-1]["instructions"]
+    # Done, so code says it, with no model call: one took "Yes" beside "it is done" for a new
+    # request, and offered a second table (#255).
+    assert confirmed.reply.startswith(f"Booked: booking {confirmed.reservation.id}, ")
+    assert len(llm.calls) == calls_at_yes
     assert await bookings(engine, slug) == [(GUEST, "20:00", 2)]
 
     calls_before = len(llm.calls)
@@ -511,14 +514,14 @@ async def test_a_confirm_after_the_time_was_taken_writes_nothing_and_needs_a_new
     assert await bookings(engine, slug) == [("Sam Weber", "20:00", 2)]
 
 
-async def test_a_confirmed_booking_is_reported_when_the_model_fails_after_it(
+async def test_a_confirmed_booking_is_reported_by_code_without_the_model(
     slug: str, service: PgAgentService, engine: AsyncEngine, clock: Clock
 ) -> None:
     llm = ScriptedLLM()
     agent = agent_for(llm, service, engine, clock)
     first = await proposed(agent, llm, slug)
     assert first.pending is not None
-    llm.then(LLMUnavailable("RateLimitError"))
+    llm.then(LLMUnavailable("RateLimitError"))  # never reached: the write needs no model
     output = await agent.talk(
         slug,
         CALLER,
@@ -533,16 +536,15 @@ async def test_a_confirmed_booking_is_reported_when_the_model_fails_after_it(
     assert await bookings(engine, slug) == [(GUEST, "20:00", 2)]
 
 
-async def test_a_confirm_cut_short_after_the_write_replays_the_booking(
+async def test_a_confirm_replays_the_booking_and_stays_in_the_history(
     slug: str, service: PgAgentService, engine: AsyncEngine, clock: Clock
 ) -> None:
-    llm = HangingLLM()
+    llm = ScriptedLLM()
     agent = agent_for(llm, service, engine, clock)
     first = await proposed(agent, llm, slug)
     assert first.pending is not None
     yes = message(slug, "Yes", conversation=first.conversation, confirm=first.pending.id)
-    llm.hang()
-    await cut_short(llm, agent.talk(slug, CALLER, yes))
+    await agent.talk(slug, CALLER, yes)
     assert await bookings(engine, slug) == [(GUEST, "20:00", 2)]
 
     calls_before = len(llm.calls)
@@ -624,7 +626,6 @@ async def test_a_change_and_a_cancellation_run_only_on_confirm(
     assert first.pending is not None and first.pending.action == "change"
     assert await bookings(engine, slug) == [(GUEST, "19:00", 2)]
 
-    llm.then(says("Moved."))
     moved = await agent.talk(
         slug,
         CALLER,
@@ -642,7 +643,6 @@ async def test_a_change_and_a_cancellation_run_only_on_confirm(
     )
     assert asked.pending is not None and asked.pending.action == "cancel"
     assert await bookings(engine, slug) == [(GUEST, "21:00", 2)]
-    llm.then(says("Cancelled."))
     cancelled = await agent.talk(
         slug,
         CALLER,

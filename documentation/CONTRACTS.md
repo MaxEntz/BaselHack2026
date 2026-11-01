@@ -141,7 +141,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 - `OpaqueId`: `^[A-Za-z0-9_-]{1,64}$`. The agent makes conversation and proposal ids random, with at least 128 bits.
 - `confirm` needs `conversation`: a proposal only exists in a conversation. It is sent only after the guest's explicit yes (#247).
 - `ToolName`: `^[a-z][a-z0-9_]{0,63}$`, names only, never arguments.
-- Only `reply` is the model's text. Code builds every other field of `TalkOutput` from tool results.
+- Only `reply` can be the model's text, and code writes it too once a `confirm` has written: a model reading "Yes" beside "it is done" took it for a new request (#255). Code builds every other field of `TalkOutput` from tool results.
 - `200` means the agent answered, a refusal included. `404` is an unknown or not live merchant, or an unknown or expired conversation; `429 too_many_requests` comes before any model call, past the node's limits; `503 agent_unavailable` carries the fallback URL. A node without `OPENAI_API_KEY` answers every `TALK` to a live merchant with that `503` (#249).
 - A replay with the same `idempotency_key` returns the stored answer, with no model call and no write.
 
