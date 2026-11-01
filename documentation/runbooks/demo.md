@@ -24,6 +24,10 @@ On the server, every command runs from `/opt/merchant-agents/code` with `.venv/b
 | Guest | laptop B: Claude.ai, its preferences set | Steps 3, 5, 6, 7 |
 | Backstage | an SSH terminal on the server, plan B ready | Resets between rehearsals, watches `journalctl -u merchant-platform -u merchant-gateway -u merchant-node -f`, starts plan B or the video |
 
+## Slides
+
+[`assets/pitch/index.html`](../../assets/pitch/index.html), opened from a clone (it uses the repo's fonts and wordmark): the problem, the idea, the demo, the architecture, why it holds, the tests, what's next. ← and → move, F goes full screen. [`sesame-pitch.pdf`](../../assets/pitch/sesame-pitch.pdf) is the same deck, for a laptop without the repo. The demo itself replaces slide 4. After editing the deck, export the PDF again: print it from Chrome, or use Playwright's `page.pdf`, at 1600 × 900.
+
 ## Before the demo
 
 The day before:
@@ -33,6 +37,7 @@ The day before:
 - [ ] Builder cache warm ([ADR-0007](../adr/0007-builder-cache-for-a-replayable-demo.md)): one rehearsal build of Le Petit Zinc on the server, with `BUILDER_CACHE=read_write`, the default, using [the onboarding message](#the-rehearsed-message) word for word. Then set `BUILDER_CACHE=read_only` in `/opt/merchant-agents/platform/.env` and `systemctl restart merchant-platform`. The extraction's key holds what the crawl read, the description, `OPENAI_MODEL`, the prompt's version and the crawl's (`builder/cache.py`). So warm it up on the commit and the `OPENAI_MODEL` you demo with: a different word, model or deploy that changes a version means a live build. `build_agent`'s description is written by the assistant from the message, so it can differ between two runs. After the second rehearsal, check in `journalctl -u merchant-platform` that its `builder_cache` lines report a hit.
 - [ ] Plan B tested on the demo laptop: Claude Code on a local gateway.
 - [ ] Backup video of the full script recorded, in `assets/` and on the demo laptop.
+- [ ] The slides and their PDF on the speaker's laptop ([Slides](#slides)).
 
 In this order, 30 minutes before:
 
