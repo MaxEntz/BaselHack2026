@@ -160,8 +160,9 @@ Gateway, `/mcp` (the descriptions tell Claude to confirm writes, pass preference
 - `create_reservation` / `update_reservation`: book or change, with `idempotency_key`.
 - `cancel_reservation`: cancel as the guest.
 - `get_my_reservations`: a guest's bookings and notices.
+- `talk_to_merchant`: a conversation with the merchant's agent over BATP `TALK`; it books only after a `confirm` sent once the user said yes to its `pending` summary (#251).
 
-Each merchant also has `/m/<slug>/mcp` with the 4 booking tools, without `merchant` ([ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md)).
+`GATEWAY_TALK` picks the booking path: off (default), the 4 booking tools; on, `talk_to_merchant` instead, never both. Each merchant also has `/m/<slug>/mcp` with the same booking path, without `merchant` ([ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md)).
 
 ### 8.2 Admin tools
 
@@ -226,7 +227,7 @@ make demo-reset # known demo state; make outage / make restore SLUG=…
 make deploy     # gateway, node, platform and web app to the team server
 ```
 
-Main settings (with their defaults in `code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `GATEWAY_TOKEN`; the platform's `PLATFORM_COOKIE_SECRET`, `PLATFORM_INVITE_CODE`, `PLATFORM_WEB_URL`, and `PLATFORM_MERCHANT` (development only).
+Main settings (with their defaults in `code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `AGENT_TALK_TIMEOUT_MS=30000`, `GATEWAY_TALK=false`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `GATEWAY_TOKEN`; the platform's `PLATFORM_COOKIE_SECRET`, `PLATFORM_INVITE_CODE`, `PLATFORM_WEB_URL`, and `PLATFORM_MERCHANT` (development only).
 
 ## 11. Milestones
 
@@ -384,6 +385,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-11-01 | Discovery and the registry routing rule (`routable`) move to `agent/discovery.py`; the BATP node no longer depends on `gateway`; what both MCP endpoints share goes to `gateway/tooling.py` (#220) | They are business rules, and the node reached them by importing the MCP package; the gateway, its merchant endpoint and the node each wrote the `building` / `down` rule themselves, and the two MCP servers repeated their hints, argument types and rule for writes |
 | 2026-11-01 | Platform and builder refactor (#220): `create_app` only composes routers (`chat`, `live`, `public`, `auth`, `management`) and `errors.py`; who a chat session acts for is `sessions.SessionGuard`'s; the assistant reads the registry row once per model call (`registry.registry_records`: profile and status); admin tools are dispatched by tool name, since `block_slot` and `unblock_slot` share `SlotInput`; the crawl and the extraction compare pages with one key (`urls.page_key`: no `www.`, no port that is its scheme's default, no trailing slash or fragment); `POST /chat`'s `409` keeps FastAPI's `{detail}` body | Session rules in the HTTP layer couldn't be tested without it, and `create_app` had grown to 282 lines; the extraction's key ignored a trailing slash and the crawl's a default port (whatever the scheme), so one site's pages compared two ways; a `409` with `{error, message}` would need a code the frozen §8.4 and management lists don't have, and the web reads only the status |
 | 2026-11-01 | The provider-neutral LLM client moves from `builder/llm.py` to `core/llm.py` (`core` gains `openai`), and the prompt's clock line (`clock_line`, `next_offset_change`) from the assistant to `agent/times.py` | The BATP node's merchant agents use both, and the node can't import the builder (Playwright, and `builder` depends on `agent`) or the platform (#246) |
+| 2026-11-01 | `talk_to_merchant` (#251): `GATEWAY_TALK` (default off) shows it and hides the 4 booking tools on both MCP endpoints, or the reverse; its deadline is `AGENT_TALK_TIMEOUT_MS` (30 s), the other tools keep `AGENT_TIMEOUT_MS`; without `BATP_URL` it answers `agent_unavailable` with the fallback URL; it counts as a write, for the timeout message, only with a `confirm`; `/m/<slug>/mcp` counts each tool's budget from the request's start | Both paths at once would let Claude pick, and the 10:30 checkpoint of #244 needs a switch back; a model turn doesn't fit in 2 s, and the node gives `TALK` 25 s; the gateway has no LLM; a question that timed out changed nothing |
 
 ## 15. Out of scope (POC)
 
