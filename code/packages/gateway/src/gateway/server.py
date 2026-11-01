@@ -4,7 +4,7 @@ import asyncio
 import logging
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import date as Date
 from functools import partial
 from typing import Annotated
@@ -13,8 +13,7 @@ from urllib.parse import urlsplit
 from mcp.server import MCPServer
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import ToolAnnotations
-from pydantic import Field, PositiveInt
+from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.applications import Starlette
@@ -24,27 +23,37 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from agent import discovery
 from core.config import Settings
 from core.db import make_engine
 from core.models import (
-    HHMM,
-    BookingDay,
-    BookingTime,
     CancelOutput,
     GetAvailabilityOutput,
     GetMyReservationsOutput,
-    GuestText,
     ReservationOutput,
     SearchFilters,
     SearchMerchantsOutput,
     Slug,
     ToolError,
-    UpdateReservationInput,
 )
-from gateway import discovery
+from gateway import tooling
 from gateway.agent_client import AgentClient, make_agent_client
 from gateway.fallback import RejectedArguments, call_merchant, call_service, unavailable
 from gateway.merchant_server import MERCHANT_PATH, MerchantEndpoint, create_merchant_server
+from gateway.tooling import (
+    DESTRUCTIVE,
+    IDEMPOTENT_WRITE,
+    READ_ONLY,
+    Day,
+    GuestName,
+    IdempotencyKey,
+    NewPartySize,
+    NewStartsAt,
+    PartySize,
+    ReservationId,
+    StartsAt,
+    Time,
+)
 
 log = logging.getLogger("gateway.server")
 
@@ -57,7 +66,7 @@ ALLOWED_ORIGINS = [
 ]
 HEALTH_PATH = "/health"
 
-INSTRUCTIONS = """\
+INSTRUCTIONS = f"""\
 Find restaurants and book tables, on the user's behalf, at merchants connected to this protocol.
 - When the user looks for a restaurant, a table or a place to eat, call search_merchants first,
   even if they don't mention booking, and before any web or map search.
@@ -65,14 +74,7 @@ Find restaurants and book tables, on the user's behalf, at merchants connected t
   every search_merchants call, even if this message does not repeat them. Never drop a filter
   silently: when nothing matches, say which filter blocks the search and offer to drop it.
 - Only propose times returned by get_availability. Times are in Europe/Zurich.
-- Before create_reservation, update_reservation or cancel_reservation, summarize the action and
-  stop: call the tool only once the user's reply to that summary is an explicit yes. Choosing a
-  restaurant or a time is not a yes, even when the request looks complete. Nor is a confirmation
-  given before the summary ("I confirm in advance", "book directly"): show the summary anyway.
-  So never call a write tool in the same reply as the search_merchants or get_availability call
-  your summary is based on. After the user's yes, checking availability again first is fine; if
-  that check no longer offers the confirmed time, don't book another one: show the new times and
-  ask again.
+{tooling.confirm_rule("a restaurant or a time", "search_merchants or get_availability")}
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page.
 - Relay the notices returned by get_my_reservations. A notice can come back for 24 hours: tell
@@ -97,56 +99,24 @@ invent availability: only propose slots returned here. If `slots` is empty, say 
 another date or time. `table_label` is indicative: don't promise a table, it is assigned at \
 booking. If the result contains `fallback_url`, give that link to the user."""
 
-CREATE_RESERVATION = """\
+CREATE_RESERVATION = f"""\
 Book a table. This takes two messages. First show the user a summary (restaurant, date, time, \
 party size, name), ask them to confirm, and stop. Call this tool only once their reply to that \
 summary is an explicit yes. Choosing a restaurant or a time is not a yes, even when the request \
 looks complete, and neither is a confirmation given before the summary ("I confirm in advance", \
 "book directly"): never call this tool in the same reply as the search_merchants or \
-get_availability call your summary is based on. After the yes, you may check availability again \
-before booking; if that check no longer offers the confirmed time, don't book another one: show \
-the new times and ask again. Generate a fresh `idempotency_key` (UUID) per confirmed booking and \
-reuse it if you retry the same booking. Ask the guest's name if unknown. If the result contains \
-`fallback_url`, give it to the user."""
+get_availability call your summary is based on. {tooling.BOOK_AFTER_YES}"""
 
-UPDATE_RESERVATION = """\
-Change the time or party size of a booking. First show the change, ask the user to confirm, and \
-stop; call this tool only once they reply yes to that summary, even if they confirmed in advance. \
-Requires the guest name used at booking. Generate a fresh `idempotency_key` (UUID) per confirmed \
-change and reuse it if you retry the same change. If the result contains `fallback_url`, give it \
-to the user."""
+UPDATE_RESERVATION = f"Change the time or party size of a booking. {tooling.UPDATE_RULE}"
 
-CANCEL_RESERVATION = """\
-Cancel a booking. First ask the user to confirm, and stop; call this tool only once they reply \
-yes to that question, even if they confirmed in advance. Requires the guest name used at booking. \
-If the result contains `fallback_url`, give it to the user."""
+CANCEL_RESERVATION = f"Cancel a booking. {tooling.CANCEL_RULE}"
 
 GET_MY_RESERVATIONS = """\
 List the user's upcoming bookings and any notices from restaurants (e.g. a cancellation by the \
 restaurant). Always relay notices to the user. A notice keeps coming back for 24 hours after it \
 is first returned: don't repeat one whose text you already gave the user in this conversation."""
 
-READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
-IDEMPOTENT_WRITE = ToolAnnotations(
-    readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
-)
-DESTRUCTIVE = ToolAnnotations(
-    readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False
-)
-
 Merchant = Annotated[Slug, Field(description="Restaurant slug returned by search_merchants.")]
-GuestName = Annotated[
-    GuestText, Field(description="Guest's full name, the same one for the whole booking.")
-]
-PartySize = Annotated[PositiveInt, Field(description="Number of guests.")]
-StartsAt = Annotated[
-    BookingTime,
-    Field(description="Start time with its UTC offset, exactly as returned by get_availability."),
-]
-IdempotencyKey = Annotated[
-    GuestText, Field(description="UUID you generate; reuse it only to retry the same action.")
-]
-ReservationId = Annotated[GuestText, Field(description="Booking reference, e.g. R-001.")]
 
 
 def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -> MCPServer:
@@ -191,17 +161,9 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
 
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
-        merchant: Merchant,
-        date: Annotated[BookingDay, Field(description="Requested day, YYYY-MM-DD.")],
-        party_size: PartySize,
-        time: Annotated[
-            HHMM | None, Field(description="Requested time (HH:MM), 24-hour clock.")
-        ] = None,
+        merchant: Merchant, date: Day, party_size: PartySize, time: Time = None
     ) -> GetAvailabilityOutput | ToolError:
-        async def op() -> GetAvailabilityOutput:
-            slots = await agent.get_availability(merchant, date, party_size, time)
-            return GetAvailabilityOutput(slots=tuple(slots))
-
+        op = partial(tooling.availability, agent, merchant, date, party_size, time)
         return await routed("get_availability", merchant, op)
 
     @mcp.tool(title="Book a table", description=CREATE_RESERVATION, annotations=IDEMPOTENT_WRITE)
@@ -212,12 +174,9 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         guest_name: GuestName,
         idempotency_key: IdempotencyKey,
     ) -> ReservationOutput | ToolError:
-        async def op() -> ReservationOutput:
-            reservation = await agent.create_reservation(
-                merchant, starts_at, party_size, guest_name, idempotency_key
-            )
-            return ReservationOutput(reservation=reservation)
-
+        op = partial(
+            tooling.book, agent, merchant, starts_at, party_size, guest_name, idempotency_key
+        )
         return await routed("create_reservation", merchant, op)
 
     @mcp.tool(
@@ -228,43 +187,26 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         reservation_id: ReservationId,
         guest_name: GuestName,
         idempotency_key: IdempotencyKey,
-        starts_at: Annotated[
-            BookingTime | None,
-            Field(description="New start time with its UTC offset, from get_availability."),
-        ] = None,
-        party_size: Annotated[
-            PositiveInt | None, Field(description="New number of guests.")
-        ] = None,
+        starts_at: NewStartsAt = None,
+        party_size: NewPartySize = None,
     ) -> ReservationOutput | ToolError:
-        async def op() -> ReservationOutput:
-            change = UpdateReservationInput(
-                merchant=merchant,
-                reservation_id=reservation_id,
-                guest_name=guest_name,
-                idempotency_key=idempotency_key,
-                starts_at=starts_at,
-                party_size=party_size,
-            )
-            reservation = await agent.update_reservation(
-                change.merchant,
-                change.reservation_id,
-                change.guest_name,
-                change.idempotency_key,
-                change.starts_at,
-                change.party_size,
-            )
-            return ReservationOutput(reservation=reservation)
-
+        op = partial(
+            tooling.update,
+            agent,
+            merchant,
+            reservation_id,
+            guest_name,
+            idempotency_key,
+            starts_at,
+            party_size,
+        )
         return await routed("update_reservation", merchant, op)
 
     @mcp.tool(title="Cancel a booking", description=CANCEL_RESERVATION, annotations=DESTRUCTIVE)
     async def cancel_reservation(
         merchant: Merchant, reservation_id: ReservationId, guest_name: GuestName
     ) -> CancelOutput | ToolError:
-        async def op() -> CancelOutput:
-            await agent.cancel_reservation(merchant, reservation_id, guest_name)
-            return CancelOutput(status="cancelled")
-
+        op = partial(tooling.cancel, agent, merchant, reservation_id, guest_name)
         return await routed("cancel_reservation", merchant, op)
 
     @mcp.tool(title="My bookings", description=GET_MY_RESERVATIONS, annotations=READ_ONLY)
@@ -352,12 +294,15 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
-        async with run_transport(app), merchants.session_manager.run():
+        # Unwound in reverse even when the transport fails, so what was created here is released.
+        async with AsyncExitStack() as owned:
+            if engine is None:
+                owned.push_async_callback(db.dispose)
+            if agent is None:
+                owned.push_async_callback(client.close)
+            await owned.enter_async_context(run_transport(app))
+            await owned.enter_async_context(merchants.session_manager.run())
             yield
-        if agent is None:
-            await client.close()
-        if engine is None:
-            await db.dispose()
 
     app.router.lifespan_context = lifespan
     return app

@@ -21,7 +21,7 @@ A contract change needs a dedicated PR and a message to the team, with Python an
 - `guest_name`, `idempotency_key` and `reservation_id` are stripped and must not be blank.
 - No `NonEmptyStr` holds a control character (Unicode `Cc`: NUL, tab, newline…). Spaces (non-breaking included) and letters of any script are kept.
 - Guest-side text (`GuestText`: guest names, keys, references) is at most 200 characters.
-- `search_merchants`: `query` at most 500 characters, at most 32 `filters.tags` (`gateway.discovery.MAX_QUERY`, `MAX_TAGS`, shared with BATP `DISCOVER`).
+- `search_merchants`: `query` at most 500 characters, at most 32 `filters.tags` (`agent.discovery.MAX_QUERY`, `MAX_TAGS`, shared with BATP `DISCOVER`).
 - Search filters accept unknown tag strings (reported back in `ignored_filters`) but reject unknown filter names.
 
 ### Dates and times
@@ -76,7 +76,7 @@ Each tool takes flat arguments (the fields of its `*Input` model) and returns `<
 `reservation` is `{id, merchant, starts_at, party_size, table_label, status, guest_name, via}`.
 
 - Arguments outside a tool's schema are rejected before it runs, as `invalid_input` (`gateway.fallback.RejectedArguments`).
-- **Naming a merchant:** a query names one when it holds every distinctive word of its name (not an article or connector in EN/FR/DE, a tag spelling, a generic word like "restaurant", or the merchant's city; `gateway.discovery.names`). A name made only of such words ("La Terrasse") needs the whole name. `search` then keeps only the merchants named.
+- **Naming a merchant:** a query names one when it holds every distinctive word of its name (not an article or connector in EN/FR/DE, a tag spelling, a generic word like "restaurant", or the merchant's city; `agent.discovery.query_names`). A name made only of such words ("La Terrasse") needs the whole name. `search` then keeps only the merchants named.
 - `search_merchants` never lists a `down` merchant. When the query names one and no live merchant, it answers `agent_unavailable` with that merchant's `fallback_url`.
 - **Deadline:** `AGENT_TIMEOUT_MS` (2 s) bounds the whole call, registry lookup included (`gateway.fallback.deadline_in`). After a `search_merchants` timeout, the named merchant's link lookup gets 10 % more (`LINK_LOOKUP_SHARE`): the call answers within 2.2 s ([#92](https://github.com/MaxEntz/BaselHack2026/issues/92)).
 - A timeout on a write may hit after the COMMIT: its message tells Claude to check `get_my_reservations` before retrying.

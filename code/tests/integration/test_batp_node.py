@@ -23,6 +23,8 @@ from core.errors import (
     PartyTooLarge,
     SlotUnavailable,
 )
+from core.models import GetAvailabilityOutput
+from gateway.agent_client import LocalAgentClient
 from merchant_node.__main__ import NODE
 from merchant_node.agents import MerchantAgents
 
@@ -84,6 +86,22 @@ async def test_discover_finds_live_merchants_with_preferences(
 
     assert [m["slug"] for m in result["merchants"]] == [live]
     assert result["ignored_filters"] == ["michelin"]
+
+
+@pytest.mark.parametrize("hhmm", [None, "20:00"])
+async def test_the_node_offers_the_slots_the_gateway_offers_in_process(
+    engine: AsyncEngine, client: BatpClient, make_merchant: MerchantFactory, hhmm: str | None
+) -> None:
+    # One cap of 3 slots (AGENTS.md §6), the service's: both modes give the same answer (#220).
+    slug = await make_merchant()
+    in_process = LocalAgentClient(PgAgentService(engine, tz=TZ, clock=lambda: NOW), engine)
+    params = {"date": DAY.isoformat(), "party_size": 2} | ({"time": hhmm} if hhmm else {})
+
+    over_batp = await client.request("AVAILABILITY", slug, params)
+    local = await in_process.get_availability(slug, DAY, 2, hhmm)
+
+    assert len(local) == 3
+    assert over_batp == GetAvailabilityOutput(slots=tuple(local)).model_dump(mode="json")
 
 
 async def test_book_amend_cancel_and_recall(

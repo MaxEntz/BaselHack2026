@@ -75,8 +75,9 @@ code/
 ├── packages/
 │   ├── core/src/core/             models/ (base, tools, management, chat), errors.py, forms.py, db.py, availability.py, config.py, logs.py
 │   ├── agent/src/agent/           service.py (PgAgentService), writes.py, admin.py, provisioning.py, management.py,
-│   │                              dashboard.py, activity.py, guests.py, requests.py, words.py, templates/restaurant.json
-│   ├── gateway/src/gateway/       server.py, merchant_server.py, discovery.py, fallback.py, agent_client.py
+│   │                              dashboard.py, activity.py, guests.py, requests.py, words.py, discovery.py,
+│   │                              templates/restaurant.json
+│   ├── gateway/src/gateway/       server.py, merchant_server.py, tooling.py, fallback.py, agent_client.py
 │   ├── batp/src/batp/             messages.py, codec.py, status.py, client.py, server.py
 │   ├── merchant_node/src/merchant_node/   agents.py (the BATP node), requests_log.py
 │   ├── builder/src/builder/       crawl.py, extract.py, look.py, site.py, build.py, cache.py, llm.py
@@ -251,12 +252,13 @@ All done; open work is tracked in [#26](https://github.com/MaxEntz/BaselHack2026
 
 - **Provisioning** (`agent/provisioning.py`): `provision(profile)` (one transaction: schema, tables, policy, registry row in `building`), `deploy(slug)` (only from `building`, in one conditional UPDATE: `NotBuilding` with the status found otherwise, so a publish never undoes a pause) / `set_status(slug, "live"|"down")`, `deprovision(slug)` (idempotent). Each takes an optional `engine=`: long-running processes pass theirs; scripts omit it and get a short-lived engine on `DATABASE_URL`. A slug in use raises `SlugTaken` (an `InvalidInput`). `default_tables(seats)` and `generated_tools(profile)` are pure; `templates/restaurant.json` is validated at import.
 - **Merchant operations** (`agent/admin.py`): one `merchant_conn` transaction each, so the merchant schema and the registry's `profile` change together. The merchant's `tables` and `policy` rows are authoritative; `profile` is a display copy kept in sync. They load the merchant with `merchant_side=True` (a `building` merchant is editable by its owner, hidden from guests). Input outside the database's range is `InvalidInput`, never a raw DB error.
-- **Gateway** (`gateway/`): only `fallback.py` turns failures into `ToolError`; arguments the SDK rejects also answer `invalid_input`. `search_merchants` answers `agent_unavailable` + `fallback_url` when its query names a `down` merchant and no live one. Fault injection: `CHAOS_DELAY_MS`, `CHAOS_MERCHANTS`. As a bridge, it still reads the registry for the `down` status and the fallback URL.
+- **Discovery** (`agent/discovery.py`, #220): the search, filter and relaxation rules, and `routable`, which registry entries guests' calls reach (`building` hidden, a `paused` merchant refused with its fallback URL). The gateway and the BATP node both call it and word its outcomes as their own errors.
+- **Gateway** (`gateway/`): only `fallback.py` turns failures into `ToolError`; arguments the SDK rejects also answer `invalid_input`. `search_merchants` answers `agent_unavailable` + `fallback_url` when its query names a `down` merchant and no live one. Fault injection: `CHAOS_DELAY_MS`, `CHAOS_MERCHANTS`. As a bridge, it still reads the registry for the `down` status and the fallback URL. What both MCP endpoints share (hints, argument types, `CONFIRM_RULE`, the booking tools' bodies) lives in `tooling.py`: the tool descriptions Claude reads stay a contract (#14, #109).
 - **Accounts** (`merchant_platform/accounts.py`, `auth.py`, #132, [ADR-0018](documentation/adr/0018-open-a-merchants-site-with-a-secret-link.md)): a build gives its merchant a secret link, shown once on the profile card; only its hash is stored in `public.merchant_owners` (migration `0004`). The link sets a signed owner cookie (`PLATFORM_COOKIE_SECRET`), which every `/merchants/{slug}` route and `/events` need. `PLATFORM_INVITE_CODE` gates new builds. `make owner-link SLUG=…` issues a new link. `PLATFORM_MERCHANT` is development only.
 - **Management bookings** (`agent/management.py`, #134): `ManagementService` serves the Reservations page: a day, its slots, add (`via="merchant"`), move, cancel, in the `core.models` shapes. A move takes the table lock like a guest's update and marks its transaction as the merchant's (`core.db.as_merchant`), so it sends no live event. It is separate from the frozen `AgentService` protocol.
 - **Activity** (`agent/activity.py`, #135): every write path records its change on its own transaction's connection (`activity.record`, `record_booking`, `record_times`), so the line and the change commit together; a new write path must record its line too. Lines are worded when read.
 - **Management site** (`merchant_platform/management.py`, #129): the `/merchants/{slug}/…` routes, shapes in `core.models` and `web/src/types.ts` ([CONTRACTS.md](documentation/CONTRACTS.md)), client `web/src/management/client.ts` and its mock on `code/tests/fixtures/demo/la-graine-verte-management.json`. Every route is built and depends on `auth.owner_of_path` (fail-closed). Form bodies are structural, checked by `core.forms` (`FormProblem`, answered with its `problem`).
-- **BATP**: the library (`packages/batp/`) depends only on `core`, so the gateway can import its client. Change the protocol in `PROTOCOL.md`, the draft in `documentation/rfc/`, the library and its tests together.
+- **BATP**: the library (`packages/batp/`) depends only on `core`, so the gateway can import its client; the node (`merchant_node`) imports `agent`, never `gateway`. Status codes are named in `batp/status.py`. Change the protocol in `PROTOCOL.md`, the draft in `documentation/rfc/`, the library and its tests together.
 
 ## Team server (LXC)
 
@@ -320,6 +322,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | One second `MCPServer` serves every `/m/<slug>/mcp` | [ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md), #23 |
 | 2026-10-31 | Our own agent protocol, MCP kept as Claude's bridge; renamed MATP → BATP | [ADR-0011](documentation/adr/0011-our-own-agent-protocol-matp-with-mcp-as-bridge.md), [ADR-0014](documentation/adr/0014-rename-matp-to-batp.md), #119 |
 | 2026-10-31 | As a bridge, the gateway still reads the registry for `down` and the fallback URL | #61 |
+| 2026-11-01 | Discovery and the registry routing rule (`routable`) move to `agent/discovery.py`: business rules, which the BATP node used by importing the MCP package; the node no longer depends on `gateway` | #220 |
 | 2026-10-31 | Postgres on the team server, localhost only; `make deploy` applies the migrations | #25 |
 | 2026-10-31 | Booking writes lock the table's row inside each SAVEPOINT; the exclusion constraint stays the guarantee | #8 |
 | 2026-10-31 | A booking re-reads its table's seats under the lock | #9 |

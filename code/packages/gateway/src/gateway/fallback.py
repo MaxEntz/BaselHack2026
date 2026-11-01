@@ -15,10 +15,10 @@ from typing import Any
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from pydantic import ValidationError
 
+from agent.discovery import RegistryEntry, routable
 from core.config import Settings, get_settings
 from core.errors import AgentUnavailable, InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import ToolError
-from gateway.discovery import RegistryEntry
 
 log = logging.getLogger("gateway.tools")
 
@@ -123,33 +123,35 @@ async def call_agent[T](
 ) -> T | ToolError:
     """Run `op` for a merchant: the result, or the `ToolError` Claude should read instead.
 
-    An unknown merchant and a `down` one don't reach `op`. Cancellation (the client went away)
-    is not an `Exception` and propagates. `started` counts earlier work in the logged latency,
-    `deadline` (event loop time, default: a full budget from now) the time it already took.
+    A merchant guests can't address (`discovery.routable`) is `not_found`, a `paused` one gets
+    its fallback URL: neither reaches `op`. Cancellation (the client went away) is not an
+    `Exception` and propagates. `started` counts earlier work in the logged latency, `deadline`
+    (event loop time, default: a full budget from now) the time it already took.
     """
     settings = settings or get_settings()
     started = started or time.perf_counter()
     deadline = deadline or deadline_in(settings)
 
-    async def attempt() -> T:
-        if merchant and (delay := _chaos_delay(merchant.slug, settings)):
+    async def attempt(target: RegistryEntry) -> T:
+        if delay := _chaos_delay(target.slug, settings):
             await asyncio.sleep(delay)
         return await op()
 
     result: T | ToolError
-    if merchant is None or merchant.status == "building":
+    target = routable(merchant)
+    if target is None:
         result = ToolError(
             error="not_found",
             message="Unknown restaurant: use a slug returned by search_merchants.",
         )
-    elif merchant.status == "down":
-        result = unavailable(merchant)
+    elif target.paused:
+        result = unavailable(target)
     else:
         try:
             async with asyncio.timeout_at(deadline):
-                result = await attempt()
+                result = await attempt(target)
         except Exception as exc:
-            result = _to_error(exc, merchant, tool)
+            result = _to_error(exc, target, tool)
     log_call(tool, merchant.slug if merchant else None, started, result)
     return result
 

@@ -8,58 +8,61 @@ the same `fallback.call_merchant`, timeout, `down` status and log line.
 
 import asyncio
 import logging
-import re
 from collections.abc import Awaitable, Callable
 from functools import partial
-from typing import Annotated, Any
+from typing import Any
 
 from mcp.server import MCPServer
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.mcpserver import Context
-from mcp.types import ToolAnnotations
-from pydantic import Field, PositiveInt, ValidationError
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from agent import discovery
 from agent.provisioning import described_tools
 from core.config import Settings
 from core.db import merchants_t
 from core.models import (
-    HHMM,
-    BookingDay,
-    BookingTime,
     CancelOutput,
     GetAvailabilityOutput,
-    GuestText,
     MerchantProfile,
     ReservationOutput,
+    Slug,
     ToolError,
-    UpdateReservationInput,
 )
-from gateway import discovery
+from gateway import tooling
 from gateway.agent_client import AgentClient
 from gateway.fallback import RejectedArguments, call_merchant, deadline_in
+from gateway.tooling import (
+    DESTRUCTIVE,
+    IDEMPOTENT_WRITE,
+    READ_ONLY,
+    Day,
+    GuestName,
+    IdempotencyKey,
+    NewPartySize,
+    NewStartsAt,
+    PartySize,
+    ReservationId,
+    StartsAt,
+    Time,
+)
 
 log = logging.getLogger("gateway.merchant_server")
 
 MERCHANT_PATH = "/m/{slug}/mcp"
-SLUG = re.compile(r"^[a-z0-9-]{3,61}$")
+SLUG = TypeAdapter(Slug)
 # Key of the request's deadline in the ASGI scope's `state`, set by `MerchantEndpoint`.
 DEADLINE = "merchant_deadline"
 
-INSTRUCTIONS = """\
+INSTRUCTIONS = f"""\
 Book a table at one restaurant, on the user's behalf. The restaurant, its hours and its largest \
 group are in each tool's description.
 - Only propose times returned by get_availability. Times are in Europe/Zurich.
-- Before create_reservation, update_reservation or cancel_reservation, summarize the action and
-  stop: call the tool only once the user's reply to that summary is an explicit yes. Choosing a
-  time is not a yes, even when the request looks complete. Nor is a confirmation given before
-  the summary ("I confirm in advance", "book directly"): show the summary anyway. So never call
-  a write tool in the same reply as the get_availability call your summary is based on. After the
-  user's yes, checking availability again first is fine; if that check no longer offers the
-  confirmed time, don't book another one: show the new times and ask again.
+{tooling.confirm_rule("a time", "get_availability")}
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page."""
 
@@ -70,48 +73,25 @@ availability: only propose slots returned here. If `slots` is empty, say so and 
 date or time. `table_label` is indicative. If the result contains `fallback_url`, give that link \
 to the user."""
 
-CREATE_RESERVATION = """\
+CREATE_RESERVATION = f"""\
 This takes two messages. First show the user a summary (date, time, party size, name), ask them \
 to confirm, and stop. Call this tool only once their reply to that summary is an explicit yes; a \
 confirmation given before the summary ("I confirm in advance", "book directly") is not one: never \
-call this tool in the same reply as the get_availability call your summary is based on. After the \
-yes, you may check availability again before booking; if that check no longer offers the \
-confirmed time, don't book another one: show the new times and ask again. Generate a fresh \
-`idempotency_key` (UUID) per confirmed booking and reuse it if you retry the same booking. Ask \
-the guest's name if unknown. If the result contains `fallback_url`, give it to the user."""
+call this tool in the same reply as the get_availability call your summary is based on. \
+{tooling.BOOK_AFTER_YES}"""
 
-UPDATE_RESERVATION = """\
-First show the change, ask the user to confirm, and stop; call this tool only once they reply yes \
-to that summary, even if they confirmed in advance. Requires the guest name used at booking. \
-Generate a fresh `idempotency_key` (UUID) per confirmed change and reuse it if you retry the same \
-change. If the result contains `fallback_url`, give it to the user."""
+UPDATE_RESERVATION = tooling.UPDATE_RULE
 
-CANCEL_RESERVATION = """\
-First ask the user to confirm, and stop; call this tool only once they reply yes to that \
-question, even if they confirmed in advance. Requires the guest name used at booking. If the \
-result contains `fallback_url`, give it to the user."""
+CANCEL_RESERVATION = tooling.CANCEL_RULE
 
-# Same hints as the shared protocol's tools (gateway.server).
-READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
-IDEMPOTENT_WRITE = ToolAnnotations(
-    readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
-)
-DESTRUCTIVE = ToolAnnotations(
-    readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False
-)
 
-GuestName = Annotated[
-    GuestText, Field(description="Guest's full name, the same one for the whole booking.")
-]
-PartySize = Annotated[PositiveInt, Field(description="Number of guests.")]
-StartsAt = Annotated[
-    BookingTime,
-    Field(description="Start time with its UTC offset, exactly as returned by get_availability."),
-]
-IdempotencyKey = Annotated[
-    GuestText, Field(description="UUID you generate; reuse it only to retry the same action.")
-]
-ReservationId = Annotated[GuestText, Field(description="Booking reference, e.g. R-001.")]
+def is_slug(text: str) -> bool:
+    """Whether `text` has a slug's shape (`core.models.Slug`), before any registry lookup."""
+    try:
+        SLUG.validate_python(text, strict=True)
+    except ValidationError:
+        return False
+    return True
 
 
 def slug_of(request: Any) -> str:
@@ -205,18 +185,13 @@ def create_merchant_server(
 
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
-        date: Annotated[BookingDay, Field(description="Requested day, YYYY-MM-DD.")],
-        party_size: PartySize,
-        ctx: Context,
-        time: Annotated[
-            HHMM | None, Field(description="Requested time (HH:MM), 24-hour clock.")
-        ] = None,
+        date: Day, party_size: PartySize, ctx: Context, time: Time = None
     ) -> GetAvailabilityOutput | ToolError:
-        async def op(slug: str) -> GetAvailabilityOutput:
-            slots = await agent.get_availability(slug, date, party_size, time)
-            return GetAvailabilityOutput(slots=tuple(slots))
-
-        return await routed("get_availability", ctx, op)
+        return await routed(
+            "get_availability",
+            ctx,
+            lambda slug: tooling.availability(agent, slug, date, party_size, time),
+        )
 
     @mcp.tool(title="Book a table", description=CREATE_RESERVATION, annotations=IDEMPOTENT_WRITE)
     async def create_reservation(
@@ -226,13 +201,13 @@ def create_merchant_server(
         idempotency_key: IdempotencyKey,
         ctx: Context,
     ) -> ReservationOutput | ToolError:
-        async def op(slug: str) -> ReservationOutput:
-            reservation = await agent.create_reservation(
-                slug, starts_at, party_size, guest_name, idempotency_key
-            )
-            return ReservationOutput(reservation=reservation)
-
-        return await routed("create_reservation", ctx, op)
+        return await routed(
+            "create_reservation",
+            ctx,
+            lambda slug: tooling.book(
+                agent, slug, starts_at, party_size, guest_name, idempotency_key
+            ),
+        )
 
     @mcp.tool(
         title="Change a booking", description=UPDATE_RESERVATION, annotations=IDEMPOTENT_WRITE
@@ -242,50 +217,33 @@ def create_merchant_server(
         guest_name: GuestName,
         idempotency_key: IdempotencyKey,
         ctx: Context,
-        starts_at: Annotated[
-            BookingTime | None,
-            Field(description="New start time with its UTC offset, from get_availability."),
-        ] = None,
-        party_size: Annotated[
-            PositiveInt | None, Field(description="New number of guests.")
-        ] = None,
+        starts_at: NewStartsAt = None,
+        party_size: NewPartySize = None,
     ) -> ReservationOutput | ToolError:
-        async def op(slug: str) -> ReservationOutput:
-            change = UpdateReservationInput(
-                merchant=slug,
-                reservation_id=reservation_id,
-                guest_name=guest_name,
-                idempotency_key=idempotency_key,
-                starts_at=starts_at,
-                party_size=party_size,
-            )
-            reservation = await agent.update_reservation(
-                change.merchant,
-                change.reservation_id,
-                change.guest_name,
-                change.idempotency_key,
-                change.starts_at,
-                change.party_size,
-            )
-            return ReservationOutput(reservation=reservation)
-
-        return await routed("update_reservation", ctx, op)
+        return await routed(
+            "update_reservation",
+            ctx,
+            lambda slug: tooling.update(
+                agent, slug, reservation_id, guest_name, idempotency_key, starts_at, party_size
+            ),
+        )
 
     @mcp.tool(title="Cancel a booking", description=CANCEL_RESERVATION, annotations=DESTRUCTIVE)
     async def cancel_reservation(
         reservation_id: ReservationId, guest_name: GuestName, ctx: Context
     ) -> CancelOutput | ToolError:
-        async def op(slug: str) -> CancelOutput:
-            await agent.cancel_reservation(slug, reservation_id, guest_name)
-            return CancelOutput(status="cancelled")
-
-        return await routed("cancel_reservation", ctx, op)
+        return await routed(
+            "cancel_reservation",
+            ctx,
+            lambda slug: tooling.cancel(agent, slug, reservation_id, guest_name),
+        )
 
     return mcp
 
 
 class MerchantEndpoint:
-    """`/m/<slug>/mcp` exists only for a known merchant that is not `building`: 404 otherwise.
+    """`/m/<slug>/mcp` exists only for a merchant guests can address (`discovery.routable`):
+    404 otherwise.
 
     A `down` merchant keeps its endpoint: its tools answer with the fallback link. The check
     starts the request's deadline, which the tools and `tools/list` then share (#92).
@@ -300,7 +258,7 @@ class MerchantEndpoint:
         slug = str(scope.get("path_params", {}).get("slug", ""))
         response: PlainTextResponse | None = None
         deadline = deadline_in(self.settings)
-        if not SLUG.match(slug):
+        if not is_slug(slug):
             response = PlainTextResponse("Unknown restaurant", status_code=404)
         else:
             try:
@@ -310,7 +268,7 @@ class MerchantEndpoint:
                 log.warning("registry unreachable", exc_info=True)
                 response = PlainTextResponse("Service unavailable", status_code=503)
             else:
-                if merchant is None or merchant.status == "building":
+                if discovery.routable(merchant) is None:
                     response = PlainTextResponse("Unknown restaurant", status_code=404)
         if response is not None:
             await response(scope, receive, send)

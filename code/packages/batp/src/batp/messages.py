@@ -30,7 +30,8 @@ ALL_INTENTS: tuple[Intent, ...] = (
 ADDRESSED: frozenset[Intent] = frozenset({"AVAILABILITY", "BOOK", "AMEND", "CANCEL"})
 AgentKind = Literal["user-agent", "merchant-agent"]
 
-RequestId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
+MAX_REQUEST_ID = 64
+RequestId = Annotated[str, StringConstraints(min_length=1, max_length=MAX_REQUEST_ID)]
 Urn = Annotated[str, StringConstraints(pattern=r"^urn:batp:(agent|node):[a-z0-9][a-z0-9.-]{0,62}$")]
 Label = Annotated[str, StringConstraints(min_length=1, max_length=200)]
 

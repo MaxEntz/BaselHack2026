@@ -14,10 +14,10 @@ import seed
 from mcp import Client
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent import discovery
 from agent.provisioning import deploy, provision, set_status
 from agent.service import PgAgentService
 from core.config import Settings
-from gateway import discovery
 from tests.e2e.conftest import running_gateway
 
 pytestmark = pytest.mark.integration
