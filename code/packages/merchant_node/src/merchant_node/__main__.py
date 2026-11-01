@@ -7,13 +7,14 @@ import signal
 import ssl
 import sys
 from collections.abc import Callable, Sequence
+from contextlib import AsyncExitStack
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import PgAgentService
 from batp.messages import Hello, NodeIdentity
-from batp.server import NodeServer
+from batp.server import STOP_GRACE, NodeServer
 from core.config import Settings, get_settings
 from core.db import make_engine
 from core.logs import use_json_logs
@@ -81,25 +82,27 @@ async def run(
     tls: ssl.SSLContext | None = None,
     engines: Sequence[AsyncEngine] = (),
 ) -> None:
-    """Serve until SIGTERM or SIGINT, then stop: the sessions close, the recorders still
-    running get up to `RECORD_TIMEOUT` to write their rows, and the engines are disposed.
+    """Serve until SIGTERM or SIGINT, then drain (`NodeServer.stop`): no new session, the
+    answers in flight finish within the grace, the sessions close, the recorders get up to
+    `RECORD_TIMEOUT` to write their rows; then the engines are disposed.
 
-    So a redeploy (`systemctl restart` sends SIGTERM) loses no request log row.
+    So a redeploy (`systemctl restart` sends SIGTERM) loses neither an answer on its way nor
+    its request log row. The handlers stay until the end: a second signal while draining
+    changes nothing, where the default one would kill the process before the engines close.
+    The exit stack unwinds in reverse, each step even when the one before failed.
     """
     loop = asyncio.get_running_loop()
     stopping = asyncio.Event()
-    for signum in STOP_SIGNALS:
-        loop.add_signal_handler(signum, stopping.set)
-    try:
+    async with AsyncExitStack() as cleanup:
+        for signum in STOP_SIGNALS:
+            loop.add_signal_handler(signum, stopping.set)
+            cleanup.callback(loop.remove_signal_handler, signum)
+        for engine in engines:
+            cleanup.push_async_callback(engine.dispose)
+        cleanup.push_async_callback(server.stop)
         await server.start(host, port, tls=tls)
         await stopping.wait()
         log.info("node stopping")
-    finally:
-        for signum in STOP_SIGNALS:
-            loop.remove_signal_handler(signum)
-        await server.stop()
-        for engine in engines:
-            await engine.dispose()
 
 
 async def serve(settings: Settings) -> None:
@@ -115,6 +118,8 @@ async def serve(settings: Settings) -> None:
         authenticate=token_check(settings),
         fallback_url=agents.fallback_url,
         record=RequestLog(records),
+        # Never shorter than the gateway's whole tool call, which waits for these answers.
+        stop_grace=max(STOP_GRACE, settings.agent_timeout_ms / 1000),
     )
     await run(server, settings.batp_host, settings.batp_port, tls=tls, engines=(engine, records))
 

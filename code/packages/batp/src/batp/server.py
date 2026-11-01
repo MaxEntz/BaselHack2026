@@ -67,6 +67,9 @@ TOO_LARGE = "The answer is too large to send"
 FALLBACK_TIMEOUT = 1.0
 # How long a recorder may take, and how long `stop()` waits for the ones still running.
 RECORD_TIMEOUT = 5.0
+# How long `stop()` lets the answers in flight finish before it closes the sessions: longer than
+# the gateway's whole tool call (AGENT_TIMEOUT_MS, 2 s by default), which no longer waits after.
+STOP_GRACE = 3.0
 
 # Default limits of a node (PROTOCOL.md §10), in seconds where they are times.
 IDLE_TIMEOUT = 60.0  # no frame and no request in flight: the session ends
@@ -81,7 +84,8 @@ class NodeServer:
     """A BATP node listening for agents: it opens their sessions, screens each request frame and
     hands each request to `handle`, many in flight per session, within the limits of §10.
 
-    `stop()` closes the sessions and waits up to `RECORD_TIMEOUT` for the recorders still running.
+    `stop()` drains it: no new session, the answers in flight get up to `stop_grace` to go
+    out, then the sessions close and the recorders still running get up to `RECORD_TIMEOUT`.
     """
 
     def __init__(
@@ -100,6 +104,7 @@ class NodeServer:
         max_malformed: int = MAX_MALFORMED,
         fallback_url: FallbackUrl | None = None,
         record: Recorder | None = None,
+        stop_grace: float = STOP_GRACE,
     ) -> None:
         self.node = node
         self.handle = handle
@@ -114,8 +119,11 @@ class NodeServer:
         self.max_malformed = max_malformed
         self.fallback_url = fallback_url
         self.record = record
+        self.stop_grace = stop_grace
         self._server: asyncio.Server | None = None
         self._writers: set[asyncio.StreamWriter] = set()
+        # Every session's answers in flight, which `stop()` lets finish.
+        self._answers: set[asyncio.Task[None]] = set()
         # Running recorders: kept so they aren't garbage-collected, awaited a little by stop().
         self._records: set[asyncio.Task[None]] = set()
 
@@ -143,15 +151,28 @@ class NodeServer:
         return self._server
 
     async def stop(self) -> None:
+        """Stop accepting sessions, let the answers in flight finish within `stop_grace`, close
+        the sessions (cancelling what is still running), then wait for the recorders."""
         if self._server is None:
             return
         self._server.close()
+        await self._finish_answers()
         for writer in list(self._writers):
             writer.close()
         await self._server.wait_closed()
         self._server = None
         if self._records:
             await asyncio.wait(self._records, timeout=RECORD_TIMEOUT)
+
+    async def _finish_answers(self) -> None:
+        """Wait for the answers in flight, those an open session sends meanwhile too, until
+        none is left or `stop_grace` has passed."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.stop_grace
+        while self._answers and (left := deadline - loop.time()) > 0:
+            await asyncio.wait(set(self._answers), timeout=left)
+        if self._answers:
+            log.warning("node stopped with answers in flight", extra={"count": len(self._answers)})
 
     async def _session(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         lock = asyncio.Lock()
@@ -277,8 +298,10 @@ class NodeServer:
                 continue
             task = asyncio.create_task(self._answer(caller, screened, send))
             tasks.add(task)
+            self._answers.add(task)
             in_flight.add(screened.id)
             task.add_done_callback(tasks.discard)
+            task.add_done_callback(self._answers.discard)
             task.add_done_callback(_forget(in_flight, screened.id))
 
     def _screen(self, frame: dict[str, Any], in_flight: set[str]) -> "Request | _Refusal":

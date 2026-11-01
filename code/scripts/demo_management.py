@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from agent.times import during
+from agent.times import during, hhmm, parse_hhmm
 from core.availability import BusyInterval, TableRow, bookable_starts, pick_table
 from core.db import (
     agent_requests_t,
@@ -143,8 +143,8 @@ def packing_order(
     def key(start: datetime) -> tuple[bool, datetime]:
         local = start.astimezone(tz)
         aligned = any(
-            (local - datetime.combine(day, time.fromisoformat(o), tz)) % slot_length == timedelta()
-            and local.strftime("%H:%M") >= o
+            (local - datetime.combine(day, parse_hhmm(o), tz)) % slot_length == timedelta()
+            and hhmm(local) >= o
             for o in opening
         )
         return not aligned, start
