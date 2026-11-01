@@ -277,4 +277,4 @@ In this order, to rebuild the project yourself:
 
 ---
 
-*Last updated: 2026-11-01, describing `main` at commit `2ff3681` plus the second pass of #220's refactor.*
+*Last updated: 2026-11-01, describing `main` at commit `f9a3b06` plus the second pass of #220's refactor.*
