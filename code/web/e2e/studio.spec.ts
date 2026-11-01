@@ -124,7 +124,7 @@ test.describe("at 1440 px", () => {
     // The management site stays loaded behind it, so a draft in a form survives.
     await expect(frame).toBeAttached();
     await expect(page.locator(".st-bw iframe")).toBeHidden();
-    await expect(page.getByText("Right now every agent gets a 404.")).toBeVisible();
+    await expect(page.getByText(/Until you publish, your agent answers every message with a 404/)).toBeVisible();
 
     const publish = page.getByRole("button", { name: "Publish", exact: true }).first();
     await expect(publish).toBeEnabled();

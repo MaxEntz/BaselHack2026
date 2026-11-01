@@ -186,7 +186,15 @@ function TalkReply({ talk }: { talk: TalkOutput }) {
   );
 }
 
-// `ask` answers whether the message went: if not, the owner keeps what they typed.
+// What Confirm really does, by the proposal's action: each one writes for real.
+const CONFIRM_DOES: Record<PendingAction["action"], string> = {
+  book: "Confirm makes a real booking: you can cancel it from Reservations.",
+  change: "Confirm really moves the booking.",
+  cancel: "Confirm really cancels the booking.",
+};
+
+// `ask` answers whether the message went. The box empties at once, so that a question typed
+// while the agent answers isn't wiped; if the message didn't go, the owner gets it back.
 function AskBox({ sending, ask }: { sending: boolean; ask: (message: string) => Promise<boolean> }) {
   const [draft, setDraft] = useState("");
 
@@ -194,7 +202,10 @@ function AskBox({ sending, ask }: { sending: boolean; ask: (message: string) => 
     event.preventDefault();
     // A pasted tab or control character is no part of a question, and the protocol refuses it.
     const message = draft.replace(/\p{Cc}/gu, " ").trim();
-    if (message && (await ask(message))) setDraft("");
+    if (!message) return;
+    const typed = draft;
+    setDraft("");
+    if (!(await ask(message))) setDraft((current) => current || typed);
   }
 
   return (
@@ -232,7 +243,8 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
       </p>
       {!live && (
         <p className="st-w-warn">
-          Right now every agent gets a 404. The first answer below is what they get once you publish.
+          Until you publish, your agent answers every message with a 404. The first answer below is
+          what agents get once you publish.
         </p>
       )}
       <section aria-label="Protocol session">
@@ -263,7 +275,7 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
         {pending && (
           <div className="st-w-confirm" role="group" aria-label="Your agent is waiting for a yes">
             <p>
-              {pending.summary} <small>Confirm makes a real booking: you can cancel it from Reservations.</small>
+              {pending.summary} <small>{CONFIRM_DOES[pending.action]}</small>
             </p>
             <button type="button" disabled={sending} onClick={() => void talk(YES, pending.id)}>
               Confirm
