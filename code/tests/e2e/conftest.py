@@ -14,11 +14,15 @@ import threading
 import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 import seed
 import uvicorn
+from mcp import Client
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.types import ASGIApp
 
@@ -30,6 +34,7 @@ from merchant_platform.events import LiveBus
 # A process importing everything for the first time, right after `uv sync`, can take a while.
 STARTUP_SECONDS = 30.0
 LOOPBACK = "127.0.0.1"
+TZ = ZoneInfo("Europe/Zurich")
 
 
 @pytest.fixture(scope="module")
@@ -168,3 +173,34 @@ async def subscribed(bus: LiveBus, slug: str) -> None:
     while bus.subscriber_count(slug) == 0:
         assert time.monotonic() < deadline, f"nothing listens to {slug}'s live events"
         await asyncio.sleep(0.05)
+
+
+def tomorrow() -> date:
+    """Always bookable: the clock is real, and the service refuses past times."""
+    return datetime.now(TZ).date() + timedelta(days=1)
+
+
+async def call(gateway: str, tool: str, **arguments: Any) -> dict[str, Any]:
+    """What Claude gets from one of the gateway's tools: failures are results too."""
+    async with Client(f"{gateway}/mcp") as client:
+        result = await client.call_tool(tool, arguments)
+    assert result.structured_content is not None
+    content: dict[str, Any] = result.structured_content["result"]
+    return content
+
+
+async def offered(gateway: str, slug: str, day: date, hhmm: str, party_size: int = 2) -> list[str]:
+    """The times the agent offers `party_size` around `hhmm`."""
+    answer = await call(
+        gateway,
+        "get_availability",
+        merchant=slug,
+        date=day.isoformat(),
+        time=hhmm,
+        party_size=party_size,
+    )
+    assert "error" not in answer, answer
+    return [
+        datetime.fromisoformat(slot["starts_at"]).astimezone(TZ).strftime("%H:%M")
+        for slot in answer["slots"]
+    ]

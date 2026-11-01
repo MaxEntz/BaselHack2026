@@ -12,15 +12,13 @@ import os
 import re
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
-from mcp import Client
 from playwright.async_api import Browser, Page, async_playwright, expect
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -34,7 +32,15 @@ from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
 from core.config import Settings
 from core.models import StepEvent
 from merchant_platform.api import default_app
-from tests.e2e.conftest import free_port, running_gateway, serving, subscribed
+from tests.e2e.conftest import (
+    call,
+    free_port,
+    offered,
+    running_gateway,
+    serving,
+    subscribed,
+    tomorrow,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.browser]
 
@@ -146,30 +152,6 @@ async def browser() -> AsyncIterator[Browser]:
         browser = await playwright.chromium.launch()
         yield browser
         await browser.close()
-
-
-def tomorrow() -> date:
-    """Always bookable: the clock is real, and the service refuses past times."""
-    return datetime.now(TZ).date() + timedelta(days=1)
-
-
-async def call(gateway: str, tool: str, **arguments: Any) -> dict[str, Any]:
-    async with Client(f"{gateway}/mcp") as client:
-        result = await client.call_tool(tool, arguments)
-    assert result.structured_content is not None
-    content: dict[str, Any] = result.structured_content["result"]
-    return content
-
-
-async def offered(gateway: str, slug: str, day: date, hhmm: str) -> list[str]:
-    """The times the agent offers a party of 2 around `hhmm`."""
-    answer = await call(
-        gateway, "get_availability", merchant=slug, date=day.isoformat(), time=hhmm, party_size=2
-    )
-    return [
-        datetime.fromisoformat(slot["starts_at"]).astimezone(TZ).strftime("%H:%M")
-        for slot in answer["slots"]
-    ]
 
 
 async def build_and_publish(studio: Page, web: str) -> str:

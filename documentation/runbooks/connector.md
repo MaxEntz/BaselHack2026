@@ -154,7 +154,7 @@ In Claude, under **Settings > Account > Instructions for Claude**, set: *"I'm ve
 
 Watch the confirmation: in Claude.ai, no booking may go out before your "yes". The tool descriptions enforce it (AGENTS.md §6; wording and measurements in #14 and #109). Store a screenshot of each Claude.ai conversation in `assets/screenshots/`.
 
-Fallback links point to the demo sites on `localhost` (`make sites`), so they only open on the machine serving them; for an audience, the sites need a public URL (#25). To simulate a slow agent, `CHAOS_DELAY_MS=3000` (optionally `CHAOS_MERCHANTS=le-petit-zinc`) triggers the 2 s timeout, then the fallback link.
+The seeded merchants' fallback links point to the demo sites on `localhost` (`make sites`), so they only open on the machine serving them. A merchant built in Studio from its public host (`https://<site>.191-96-88-152.sslip.io`, [platform.md](platform.md)) gets links that open for anyone: the demo uses Le Petit Zinc built that way ([demo.md](demo.md)). To simulate a slow agent, `CHAOS_DELAY_MS=3000` (optionally `CHAOS_MERCHANTS=le-petit-zinc`) triggers the 2 s timeout, then the fallback link.
 
 ## 5. Troubleshooting
 

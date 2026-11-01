@@ -1,33 +1,34 @@
 """The demo, in its order (#25, documentation/runbooks/demo.md): run it before each rehearsal.
 
 As after `make demo-reset`, La Graine Verte and Maison Albane are live and Le Petit Zinc is
-built by chat: the merchant gives the address, corrects the largest group and publishes. A
-guest finds it through the gateway with their preferences, books, and the owner's live events
-get the booking within 2 s. The owner blocks 21:00 by chat and the agent stops offering it; a
-party of 8 and an outage get the booking page; the site's form books "via website", live too;
-the owner cancels the guest's booking and the guest's next call carries the notice.
+built by chat from the runbook's message: the merchant adds the cancelling rule the site
+doesn't give, publishes as Studio's Publish button does, and opens the private link. A guest
+finds it through the gateway with their preferences and books; the owner's live events get it
+within 2 s of the call. The owner blocks 21:00 through the chat and the agent stops offering
+it; a party of 8 gets the booking page, and so does an outage set as `make outage` sets it; the
+site's form books "via website", live too; the owner cancels the guest's booking and the
+guest's next call carries the notice.
 
 Real Postgres, platform (`default_app`, with an invite code as on the server), BATP node and
-gateway as a bridge, as deployed; only the model and the crawl are scripted. The same evening
-in a browser, on the management site: tests/e2e/test_web_stack.py.
+gateway as a bridge, as deployed; only the model and the crawl are scripted, so the booking
+page is the scripted draft's. The management site's own buttons (Block a time, Pause the
+agent) are tests/e2e/test_web_stack.py's, in a browser.
 """
 
 import asyncio
 import json
 import time
 from collections.abc import AsyncIterator, Iterator, Sequence
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
 import seed
 from fastapi import FastAPI
-from mcp import Client
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent import provisioning
@@ -39,11 +40,20 @@ from core.config import Settings
 from core.db import make_engine
 from core.models import StepEvent
 from merchant_platform.api import default_app
-from tests.e2e.conftest import BatpNode, free_port, running_gateway, serving, subscribed
+from tests.e2e.conftest import (
+    TZ,
+    BatpNode,
+    call,
+    free_port,
+    offered,
+    running_gateway,
+    serving,
+    subscribed,
+    tomorrow,
+)
 
 pytestmark = pytest.mark.integration
 
-TZ = ZoneInfo("Europe/Zurich")
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())
 # Le Petit Zinc's public host on the team server (ADR-0016); the crawl is scripted.
 WEBSITE = "https://le-petit-zinc.191-96-88-152.sslip.io/"
@@ -53,7 +63,13 @@ SLUG = "le-petit-zinc"
 GUEST = "Alex Martin"
 PREFERENCES = {"tags": ["vegetarian"], "max_price": "€€"}
 INVITE = "demo-invite-code"
-# Le Petit Zinc's profile, but groups of 8: the merchant corrects it to 6 during the review.
+# documentation/runbooks/demo.md, step 2: the message, then the one fact the merchant adds.
+ONBOARDING = (
+    "https://le-petit-zinc.191-96-88-152.sslip.io 44 seats on 12 tables: four for 2, six for 4, "
+    "two for 6. Groups up to 6. Open every day."
+)
+POLICY = "Free cancellation up to 2 hours before."
+# Le Petit Zinc's profile, read from the message and the site, which says nothing of cancelling.
 DRAFT = {
     key: FIXTURE[key]
     for key in (
@@ -61,12 +77,12 @@ DRAFT = {
         "location",
         "seats",
         "services",
+        "max_party_size",
         "tables",
         "tags",
         "price_level",
-        "cancellation_policy",
     )
-} | {"max_party_size": 8, "fallback_url": BOOKING_PAGE, "assumptions": []}
+} | {"cancellation_policy": None, "fallback_url": BOOKING_PAGE, "assumptions": []}
 LIVE_SECONDS = 2.0  # AGENTS.md §9: "New booking via Claude" within 2 s
 BUILD_SECONDS = 30.0  # the first build in a fresh process imports and compiles a lot
 
@@ -166,38 +182,8 @@ def demo_stack(
         node.stop()
 
 
-def tomorrow() -> date:
-    """Always bookable: the clock is real, and the service refuses past times."""
-    return datetime.now(TZ).date() + timedelta(days=1)
-
-
 def at(day: date, hhmm: str) -> str:
     return datetime.combine(day, datetime.strptime(hhmm, "%H:%M").time(), TZ).isoformat()
-
-
-async def claude(gateway: str, tool: str, **arguments: Any) -> dict[str, Any]:
-    """What Claude gets from one of the gateway's tools."""
-    async with Client(f"{gateway}/mcp") as client:
-        result = await client.call_tool(tool, arguments)
-    assert result.structured_content is not None
-    content: dict[str, Any] = result.structured_content["result"]
-    return content
-
-
-async def offered(gateway: str, day: date, hhmm: str, party_size: int = 2) -> list[str]:
-    answer = await claude(
-        gateway,
-        "get_availability",
-        merchant=SLUG,
-        date=day.isoformat(),
-        time=hhmm,
-        party_size=party_size,
-    )
-    assert "error" not in answer, answer
-    return [
-        datetime.fromisoformat(slot["starts_at"]).astimezone(TZ).strftime("%H:%M")
-        for slot in answer["slots"]
-    ]
 
 
 class Merchant:
@@ -243,10 +229,11 @@ async def listen(http: httpx.AsyncClient, slug: str, into: asyncio.Queue[dict[st
                 await into.put(json.loads(line.removeprefix("data: ")))
 
 
-async def next_live(events: asyncio.Queue[dict[str, Any]]) -> tuple[dict[str, Any], float]:
-    started = time.monotonic()
+async def next_live(events: asyncio.Queue[dict[str, Any]], since: float) -> dict[str, Any]:
+    """The next live event, within 2 s of `since` (`time.monotonic()` before the booking)."""
     event = await asyncio.wait_for(events.get(), timeout=LIVE_SECONDS + 1)
-    return event, time.monotonic() - started
+    assert time.monotonic() - since < LIVE_SECONDS
+    return event
 
 
 async def test_the_demo_runs_in_its_order(
@@ -265,8 +252,8 @@ async def test_the_demo_runs_in_its_order(
         assert (refused.status_code, refused.json()["error"]) == (403, "needs_invite")
         assert (await studio.post("/invite", json={"code": INVITE})).status_code == 204
 
-        # 2. Onboarding: the address and a word on the room build the agent, hidden from guests.
-        built = await merchant.say(f"{WEBSITE}, 44 seats")
+        # 2. Onboarding: the address and how the room works build the agent, hidden from guests.
+        built = await merchant.say(ONBOARDING)
         steps = {e["step"]: e["status"] for e in built if e["type"] == "step"}
         assert steps == {
             "crawl": "done",
@@ -277,20 +264,19 @@ async def test_the_demo_runs_in_its_order(
         }
         profile = card(built, "profile")
         assert profile["data"]["profile"]["slug"] == SLUG
-        assert profile["data"]["profile"]["max_party_size"] == 8
-        found = await claude(gateway, "search_merchants", query="Le Petit Zinc", near="Mulhouse")
+        assert profile["data"]["profile"]["cancellation_policy"] is None
+        found = await call(gateway, "search_merchants", query="Le Petit Zinc", near="Mulhouse")
         assert SLUG not in [m["slug"] for m in found["merchants"]]
 
-        # The merchant corrects the largest group, then publishes.
-        corrected = await merchant.say(
-            "Groups up to 6, not 8. The rest is right, publish it.",
-            ("update_policy", {"max_party_size": 6}),
-            ("publish_agent", {}),
-        )
-        assert card(corrected, "policy")["data"]["max_party_size"] == 6
-        assert {e["step"]: e["status"] for e in corrected if e["type"] == "step"} == {
-            "deploy": "done"
-        }
+        # The merchant adds what the site doesn't say, then publishes with the top bar's button:
+        # Studio claims the owner cookie after the build, then calls the route.
+        added = await merchant.say(POLICY, ("update_rules", {"cancellation_policy": POLICY}))
+        change = card(added, "diff")["data"]
+        assert (change["label"], change["before"], change["after"]) == ("Cancelling", None, POLICY)
+        claimed = await studio.post("/session/claim", json={"session_id": merchant.session})
+        assert claimed.status_code == 204, claimed.text
+        published = await studio.post(f"/merchants/{SLUG}/publish")
+        assert (published.status_code, published.json()["status"]) == (200, "live")
 
         # The private link opens the management site on another device, live events included.
         token = parse_qs(urlsplit(profile["login_url"]).query)["token"][0]
@@ -302,7 +288,7 @@ async def test_the_demo_runs_in_its_order(
             await subscribed(platform.state.bus, SLUG)
 
             # 3. Claude, with the guest's preferences: Maison Albane (€€€€) is filtered out.
-            found = await claude(
+            found = await call(
                 gateway,
                 "search_merchants",
                 query="table for 4 tonight",
@@ -310,8 +296,9 @@ async def test_the_demo_runs_in_its_order(
                 filters=PREFERENCES,
             )
             assert [m["slug"] for m in found["merchants"]] == ["la-graine-verte", SLUG]
-            assert "20:00" in await offered(gateway, day, "20:00", party_size=4)
-            booked = await claude(
+            assert "20:00" in await offered(gateway, SLUG, day, "20:00", party_size=4)
+            started = time.monotonic()
+            booked = await call(
                 gateway,
                 "create_reservation",
                 merchant=SLUG,
@@ -324,8 +311,7 @@ async def test_the_demo_runs_in_its_order(
             assert (reservation["status"], reservation["via"]) == ("confirmed", "claude")
 
             # 4. The merchant's side gets it within 2 s.
-            event, waited = await next_live(live)
-            assert waited < LIVE_SECONDS
+            event = await next_live(live, started)
             assert (event["kind"], event["via"], event["date"]) == (
                 "new_booking",
                 "claude",
@@ -346,16 +332,16 @@ async def test_the_demo_runs_in_its_order(
             )
             assert card(stats, "stats")["data"]["guests"] == 4
 
-            # 5. "Block 21:00": Claude users no longer get 21:00.
-            assert "21:00" in await offered(gateway, day, "21:00")
+            # 5. "Block 21:00", through the chat: Claude users no longer get 21:00.
+            assert "21:00" in await offered(gateway, SLUG, day, "21:00")
             blocked = await merchant.say(
                 "Block 21:00 tomorrow", ("block_slot", {"starts_at": at(day, "21:00")})
             )
             assert "blocked" in card(blocked, "confirmation")["data"]["text"]
-            assert "21:00" not in await offered(gateway, day, "21:00")
+            assert "21:00" not in await offered(gateway, SLUG, day, "21:00")
 
             # 6. A party of 8 gets the site's booking page.
-            too_large = await claude(
+            too_large = await call(
                 gateway, "get_availability", merchant=SLUG, date=day.isoformat(), party_size=8
             )
             assert (too_large["error"], too_large["fallback_url"]) == (
@@ -363,16 +349,17 @@ async def test_the_demo_runs_in_its_order(
                 BOOKING_PAGE,
             )
 
-            # 7. Outage (`make outage`): the booking page too; back live, no restart.
+            # 7. Outage, as `make outage` sets it: the booking page too; back live, no restart.
             await provisioning.set_status(SLUG, "down", engine=demo_engine)
-            down = await claude(
+            down = await call(
                 gateway, "get_availability", merchant=SLUG, date=day.isoformat(), party_size=2
             )
             assert (down["error"], down["fallback_url"]) == ("agent_unavailable", BOOKING_PAGE)
             await provisioning.set_status(SLUG, "live", engine=demo_engine)
-            assert await offered(gateway, day, "19:30")
+            assert await offered(gateway, SLUG, day, "19:30")
 
             # 8. The site's own form books "via website", and it shows up live too.
+            started = time.monotonic()
             form = await phone.post(
                 f"/public/{SLUG}/reservations",
                 json={
@@ -383,8 +370,7 @@ async def test_the_demo_runs_in_its_order(
                 },
             )
             assert form.status_code == 201, form.text
-            event, waited = await next_live(live)
-            assert waited < LIVE_SECONDS
+            event = await next_live(live, started)
             assert (event["kind"], event["via"]) == ("new_booking", "website")
 
             # §9: the owner cancels the guest's booking; the guest's next call carries the notice.
@@ -393,7 +379,7 @@ async def test_the_demo_runs_in_its_order(
                 ("cancel_reservation", {"reservation_id": reservation["id"]}),
             )
             assert reservation["id"] in card(cancelled, "confirmation")["data"]["text"]
-            mine = await claude(gateway, "get_my_reservations", guest_name=GUEST)
+            mine = await call(gateway, "get_my_reservations", guest_name=GUEST)
             assert mine["reservations"] == []
             assert len(mine["notices"]) == 1
             assert reservation["id"] in mine["notices"][0]
