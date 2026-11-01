@@ -13,7 +13,7 @@ const dist = join(process.argv[2] ?? join(web, "dist"), "assets");
 // source first, so that a reworded mock can't leave a marker that matches nothing.
 const MARKERS = [
   ["src/mocks/mockClient.ts", "Thanks! Now describe how you work"],
-  ["src/mocks/managementClient.ts", "No booking with that reference"],
+  ["src/mocks/management/bookings.ts", "No booking with that reference"],
   ["src/mocks/onboarding.json", "Read 1 page: /"],
   ["src/mocks/tonight.json", "You have 2 bookings for 6 guests tonight"],
   ["src/mocks/cards.json", "Checking tonight's numbers"],

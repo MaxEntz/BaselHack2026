@@ -1,5 +1,6 @@
 import { type ChatClient, httpClient } from "../chat/client.ts";
 import type { Merchant } from "../chat/state.ts";
+import type { Welcome } from "../chat/useChat.ts";
 
 // VITE_MERCHANT_SLUG skips onboarding: the chat starts as this merchant.
 export const DEMO_MERCHANT: Merchant | null = import.meta.env.VITE_MERCHANT_SLUG
@@ -16,3 +17,9 @@ export const CHAT_CLIENT: ChatClient =
   import.meta.env.VITE_MOCK === "1"
     ? (await import("../mocks/mockClient.ts")).createMockClient(DEMO_MERCHANT !== null)
     : httpClient;
+
+export const WELCOME: Welcome = {
+  onboarding: "",
+  operations:
+    "Welcome back! Ask me about tonight's bookings, block a time slot or change your booking policy.",
+};
