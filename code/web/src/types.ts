@@ -34,7 +34,29 @@ export type MerchantProfile = {
   fallback_url: string;
   // Profiles stored before #149 have none: the management site uses the default look.
   look?: Look | null;
+  // Profiles stored before #248 have none: the merchant's agent says it doesn't know.
+  knowledge?: SiteKnowledge | null;
 };
+
+export type KnowledgeTopic =
+  | "menu"
+  | "drinks"
+  | "dietary"
+  | "access"
+  | "practical"
+  | "about"
+  | "events"
+  | "other";
+
+// One thing a guest's agent may ask about. No source: the owner said it (#248).
+export type KnowledgeItem = {
+  topic: KnowledgeTopic;
+  text: string;
+  source_url: string | null;
+  quote: string | null;
+};
+
+export type SiteKnowledge = { items: KnowledgeItem[] };
 
 // The merchant site's colours and shapes, read by code from its homepage (#149).
 export type Look = {

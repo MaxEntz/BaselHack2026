@@ -397,3 +397,68 @@ def test_a_booking_time_outside_the_booking_range_is_refused(
 ) -> None:
     with pytest.raises(ValidationError, match="between"):
         model.model_validate(fields | {"starts_at": starts_at})
+
+
+ITEM = {
+    "topic": "menu",
+    "text": "Tartare de boeuf, 28 CHF",
+    "source_url": "https://example.ch/carte",
+    "quote": "Tartare de boeuf 28.-",
+}
+
+
+def test_a_profile_stored_before_its_knowledge_still_loads(profile_data: dict[str, Any]) -> None:
+    profile_data.pop("knowledge", None)
+
+    assert models.MerchantProfile.model_validate(profile_data).knowledge is None
+
+
+def test_a_profile_keeps_its_knowledge(profile_data: dict[str, Any]) -> None:
+    item = {"topic": "access", "text": "Dogs are welcome.", "source_url": None, "quote": None}
+    profile = models.MerchantProfile.model_validate(
+        profile_data | {"knowledge": {"items": [ITEM, item]}}
+    )
+
+    assert profile.knowledge is not None
+    stored = profile.model_dump(mode="json")["knowledge"]["items"]
+    assert stored == [ITEM, item]
+    assert models.MerchantProfile.model_validate(profile.model_dump(mode="json")) == profile
+
+
+def test_a_knowledge_item_without_a_source_is_the_owners() -> None:
+    item = models.KnowledgeItem(topic="practical", text="We no longer serve the tartare.")
+
+    assert item.source_url is None
+    assert item.quote is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"topic": "weather"},
+        {"text": "   "},
+        {"text": "a" * (models.MAX_KNOWLEDGE_TEXT + 1)},
+        {"text": "line one\nline two"},
+        {"quote": "a" * (models.MAX_KNOWLEDGE_QUOTE + 1)},
+        {"source_url": "not a url"},
+    ],
+)
+def test_a_knowledge_item_out_of_bounds_is_refused(change: dict[str, str]) -> None:
+    with pytest.raises(ValidationError):
+        models.KnowledgeItem.model_validate(ITEM | change)
+
+
+def test_knowledge_holds_a_bounded_number_of_items() -> None:
+    models.SiteKnowledge(items=(models.KnowledgeItem.model_validate(ITEM),) * 60)
+
+    with pytest.raises(ValidationError, match="at most 60"):
+        models.SiteKnowledge(items=(models.KnowledgeItem.model_validate(ITEM),) * 61)
+
+
+def test_knowledge_holds_a_bounded_size_in_bytes() -> None:
+    # 2 bytes per character: within each item's limit, over the whole's.
+    item = models.KnowledgeItem(topic="menu", text="é" * models.MAX_KNOWLEDGE_TEXT)
+
+    models.SiteKnowledge(items=(item,) * 15)
+    with pytest.raises(ValidationError, match="12000 bytes"):
+        models.SiteKnowledge(items=(item,) * 16)

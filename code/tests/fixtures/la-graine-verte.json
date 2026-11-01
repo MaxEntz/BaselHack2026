@@ -25,5 +25,6 @@
   "price_level": "€",
   "cancellation_policy": "Free cancellation up to 1 hour before the booking.",
   "fallback_url": "http://localhost:8081/#reserver",
-  "look": {"bg": "#edebe2", "surface": "#f8f6ef", "line": "#d5d2c3", "ink": "#47522f", "muted": "#5f6a45", "accent": "#616c48", "accent_2": "#935046", "on_accent": "#f4f2ea", "display_font": "Fraunces Soft", "body_font": "Karla", "corners": "organic", "radius_px": 30, "texture": "leather"}
+  "look": {"bg": "#edebe2", "surface": "#f8f6ef", "line": "#d5d2c3", "ink": "#47522f", "muted": "#5f6a45", "accent": "#616c48", "accent_2": "#935046", "on_accent": "#f4f2ea", "display_font": "Fraunces Soft", "body_font": "Karla", "corners": "organic", "radius_px": 30, "texture": "leather"},
+  "knowledge": null
 }
