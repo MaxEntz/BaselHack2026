@@ -4,7 +4,7 @@ The single source for tool fields, routes and validation rules. Issue [#2](https
 
 - `code/packages/core/src/core/models/`: tool inputs, outputs and shared values, in four modules (`base`, `tools`, `management`, `chat`) that `core.models` re-exports.
 - `code/packages/core/src/core/errors.py`: business exceptions and their error codes.
-- `code/packages/agent/src/agent/service.py`: the async `AgentService` protocol.
+- `code/packages/agent/src/agent/protocol.py`: the async `AgentService` protocol, re-exported by `agent.service`.
 - `code/web/src/types.ts`: chat and live-notification events.
 
 A contract change needs a dedicated PR and a message to the team, with Python and TypeScript changed together.
@@ -293,7 +293,7 @@ for it in local development only.
 - `POST /reservations/{id}/cancel` answers `outcome`. A guest notice is stored only for a booking a guest made (through an agent or the website): one the merchant entered itself is `own_booking`, no notice.
 - `GET /slots`: the day's starts that haven't passed, each with the table `pick_table` would give (none when the party exceeds `max_party_size` or no table is free) and `blocked`. With `ignore` (a move), the table the move would give: its own first among equals, and no party limit for the booking's own party. `until` is computed in UTC, so it is right on clock-change nights.
 
-**The restaurant's forms (#133, `agent/admin.py`)**
+**The restaurant's forms (#133, `agent/site_forms.py`, hours and floor plan through `agent/admin.py`)**
 - Each save runs in one `merchant_conn` transaction and keeps the registry's columns and
   `profile` in step with the merchant's rows, so the gateway's discovery, the fallback link and
   the tool descriptions on `/m/<slug>/mcp` follow at the next call, with no restart.

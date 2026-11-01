@@ -19,14 +19,11 @@ from core.models import (
     SettingsInput,
     TableSpec,
 )
+from core.time_of_day import to_minutes
 
-# agent.admin.MAX_SEATS: the most seats a table, or a group, may have.
+# The most seats a table, or a group, may have, well inside Postgres `integer`: the forms'
+# bound here, and the tools' in `agent.admin`, so a typo never reaches the database.
 MAX_SEATS = 1000
-
-
-def _minutes(value: str) -> int:
-    hours, minutes = value.split(":")
-    return int(hours) * 60 + int(minutes)
 
 
 def checked_services(body: HoursInput) -> tuple[Service, ...]:
@@ -40,7 +37,7 @@ def checked_services(body: HoursInput) -> tuple[Service, ...]:
                 "A service needs a start and an end.",
                 Problem(code="service_incomplete", services=(index,)),
             )
-        if _minutes(draft.end) - _minutes(draft.start) < MIN_SERVICE_MINUTES:
+        if to_minutes(draft.end) - to_minutes(draft.start) < MIN_SERVICE_MINUTES:
             raise FormProblem(
                 f"A service lasts at least {MIN_SERVICE_MINUTES} minutes.",
                 Problem(code="service_too_short", services=(index,)),
@@ -78,14 +75,23 @@ def checked_tables(body: FloorPlanInput) -> tuple[TableSpec, ...]:
     return tuple(TableSpec(label=t.label, seats=t.seats) for t in body.tables)
 
 
-def checked_rules(body: RulesInput) -> RulesInput:
-    if body.max_party_size < 1:
-        raise FormProblem("The largest group is at least 1.", Problem(code="group_too_small"))
-    if body.max_party_size > MAX_SEATS:
-        raise FormProblem(
+def party_limit_problem(max_party_size: int) -> FormProblem | None:
+    """The form's refusal of a group limit outside 1 to `MAX_SEATS`, naming the bound it
+    breaks; None within bounds. The only check of that rule: the tools word it their own way
+    (`agent.admin.check_party_limit`)."""
+    if max_party_size < 1:
+        return FormProblem("The largest group is at least 1.", Problem(code="group_too_small"))
+    if max_party_size > MAX_SEATS:
+        return FormProblem(
             f"The largest group is at most {MAX_SEATS}.",
             Problem(code="too_many_seats", seats=MAX_SEATS),
         )
+    return None
+
+
+def checked_rules(body: RulesInput) -> RulesInput:
+    if problem := party_limit_problem(body.max_party_size):
+        raise problem
     return body.model_copy(update={"cancellation_policy": body.cancellation_policy or None})
 
 

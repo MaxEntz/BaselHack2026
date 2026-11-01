@@ -83,7 +83,7 @@ def _one_of(name: str, values: tuple[str, ...]) -> CheckConstraint:
     return CheckConstraint(f"{name} IN ({allowed})")
 
 
-# public: managed by Alembic (migrations 0001-0006), declared here to query it.
+# public: managed by Alembic (migrations 0001-0008), declared here to query it.
 
 public_metadata = MetaData(schema="public")
 
@@ -257,6 +257,9 @@ reservations_t = Table(
         where="status = 'confirmed'",
     ),
 )
+
+# A booking's start, the lower bound of `during`, as every query selects, filters and sorts it.
+reservation_start = func.lower(reservations_t.c.during)
 
 # Live events: every write on a merchant's reservations notifies the `reservations` channel
 # (function from migration 0001). `%(fullname)s` goes through the schema translation.
