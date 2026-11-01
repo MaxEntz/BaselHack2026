@@ -21,7 +21,7 @@ Open [`sesame-pitch-v6.html`](sesame-pitch-v6.html) in a browser. It is one self
 
 The deck rounds the video's corners in its CSS, and the file itself is square. Played outside the deck, it shows small black corners at the bottom, from the window it was recorded in.
 
-The recording shows the v10 mockups, not `code/web`: the merchant's chat and the management site run from a fixed script there, and `code/web` was built from them afterwards (#141 for Studio, #137 to #147 for the management site). Its public site is La Graine Verte restyled, which `code/sites` now has too (#148). Its chat with Claude is a replay and says so on screen: the three times it offers came from the real connector on 31 October 2026, but the window is not Claude.ai.
+The recording predates the merchant's AI agent (#244), so it shows the booking flow as it was before: re-record it if time allows, or play it as the flow's backup, not as the agent. It also shows the v10 mockups, not `code/web`: the merchant's chat and the management site run from a fixed script there, and `code/web` was built from them afterwards (#141 for Studio, #137 to #147 for the management site). Its public site is La Graine Verte restyled, which `code/sites` now has too (#148). Its chat with Claude is a replay and says so on screen: the three times it offers came from the real connector on 31 October 2026, but the window is not Claude.ai.
 
 ## Speaker notes
 
@@ -30,7 +30,7 @@ Each note opens with the team's script in French, followed by the English versio
 ## Where the slides go beyond the code
 
 - **Slide 2:** "2035s" is the wording the team chose. The standard form for a decade would be "2030s".
-- **Slide 3:** it draws the model. Today Claude goes through the gateway over HTTPS, the other agents are not connected, and only restaurants exist.
+- **Slide 3:** the agent talking to an agent is real: Claude goes through the gateway over HTTPS, the gateway speaks BATP to the merchant's AI agent, and a guest agent of ours speaks BATP itself (#252). The rest it draws as the model: outside agents can't connect yet, since port 4710 stays closed (#256), and only restaurants exist.
 - **Slide 4:** the control site is the management site ([ADR-0015](../../adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #127), in the merchant's own look, read from its homepage (#149, #150).
 - **Slide 7:** the cost claim comes from [Taalas](https://taalas.com/the-path-to-ubiquitous-ai/) alone, and the slide says so.
 
