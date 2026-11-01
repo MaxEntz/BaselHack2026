@@ -161,7 +161,7 @@ async def test_update_rules_saves_the_policy_and_shows_the_change() -> None:
     ("party", "answer"),
     [
         (2, "An agent asking for 2 gets 3 times: 19:30, 20:00 and 20:30."),
-        (9, "An agent asking for 9 gets a 413 with the link to your booking page"),
+        (9, "An agent asking for 9 is told it's too many, with the link to your booking page"),
     ],
 )
 async def test_try_request_says_what_an_agent_gets(party: int, answer: str) -> None:

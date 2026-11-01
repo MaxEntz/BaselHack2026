@@ -137,8 +137,8 @@ class BookingTools:
             slots = await agent.get_availability(slug, day, n, arguments.time)
         except PartyTooLarge:
             return confirmation(
-                f"An agent asking for {n} gets a 413 with the link to your booking page, and the "
-                "guest goes there."
+                f"An agent asking for {n} is told it's too many, with the link to your booking "
+                "page, and the guest goes there."
             )
         if not slots:
             return confirmation(

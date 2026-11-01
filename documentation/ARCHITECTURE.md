@@ -22,6 +22,7 @@ flowchart TB
   subgraph BACKEND["Our backend"]
     GW["Gateway<br/>MCP server, BATP bridge"]
     NODE["BATP node<br/>127.0.0.1:4710"]
+    MA["Merchant's AI agent<br/>LLM + guest tools, in the node"]
     AG["Agent runtime<br/>AgentService + provisioning"]
     DB[("PostgreSQL 16<br/>public + one schema per merchant")]
     PL["Platform API<br/>FastAPI"]
@@ -31,7 +32,10 @@ flowchart TB
 
   C -->|"MCP, Streamable HTTP, via Caddy (HTTPS, bearer token)"| GW
   GW -->|"BATP: one intent per user tool"| NODE
-  NODE -->|"AVAILABILITY, BOOK, AMEND, CANCEL, RECALL"| AG
+  NODE -->|"TALK"| MA
+  MA -->|"guest tools: availability, proposals, a confirmed write"| AG
+  MA -->|"tool-use loop"| OAI["OpenAI API"]
+  NODE -->|"RECALL"| AG
   NODE -->|"DISCOVER: registry"| DB
   AG --> DB
   GW -.->|"down status, fallback URL"| DB
@@ -44,7 +48,7 @@ flowchart TB
   PL -->|"same operations"| AG
   ASSIST -->|"build_agent"| BU
   BU -->|"crawl (Playwright)"| SITE
-  BU -->|"extract (strict function call)"| OAI["OpenAI API"]
+  BU -->|"extract (strict function call)"| OAI
   BU -->|"provision"| AG
   ASSIST -->|"publish_agent: deploy"| AG
 
@@ -56,13 +60,13 @@ flowchart TB
 - **User side.** Claude calls our **gateway**, a remote MCP server added once as a connector. The gateway applies the user's preferences as filters, routes the call to the merchant's agent through the **BATP node** (our agent protocol, [PROTOCOL.md](PROTOCOL.md)), and returns the merchant's own booking page (`fallback_url`) when the agent cannot serve the request.
 - **Merchant side.** The merchant chats with the **platform assistant**. It builds the agent from the website (the **builder**), then runs day-to-day operations through admin tools: "What bookings do I have tonight?", "Block 21:00". New bookings from Claude appear live in the chat. A **management site** next to the chat offers ordinary pages and forms over the same operations, and shows the bookings live too (§3).
 
-**What "agent" means here.** The merchant's agent is not a separate process. It is the restaurant's data (tables, hours, policy, bookings) in its own Postgres schema `m_<slug>`, plus the booking tools, all served by one shared multi-tenant `AgentService` ([ADR-0001](adr/0001-one-postgres-schema-per-merchant.md)). From BATP 0.2 it is also an AI: guests' agents talk to it with `TALK`, and it is meant to become the only caller of the merchant's booking tools ([ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md), #244). That agent runs inside the BATP node, still one multi-tenant process, with the merchant's guest tools only and the merchant bound by code. Until #249 the node answers `TALK` with `503` and the fallback URL, and Claude books through the four direct tools. The LLMs are:
+**What "agent" means here.** The merchant's agent is not a separate process. It is the restaurant's data (tables, hours, policy, bookings) in its own Postgres schema `m_<slug>`, plus the booking tools, all served by one shared multi-tenant `AgentService` ([ADR-0001](adr/0001-one-postgres-schema-per-merchant.md)), and an AI that guests' agents talk to with BATP `TALK` ([ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md)). That AI is the only caller of the booking tools (BATP 0.3, #254): it runs inside the BATP node, still one multi-tenant process, with the merchant's guest tools only and the merchant bound by code, and it can only propose a write, which runs on the guest's confirm. The LLMs are:
 - Claude, on the user side;
 - the builder's extraction step;
 - the merchant assistant;
 - the merchant's agent, in the node, behind `TALK` (#246, #249).
 
-## 3. Main flow: Claude books, the merchant sees it live
+## 3. Main flow: Claude books through the merchant's agent, the merchant sees it live
 
 ```mermaid
 sequenceDiagram
@@ -71,6 +75,8 @@ sequenceDiagram
   participant C as Claude.ai
   participant G as Gateway (MCP)
   participant N as BATP node
+  participant M as Merchant's AI agent
+  participant L as LLM (OpenAI)
   participant A as AgentService
   participant DB as PostgreSQL
   participant P as Platform (events)
@@ -82,22 +88,29 @@ sequenceDiagram
   N->>DB: live merchants matching tags and price
   N-->>G: merchants, or suggestions of filters to drop
   G-->>C: merchants
-  C->>G: get_availability(merchant, date, time, party_size)
-  G->>N: AVAILABILITY
-  N->>A: get_availability(...)
+  C->>G: talk_to_merchant(merchant, message, idempotency_key)
+  G->>N: TALK
+  N->>M: one turn, within the node's limits
+  M->>L: profile, reviewed knowledge, guest tools, the message
+  L-->>M: get_availability, then propose_booking
+  M->>A: get_availability(...)
   A->>DB: tables, policy, blocked slots, confirmed bookings
-  A-->>N: up to 3 slots
-  N-->>G: slots
-  G-->>C: slots
-  C->>U: proposes the slots and asks to confirm
-  U->>C: Yes, 20:00
-  C->>G: create_reservation(..., guest_name, idempotency_key)
-  G->>N: BOOK
-  N->>A: create_reservation(..., via = claude)
+  A-->>M: up to 3 slots
+  M-->>N: reply, slots, pending (summary written by code)
+  N-->>G: TalkOutput
+  G-->>C: reply and the proposal
+  C->>U: shows the summary and asks to confirm
+  U->>C: Yes
+  C->>G: talk_to_merchant(..., conversation, confirm = pending.id)
+  G->>N: TALK with confirm
+  N->>M: the confirm names the live proposal
+  M->>A: create_reservation(proposal's arguments, key = proposal id, via = claude)
   A->>DB: INSERT reservation, then COMMIT
   DB-->>P: NOTIFY reservations (schema, op, id, status, via)
-  A-->>N: reservation R-001
-  N-->>G: reservation R-001
+  A-->>M: reservation R-001
+  M->>L: words the result
+  M-->>N: reply, reservation R-001
+  N-->>G: TalkOutput
   G-->>C: booking details
   C->>U: Booked: R-001, 20:00, table T5
   P-->>W: SSE notification: New booking via Claude
@@ -106,19 +119,20 @@ sequenceDiagram
 **Step by step:**
 
 1. **Request (1).** The user asks Claude in plain language. Their dietary and budget preferences come from Claude's side; we never store them (invariant 5).
-2. **Bridge.** Each of Claude's tool calls becomes one BATP request from the gateway to the node, on `127.0.0.1:4710` of the same host ([PROTOCOL.md §12](PROTOCOL.md#12-the-mcp-bridge)). The node serves it through discovery or the `AgentService`. The gateway still reads the registry itself for a merchant's `down` status and fallback URL, so a dead node still gives the restaurant's link. Without `BATP_URL` (development, tests), the gateway calls the `AgentService` in its own process.
+2. **Bridge.** Each of Claude's tool calls becomes one BATP request from the gateway to the node, on `127.0.0.1:4710` of the same host ([PROTOCOL.md §12](PROTOCOL.md#12-the-mcp-bridge)). The gateway has three tools: `search_merchants` (`DISCOVER`), `talk_to_merchant` (`TALK`) and `get_my_reservations` (`RECALL`). It still reads the registry itself for a merchant's `down` status and fallback URL, so a dead node still gives the restaurant's link. Without `BATP_URL` (development, tests), `talk_to_merchant` answers `agent_unavailable` with the fallback URL: the gateway has no LLM, so development runs `make node`.
 3. **Discovery (2–6).** `search_merchants` becomes `DISCOVER`, which reads the registry `public.merchants`. Only merchants with status `live` are returned, filtered by tags and price. If nothing matches, the response suggests which filter to drop and how many merchants that would add (`suggestions`), so Claude can offer it to the user ([ADR-0008](adr/0008-deviations-from-the-original-tool-contracts.md)).
-4. **Availability (7–13).** The `AgentService` reads the merchant's schema through `merchant_conn(engine, slug)`. The pure functions in `core/availability.py` compute up to 3 start times closest to the request. Starts are every 30 minutes, the last seating is 60 minutes before the end of the service, and blocked starts are excluded. Each slot gets the smallest free table that fits.
-5. **Confirmation (14–15).** Claude must confirm with the user before any write. The tool descriptions instruct it to (invariant 2).
-6. **Booking (16–19).** `create_reservation` (BATP `BOOK`) carries an `idempotency_key`, so a retried call does not book twice. The insert either succeeds or is rejected by the database's exclusion constraint if the table is already taken at that time (invariant 1). The reference `R-NNN` comes from the merchant's own sequence.
-7. **Live event (20, 25).** Inside the booking's transaction, an `AFTER INSERT` trigger on the merchant's `reservations` table calls `public.notify_reservation()`, which queues `NOTIFY reservations`. Postgres delivers it when the transaction commits. The platform listens on that channel and pushes a `LiveEvent` over SSE to the merchant's open chat: "New booking via Claude". The target is under 2 s.
-8. **Answer (21–24).** Claude shows the booking to the user.
+4. **Conversation (7–17).** `talk_to_merchant` becomes `TALK`. The node runs one turn of the merchant's AI agent (`agent/talk.py`): a tool-use loop on the model, with the validated profile and the knowledge the owner reviewed, never crawled text (invariant 6). Its tools are guest tools bound to that merchant. `get_availability` reads the merchant's schema through `merchant_conn(engine, slug)`, and the pure functions in `core/availability.py` compute up to 3 start times closest to the request: every 30 minutes, the last seating 60 minutes before the end of the service, blocked starts excluded, each with the smallest free table that fits. `propose_booking` checks the request and stores one proposal in the conversation, with a summary code writes. Only `reply` is the model's text; code builds `slots`, `pending` and the rest from tool results.
+5. **Confirmation (18–20).** Claude shows the proposal's summary and asks the user. Only a later `TALK` whose `confirm` names the proposal runs it (invariant 2): a "yes" in the message alone writes nothing.
+6. **Booking (21–24, 26–27).** On that confirm, code runs the write before any model call, with the proposal's own arguments and its id as the idempotency key, so a retried confirm does not book twice. The insert either succeeds or is rejected by the database's exclusion constraint if the table is already taken at that time (invariant 1). The reference `R-NNN` comes from the merchant's own sequence. The model then only words the result.
+7. **Live event (25, 32).** Inside the booking's transaction, an `AFTER INSERT` trigger on the merchant's `reservations` table calls `public.notify_reservation()`, which queues `NOTIFY reservations`. Postgres delivers it when the transaction commits. The platform listens on that channel and pushes a `LiveEvent` over SSE to the merchant's open chat: "New booking via Claude". The target is under 2 s.
+8. **Answer (28–31).** Claude shows the booking to the user.
 
 **When something fails:**
-- A party larger than `max_party_size`, or one that no table can seat, gets `party_too_large`.
-- An unreachable or slow agent or node (over 2 s), or a merchant marked `down`, gets `agent_unavailable`.
+- A party larger than `max_party_size`, or one that no table can seat: the agent's tool refuses, the model says so, and code sets the merchant's `fallback_url` in a `200` answer.
+- A slot taken between the proposal and the confirm: nothing is written, the proposal is gone, and the agent offers other times, which need a new yes.
+- An unreachable node, an agent past its deadline (25 s on the node, 30 s at the gateway), a model outage, or a merchant marked `down`: `agent_unavailable`, with the `fallback_url`.
 
-In both cases the error carries the merchant's `fallback_url`, and Claude gives the user that link. A taken slot gets `slot_unavailable`, with no link.
+Claude gives the user that link whenever there is one.
 
 ### Merchant side: two paths to the same operations
 
@@ -151,10 +165,10 @@ Paths are relative to `code/`.
 | DB layer | `packages/core/src/core/db.py`, `migrations/versions/0001_public_schema.py`, `0002_reservation_changes.py`, `0003_agent_requests.py`, `0004_merchant_owners.py`, `0005_notify_actor.py`, `0006_merchant_activity.py`, `0007_agent_request_frames_as_text.py`, `0008_merchant_sites.py` | Engine; `schema_for(slug)`; merchant tables declared once, with the exclusion constraint, the notify trigger, and a trigger that skips updates that change nothing (an idempotent replay sends no notification); `merchant_conn` (one transaction, schema translation) and `slug_for_schema`, its inverse; the shared reservation reads: `reservation_start`, `reservation_confirmed`, `busy_between` (confirmed bookings overlapping a window) and `blocked_between`; registry, guest notices, the keys of applied updates, the node's request log and the merchants' owners (the hash of each secret link) and their activity feed in `public` | No business rules, no migrations for merchant schemas |
 | Provisioning | `packages/agent/src/agent/provisioning.py`, `packages/agent/src/agent/templates/restaurant.json` | `MerchantProfile` → merchant schema, floor plan, policy, registry row (all or nothing); `deploy` / `set_status` (the scripts' outage switch) / `deprovision`; default floor plan; generated tool descriptions | Never calls an LLM or builds SQL from profile text |
 | Agent service | `packages/agent/src/agent/service.py` (`PgAgentService`), `management.py` (`ManagementService`, the management site's bookings, #134), `dashboard.py` and `activity.py` (Home's data and the activity feed written by every change, #135), `writes.py` (a booking's write on a table, the checks before it and the update keys, shared by guests and the merchant), `merchant.py` (a merchant's name, policy and floor plan, loaded once per operation), `times.py` (instants, a booking's range, local days), `admin.py`, `site_forms.py`, `notices.py` | Claude-side bookings: availability, create, update, cancel. Each candidate table is tried in its own SAVEPOINT under a row lock, with its seats re-read under that lock; the exclusion constraint is the guarantee. Merchant operations in `admin.py`: list, stats, block and unblock, pause and resume, policy, floor plan, and cancellation with a guest notice (none once the booking is over; the merchant is told which); the management site's other forms in `site_forms.py` (rules, settings, a day's blocked times, #133); the notices of a cancellation or a move, and their delivery, in `notices.py`. A `building` merchant is hidden from guests but the merchant can still edit it. Never cancels a booking when a slot is blocked or the policy changes, never removes a table that past bookings refer to | Knows nothing of MCP, HTTP or authentication |
-| Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `agent_client.py`, `fallback.py`, `merchant_server.py`, `tooling.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, a bearer token required on the server (ADR-0019), the 6 user tools (with `GATEWAY_TALK`, `talk_to_merchant` in place of the 4 booking tools, #251), preference filters passed to discovery, 2 s timeout (30 s for a talk) and `fallback_url`, one JSON log line per call, `GET /health`. With `BATP_URL` (deployed), a bridge to the BATP node; without it, calls the `AgentService` and discovery in process. Each merchant also has its own endpoint, `/m/<slug>/mcp`: its 4 booking tools (or `talk_to_merchant`) without `merchant`, described from its profile ([ADR-0012](adr/0012-one-mcp-server-for-every-merchant-endpoint.md)). `tooling.py` holds what both endpoints share: hints, argument types, the rule for writes and the tools' bodies (`Tools`); the servers only declare the tools | Never stores preferences or exposes admin tools; has no search or routing rule of its own (`agent/discovery.py`) |
+| Gateway | `packages/gateway/src/gateway/server.py`, `__main__.py`, `agent_client.py`, `fallback.py`, `merchant_server.py`, `tooling.py` | Public MCP server on `:8001/mcp` (Streamable HTTP): Host allowlist, a bearer token required on the server (ADR-0019), 3 user tools: `search_merchants`, `talk_to_merchant` and `get_my_reservations` (only the merchant's agent calls the booking tools, #254), preference filters passed to discovery, 2 s timeout (30 s for a talk) and `fallback_url`, one JSON log line per call, `GET /health`. With `BATP_URL` (deployed), a bridge to the BATP node; without it, discovery and `get_my_reservations` run in process and `talk_to_merchant` answers with the fallback URL. Each merchant also has its own endpoint, `/m/<slug>/mcp`: `talk_to_merchant` without `merchant`, described from its profile ([ADR-0012](adr/0012-one-mcp-server-for-every-merchant-endpoint.md)). `tooling.py` holds what both endpoints share: hints, argument types, the rule for writes and the tools' bodies (`Tools`); the servers only declare the tools | Never stores preferences or exposes admin tools; has no search or routing rule of its own (`agent/discovery.py`) |
 | Merchant's AI agent | `packages/agent/src/agent/talk.py` (`MerchantAgent`), `guest_tools.py`, `conversations.py` | Answers guests' agents in natural language (BATP `TALK`, #246): a tool-use loop of at most 5 model calls per message through `core/llm.py`, with a prompt rebuilt before each call from the registry (status, validated profile, the clock line). The profile's reviewed `knowledge` (#248) goes in a delimited slot as data, one JSON object per item, with any run of three `<` or `>` removed so a site's text can't close it; without it, the agent says it doesn't know. Its tools are guest tools bound by code to the one merchant: `get_availability`, `find_my_bookings`, and `propose_booking` / `propose_change` / `propose_cancellation`, which check the request and store one proposal (10 minutes) with a summary written by code. A write runs only on the caller's `confirm` naming the conversation's live proposal, before any model call, with the proposal's arguments and its id as the idempotency key (#247). Conversations in memory (30 minutes idle, 20 messages, 1000 kept), bound to the merchant and the caller's `agent.id`; a replayed `idempotency_key` gets the stored answer, but only with the message it came with: the gateway carries every guest under one `agent.id`, so a key sent with another message is `invalid_input`. Everything in `TalkOutput` but `reply` is built by code | Has no write tool and no admin tool; no tool takes a merchant; never logs guest names or message text at INFO |
 | Discovery | `packages/agent/src/agent/discovery.py` | `search_merchants` / `DISCOVER`: the `live` merchants matching tags, price and city, a query that names a merchant, the filters to drop (`suggestions`), the search bounds, and `check_search`, which refuses a query naming only a `down` merchant (`MerchantPaused`, worded by the gateway's `fallback.py`). `load_profile`: the registry's copy of a profile, which the merchant endpoint's descriptions and the platform read. `routable`: which registry entries guests' calls reach (`building` stays hidden, a `paused` merchant answers with its fallback URL). Called by the gateway and the BATP node alike, so both modes agree by construction | No MCP, BATP or HTTP: each adapter words its own errors; never stores preferences |
-| Agent protocol (BATP) | [`documentation/PROTOCOL.md`](PROTOCOL.md) (summary), [`rfc/draft-merchant-agents-batp-00`](rfc/draft-merchant-agents-batp-00.md) (normative Internet-Draft, `make rfc`); `packages/batp/` (messages, framing, status codes, client, generic node); `packages/merchant_node/` (this backend's node, `make node`) | Our agent-only protocol: TCP on port 4710, one JSON frame per line, `HELLO` with the calling agent's identity, intent requests (`DISCOVER`, `AVAILABILITY`, `BOOK`, `AMEND`, `CANCEL`, `RECALL`), status codes with the fallback URL. The node serves the merchant agents through `PgAgentService` and `agent/discovery.py`, refuses agent traffic to a `down` (paused) merchant with its fallback URL, and records each request addressed to a merchant, with both frames, in `public.agent_requests` (7 days, #146). `TALK` goes to the merchant's AI agent (`agent/talk.py`) on the builder's OpenAI key, within `merchant_node/limits.py` (8 turns at once, 30 per merchant per minute, else `429`); without a key, `503` with the fallback URL (#249). On SIGTERM or SIGINT it drains: it stops accepting sessions, lets the answers in flight finish within a grace (`STOP_GRACE`, 3 s, never less than the gateway's `AGENT_TIMEOUT_MS` or a `TALK` turn), closes the sessions, then waits for their records (`RECORD_TIMEOUT`) and disposes its engines; a second signal meanwhile changes nothing. The client resends a read or a `RECALL` once after a lost session, never a write | No merchant-side operations; no business rule of its own, and no import of the gateway; loopback only in the POC |
+| Agent protocol (BATP) | [`documentation/PROTOCOL.md`](PROTOCOL.md) (summary), [`rfc/draft-merchant-agents-batp-00`](rfc/draft-merchant-agents-batp-00.md) (normative Internet-Draft, `make rfc`); `packages/batp/` (messages, framing, status codes, client, generic node); `packages/merchant_node/` (this backend's node, `make node`) | Our agent-only protocol: TCP on port 4710, one JSON frame per line, `HELLO` with the calling agent's identity, intent requests (`DISCOVER`, `TALK`, `RECALL`, `PING`; version 0.3 closed `AVAILABILITY`, `BOOK`, `AMEND` and `CANCEL`, #254), status codes with the fallback URL. The session speaks the highest minor both sides speak, and a `0.1` session isn't offered `TALK`; 25 s for a `TALK`, 10 s for the others. The node serves the merchant agents through `PgAgentService` and `agent/discovery.py`, refuses agent traffic to a `down` (paused) merchant with its fallback URL, and records each request addressed to a merchant, with both frames, in `public.agent_requests` (7 days, #146). `TALK` goes to the merchant's AI agent (`agent/talk.py`) on the builder's OpenAI key, within `merchant_node/limits.py` (8 turns at once, 30 per merchant per minute, else `429`); without a key, `503` with the fallback URL (#249). On SIGTERM or SIGINT it drains: it stops accepting sessions, lets the answers in flight finish within a grace (`STOP_GRACE`, 3 s, never less than the gateway's `AGENT_TIMEOUT_MS` or a `TALK` turn), closes the sessions, then waits for their records (`RECORD_TIMEOUT`) and disposes its engines; a second signal meanwhile changes nothing. The client resends a `PING`, `DISCOVER` or `RECALL` once after a lost session, never a `TALK` | No merchant-side operations; no business rule of its own, and no import of the gateway; loopback only in the POC |
 | Builder | `packages/builder/src/builder/crawl.py`, `guard.py`, `probes.py`, `urls.py`, `extract.py`, `look.py`, `slugs.py`, `build.py`, `site.py`, `cache.py` | Takes each page's screenshot and text boxes at 1000 px, sends them during the build and stores them with it, for Studio. Website + description → validated `MerchantProfile` → provision, streamed as steps; the merchant publishes it afterwards (`deploy`, #136). Playwright crawl (`crawl.py`, running `probes.py`'s JavaScript), with every request checked after DNS resolution by `guard.py` (SSRF), only on ports 80 and 443 without `CRAWL_ALLOW_PRIVATE` (#142), and redirects followed hop by hop; `urls.py` holds the one page key the crawl and the extraction compare pages with. Extraction by a forced tool call, with the code owning `slug` (`slugs.py`, bounded by `core.models.Slug`), `website`, the tags and the floor plan, and one retry on validation errors. On-disk cache (`BUILDER_CACHE`). The homepage's look is read from its computed styles by `look.py`, without the LLM (#149); `look.adjust_accents` is the colour rule `update_look` applies too (#209). The LLM client it calls is `core/llm.py` | Never writes SQL, code or CSS; never loads fonts, images or media |
 | Platform API | `packages/merchant_platform/src/merchant_platform/api.py`, `chat.py`, `live.py`, `public.py`, `errors.py`, `management.py`, `agent_try.py`, `auth.py`, `accounts.py`, `account_settings.py`, `sessions.py`, `registry.py`, `overview.py`, `logs.py` | `api.py` only composes the routers and their collaborators; `errors.py` answers every error. Endpoints: `POST /chat` (SSE stream of `ChatEvent`, one turn at a time per session), `GET /events?merchant=` (SSE `LiveEvent`), `GET /session` (the merchant a chat session works on), `POST /session/claim` (a build's owner cookie, once, #132), `POST /public/{slug}/reservations` (the showcase site's form, CORS-limited), `/health`, dev-only `/dev/reset-session` (`chat.py`, `live.py`, `public.py`), the owner's `GET /login` / `POST /logout` and `POST /invite` (`auth.py`, over `accounts.py`'s secret links and signed cookies, #132), and the management site's `/merchants/{slug}/…` routes (`management.py`: shapes frozen by #129, behind the owner check of `auth.py`, all built by #132–#146). Also: in-memory sessions, each with the conversation as the web shows it, one of them per owner link for the management site's panel (`GET /merchants/{slug}/assistant`, #140), and `sessions.SessionGuard`, who each session acts for (#132); `account_settings.py` refuses development settings beside deployment ones before the app starts; `registry.py` reads a merchant's registry row in one query; JSON logs for every package it runs (platform, builder, agent; uvicorn's access log stays plain text) | No business logic and no session rules in the routes: delegates to `SessionGuard`, the assistant and the `AgentService` |
 | Platform assistant | `packages/merchant_platform/src/merchant_platform/assistant.py`, `tools.py`, `tool_specs.py`, `booking_tools.py`, `look_tool.py`, `trial.py` | Tool-use loop over the admin tools (at most 8 steps per turn) through the `LLMClient` interface (`core/llm.py`, OpenAI Responses API, `store=False`); onboarding questions; the prompt gives the merchant's registry status, read with its profile in one query before every model call, since the Publish button and the pause switch change it outside the chat (#198); `build_agent` runs the builder; `tool_specs.py` is what the model reads about each tool, `tools.py` dispatches each call by name, logs one `admin_tool` line per call (tool, merchant, latency, outcome; never guest names) and builds its card from the tool's result; `booking_tools.py` holds the tools on the agent, `look_tool.py` `update_look`, `trial.py` the test guest's bookings, shared with Studio's Send buttons (`agent_try.py`) | Never puts crawled website text in its prompt |
@@ -196,7 +210,7 @@ Every component above is built, merged and deployed (#142). Still open: the Clau
 Breaking one of these is a bug.
 
 1. **No double booking.** Two confirmed reservations never overlap on the same table. The database enforces it with `EXCLUDE USING gist (table_id WITH =, during WITH &&) WHERE (status = 'confirmed')`, and `during` must not be empty (`core/db.py`). A booking re-reads its table's seats under the table's lock, so a floor-plan change never leaves it on a removed or too small table.
-2. **Every write from Claude is confirmed; creations and updates are idempotent.** The tool descriptions tell Claude to confirm with the user before `create_reservation`, `update_reservation` or `cancel_reservation`. Through `TALK`, code enforces it instead: the merchant's agent only proposes a write (`pending`), which runs when a later `TALK` names it in `confirm` before it expires, and a `TALK` replay with the same key returns the stored answer without a model call or a write (#245, #247). `create_reservation` and `update_reservation` carry an `idempotency_key`, unique per merchant and per operation; an update's key is stored with the change it applied, so a late retry never undoes a newer change. `cancel_reservation` has no key: cancelling an already cancelled booking must leave it cancelled.
+2. **Every write from a guest's agent is confirmed, in code; creations and updates are idempotent.** Only the merchant's AI agent calls the booking tools (BATP 0.3, #254), and it can only propose a write (`pending`), which runs when a later `TALK` names it in `confirm` before it expires, before any model call, with the proposal's own arguments (#247). A `TALK` replay with the same key returns the stored answer without a model call or a write. Below the agent, `AgentService`'s creations and updates carry an `idempotency_key` (a confirmed proposal's is its id), unique per merchant and per operation; an update's key is stored with the change it applied, so a late retry never undoes a newer change. A cancellation has no key: cancelling an already cancelled booking must leave it cancelled.
 3. **Blocking a slot never deletes a reservation.** It only stops new bookings at that start time.
 4. **Never a stack trace in a tool response.** Errors are `{error, message, fallback_url?}` with the codes of AGENTS.md §8.4. `fallback_url` is set for `agent_unavailable` and `party_too_large`. In process or over BATP, a refusal keeps its own code: only an outage or an overload is `agent_unavailable`.
 5. **Preferences are never stored server-side.** They only arrive as `filters` on `search_merchants`.
@@ -228,7 +242,7 @@ Breaking one of these is a bug.
 | Term | Meaning |
 |---|---|
 | **Gateway** | Our public remote MCP server, which Claude connects to: discovery, preference filtering, routing, fallback. |
-| **Merchant agent** | One merchant's booking logic and data, and from BATP 0.2 its AI agent that guests' agents talk to (`TALK`). Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's schema, served by the node. |
+| **Merchant agent** | One merchant's booking logic and data, and its AI agent that guests' agents talk to (`TALK`), the only caller of the booking tools. Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's schema, served by the node. |
 | **Builder** | The pipeline that turns *website + description* into a validated `MerchantProfile`, then provisions the agent; publishing deploys it. |
 | **Platform assistant** | The LLM assistant merchants chat with; it acts through admin tools. |
 | **Studio** | The chat page where a merchant gives their website and gets their sites built. |
@@ -283,4 +297,4 @@ In this order, to rebuild the project yourself:
 
 ---
 
-*Last updated: 2026-11-01, describing `main` at commit `c1ce0d0` with BATP 0.2 (#245).*
+*Last updated: 2026-11-01, describing `main` at commit `c1ce0d0` with BATP 0.3 (#245, #254).*
