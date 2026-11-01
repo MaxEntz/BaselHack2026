@@ -8,10 +8,11 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
-from batp.client import BatpClient, BatpRejected
+from batp.client import BatpClient, BatpRejected, SessionLost
 from batp.codec import MAX_FRAME, encode, read_frame
-from batp.messages import IN_FLIGHT_LIMIT, AgentIdentity, Hello, NodeIdentity, Request
+from batp.messages import IN_FLIGHT_LIMIT, AgentIdentity, Hello, NodeIdentity, Request, Response
 from batp.server import NodeServer
 from core.errors import AgentUnavailable, InvalidInput, SlotUnavailable
 
@@ -473,6 +474,90 @@ async def test_an_answer_too_large_to_send_is_503(node: NodeServer) -> None:
         with pytest.raises(AgentUnavailable, match="too large"):
             await client.request("RECALL", params={})
         assert (await client.request("PING"))["pong"] is True
+
+
+async def test_a_503_that_replaces_a_large_answer_is_recorded_when_the_session_is_gone(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # #220: the retry used to raise out of the task, so the request was never recorded and
+    # asyncio logged "Task exception was never retrieved".
+    recorded: list[tuple[str, int]] = []
+    done = asyncio.Event()
+
+    async def record(agent: AgentIdentity, request: Request, response: Response) -> None:
+        recorded.append((request.id, response.status))
+        done.set()
+
+    async def send(frame: BaseModel) -> None:
+        encode(frame)  # FrameTooLarge for RECALL's answer, as the session's own send
+        raise ConnectionError("peer stopped reading")
+
+    server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token, record=record)
+    request = Request(id="r-large", intent="RECALL")
+
+    with caplog.at_level(logging.WARNING, logger="batp"):
+        await server._answer((CALLER, "s-1"), request, send)
+        await asyncio.wait_for(done.wait(), 2)
+
+    assert recorded == [("r-large", 503)]
+    [lost] = [r for r in caplog.records if r.getMessage().startswith("batp answer lost")]
+    assert (lost.__dict__["request"], lost.__dict__["status"]) == ("r-large", 503)
+
+
+async def test_an_answer_cancelled_mid_send_is_still_recorded_once() -> None:
+    # The session's end cancels its tasks (#220): the request was carried out all the same.
+    recorded: list[tuple[str, int]] = []
+    done = asyncio.Event()
+    sending = asyncio.Event()
+
+    async def record(agent: AgentIdentity, request: Request, response: Response) -> None:
+        recorded.append((request.id, response.status))
+        done.set()
+
+    async def send(frame: BaseModel) -> None:
+        sending.set()
+        await asyncio.Event().wait()  # a peer that stopped reading
+
+    server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token, record=record)
+    answer = asyncio.create_task(
+        server._answer((CALLER, "s-1"), Request(id="r-cut", intent="PING"), send)
+    )
+    await asyncio.wait_for(sending.wait(), 2)
+    answer.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await answer
+    await asyncio.wait_for(done.wait(), 2)
+    await asyncio.sleep(0)
+    assert recorded == [("r-cut", 200)]
+
+
+async def test_an_unreadable_frame_from_the_node_is_logged_and_drops_the_session(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # #220: the client's reader used to end on it without a word.
+    async def session(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await read_frame(reader)
+        welcome = {"node": NODE.model_dump(), "intents": ["BOOK"], "session": "s-1"}
+        writer.write(encode({"type": "welcome", "batp": "0.1", **welcome}))
+        await read_frame(reader)
+        writer.write(b"not json\n")
+        await writer.drain()
+        await reader.read()
+        writer.close()
+
+    server = await asyncio.start_server(session, "127.0.0.1", 0, limit=MAX_FRAME)
+    try:
+        port = server.sockets[0].getsockname()[1]
+        with caplog.at_level(logging.WARNING, logger="batp"):
+            async with BatpClient("127.0.0.1", port, CALLER) as client:
+                with pytest.raises(SessionLost):
+                    await client.request("BOOK", "le-petit-zinc", {})
+    finally:
+        server.close()
+
+    [line] = [r for r in caplog.records if r.getMessage().startswith("batp frame unreadable")]
+    assert line.levelno == logging.WARNING and line.exc_info
 
 
 async def test_sessions_beyond_the_limit_are_refused() -> None:

@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.provisioning import deploy, deprovision, generated_tools, provision
+from agent.provisioning import NotBuilding, deploy, deprovision, generated_tools, provision
 from builder.cache import BuildCache, crawl_key, extraction_key
 from builder.crawl import CrawlResult, StepEmitter, crawl, normalize_url, pages_read
 from builder.extract import PROMPT_VERSION, ExtractionFailed, ExtractionResult, extract_profile
@@ -317,13 +317,16 @@ def _ms_since(started: float) -> int:
 
 
 PAUSED = "Your agent is paused: resume it rather than publish it again."
+# `deploy` found the agent neither live nor paused: built again meanwhile (#220).
+CHANGED = "Your agent changed while it was being published. Check it, then publish it again."
 
 
 async def publish(slug: str, on_event: StepEmitter, *, engine: AsyncEngine) -> None:
     """The `deploy` step a build left waiting: the merchant becomes `live` (#136).
 
     A merchant already live stays so; one paused (`down`) is refused, since publishing must
-    not undo its owner's pause. `NotFound` for an unknown merchant.
+    not undo its owner's pause, even one made since the status was read here: `deploy` only
+    moves a `building` merchant (#220). `NotFound` for an unknown merchant.
     """
     async with engine.connect() as conn:
         status = await conn.scalar(select(merchants_t.c.status).where(merchants_t.c.slug == slug))
@@ -338,14 +341,21 @@ async def publish(slug: str, on_event: StepEmitter, *, engine: AsyncEngine) -> N
     await on_event(StepEvent(step="deploy", status="running"))
     try:
         await deploy(slug, engine=engine)
+    except NotBuilding as moved:
+        # Published (another tab), paused, or deleted and built again since the read above.
+        if moved.status == "live":
+            await on_event(_deployed("done", PUBLISHED, started))
+            return
+        refusal = PAUSED if moved.status == "down" else CHANGED
+        await on_event(_deployed("error", refusal, started))
+        raise InvalidInput(refusal) from None
     except Exception:
-        await on_event(
-            StepEvent(
-                step="deploy", status="error", detail=STEP_FAILED, duration_ms=_ms_since(started)
-            )
-        )
+        await on_event(_deployed("error", STEP_FAILED, started))
         raise
     log.info("publish_agent", extra={"merchant": slug})
-    await on_event(
-        StepEvent(step="deploy", status="done", detail=PUBLISHED, duration_ms=_ms_since(started))
-    )
+    await on_event(_deployed("done", PUBLISHED, started))
+
+
+def _deployed(status: Literal["done", "error"], detail: str, started: float) -> StepEvent:
+    """The end of the `deploy` step that `publish` started at `started`."""
+    return StepEvent(step="deploy", status=status, detail=detail, duration_ms=_ms_since(started))

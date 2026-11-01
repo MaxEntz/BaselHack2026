@@ -18,7 +18,9 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 
 from agent.provisioning import (
     MerchantRecord,
+    NotBuilding,
     SlugTaken,
+    SwitchableStatus,
     deploy,
     deprovision,
     provision,
@@ -135,6 +137,28 @@ async def test_deploy_and_set_status_switch_the_registry_status(
     assert await status() == "down"
     await set_status(profile.slug, "live", engine=engine)
     assert await status() == "live"
+
+
+@pytest.mark.parametrize("since", [["live"], ["live", "down"]], ids=["published", "paused"])
+async def test_deploy_only_publishes_a_merchant_still_building(
+    engine: AsyncEngine,
+    profile: MerchantProfile,
+    provisioned: MerchantRecord,
+    since: list[SwitchableStatus],
+) -> None:
+    # #220: a pause made after the caller read `building` must survive its deploy.
+    for status in since:
+        await set_status(profile.slug, status, engine=engine)
+
+    with pytest.raises(NotBuilding) as refused:
+        await deploy(profile.slug, engine=engine)
+
+    assert refused.value.status == since[-1]
+    async with engine.connect() as conn:
+        stored = await conn.scalar(
+            select(merchants_t.c.status).where(merchants_t.c.slug == profile.slug)
+        )
+    assert stored == since[-1]
 
 
 async def test_status_of_an_unknown_merchant_raises_not_found(engine: AsyncEngine) -> None:

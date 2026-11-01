@@ -512,3 +512,28 @@ async def test_a_development_session_claims_nothing() -> None:
 def test_unsafe_account_settings_refuse_to_start(overrides: dict[str, Any]) -> None:
     with pytest.raises(RuntimeError):
         create_app(settings(**overrides))
+
+
+@pytest.mark.parametrize(
+    "deployed",
+    [
+        {"platform_web_url": "https://sesame.example"},
+        {"platform_cookie_secret": "s" * 40},
+        {"platform_invite_code": "olive-2026"},
+    ],
+)
+def test_dev_routes_refuse_to_start_with_a_deployment(deployed: dict[str, Any]) -> None:
+    # /dev/reset-session is unauthenticated: the platform itself fails closed (#220), not only
+    # `make deploy`.
+    with pytest.raises(RuntimeError, match="PLATFORM_DEV_ROUTES is for local development"):
+        create_app(settings(platform_dev_routes=True, **deployed))
+
+
+async def test_dev_routes_still_serve_local_development() -> None:
+    # `.env.example`: PLATFORM_DEV_ROUTES=1, PLATFORM_MERCHANT set, no secret, an http web app.
+    app = create_app(settings(platform_dev_routes=True, platform_merchant=SLUG))
+
+    async with client(app, "http://test") as http:
+        reset = await http.post("/dev/reset-session", json={"session_id": "s"})
+
+    assert reset.status_code == 204

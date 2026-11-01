@@ -60,6 +60,7 @@ from merchant_platform.assistant import (
     default_assistant,
     system_prompt,
 )
+from merchant_platform.logs import session_tag
 from merchant_platform.sessions import Session
 from merchant_platform.tools import (
     CANCELLED,
@@ -322,6 +323,43 @@ async def test_the_loop_stops_after_8_iterations() -> None:
     assert len(llm.calls) == MAX_ITERATIONS
     assert kinds(events).count("stats") == MAX_ITERATIONS
     assert events[-1] == {"type": "error", "message": TOO_MANY_STEPS}
+
+
+async def test_the_iteration_limit_line_names_the_session_by_its_tag(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The id claims the owner cookie after a build (#132): never in a log line (#220).
+    harness = Harness(LoopingLLM(), agent=FakeAgent())
+    harness.provisioned.add(SLUG)
+    session = Session(id="o-aXRlcmF0aW9uLWxpbWl0LWlk", merchant_slug=SLUG)
+
+    with caplog.at_level(logging.WARNING, logger="merchant_platform.assistant"):
+        await harness.turn(session, "Stats please")
+
+    [line] = [r for r in caplog.records if r.getMessage() == "assistant_iteration_limit"]
+    assert line.__dict__["session"] == session_tag(session.id)
+    assert all(session.id not in str(record.__dict__) for record in caplog.records)
+
+
+async def test_a_crashed_tool_logs_its_traceback_without_the_session_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session = Session(id="o-dG9vbC1mYWlsZWQtc2Vzc2lvbg", merchant_slug=SLUG)
+
+    class Crashing(FakeAgent):
+        async def get_stats(self, slug: str, day: date) -> Stats:
+            raise RuntimeError(f"no stats cached for {session.id}")
+
+    llm = ScriptedLLM(([], [call("get_stats", date="2026-10-31")]), (["Sorry."], []))
+    harness = Harness(llm, agent=Crashing())
+    harness.provisioned.add(SLUG)
+
+    with caplog.at_level(logging.DEBUG, logger="merchant_platform"):
+        await harness.turn(session, "Stats please")
+
+    [line] = [r for r in caplog.records if r.getMessage() == "tool_failed"]
+    assert f"RuntimeError: no stats cached for {session_tag(session.id)}" in line.__dict__["exc"]
+    assert all(session.id not in str(record.__dict__) for record in caplog.records)
 
 
 async def test_a_tool_error_goes_back_to_the_model_and_the_loop_continues() -> None:

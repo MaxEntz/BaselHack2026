@@ -16,10 +16,17 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.provisioning import SlugTaken, deprovision, set_status
+from agent.provisioning import NotBuilding, SlugTaken, deprovision, set_status
 from agent.service import PgAgentService
 from batp.messages import AgentIdentity, Request
-from builder.build import GENERATED_DIR, AlreadyProvisioned, BeingBuilt, Builder, publish
+from builder.build import (
+    CHANGED,
+    GENERATED_DIR,
+    AlreadyProvisioned,
+    BeingBuilt,
+    Builder,
+    publish,
+)
 from builder.cache import BuildCache, extraction_key
 from builder.crawl import CrawlResult, Page, StepEmitter
 from builder.extract import TOOL_NAME, ExtractionFailed
@@ -235,6 +242,73 @@ async def test_publish_keeps_a_live_agent_and_refuses_a_paused_one(
     assert await status_of(engine, slug) == "down"
     with pytest.raises(NotFound):
         await publish(f"{slug}-unknown", Run().emit, engine=engine)
+
+
+@pytest.mark.parametrize(
+    ("since", "last"),
+    [(["live"], ("deploy", "done")), (["live", "down"], ("deploy", "error"))],
+    ids=["published", "paused"],
+)
+async def test_publish_never_undoes_a_change_made_after_it_read_the_status(
+    engine: AsyncEngine,
+    tmp_path: Path,
+    slugs: list[str],
+    since: list[Any],
+    last: tuple[str, str],
+) -> None:
+    # #220: publish read `building`, then another tab published and maybe the owner paused,
+    # before its deploy: an unconditional UPDATE put a paused agent back live.
+    site, name = unique_site()
+    output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
+    slug = output.profile.slug
+    slugs.append(slug)
+    events: list[StepEvent | SitePageEvent] = []
+
+    async def meanwhile(event: StepEvent | SitePageEvent) -> None:
+        events.append(event)
+        if isinstance(event, StepEvent) and event.status == "running":
+            for status in since:
+                await set_status(slug, status, engine=engine)
+
+    if since[-1] == "down":
+        with pytest.raises(InvalidInput, match="paused"):
+            await publish(slug, meanwhile, engine=engine)
+    else:
+        await publish(slug, meanwhile, engine=engine)
+
+    assert await status_of(engine, slug) == since[-1]
+    assert [(e.step, e.status) for e in events if isinstance(e, StepEvent)] == [
+        ("deploy", "running"),
+        last,
+    ]
+
+
+async def test_publish_says_so_when_the_agent_was_built_again_meanwhile(
+    engine: AsyncEngine, tmp_path: Path, slugs: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #220: deleted and provisioned again between the read and the deploy, the merchant is
+    # `building` once more. That is no pause, and saying "paused" would be wrong.
+    site, name = unique_site()
+    output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
+    slug = output.profile.slug
+    slugs.append(slug)
+
+    async def rebuilt(slug: str, *, engine: AsyncEngine | None = None) -> None:
+        raise NotBuilding(slug, "building")
+
+    monkeypatch.setattr("builder.build.deploy", rebuilt)
+    run = Run()
+
+    with pytest.raises(InvalidInput) as refused:
+        await publish(slug, run.emit, engine=engine)
+
+    assert str(refused.value) == CHANGED
+    assert "paused" not in str(refused.value)
+    assert [(e.step, e.status, e.detail) for e in run.events if isinstance(e, StepEvent)][-1] == (
+        "deploy",
+        "error",
+        CHANGED,
+    )
 
 
 async def test_a_taken_slug_gets_a_suffix_and_a_known_site_is_refused(

@@ -5,6 +5,7 @@ the change commit or roll back together. Rows keep what the line is worded from 
 not the words: "today 18:30" must read "Sat 31 Oct 18:30" the next day.
 """
 
+import logging
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -16,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from agent.words import short_day
 from core.db import merchant_activity_t
 from core.models import ActivityItem, ActivityKind, Via
+
+log = logging.getLogger("agent.activity")
 
 # Who a guest's own change comes from: an agent, since the website only books (#135).
 GUEST_SOURCE: Via = "claude"
@@ -127,7 +130,13 @@ def word(
     """
     try:
         return _word(kind, reservation_id, details, today, tz)
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError) as error:
+        # The kind, the reference and the error's type only: the details may hold a guest's
+        # name (§12), and Home reads the row again on every visit, so no traceback each time.
+        log.warning(
+            "activity line without its details",
+            extra={"kind": kind, "reservation": reservation_id, "error": type(error).__name__},
+        )
         return reservation_id or ""
 
 

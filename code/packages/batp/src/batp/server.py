@@ -147,7 +147,8 @@ class NodeServer:
             if caller is not None:
                 await self._requests(caller, reader, send, tasks)
         except (ConnectionError, asyncio.IncompleteReadError):
-            pass
+            # A peer that leaves or stops reading: expected, so only at debug level.
+            log.debug("session ended: connection lost", extra={"peer": peer}, exc_info=True)
         finally:
             for task in tasks:
                 task.cancel()
@@ -274,27 +275,28 @@ class NodeServer:
         started = time.monotonic()
         response = await self._respond(agent, request)
         try:
-            await send(response)
-        except FrameTooLarge:
-            response = _unavailable(request.id, TOO_LARGE, await self._fallback(request))
-            await send(response)
-        except ConnectionError:
-            # Carried out all the same (a booking may exist): still recorded.
+            try:
+                delivered = await _deliver(send, response)
+            except FrameTooLarge:
+                response = _unavailable(request.id, TOO_LARGE, await self._fallback(request))
+                delivered = await _deliver(send, response)
+        finally:
+            # Carried out whether or not the answer got through (a booking may exist): recorded
+            # once, even when the session's end cancels this task mid-send.
             self._record(agent, request, response)
-            return
-        self._record(agent, request, response)
-        log.info(
-            "batp request",
-            extra={
-                "agent": agent.id,
-                "session": session,
-                "request": request.id,
-                "intent": request.intent,
-                "merchant": request.merchant,
-                "status": response.status,
-                "latency_ms": round((time.monotonic() - started) * 1000),
-            },
-        )
+        line = {
+            "agent": agent.id,
+            "session": session,
+            "request": request.id,
+            "intent": request.intent,
+            "merchant": request.merchant,
+            "status": response.status,
+            "latency_ms": round((time.monotonic() - started) * 1000),
+        }
+        if delivered:
+            log.info("batp request", extra=line)
+        else:
+            log.warning("batp answer lost: the session ended first", extra=line)
 
     async def _respond(self, agent: AgentIdentity, request: Request) -> Response:
         try:
@@ -347,6 +349,15 @@ class NodeServer:
         except Exception:
             log.warning("no fallback url", extra={"merchant": request.merchant}, exc_info=True)
             return None
+
+
+async def _deliver(send: Send, frame: BaseModel) -> bool:
+    """Send `frame`; False when the session is gone. `FrameTooLarge` goes to the caller."""
+    try:
+        await send(frame)
+    except ConnectionError:
+        return False
+    return True
 
 
 def _forget(ids: set[str], request_id: str) -> Callable[[asyncio.Task[None]], None]:
