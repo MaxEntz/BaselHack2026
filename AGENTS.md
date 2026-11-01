@@ -251,7 +251,7 @@ All done; open work is tracked in [#26](https://github.com/MaxEntz/BaselHack2026
 - **Living docs, same PR as the code**: update `documentation/ARCHITECTURE.md` when you add, rename or remove a component, change the main flow, the stack, a protocol or data format, or a guarantee. A new or replaced technology or a structural choice gets a new ADR in `documentation/adr/` (never edit an accepted one: supersede it).
 - Everything in the repo is in **English**: code, comments, docs, commits, PRs, issues. Only the demo sites' content is in French.
 
-## Module rules
+### Module rules
 
 - **Provisioning** (`agent/provisioning.py`): `provision(profile)` (one transaction: schema, tables, policy, registry row in `building`), `deploy(slug)` (only from `building`, in one conditional UPDATE: `NotBuilding` with the status found otherwise, so a publish never undoes a pause) / `set_status(slug, "live"|"down")` (the scripts' outage switch, no activity line; the merchant's own pause is `admin.pause_or_resume`, behind `AgentService.set_status`), `deprovision(slug)` (idempotent). Each takes an optional `engine=`: long-running processes pass theirs; scripts omit it and get a short-lived engine on `DATABASE_URL`. A slug in use raises `SlugTaken` (an `InvalidInput`). `default_tables(seats)` and `generated_tools(profile)` are pure; `templates/restaurant.json` is validated at import.
 - **Merchant operations** (`agent/admin.py`; the management site's rules, settings and blocked times in `agent/site_forms.py`, guest notices in `agent/notices.py`): one `merchant_conn` transaction each, so the merchant schema and the registry's `profile` change together. The merchant's `tables` and `policy` rows are authoritative; `profile` is a display copy kept in sync (`admin.update_profile`). They load the merchant with `load_merchant(conn, slug, merchant_side=True)` (`agent/merchant.py`: a `building` merchant is editable by its owner, hidden from guests). Input outside the database's range is `InvalidInput`, never a raw DB error.
@@ -263,7 +263,7 @@ All done; open work is tracked in [#26](https://github.com/MaxEntz/BaselHack2026
 - **Management site** (`merchant_platform/management.py`, #129): the `/merchants/{slug}/…` routes, shapes in `core.models` and `web/src/types.ts` ([CONTRACTS.md](documentation/CONTRACTS.md)), client `web/src/management/client.ts` and its mock on `code/tests/fixtures/demo/la-graine-verte-management.json`. Every route is built and depends on `auth.owner_of_path` (fail-closed). Form bodies are structural, checked by `core.forms` (`FormProblem`, answered with its `problem` by `errors.py`). A new route module is an `APIRouter` that `api.create_app` includes.
 - **BATP**: the library (`packages/batp/`) depends only on `core`, so the gateway can import its client; the node (`merchant_node`) imports `agent`, never `gateway`. Status codes are named in `batp/status.py`. Change the protocol in `PROTOCOL.md`, the draft in `documentation/rfc/`, the library and its tests together.
 
-## Team server (LXC)
+### Team server (LXC)
 
 We have a server: use it to test anything Claude.ai must reach, instead of opening a tunnel. Full runbook: [`documentation/runbooks/connector.md`](documentation/runbooks/connector.md).
 

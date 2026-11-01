@@ -1,7 +1,7 @@
 # Merchant web app
 
-A single-column chat where merchants onboard and run their booking agent (`AGENTS.md` §1), and
-the management site next to it (#127, [ADR-0015](../../documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). Vite + React +
+Studio, the chat where merchants build, publish and run their sites, with a canvas that shows
+them (`AGENTS.md` §1), and the management site next to it (#127, [ADR-0015](../../documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). Vite + React +
 TypeScript, plain CSS. Mockups: [`documentation/design/poc-v10/`](../../documentation/design/poc-v10/README.md).
 
 ```sh
@@ -12,7 +12,7 @@ npm run build              # tsc (strict) + vite build
 npm run lint
 npm run check:contracts    # mocks vs src/types.ts
 npm run check:bundle       # after npm run build: no mock, fixture or gallery in dist/ (#220)
-npm test                   # tests/*.test.ts on Node's own runner (Node version: ../README.md), then Vitest (src/**/*.test.tsx)
+npm test                   # tests/*.test.ts on Node's own runner (Node version: ../README.md), then Vitest (src/**/*.test.{ts,tsx})
 npx playwright install chromium   # once
 npm run test:e2e           # Playwright (e2e/), 1440 px, starts Vite in mock mode on :5179
 npm run test:visual:docker # screenshots (e2e/visual.spec.ts) in Playwright's Docker image; `-- --update-snapshots` retakes them
