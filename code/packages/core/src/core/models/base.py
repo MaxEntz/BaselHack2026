@@ -176,6 +176,12 @@ class KnowledgeItem(_Model):
     source_url: HttpUrl | None = None
     quote: Annotated[NonEmptyStr, StringConstraints(max_length=MAX_KNOWLEDGE_QUOTE)] | None = None
 
+    @model_validator(mode="after")
+    def validate_source(self) -> Self:
+        if (self.source_url is None) != (self.quote is None):
+            raise ValueError("A source_url and a quote go together, or neither")
+        return self
+
     @property
     def size(self) -> int:
         """What it counts for in `MAX_KNOWLEDGE_BYTES`."""

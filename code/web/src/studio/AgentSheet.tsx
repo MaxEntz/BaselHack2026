@@ -150,10 +150,16 @@ function useTryAgent(client: Client, slug: string) {
     try {
       const frames = await client.talkToAgent(slug, { message, conversation, confirm });
       setSent((earlier) => [...earlier, frames]);
-      // A refusal has no conversation: the next message starts a new one.
-      setConversation(frames.talk?.conversation ?? null);
-      setPending(frames.talk?.pending ?? null);
-      return true;
+      if (frames.talk) {
+        setConversation(frames.talk.conversation);
+        setPending(frames.talk.pending);
+      } else if (frames.status === 404) {
+        // The conversation has ended, or the agent is hidden: the next message starts a new one.
+        setConversation(null);
+        setPending(null);
+      }
+      // Any other refusal says nothing about the proposal: it still lives on the server.
+      return frames.status === 200;
     } catch (error) {
       setProblem(error instanceof Error ? error.message : "That message couldn't be sent.");
       return false;
@@ -186,7 +192,8 @@ function AskBox({ sending, ask }: { sending: boolean; ask: (message: string) => 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const message = draft.trim();
+    // A pasted tab or control character is no part of a question, and the protocol refuses it.
+    const message = draft.replace(/\p{Cc}/gu, " ").trim();
     if (message && (await ask(message))) setDraft("");
   }
 
@@ -230,7 +237,7 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
       )}
       <section aria-label="Protocol session">
         <h3>A session with your agent</h3>
-        <div className="st-w-log">
+        <div className="st-w-log" role="log" aria-label="Frames exchanged with your agent">
           <FrameLine out text={HELLO} />
           <FrameLine out={false} text={WELCOME} />
           {previewed && (
@@ -255,7 +262,9 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
         </div>
         {pending && (
           <div className="st-w-confirm" role="group" aria-label="Your agent is waiting for a yes">
-            <p>{pending.summary}</p>
+            <p>
+              {pending.summary} <small>Confirm makes a real booking: you can cancel it from Reservations.</small>
+            </p>
             <button type="button" disabled={sending} onClick={() => void talk(YES, pending.id)}>
               Confirm
             </button>

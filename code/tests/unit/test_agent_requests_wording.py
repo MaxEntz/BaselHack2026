@@ -319,3 +319,21 @@ def test_an_ended_conversation_is_not_a_booking_you_dont_have() -> None:
         "Claude wrote in a conversation that had ended",
         "Nothing was changed.",
     )
+
+
+def test_a_quote_drops_what_could_reverse_the_page() -> None:
+    _, text = word("TALK", 200, {"message": "Table\u202e please"}, {"result": TALKED})
+
+    assert text == '"Table please"'
+
+
+def test_a_fallback_without_a_message_has_no_stray_space() -> None:
+    _, text = word("TALK", 200, {}, {"result": TALKED | {"fallback_url": "https://zinc.example/"}})
+
+    assert text == "The guest got your link."
+
+
+def test_too_many_requests_is_worded() -> None:
+    answer = {"error": {"code": "too_many_requests", "message": "Slow down"}}
+
+    assert word("TALK", 429, QUESTION, answer)[0] == "Claude sent too many requests at once"

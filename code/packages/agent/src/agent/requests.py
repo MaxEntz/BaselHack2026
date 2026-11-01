@@ -6,6 +6,7 @@ come from our node, but a row it can't word still gets a plain title.
 """
 
 import json
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime, tzinfo
 from typing import Any
@@ -115,7 +116,7 @@ def _talked(read: _Request) -> tuple[str, str]:
         )
     asked = _quoted(read.params.get("message"))
     if read.result.get("fallback_url"):
-        return f"{agent} was sent to your booking page", f"{asked} The guest got your link."
+        return f"{agent} was sent to your booking page", f"{asked} The guest got your link.".strip()
     slots = read.result.get("slots")
     offered = " Your agent offered free times." if slots else ""
     return f"{agent} asked your agent", f"{asked}{offered}".strip()
@@ -126,7 +127,9 @@ def _quoted(message: Any) -> str:
     text = _text(message)
     if text is None:
         return ""
-    line = " ".join(text.split())
+    # No format character either: a right-to-left override would reverse the merchant's page.
+    printable = "".join(char for char in text if unicodedata.category(char) != "Cf")
+    line = " ".join(printable.split())
     return f'"{line[: MAX_QUOTED - 1].rstrip()}…"' if len(line) > MAX_QUOTED else f'"{line}"'
 
 
@@ -160,6 +163,8 @@ def _refused(
             )
         case 400:
             return f"{agent} sent a request your agent couldn't read", "Nothing was changed."
+        case 429 if intent == "TALK":
+            return f"{agent} sent too many requests at once", "It was asked to slow down."
     return None
 
 
