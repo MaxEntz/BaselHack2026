@@ -10,21 +10,19 @@ def flat(text: str) -> str:
 
 
 @pytest.mark.parametrize(
-    ("instructions", "chosen", "calls"),
+    ("instructions", "chosen"),
     [
-        (server.INSTRUCTIONS, "a restaurant or a time", "search_merchants or get_availability"),
-        (merchant_server.INSTRUCTIONS, "a time", "get_availability"),
+        (server.INSTRUCTIONS, "a restaurant or a time"),
+        (merchant_server.INSTRUCTIONS, "a time"),
     ],
     ids=["shared", "merchant"],
 )
-def test_each_endpoint_gives_the_rule_for_writes(
-    instructions: str, chosen: str, calls: str
-) -> None:
-    rule = tooling.CONFIRM_RULE.format(chosen=chosen, calls=calls)
+def test_each_endpoint_gives_the_rule_for_writes(instructions: str, chosen: str) -> None:
+    rule = tooling.TALK_CONFIRM_RULE.format(chosen=chosen)
 
     assert rule in flat(instructions)
     assert f"Choosing {chosen} is not a yes" in rule
-    assert f"the {calls} call your summary is based on" in rule
+    assert "never send `confirm` in the same reply as the talk_to_merchant call" in rule
 
 
 @pytest.mark.parametrize("instructions", [server.INSTRUCTIONS, merchant_server.INSTRUCTIONS])

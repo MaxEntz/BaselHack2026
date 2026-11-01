@@ -13,7 +13,7 @@ from core.config import Settings
 from core.db import make_engine
 from core.errors import AgentUnavailable, NotFound
 from core.logs import JsonFormatter
-from core.models import SearchFilters, SearchMerchantsOutput
+from core.models import SearchFilters, SearchMerchantsOutput, TalkInput
 from gateway.agent_client import (
     BatpAgentClient,
     LocalAgentClient,
@@ -25,6 +25,9 @@ from gateway.fallback import batp_request, log_call
 STARTS_AT = datetime(2026, 11, 1, 19, tzinfo=UTC)
 NO_ENGINE: Any = object()
 ZINC = "le-petit-zinc"
+TURN = TalkInput(
+    merchant=ZINC, message="Table for 2?", idempotency_key="0b6c3e1a-5f7d-4c2e-9a8b-1d2e3f405162"
+)
 RESERVATION = {
     "id": "R-001",
     "merchant": ZINC,
@@ -47,53 +50,13 @@ def client(service: AsyncMock) -> LocalAgentClient:
     return LocalAgentClient(service, engine=NO_ENGINE)
 
 
-async def test_bookings_from_claude_are_marked_as_such(
+async def test_my_reservations_are_passed_through(
     client: LocalAgentClient, service: AsyncMock
 ) -> None:
-    await client.create_reservation("le-petit-zinc", STARTS_AT, 2, "Alex", "key")
+    result = await client.get_my_reservations("Alex")
 
-    service.create_reservation.assert_awaited_once_with(
-        "le-petit-zinc", STARTS_AT, 2, "Alex", "key", via="claude"
-    )
-
-
-async def test_a_cancellation_from_claude_is_by_the_guest(
-    client: LocalAgentClient, service: AsyncMock
-) -> None:
-    await client.cancel_reservation("le-petit-zinc", "R-001", "Alex")
-
-    service.cancel_reservation.assert_awaited_once_with(
-        "le-petit-zinc", "R-001", by="guest", guest_name="Alex"
-    )
-
-
-@pytest.mark.parametrize(
-    ("method", "service_method", "args"),
-    [
-        (
-            "get_availability",
-            "get_availability",
-            ("le-petit-zinc", date(2026, 11, 1), 2, "20:00"),
-        ),
-        (
-            "update_reservation",
-            "update_reservation",
-            ("le-petit-zinc", "R-001", "Alex", "key", STARTS_AT, 3),
-        ),
-        ("get_my_reservations", "find_guest_reservations", ("Alex",)),
-    ],
-)
-async def test_other_calls_are_passed_through(
-    client: LocalAgentClient,
-    service: AsyncMock,
-    method: str,
-    service_method: str,
-    args: tuple[Any, ...],
-) -> None:
-    result = await getattr(client, method)(*args)
-
-    getattr(service, service_method).assert_awaited_once_with(*args)
-    assert result is getattr(service, service_method).return_value
+    service.find_guest_reservations.assert_awaited_once_with("Alex")
+    assert result is service.find_guest_reservations.return_value
 
 
 async def test_local_search_goes_to_discovery(client: LocalAgentClient) -> None:
@@ -141,68 +104,6 @@ async def test_search_is_a_discover_without_merchant(
     )
 
 
-async def test_availability_carries_the_merchant_outside_its_params(
-    bridge: BatpAgentClient, node: AsyncMock
-) -> None:
-    slot = {"starts_at": "2026-11-01T20:00:00+01:00", "table_label": "T5"}
-    node.request.return_value = {"slots": [slot]}
-
-    slots = await bridge.get_availability(ZINC, date(2026, 11, 1), 4, "20:00")
-
-    assert sent(node) == (
-        "AVAILABILITY",
-        ZINC,
-        {"date": "2026-11-01", "time": "20:00", "party_size": 4},
-    )
-    assert [s.table_label for s in slots] == ["T5"]
-
-
-async def test_booking_is_a_book(bridge: BatpAgentClient, node: AsyncMock) -> None:
-    node.request.return_value = {"reservation": RESERVATION}
-
-    reservation = await bridge.create_reservation(ZINC, STARTS_AT, 2, "Alex", "key")
-
-    assert sent(node) == (
-        "BOOK",
-        ZINC,
-        {
-            "starts_at": "2026-11-01T19:00:00Z",
-            "party_size": 2,
-            "guest_name": "Alex",
-            "idempotency_key": "key",
-        },
-    )
-    assert reservation.id == "R-001"
-
-
-async def test_a_move_is_an_amend_with_only_what_changes(
-    bridge: BatpAgentClient, node: AsyncMock
-) -> None:
-    node.request.return_value = {"reservation": RESERVATION}
-
-    await bridge.update_reservation(ZINC, "R-001", "Alex", "key", party_size=3)
-
-    assert sent(node) == (
-        "AMEND",
-        ZINC,
-        {
-            "reservation_id": "R-001",
-            "guest_name": "Alex",
-            "party_size": 3,
-            "idempotency_key": "key",
-        },
-    )
-
-
-async def test_a_cancellation_is_a_cancel(bridge: BatpAgentClient, node: AsyncMock) -> None:
-    node.request.return_value = {"reservation": {**RESERVATION, "status": "cancelled"}}
-
-    reservation = await bridge.cancel_reservation(ZINC, "R-001", "Alex")
-
-    assert sent(node) == ("CANCEL", ZINC, {"reservation_id": "R-001", "guest_name": "Alex"})
-    assert reservation.status == "cancelled"
-
-
 async def test_my_reservations_is_a_recall(bridge: BatpAgentClient, node: AsyncMock) -> None:
     node.request.return_value = {"reservations": [RESERVATION], "notices": ["Sorry"]}
 
@@ -216,10 +117,10 @@ async def test_my_reservations_is_a_recall(bridge: BatpAgentClient, node: AsyncM
 async def test_the_node_s_business_errors_pass_through(
     bridge: BatpAgentClient, node: AsyncMock
 ) -> None:
-    node.request.side_effect = NotFound("No booking")
+    node.request.side_effect = NotFound("Unknown or expired conversation")
 
     with pytest.raises(NotFound):
-        await bridge.cancel_reservation(ZINC, "R-001", "Alex")
+        await bridge.talk(TURN)
 
 
 @pytest.mark.parametrize(
@@ -231,7 +132,7 @@ async def test_a_lost_or_refused_session_is_agent_unavailable(
     node.request.side_effect = failure
 
     with pytest.raises(AgentUnavailable):
-        await bridge.get_availability(ZINC, date(2026, 11, 1), 2)
+        await bridge.talk(TURN)
 
 
 async def test_an_invalid_result_is_agent_unavailable_not_invalid_input(
@@ -240,22 +141,22 @@ async def test_an_invalid_result_is_agent_unavailable_not_invalid_input(
     node.request.return_value = {"unexpected": True}
 
     with pytest.raises(AgentUnavailable):
-        await bridge.get_availability(ZINC, date(2026, 11, 1), 2)
+        await bridge.talk(TURN)
 
 
 async def test_the_request_id_reaches_the_node_and_the_log_line(
     bridge: BatpAgentClient, node: AsyncMock, caplog: pytest.LogCaptureFixture
 ) -> None:
-    node.request.return_value = {"slots": []}
+    node.request.return_value = {"merchants": [], "suggestions": [], "ignored_filters": []}
 
     with caplog.at_level(logging.INFO, logger="gateway.tools"):
-        await bridge.get_availability(ZINC, date(2026, 11, 1), 2)
-        log_call("get_availability", ZINC, 0.0, "result")
+        await bridge.search_merchants("zinc", None, None, None)
+        log_call("search_merchants", None, 0.0, "result")
 
     request_id = node.request.await_args.kwargs["request_id"]
     line = json.loads(JsonFormatter().format(caplog.records[-1]))
     assert line["batp_request"] == request_id
-    assert line["tool"] == "get_availability"
+    assert line["tool"] == "search_merchants"
     batp_request.set(None)
 
 
