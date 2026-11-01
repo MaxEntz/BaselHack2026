@@ -102,7 +102,7 @@ The node answers with one of these:
            "fallback_url": "http://localhost:8080/reservation.html"}}
 ```
 
-- `params` and `result` reuse the tool contracts of `core/models.py` (see §7), so BATP and the MCP tools can never disagree.
+- `params` and `result` reuse the tool contracts of `core.models` (see §7), so BATP and the MCP tools can never disagree.
 - An error is never a stack trace (AGENTS.md §12). `error.code` is one of AGENTS.md §8.4, or `too_many_requests` with a `429` (§8).
 - `fallback_url` is present for `agent_unavailable` and `party_too_large`.
 - `merchant` is required for `AVAILABILITY`, `BOOK`, `AMEND` and `CANCEL`, and must be absent for the other intents (`400` otherwise).

@@ -2,7 +2,7 @@
 
 The single source for tool fields, routes and validation rules. Issue [#2](https://github.com/MaxEntz/BaselHack2026/issues/2) froze these files:
 
-- `code/packages/core/src/core/models.py`: tool inputs, outputs and shared values.
+- `code/packages/core/src/core/models/`: tool inputs, outputs and shared values, in four modules (`base`, `tools`, `management`, `chat`) that `core.models` re-exports.
 - `code/packages/core/src/core/errors.py`: business exceptions and their error codes.
 - `code/packages/agent/src/agent/service.py`: the async `AgentService` protocol.
 - `code/web/src/types.ts`: chat and live-notification events.
@@ -197,7 +197,7 @@ data: {"type":"done"}
   - Only guests' changes are sent: a merchant cancellation, a booking with `via = 'merchant'`, or any change a merchant operation made, sends nothing ([#81](https://github.com/MaxEntz/BaselHack2026/issues/81)). A merchant operation marks its transaction (`core.db.as_merchant`, the transaction-local `sesame.actor`), and `notify_reservation()` passes it on as `actor` (migration `0005`, #134): a move from the management site is the merchant's, an update by `update_reservation` the guest's.
   - `via` is the channel the booking was made through; `date` is its day in `MERCHANT_TZ`.
   - The listener reconnects after 1, 2, 4 then 10 s; each open stream keeps at most 100 pending events (oldest dropped).
-- `ChatEvent` and `LiveEvent` live in `core/models.py` and `web/src/types.ts`: change both together.
+- `ChatEvent` and `LiveEvent` live in `core.models` (`chat.py`) and `web/src/types.ts`: change both together.
 - Mocks: `code/web/src/mocks/onboarding.json`, `tonight.json` and `cards.json` are ordered arrays of chat events, `notification.json` one live event, `session.json` a `SessionOutput`. The onboarding profile matches the Python fixture's 44-seat plan, and the live booking appears in tonight's reservations.
 
 ## Management site (#129)
