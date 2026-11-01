@@ -2,7 +2,7 @@
 agent's tests, the node's (#249) and the guest agent's (#252)."""
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -76,15 +76,21 @@ class ScriptedLLM:
 
 
 class Node:
-    """A node serving `MerchantAgents` with the agent on `llm` (none: no OPENAI_API_KEY)."""
+    """A node serving `MerchantAgents` with the agent on `llm` (none: no OPENAI_API_KEY), on
+    `clock` (by default `NOW`; the e2e tests pass the real one)."""
 
     def __init__(
-        self, engine: AsyncEngine, llm: ScriptedLLM | None, limits: TalkLimits | None = None
+        self,
+        engine: AsyncEngine,
+        llm: ScriptedLLM | None,
+        limits: TalkLimits | None = None,
+        *,
+        clock: Callable[[], datetime] = lambda: NOW,
     ) -> None:
-        service = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
+        service = PgAgentService(engine, tz=TZ, clock=clock)
         talker = None
         if llm is not None:
-            talker = MerchantAgent(llm, service, registry_merchants(engine), TZ, clock=lambda: NOW)
+            talker = MerchantAgent(llm, service, registry_merchants(engine), TZ, clock=clock)
         agents = MerchantAgents(engine, service, talker, limits)
         self.server = NodeServer(
             node=NODE,
