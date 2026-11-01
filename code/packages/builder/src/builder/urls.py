@@ -1,11 +1,11 @@
 """The website's addresses as the crawl and the extraction compare them: pure functions."""
 
 import re
-import unicodedata
 from collections.abc import Sequence
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 from core.errors import InvalidInput
+from core.text import strip_accents
 
 # AGENTS.md §8.3: the secondary pages worth reading, matched on a link's path or text, in
 # English, French and German (Speisekarte, Öffnungszeiten, Kontakt: most Basel sites).
@@ -77,7 +77,8 @@ def useful_links(links: Sequence[Sequence[str]], home: str, max_pages: int) -> l
             continue
         if page_key(href) in seen:
             continue
-        if USEFUL_LINK.search(_fold(unquote(parts.path))) or USEFUL_LINK.search(_fold(text)):
+        # Without accents, so that "Réserver" matches `reserv`.
+        if any(USEFUL_LINK.search(strip_accents(part)) for part in (unquote(parts.path), text)):
             seen.add(page_key(href))
             found.append(urlunsplit(parts._replace(fragment="")))
     return found
@@ -95,8 +96,3 @@ def page_name(url: str) -> str:
     if not segments:
         return parts.query or parts.netloc
     return re.sub(r"\.\w{2,5}$", "", segments[-1])
-
-
-def _fold(text: str) -> str:
-    """Without accents, so that "Réserver" matches `reserv`."""
-    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))

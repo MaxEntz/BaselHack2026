@@ -13,7 +13,7 @@ started, and an update's idempotency key (ADR-0013).
 """
 
 from collections.abc import Callable, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -46,16 +46,25 @@ def candidate_tables(
     return current + [t for t in fitting if t.id != current_id]
 
 
+def not_a_start(given: str, day: date, valid: Sequence[str]) -> str:
+    """The refusal of `given` (local `HH:MM` times) on `day`, naming the day's `valid` starts."""
+    listed = ", ".join(valid) or "none"
+    return f"{given} is not a start time on {day:%Y-%m-%d}; valid times: {listed}"
+
+
+def off_the_grid(services: Sequence[Service], start: datetime, tz: ZoneInfo) -> str:
+    """`not_a_start` for the instant `start`: its local time, its day and that day's starts."""
+    local = start.astimezone(tz)
+    valid = [times.hhmm(s, tz) for s in bookable_starts(services, local.date(), tz)]
+    return not_a_start(times.hhmm(local), local.date(), valid)
+
+
 def check_start(
     services: Sequence[Service], start: datetime, *, now: datetime, tz: ZoneInfo
 ) -> None:
     """Raise `SlotUnavailable` unless `start` is a future start time of a service."""
     if not is_bookable_start(services, start, tz):
-        local = start.astimezone(tz)
-        valid = ", ".join(s.strftime("%H:%M") for s in bookable_starts(services, local.date(), tz))
-        raise SlotUnavailable(
-            f"{local:%H:%M} is not a start time on {local:%Y-%m-%d}; valid times: {valid or 'none'}"
-        )
+        raise SlotUnavailable(off_the_grid(services, start, tz))
     if times.utc(start) <= times.utc(now):
         raise SlotUnavailable(f"{times.day_and_time(start, tz)} is in the past")
 

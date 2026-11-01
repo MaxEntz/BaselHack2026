@@ -1,9 +1,10 @@
 """`PgAgentService`, the Postgres implementation of the `AgentService` protocol.
 
 The protocol lives in `agent.protocol` and is re-exported here, with `MerchantCancellation` and
-`AgentStatus`: callers import them from `agent.service`. Claude's side books here; a booking's
-write on a table, and the rules a write checks first, are `agent.writes`'. The merchant's side
-delegates to `agent.admin` and `agent.site_forms`, each call in one `merchant_conn` transaction.
+`AgentStatus` (`core.models`): callers import them from `agent.service`. Claude's side books
+here; a booking's write on a table, and the rules a write checks first, are `agent.writes`'. The
+merchant's side delegates to `agent.admin` and `agent.site_forms`, each call in one
+`merchant_conn` transaction.
 """
 
 import logging
@@ -14,7 +15,6 @@ from typing import Literal, NoReturn, Self, overload
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import insert, select, update
-from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from agent import activity, admin, notices, site_forms
@@ -22,7 +22,6 @@ from agent.activity import GUEST_SOURCE
 from agent.guests import same_guest
 from agent.merchant import Merchant, load_merchant
 from agent.protocol import AgentService as AgentService
-from agent.protocol import AgentStatus as AgentStatus
 from agent.protocol import MerchantCancellation as MerchantCancellation
 from agent.times import day_and_time, day_bounds, during, parse_hhmm, utc
 from agent.writes import (
@@ -33,14 +32,16 @@ from agent.writes import (
     first_free,
     moved_to,
 )
-from core.availability import BusyInterval, find_slots
+from core.availability import find_slots
 from core.config import get_settings
 from core.db import (
     AnyRow,
-    blocked_slots_t,
+    blocked_between,
+    busy_between,
     merchant_conn,
     merchants_t,
     next_reservation_id,
+    reservation_confirmed,
     reservation_start,
     reservations_t,
     tables_t,
@@ -65,6 +66,7 @@ from core.models import (
     Tag,
     Via,
 )
+from core.models import AgentStatus as AgentStatus
 
 log = logging.getLogger(__name__)
 
@@ -135,23 +137,12 @@ class PgAgentService:
             merchant = await load_merchant(conn, slug)
             merchant.check_party(party_size)
             day_start, day_end = day_bounds(day, self.tz)
-            busy_rows = await conn.execute(
-                select(reservations_t.c.table_id, reservations_t.c.during).where(
-                    reservations_t.c.status == "confirmed",
-                    reservations_t.c.during.overlaps(
-                        Range(day_start, utc(day_end) + merchant.slot_length)
-                    ),
-                )
-            )
-            blocked = await conn.scalars(
-                select(blocked_slots_t.c.starts_at).where(
-                    blocked_slots_t.c.starts_at >= day_start, blocked_slots_t.c.starts_at < day_end
-                )
-            )
+            busy = await busy_between(conn, day_start, utc(day_end) + merchant.slot_length)
+            blocked = await blocked_between(conn, day_start, day_end)
             slots = find_slots(
                 services=merchant.services,
                 tables=merchant.tables,
-                busy=[BusyInterval(r.table_id, r.during.lower, r.during.upper) for r in busy_rows],
+                busy=busy,
                 blocked=set(blocked),
                 day=day,
                 tz=self.tz,
@@ -331,7 +322,7 @@ class PgAgentService:
                 rows = await conn.execute(
                     select(*_RESERVATION_COLUMNS)
                     .join(tables_t, tables_t.c.id == reservations_t.c.table_id)
-                    .where(reservations_t.c.status == "confirmed", reservation_start > now)
+                    .where(reservation_confirmed, reservation_start > now)
                 )
                 reservations += [
                     self._from_row(slug, row)

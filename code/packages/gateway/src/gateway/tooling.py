@@ -1,29 +1,39 @@
 """What the shared endpoint's booking tools and each merchant's own have in common (#23, #220).
 
 Both MCP servers expose the same 4 booking tools: the same hints, argument types, rule for writes
-and bodies. They differ only in where the merchant comes from (an argument, or the path) and in
-the sentences that open each description. Claude reads these texts: they are a contract (#14,
-#109), so a change here changes what both endpoints tell it.
+and bodies (`Tools`). They differ only in where the merchant comes from (an argument, or the path)
+and in the sentences that open each description. Claude reads these texts: they are a contract
+(#14, #109), so a change here changes what both endpoints tell it.
 """
 
 import textwrap
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime
+from functools import partial
 from typing import Annotated
 
 from mcp.types import ToolAnnotations
 from pydantic import Field, PositiveInt
+from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent import discovery
+from core.config import Settings
 from core.models import (
     HHMM,
     BookingDay,
     BookingTime,
     CancelOutput,
     GetAvailabilityOutput,
+    GetMyReservationsOutput,
     GuestText,
     ReservationOutput,
+    SearchFilters,
+    SearchMerchantsOutput,
+    ToolError,
     UpdateReservationInput,
 )
 from gateway.agent_client import AgentClient
+from gateway.fallback import call_merchant, call_service
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 IDEMPOTENT_WRITE = ToolAnnotations(
@@ -103,7 +113,7 @@ def confirm_rule(chosen: str, calls: str) -> str:
 async def availability(
     agent: AgentClient, merchant: str, day: date, party_size: int, time: str | None
 ) -> GetAvailabilityOutput:
-    """`get_availability`: up to 3 slots, as the agent found them."""
+    """`get_availability`: up to `MAX_SLOTS` slots, as the agent found them."""
     slots = await agent.get_availability(merchant, day, party_size, time)
     return GetAvailabilityOutput(slots=tuple(slots))
 
@@ -164,3 +174,110 @@ async def cancel(
     """`cancel_reservation`, as the guest named."""
     await agent.cancel_reservation(merchant, reservation_id, guest_name)
     return CancelOutput(status="cancelled")
+
+
+async def my_reservations(agent: AgentClient, guest_name: str) -> GetMyReservationsOutput:
+    """`get_my_reservations`: the guest's upcoming bookings and notices."""
+    reservations, notices = await agent.get_my_reservations(guest_name)
+    return GetMyReservationsOutput(reservations=tuple(reservations), notices=tuple(notices))
+
+
+class Tools:
+    """What the user tools do once the SDK has checked their arguments; they never raise.
+
+    A booking tool is routed to its merchant (`fallback.call_merchant`): the shared endpoint
+    names it in an argument, a merchant's own endpoint in its path, with the deadline that
+    endpoint's check started (#92). Writes take keywords only, as the helpers above do.
+    """
+
+    def __init__(self, agent: AgentClient, engine: AsyncEngine, settings: Settings) -> None:
+        self.agent = agent
+        self.engine = engine
+        self.settings = settings
+
+    async def search_merchants(
+        self, query: str, near: str | None, day: date | None, filters: SearchFilters | None
+    ) -> SearchMerchantsOutput | ToolError:
+        """The search, once `discovery.check_search` let it through; when the service can't
+        answer, the link of the merchant the query names, if any."""
+
+        async def op() -> SearchMerchantsOutput:
+            await discovery.check_search(query, filters, engine=self.engine)
+            return await self.agent.search_merchants(query, near, day, filters)
+
+        named = partial(discovery.find_named_merchant, query, engine=self.engine)
+        return await call_service("search_merchants", op, settings=self.settings, named=named)
+
+    async def get_availability(
+        self,
+        slug: str,
+        day: date,
+        party_size: int,
+        time: str | None,
+        *,
+        deadline: float | None = None,
+    ) -> GetAvailabilityOutput | ToolError:
+        op = partial(availability, self.agent, slug, day, party_size, time)
+        return await self._routed("get_availability", slug, op, deadline)
+
+    async def create_reservation(
+        self,
+        slug: str,
+        *,
+        starts_at: datetime,
+        party_size: int,
+        guest_name: str,
+        idempotency_key: str,
+        deadline: float | None = None,
+    ) -> ReservationOutput | ToolError:
+        op = partial(
+            book,
+            self.agent,
+            merchant=slug,
+            starts_at=starts_at,
+            party_size=party_size,
+            guest_name=guest_name,
+            idempotency_key=idempotency_key,
+        )
+        return await self._routed("create_reservation", slug, op, deadline)
+
+    async def update_reservation(
+        self,
+        slug: str,
+        *,
+        reservation_id: str,
+        guest_name: str,
+        idempotency_key: str,
+        starts_at: datetime | None,
+        party_size: int | None,
+        deadline: float | None = None,
+    ) -> ReservationOutput | ToolError:
+        op = partial(
+            update,
+            self.agent,
+            merchant=slug,
+            reservation_id=reservation_id,
+            guest_name=guest_name,
+            idempotency_key=idempotency_key,
+            starts_at=starts_at,
+            party_size=party_size,
+        )
+        return await self._routed("update_reservation", slug, op, deadline)
+
+    async def cancel_reservation(
+        self, slug: str, *, reservation_id: str, guest_name: str, deadline: float | None = None
+    ) -> CancelOutput | ToolError:
+        op = partial(
+            cancel, self.agent, merchant=slug, reservation_id=reservation_id, guest_name=guest_name
+        )
+        return await self._routed("cancel_reservation", slug, op, deadline)
+
+    async def get_my_reservations(self, guest_name: str) -> GetMyReservationsOutput | ToolError:
+        op = partial(my_reservations, self.agent, guest_name)
+        return await call_service("get_my_reservations", op, settings=self.settings)
+
+    async def _routed[T](
+        self, tool: str, slug: str, op: Callable[[], Awaitable[T]], deadline: float | None
+    ) -> T | ToolError:
+        find = partial(discovery.find_merchant, slug, engine=self.engine)
+        return await call_merchant(slug, tool, find, op, settings=self.settings, deadline=deadline)

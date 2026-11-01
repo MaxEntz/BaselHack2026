@@ -19,14 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from batp.codec import encode
 from batp.messages import AgentIdentity, Request, Response
 from core.db import agent_requests_t, make_engine, merchants_t
+from core.models import PUBLISHED_STATUSES
 
 log = logging.getLogger("merchant_node.requests_log")
 
 KEEP = timedelta(days=7)
 # Records waiting for the log's connection beyond this are dropped (a burst, or Postgres slow).
 MAX_PENDING = 100
-# Published agents only: what a merchant's Agent page shows (`building` ones answer 404).
-PUBLISHED = ("live", "down")
 
 
 def log_engine(url: str | None = None) -> AsyncEngine:
@@ -65,7 +64,11 @@ class RequestLog:
             literal(response.status),
             literal(_frame(request), Text),
             literal(_frame(response), Text),
-        ).where(merchants_t.c.slug == request.merchant, merchants_t.c.status.in_(PUBLISHED))
+        ).where(
+            merchants_t.c.slug == request.merchant,
+            # Published agents only: what an Agent page shows (`building` ones answer 404).
+            merchants_t.c.status.in_(PUBLISHED_STATUSES),
+        )
         columns = ["merchant_slug", "agent_name", "intent", "status", "request", "response"]
         async with self.engine.begin() as conn:
             # Selected from the registry: an unknown or unpublished merchant leaves no row.

@@ -5,6 +5,7 @@ they publish. BOOK makes a real booking under `TEST_GUEST`, like the assistant's
 `send_test_booking`; AMEND and CANCEL act on that guest's latest booking here.
 """
 
+from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from typing import Any
 from uuid import uuid4
@@ -32,17 +33,29 @@ NO_BOOKING = "R-000"
 # Asked for when the merchant is hidden and has no slot to offer: the node refuses it anyway.
 NOON = time(12)
 
+Clock = Callable[[], datetime]
+
 
 async def try_intent(
-    settings: Settings, agent: AgentService, slug: str, intent: Intent
+    settings: Settings,
+    agent: AgentService,
+    slug: str,
+    intent: Intent,
+    *,
+    clock: Clock | None = None,
 ) -> AgentTryOutput:
-    """The frames as sent and answered; the node's refusals are answers, not errors."""
+    """The frames as sent and answered; the node's refusals are answers, not errors.
+
+    `clock` returns the current time (tests inject a fixed one), whose local day the frames ask
+    about.
+    """
     if not settings.batp_url:
         raise AgentUnavailable(NO_NODE)
     host, port = parse_batp_url(settings.batp_url)
     token = settings.batp_token.get_secret_value() if settings.batp_token else None
     tz = ZoneInfo(settings.merchant_tz)
-    merchant, params = await _frame_for(agent, slug, intent, tz)
+    now = clock() if clock is not None else datetime.now(tz)
+    merchant, params = await _frame_for(agent, slug, intent, now.astimezone(tz).date(), tz)
     async with BatpClient(host, port, STUDIO_AGENT, token) as client:
         # Each press is its own session: a number would read `r-1` every time.
         request, response = await client.exchange(
@@ -56,9 +69,8 @@ async def try_intent(
 
 
 async def _frame_for(
-    agent: AgentService, slug: str, intent: Intent, tz: ZoneInfo
+    agent: AgentService, slug: str, intent: Intent, today: date, tz: ZoneInfo
 ) -> tuple[str | None, dict[str, Any]]:
-    today = datetime.now(tz).date()
     match intent:
         case "PING":
             return None, {}

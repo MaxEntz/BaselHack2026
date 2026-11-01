@@ -1,4 +1,5 @@
-"""The management site's booking operations (#134): a day, its slots, add, move and cancel.
+"""The management site's booking operations (#134): a day, its slots, add, move and cancel,
+and Home's dashboard and the search box, which read the same bookings (`ManagementService`).
 
 Separate from the `AgentService` protocol, which serves Claude and the admin tools: these answer
 the shapes of `core.models` for the `/merchants/{slug}` routes. Writes go through the same
@@ -13,7 +14,6 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import ColumnElement, select
-from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from agent import activity, dashboard, notices
@@ -29,11 +29,12 @@ from agent.writes import (
     first_free,
     moved_to,
 )
-from core.availability import BusyInterval, bookable_starts, pick_table
+from core.availability import bookable_starts, pick_table
 from core.db import (
     AnyRow,
     as_merchant,
-    blocked_slots_t,
+    blocked_between,
+    busy_between,
     merchant_conn,
     reservation_start,
     reservations_t,
@@ -41,6 +42,7 @@ from core.db import (
 )
 from core.errors import InvalidInput, NotFound, SlotUnavailable
 from core.models import (
+    SEARCH_LIMIT,
     Dashboard,
     DaySlot,
     DaySlots,
@@ -54,8 +56,6 @@ from core.models import (
 )
 
 log = logging.getLogger(__name__)
-
-SEARCH_LIMIT = 8
 
 _MANAGED_COLUMNS = (
     reservations_t.c.id,
@@ -90,11 +90,7 @@ class ManagementService:
         start, end = day_bounds(day, self.tz)
         async with merchant_conn(self.engine, slug) as conn:
             merchant = await load_merchant(conn, slug, merchant_side=True)
-            blocked = await conn.scalars(
-                select(blocked_slots_t.c.starts_at)
-                .where(blocked_slots_t.c.starts_at >= start, blocked_slots_t.c.starts_at < end)
-                .order_by(blocked_slots_t.c.starts_at)
-            )
+            blocked = await blocked_between(conn, start, end)
             bookings = await self._managed(
                 conn, reservation_start >= start, reservation_start < end
             )
@@ -104,7 +100,7 @@ class ManagementService:
             starts=tuple(
                 hhmm(s, self.tz) for s in bookable_starts(merchant.services, day, self.tz)
             ),
-            slot_length_min=int(merchant.slot_length.total_seconds() // 60),
+            slot_length_min=merchant.slot_length_min,
             largest_group=merchant.largest_group,
             blocked=tuple(hhmm(moment, self.tz) for moment in blocked),
             reservations=tuple(bookings),
@@ -122,29 +118,10 @@ class ManagementService:
         left_out = ignore.strip().upper() if ignore else None
         async with merchant_conn(self.engine, slug) as conn:
             merchant = await load_merchant(conn, slug, merchant_side=True)
-            busy_query = select(
-                reservations_t.c.id,
-                reservations_t.c.table_id,
-                reservations_t.c.during,
-                reservations_t.c.party_size,
-            ).where(
-                reservations_t.c.status == "confirmed",
-                reservations_t.c.during.overlaps(Range(start, utc(end) + merchant.slot_length)),
-            )
-            rows = (await conn.execute(busy_query)).all()
-            busy = [
-                BusyInterval(row.table_id, row.during.lower, row.during.upper)
-                for row in rows
-                if row.id != left_out
-            ]
-            moving = next((row for row in rows if row.id == left_out), None)
-            blocked = set(
-                await conn.scalars(
-                    select(blocked_slots_t.c.starts_at).where(
-                        blocked_slots_t.c.starts_at >= start, blocked_slots_t.c.starts_at < end
-                    )
-                )
-            )
+            held = await busy_between(conn, start, utc(end) + merchant.slot_length)
+            busy = [booked for booked in held if booked.reservation_id != left_out]
+            moving = next((booked for booked in held if booked.reservation_id == left_out), None)
+            blocked = set(await blocked_between(conn, start, end))
         now = utc(self.clock())
         own_party = moving is not None and moving.party_size == party_size
         fits = party_size <= merchant.max_party_size or own_party
@@ -246,9 +223,9 @@ class ManagementService:
             )
 
     async def search(self, slug: str, q: str) -> SearchOutput:
-        """Up to 8 bookings of the next 7 days by guest name or reference, cancelled included;
-        names compare as the Guests page groups them (`guest_key`: case, accents and spacing),
-        so that "zoe" finds Zoé Huber in both search boxes."""
+        """Up to `SEARCH_LIMIT` bookings of the next 7 days by guest name or reference, cancelled
+        included; names compare as the Guests page groups them (`guest_key`: case, accents and
+        spacing), so that "zoe" finds Zoé Huber in both search boxes."""
         wanted = guest_key(q)
         if not wanted:
             return SearchOutput(reservations=())

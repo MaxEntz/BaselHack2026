@@ -23,6 +23,11 @@ class Merchant:
     tables: tuple[TableRow, ...]
 
     @property
+    def slot_length_min(self) -> int:
+        """How long a booking holds its table, in minutes, as the policy stores it."""
+        return int(self.slot_length.total_seconds() // 60)
+
+    @property
     def largest_group(self) -> int:
         """The largest party it takes online: its limit, or its largest table when smaller."""
         return min(self.max_party_size, max((t.seats for t in self.tables), default=0))

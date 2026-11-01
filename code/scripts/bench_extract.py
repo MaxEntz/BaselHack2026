@@ -52,7 +52,7 @@ NO_DATABASE = "postgresql+psycopg://unused/bench"
 def settings() -> Settings:
     """`code/.env`'s OPENAI_API_KEY, OPENAI_MODEL and BUILDER_REASONING_EFFORT, as the
     builder reads them."""
-    return Settings(_env_file=ENV_FILE, database_url=NO_DATABASE)  # type: ignore[call-arg]
+    return Settings(_env_file=ENV_FILE, database_url=NO_DATABASE)
 
 
 Check = Callable[[ExtractionResult], bool]

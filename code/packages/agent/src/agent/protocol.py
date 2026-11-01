@@ -12,6 +12,7 @@ from typing import Literal, Protocol, overload
 from core.models import (
     AdminReservationRow,
     AgentRequest,
+    AgentStatus,
     BlockedTime,
     GuestRow,
     MerchantCancelOutcome,
@@ -27,9 +28,6 @@ from core.models import (
     Tag,
     Via,
 )
-
-# What the merchant can switch its published agent to: paused (`down`) or `live` (#146).
-AgentStatus = Literal["live", "down"]
 
 
 @dataclass(frozen=True)

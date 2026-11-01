@@ -1,6 +1,6 @@
 """The only definition of a guest: bookings, changes, lookups and the Guests page use it (#77)."""
 
-import unicodedata
+from core.text import strip_accents
 
 
 def guest_key(name: str) -> str:
@@ -10,10 +10,9 @@ def guest_key(name: str) -> str:
     is "weiss") and accents are dropped ("Müller" is "muller", #144), none of which SQL's
     `lower` and `\\s` match.
     """
-    decomposed = unicodedata.normalize("NFKD", name)
-    bare = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return " ".join(bare.split()).casefold()
+    return " ".join(strip_accents(name).split()).casefold()
 
 
 def same_guest(given: str, booked: str) -> bool:
+    """Whether the name `given` now is the guest `booked` under: equal `guest_key`s."""
     return guest_key(given) == guest_key(booked)
