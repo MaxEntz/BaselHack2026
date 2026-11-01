@@ -96,6 +96,24 @@ La Graine Verte holds the management mockup's 30 days of data (#131).
 2. Open that link. Home shows the mockup's figures (982 guests over 30 days, 597 of them through the agent, 17 guests tonight) only with the clock at 19:40. On stage, the real clock moves them.
 3. Run `.venv/bin/python scripts/demo_booking.py --url http://127.0.0.1:8001/mcp` on the server: Kim Weber's booking, 20:00 for 2, arrives live as R-056 ([code/README.md](../../code/README.md#demo-data)).
 
+### Optional: two AIs talking in BATP
+
+A guest's agent with its own model talks to a merchant's AI agent, frame by frame (#252). `scripts/batp_guest.py` has two tools over `BatpClient`, `discover` and `talk`, and uses the same `OPENAI_API_KEY`. It prints every frame in both directions, with `HELLO`'s token masked. Only the person at the terminal confirms: the script sends `confirm` after they type `yes`, never the model.
+
+Port 4710 stays on loopback and SSH forwarding is disabled, so it runs **on the team server**:
+
+1. Its identity is `urn:batp:agent:sesame-guest`. Once, in `/opt/merchant-agents/code/.env`, give it its own entry in the node's `BATP_TOKENS` (`openssl rand -hex 24`), next to the gateway's and Studio's, then restart the node only: `systemctl restart merchant-node`. The script reads its token from that entry.
+2. From `/opt/merchant-agents/code`, as root:
+
+   ```bash
+   .venv/bin/python scripts/batp_guest.py "Table for 2 tonight at 8pm at Le Petit Zinc, I'm Lena Koch"
+   ```
+
+   It reads `code/.env` like the node: `OPENAI_API_KEY` (#250), `BATP_URL` and its token. Answer its questions at `you>`; an empty line ends.
+3. The booking arrives on the merchant's management site like any other, as "via Claude": every BATP booking is `via = claude` (PROTOCOL.md §15). The Agent page names the caller by its `HELLO` name, "Sésame's guest agent (demo)".
+
+Locally: `make node`, then `make guest MESSAGE="Table for 2 tonight at 8pm"`. Without `BATP_TOKENS`, a loopback node lets it in with no token.
+
 ## If something goes wrong
 
 | Symptom | Do |

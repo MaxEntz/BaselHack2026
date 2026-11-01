@@ -279,6 +279,7 @@ node logs as `request`. Without `BATP_URL`, the gateway calls the agent in its o
 | The node of this backend | `code/packages/merchant_node/` (`make node`, `uv run python -m merchant_node`), settings `BATP_HOST`, `BATP_PORT`, `BATP_TOKENS`; for `TALK`, the merchants' AI agent (`agent.talk`) on `OPENAI_API_KEY`, `OPENAI_MODEL` and `AGENT_REASONING_EFFORT`, as the builder (#249). Without a key the node still starts, and `TALK` answers `503 agent_unavailable` with the fallback URL |
 | The MCP gateway as a bridge | `gateway/agent_client.py` (`BatpAgentClient`), settings `BATP_URL`, `BATP_TOKEN` |
 | The node on the team server (loopback) | `code/deploy/merchant-node.service`, `make deploy` |
+| A guest's own AI agent, as a second caller (demo) | `code/scripts/batp_guest.py` (`make guest MESSAGE="…"`, #252): `urn:batp:agent:sesame-guest`, its token from its own `BATP_TOKENS` entry, sent only to a node on loopback. It sends `confirm` only after the person's yes at the terminal, and resends a `TALK` once with the same key after a lost session |
 | RFC-style Internet-Draft of this spec | `documentation/rfc/` (`.md` source; `.xml`, `.txt` and `.html` built by `make rfc` from `code/`, which also regenerates the JSON schemas in `rfc/schemas/` and needs Docker and `npx`) |
 
 Without `BATP_TOKENS`, the node lets any agent in, and refuses to start unless it listens on loopback. The node reads the OpenAI key from its own settings (`code/.env` on the team server, #250) and never logs it.
