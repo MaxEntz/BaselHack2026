@@ -23,7 +23,11 @@ describe("profile card", () => {
   it("says Copied for a while, and leaves no timer behind once gone (#220)", async () => {
     if (PROFILE?.type !== "card" || PROFILE.kind !== "profile") throw new Error("no profile card");
     vi.useFakeTimers();
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
     try {
       const { unmount } = render(<CardView card={PROFILE} />);
       const [first] = screen.getAllByRole("button", { name: "Copy" });
@@ -37,6 +41,8 @@ describe("profile card", () => {
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else Reflect.deleteProperty(navigator, "clipboard");
     }
   });
 

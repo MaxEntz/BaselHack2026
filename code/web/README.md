@@ -11,6 +11,7 @@ VITE_MOCK=1 npm run dev    # no backend: replays src/mocks/*.json
 npm run build              # tsc (strict) + vite build
 npm run lint
 npm run check:contracts    # mocks vs src/types.ts
+npm run check:bundle       # after npm run build: no mock, fixture or gallery in dist/ (#220)
 npm test                   # tests/*.test.ts on Node's own runner (Node version: ../README.md), then Vitest (src/**/*.test.tsx)
 npx playwright install chromium   # once
 npm run test:e2e           # Playwright (e2e/), 1440 px, starts Vite in mock mode on :5179
@@ -38,10 +39,12 @@ Open <http://localhost:5173/?gallery> to review every management primitive and e
 profile, reservations incl. empty, stats, policy, notifications, errors). It exists in development and with
 `VITE_MOCK=1` only.
 
-A production build (`npm run build`) holds no mock, demo fixture, demo restaurant or gallery (#220): they
-are read through `import.meta.env.VITE_MOCK` written in full, which Vite replaces at build time, and loaded
-with dynamic `import()`. The mock build inlines those imports (`vite.config.ts`), so that it ships one chunk
-and one stylesheet in the production order, as the screenshots need.
+A production build (`npm run build`) holds no mock, demo fixture or gallery, and no demo restaurant unless
+`VITE_DEMO=1` (#220): they are read through `import.meta.env.VITE_MOCK` written in full, which Vite replaces
+at build time, and loaded with dynamic `import()`. `npm run check:bundle`, after the build (the CI `web` job
+runs it), fails if `dist/` holds one of them or any `.jpg`. The mock build inlines those imports
+(`vite.config.ts`), so that it ships one chunk and one stylesheet in the production order, as the
+screenshots need.
 
 ## Environment
 

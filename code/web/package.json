@@ -11,6 +11,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "check:contracts": "node scripts/check-mocks.mjs",
+    "check:bundle": "node scripts/check-bundle.mjs",
     "preview": "vite preview",
     "test": "node --test \"tests/*.test.ts\" && vitest run",
     "test:e2e": "playwright test",

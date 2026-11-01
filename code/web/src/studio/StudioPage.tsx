@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent } from "react";
 import { merchantMcpUrl } from "../cards/format.ts";
 import { useChat, type Welcome } from "../chat/useChat.ts";
 import { copyText } from "../clipboard.ts";
+import { composing } from "../ime.ts";
 import { managementClient } from "../management/index.ts";
 import { crossfade } from "../management/motion.ts";
 import type { BuildAgentOutput, BuildFact, MerchantOverview, Moment, Service, SitePage } from "../types.ts";
@@ -349,8 +350,7 @@ export function StudioPage() {
     say(input);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // An Enter that ends an IME composition picks the word: it doesn't send.
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey && !composing(event)) {
       event.preventDefault();
       say(input);
     }
