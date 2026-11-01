@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     openai_reasoning_effort: str | None = "low"
     # Reasoning effort of the builder's extraction (spike #4: `none` is as accurate, faster).
     builder_reasoning_effort: str | None = "none"
+    # Reasoning effort of the merchants' agents, run by the BATP node (#246).
+    agent_reasoning_effort: str | None = "low"
     builder_cache: Literal["read_write", "read_only", "off"] = "read_write"
     crawl_allow_private: bool = False
     # BATP node (documentation/PROTOCOL.md): loopback only in the POC (ADR-0011).
