@@ -24,9 +24,10 @@ Guests have no page of ours: their agent reaches the merchant through the protoc
 | Term | Meaning |
 |---|---|
 | **Gateway** | The public remote MCP server Claude connects to: discovery, preference filtering, routing, fallback. Deployed, it is a bridge to the BATP node. |
-| **BATP** | Broad Agent Transfer Protocol, our agent-only protocol: TCP port 4710, one JSON frame per line ([ADR-0011](documentation/adr/0011-our-own-agent-protocol-matp-with-mcp-as-bridge.md), [ADR-0014](documentation/adr/0014-rename-matp-to-batp.md)). |
+| **BATP** | Broad Agent Transfer Protocol, our agent-only protocol: TCP port 4710, one JSON frame per line, version 0.2 ([ADR-0011](documentation/adr/0011-our-own-agent-protocol-matp-with-mcp-as-bridge.md), [ADR-0014](documentation/adr/0014-rename-matp-to-batp.md), [ADR-0021](documentation/adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md)). |
+| **`TALK`** | The BATP 0.2 intent by which a guest's agent talks with the merchant's AI agent in natural language (#245); only its `reply` is the model's text. A write it proposes (`pending`) runs only on a later `confirm` (#247). |
 | **Node** | The BATP server that serves this backend's merchant agents (`merchant_node`). |
-| **Merchant agent** | One merchant's booking logic and data. Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's Postgres schema. |
+| **Merchant agent** | One merchant's booking logic and data, and from BATP 0.2 its AI agent that guests' agents talk to (`TALK`, served by the node from #249). Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's Postgres schema. |
 | **Builder** | Pipeline that turns *website + description* into a validated `MerchantProfile`, then provisions the agent. |
 | **Platform assistant** | The LLM assistant merchants chat with on our platform. Uses admin tools on the merchant's agent. |
 | **MerchantProfile** | Validated JSON describing a merchant (`core.models.MerchantProfile`). Single input to provisioning. |
@@ -184,7 +185,7 @@ Every tool error is `{ "error": <code>, "message": str, "fallback_url"?: str }`.
 
 | Code | When | `fallback_url` |
 |---|---|---|
-| `agent_unavailable` | Agent or node timeout (> **2 s** for the whole call), exception, or merchant `down` | yes |
+| `agent_unavailable` | Agent or node timeout (> **2 s** for the whole call; a `TALK` gets 25 s on the node and `AGENT_TALK_TIMEOUT_MS`, 30 s, at the gateway, #251), exception, or merchant `down` | yes |
 | `party_too_large` | Party above `max_party_size`, or no table fits | yes |
 | `slot_unavailable` | Slot taken or blocked, or booking already started | no |
 | `not_found` | Unknown merchant or reservation | no |

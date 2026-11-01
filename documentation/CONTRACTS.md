@@ -19,7 +19,7 @@ A contract change needs a dedicated PR and a message to the team, with Python an
 ### Identifiers and text
 - A slug is `^[a-z0-9-]{3,61}$` (`Slug`).
 - `guest_name`, `idempotency_key` and `reservation_id` are stripped and must not be blank.
-- No `NonEmptyStr` holds a control character (Unicode `Cc`: NUL, tab, newline…). Spaces (non-breaking included) and letters of any script are kept.
+- No `NonEmptyStr` holds a control character (Unicode `Cc`: NUL, tab, newline…). Spaces (non-breaking included) and letters of any script are kept. The one exception is a `TALK` message (`TalkMessage`), which may hold newlines (below).
 - Guest-side text (`GuestText`: guest names, keys, references) is at most 200 characters.
 - `search_merchants`: `query` at most 500 characters, at most 32 `filters.tags` (`agent.discovery.MAX_QUERY`, `MAX_TAGS`, shared with BATP `DISCOVER`).
 - Search filters accept unknown tag strings (reported back in `ignored_filters`) but reject unknown filter names.
@@ -125,6 +125,24 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 - `cancel_by_merchant` returns `notified` (guest notice stored), `ended` (booking over, no notice), `own_booking` (the merchant made it, no notice; from #134), `guest_cancelled` or `already_cancelled` (nothing changed); `core.models.MerchantCancelOutcome`. The card never says a notice was sent when none was stored ([#82](https://github.com/MaxEntz/BaselHack2026/issues/82)).
 - `update_tables` refuses to remove a table that bookings refer to.
 - `AgentService.set_status(slug, "down" | "live")` pauses or resumes a published agent ([#146](https://github.com/MaxEntz/BaselHack2026/issues/146)): `down` sends Claude and other agents to the booking page, while the website keeps booking. A `building` merchant is `invalid_input` (only `deploy` publishes), an unknown one `not_found`. The Agent page calls it through `POST /agent/pause` and `/agent/resume`; not an admin tool of the assistant.
+
+## Talking to a merchant's agent: BATP `TALK` (#245)
+
+`params` and `result` of the `TALK` intent ([PROTOCOL.md §7](PROTOCOL.md#7-intents), [ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md)), in `core.models`. On the wire the merchant is the request's `merchant`, as for the other addressed intents.
+
+| Model | Fields |
+|---|---|
+| `TalkInput` | `merchant` (`Slug`), `message` (`TalkMessage`), `idempotency_key` (`GuestText`), `conversation?` (`OpaqueId`), `confirm?` (`OpaqueId`) |
+| `TalkOutput` | `conversation` (`OpaqueId`), `reply` (at most 2000 characters), `slots` (`Slot[]`, default empty), `pending` (`PendingAction` or null), `reservation` (`Reservation` or null), `fallback_url` (or null), `tools_called` (`ToolName[]`, default empty) |
+| `PendingAction` | `id` (`OpaqueId`), `action` (`PendingKind`: `book`, `change`, `cancel`), `summary` (1 to 500 characters), `expires_at` (with its UTC offset) |
+
+- `TalkMessage`: 1 to 2000 characters (`MAX_TALK_TEXT`) once stripped; a newline is allowed, any other control character is `invalid_input`.
+- `OpaqueId`: `^[A-Za-z0-9_-]{1,64}$`. The agent makes conversation and proposal ids random, with at least 128 bits.
+- `confirm` needs `conversation`: a proposal only exists in a conversation. It is sent only after the guest's explicit yes (#247).
+- `ToolName`: `^[a-z][a-z0-9_]{0,63}$`, names only, never arguments.
+- Only `reply` is the model's text. Code builds every other field of `TalkOutput` from tool results.
+- `200` means the agent answered, a refusal included. `404` is an unknown or not live merchant, or an unknown or expired conversation; `503 agent_unavailable` carries the fallback URL. Until #249 the node answers every `TALK` to a live merchant with that `503`.
+- A replay with the same `idempotency_key` returns the stored answer, with no model call and no write.
 
 ## BATP node request log
 

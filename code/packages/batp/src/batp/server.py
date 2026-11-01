@@ -10,7 +10,7 @@ import logging
 import secrets
 import ssl
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, NamedTuple
 
@@ -89,6 +89,10 @@ IDLE_TIMEOUT = 60.0  # no frame and no request in flight: the session ends
 HELLO_TIMEOUT = 10.0  # to say `hello` after connecting
 SEND_TIMEOUT = 10.0  # for a peer to read a frame: one that stops reading loses its session
 HANDLER_TIMEOUT = 10.0  # per request: past it, a 503
+# A `TALK` is a model turn with its tool calls, which can't fit in 10 s (#245). It stays under
+# the bridge's own deadline (`AGENT_TALK_TIMEOUT_MS`, 30 s), so the node's 503 arrives first.
+TALK_TIMEOUT = 25.0
+INTENT_TIMEOUTS: Mapping[Intent, float] = {"TALK": TALK_TIMEOUT}
 MAX_SESSIONS = 64  # open at once: one more gets a `reject` 503
 MAX_MALFORMED = 10  # malformed frames in a row before the session is closed
 
@@ -112,6 +116,7 @@ class NodeServer:
         hello_timeout: float = HELLO_TIMEOUT,
         send_timeout: float = SEND_TIMEOUT,
         handler_timeout: float = HANDLER_TIMEOUT,
+        intent_timeouts: Mapping[Intent, float] = INTENT_TIMEOUTS,
         max_in_flight: int = IN_FLIGHT_LIMIT,
         max_sessions: int = MAX_SESSIONS,
         max_malformed: int = MAX_MALFORMED,
@@ -126,7 +131,9 @@ class NodeServer:
         self.idle_timeout = idle_timeout
         self.hello_timeout = hello_timeout
         self.send_timeout = send_timeout
+        # Per request, by intent: `intent_timeouts`, else `handler_timeout`.
         self.handler_timeout = handler_timeout
+        self.intent_timeouts = dict(intent_timeouts)
         self.max_in_flight = max_in_flight
         self.max_sessions = max_sessions
         self.max_malformed = max_malformed
@@ -380,7 +387,8 @@ class NodeServer:
 
     async def _respond(self, agent: AgentIdentity, request: Request) -> Response:
         try:
-            async with asyncio.timeout(self.handler_timeout):
+            timeout = self.intent_timeouts.get(request.intent, self.handler_timeout)
+            async with asyncio.timeout(timeout):
                 result = await self.handle(agent, request)
             return Response(id=request.id, status=OK, result=result)
         except Refused as refused:

@@ -1,6 +1,8 @@
-# BATP — Broad Agent Transfer Protocol (version 0.1)
+# BATP — Broad Agent Transfer Protocol (version 0.2)
 
-> This page is a readable summary of BATP 0.1, which is implemented and deployed (§13).
+> This page is a readable summary of BATP 0.2 (§13). 0.2 adds the `TALK` intent: guests' agents
+> talk to the merchant's AI agent ([ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md)).
+> Until #249 serves that agent, the node answers `TALK` with `503` and the fallback URL.
 > The **normative** spec is the Internet-Draft
 > [`rfc/draft-merchant-agents-batp-00`](rfc/draft-merchant-agents-batp-00.md)
 > ([text](rfc/draft-merchant-agents-batp-00.txt), [HTML](rfc/draft-merchant-agents-batp-00.html)):
@@ -25,6 +27,8 @@ flowchart LR
   O["Other agent"] -->|"BATP"| N
   GW -->|"BATP, port 4710"| N["BATP node<br/>serves the merchant agents"]
   N --> DB[("PostgreSQL<br/>one schema per merchant")]
+  N -->|"TALK"| A["The merchant's AI agent<br/>LLM + guest tools, #249"]
+  A --> DB
 ```
 
 ## 2. Terms
@@ -32,11 +36,13 @@ flowchart LR
 | Term | Meaning |
 |---|---|
 | **Node** | A BATP server. It serves the merchant agents of one backend (our registry). |
-| **Merchant agent** | One merchant's booking logic and data, addressed by its slug. |
+| **Merchant agent** | One merchant's booking logic and data, addressed by its slug. From 0.2, also the merchant's AI agent that guests' agents talk to with `TALK` (ADR-0021). |
 | **Caller** | An agent that opens a session with a node: a user's assistant, or a bridge acting for one. |
 | **Session** | One TCP connection, from `HELLO` to close. |
 | **Frame** | One JSON object on one line. |
-| **Intent** | What a request asks for: `DISCOVER`, `AVAILABILITY`, `BOOK`, `AMEND`, `CANCEL`, `RECALL`, `PING`. |
+| **Intent** | What a request asks for: `DISCOVER`, `AVAILABILITY`, `BOOK`, `AMEND`, `CANCEL`, `TALK` (0.2), `RECALL`, `PING`. |
+| **Conversation** | A `TALK` exchange between a guest's agent and a merchant's agent, named by an unguessable id the node returns (§7). |
+| **Proposal** | A write the merchant's agent offers in `TALK`'s `pending`; it runs only when a later `TALK` names it in `confirm` (§7). |
 
 ## 3. Transport
 
@@ -58,7 +64,7 @@ to every merchant agent of a node.
 The caller speaks first. Until the node answers `WELCOME`, any other frame closes the session.
 
 ```json
-{"type": "hello", "batp": "0.1",
+{"type": "hello", "batp": "0.2",
  "agent": {"id": "urn:batp:agent:claude-gateway", "name": "Claude via the Sésame gateway",
            "kind": "user-agent", "operator": "merchant-agents"},
  "token": "…"}
@@ -71,15 +77,18 @@ The caller speaks first. Until the node answers `WELCOME`, any other frame close
 The node answers with one of these:
 
 ```json
-{"type": "welcome", "batp": "0.1",
+{"type": "welcome", "batp": "0.2",
  "node": {"id": "urn:batp:node:merchant-agents", "name": "Sésame"},
- "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"],
+ "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "TALK", "RECALL", "PING"],
  "session": "s-2f6c…"}
 ```
 
 ```json
 {"type": "reject", "status": 401, "message": "Unknown agent or token"}
 ```
+
+`welcome.batp` is the session's version: the highest minor both sides speak (§14). `intents`
+lists what the node serves in that version, so a `0.1` caller isn't offered `TALK`.
 
 `reject` closes the session. A `batp` major version the node does not speak gets `426`; a
 `hello` that isn't valid gets `400`.
@@ -105,7 +114,7 @@ The node answers with one of these:
 - `params` and `result` reuse the tool contracts of `core.models` (see §7), so BATP and the MCP tools can never disagree.
 - An error is never a stack trace (AGENTS.md §12). `error.code` is one of AGENTS.md §8.4, or `too_many_requests` with a `429` (§8).
 - `fallback_url` is present for `agent_unavailable` and `party_too_large`.
-- `merchant` is required for `AVAILABILITY`, `BOOK`, `AMEND` and `CANCEL`, and must be absent for the other intents (`400` otherwise).
+- `merchant` is required for `AVAILABILITY`, `BOOK`, `AMEND`, `CANCEL` and `TALK`, and must be absent for the other intents (`400` otherwise).
 - Unknown members of a **frame** are ignored, but `params` are strict: an unknown param gets `400 invalid_input`.
 - A problem that no `id` can carry (invalid JSON, unknown `type`, an `id` already in flight, a frame above 64 KiB) gets a session-level `error` frame: `{"type": "error", "status": 400, "message": "…"}`. The session stays open after a `400`, and is closed after a `413`.
 
@@ -124,8 +133,8 @@ The node answers with one of these:
 
 - `BOOK` and `AMEND` require `params.idempotency_key`. A `BOOK` replay with the same key (per merchant) and the same params returns the first booking; the same key with other params gets `400 invalid_input`. An `AMEND` replay with a key already applied (per merchant), for the same booking and params, changes nothing and returns the booking as it is now, so a late retry never undoes a newer change; another booking or other params get `400 invalid_input`, and a failed `AMEND` doesn't use up its key (#78). Like a `BOOK` replay, a replay returns the booking even if it was cancelled since. `BOOK` and `AMEND` keys are separate: one key per merchant and per intent. `CANCEL` is idempotent without a key.
 - `RECALL` returns a notice on every call for 24 hours after the first one that returned it, then never again (#91). An answer lost in transit (dropped session, the caller's timeout) loses no notice as long as the next `RECALL` comes within those 24 hours, so `RECALL` is safe to send again, and `BatpClient` resends it after a lost session like the read-only intents.
-- For a merchant marked `down`, the node itself answers `503` with the fallback URL to the addressed intents.
-- Writes (`BOOK`, `AMEND`, `CANCEL`) are only sent after the guest confirmed (AGENTS.md §6). The bridge enforces it through the MCP tool descriptions; another caller is expected to do the same.
+- For a merchant marked `down`, the node itself answers `503` with the fallback URL to the addressed intents, `TALK` included.
+- Writes (`BOOK`, `AMEND`, `CANCEL`) are only sent after the guest confirmed (AGENTS.md §6). The bridge enforces it through the MCP tool descriptions; another caller is expected to do the same. Through `TALK`, code enforces it instead: see below.
 - Merchant-side operations (`list_reservations`, `block_slot`, …) are **not** BATP intents: they stay on the merchant platform (AGENTS.md §8.2).
 
 ### `TALK` (since 0.2, #245)
@@ -163,18 +172,18 @@ offered nor served `TALK` (§14).
 | 200 | — | Success | — |
 | 400 | `invalid_input` | Unknown intent, invalid params, missing or unexpected `merchant` | no |
 | 401 | — | `hello` refused (unknown agent or token) | no |
-| 404 | `not_found` | Unknown or not live merchant, unknown booking | no |
+| 404 | `not_found` | Unknown or not live merchant, unknown booking, unknown or expired `TALK` conversation | no |
 | 409 | `slot_unavailable` | Slot taken or blocked | no |
 | 413 | `party_too_large` | Party above the limit or no table fits (a frame above 64 KiB gets an `error` frame with `413` instead) | yes |
 | 426 | — | Unsupported `batp` version | no |
 | 429 | `too_many_requests` | Too many requests in flight; retry after an earlier response | no |
-| 503 | `agent_unavailable` | Merchant `down`, agent error or timeout | yes |
+| 503 | `agent_unavailable` | Merchant `down`, agent error or timeout (10 s, 25 s for `TALK`) | yes |
 
 ## 9. Events (reserved)
 
-`{"type": "event", …}` frames, pushed by the node without a request, are reserved for 0.2. One
-use would be to tell a guest's agent that the merchant cancelled their booking. Today that goes
-through the guest notice returned by `RECALL`.
+`{"type": "event", …}` frames, pushed by the node without a request, are reserved for a later
+minor version: 0.2 doesn't define them. One use would be to tell a guest's agent that the
+merchant cancelled their booking. Today that goes through the guest notice returned by `RECALL`.
 
 ## 10. Security
 
@@ -185,7 +194,7 @@ through the guest notice returned by `RECALL`.
 - **Limits:**
   - 64 KiB per frame (an answer that would exceed it becomes `503`);
   - 10 s to say `HELLO`, then 60 s idle timeout (no frame and no request in flight);
-  - 10 s per request on the node (`503` past that);
+  - 10 s per request on the node, 25 s for a `TALK` (`503` past that): a model turn with its tool calls doesn't fit in 10 s;
   - at least 32 requests in flight per session: beyond the node's limit, extra requests get `429 too_many_requests` and may be sent again once earlier ones are answered;
   - 64 sessions per node, the next one gets a `503` reject;
   - `TALK`, a model turn on the shared OpenAI key, is bounded before any model call: 8 turns at once on the node, and 30 `TALK` per merchant per minute (`merchant_node.limits`). Past them, `429 too_many_requests`, and the request is not carried out (#249);
@@ -193,17 +202,25 @@ through the guest notice returned by `RECALL`.
 - **Bounded work:** a `DISCOVER` takes at most 32 tags and a 500-character query (`agent.discovery.MAX_TAGS`, `MAX_QUERY`, shared with the gateway's `search_merchants`).
 - **Logging:** refused sessions are logged at WARNING with the peer address and the agent they claimed, never the token. Database errors never carry query parameters (guest names).
 - **Guest identity** is only the guest name and the booking reference (AGENTS.md §13). Fine for the POC with trusted callers; the draft's Security Considerations say what a real deployment needs.
+- **`TALK` and the merchant's AI agent** (ADR-0021): the guest's message is untrusted text inside a model's prompt, so what protects the merchant is in code. The agent has the merchant's guest tools only, and code binds the merchant (never a tool argument), so one merchant's agent can't reach another's data. A write runs only on a `confirm` naming its proposal (#247). Crawled website text never enters the prompt, only knowledge the owner reviewed (#248). A conversation id is a capability: unguessable, bound to the merchant and the session's `agent.id`, never logged with guest names at INFO.
 
 ## 11. Example session
 
 ```text
-→ {"type":"hello","batp":"0.1","agent":{"id":"urn:batp:agent:claude-gateway","name":"…","kind":"user-agent","operator":"merchant-agents"}}
-← {"type":"welcome","batp":"0.1","node":{"id":"urn:batp:node:merchant-agents","name":"Sésame"},"intents":["DISCOVER",…],"session":"s-1"}
+→ {"type":"hello","batp":"0.2","agent":{"id":"urn:batp:agent:claude-gateway","name":"…","kind":"user-agent","operator":"merchant-agents"}}
+← {"type":"welcome","batp":"0.2","node":{"id":"urn:batp:node:merchant-agents","name":"Sésame"},"intents":["DISCOVER",…],"session":"s-1"}
 → {"type":"request","id":"r-1","intent":"DISCOVER","params":{"query":"table for 4 tonight","filters":{"tags":["vegetarian"],"max_price":"€€"}}}
 ← {"type":"response","id":"r-1","status":200,"result":{"merchants":[…],"suggestions":[],"ignored_filters":[]}}
 → {"type":"request","id":"r-2","intent":"BOOK","merchant":"le-petit-zinc","params":{"starts_at":"2026-11-02T20:00:00+01:00","party_size":4,"guest_name":"Ada","idempotency_key":"k-9"}}
 ← {"type":"response","id":"r-2","status":200,"result":{"reservation":{"id":"R-001",…}}}
+→ {"type":"request","id":"r-3","intent":"TALK","merchant":"le-petit-zinc","params":{"message":"Same for Saturday at 8pm, name Ada?","idempotency_key":"m-1"}}
+← {"type":"response","id":"r-3","status":200,"result":{"conversation":"c-9f2c…","reply":"I can book 20:00 on Saturday for 4, name Ada. Shall I?","slots":[…],"pending":{"id":"p-1","action":"book","summary":"Table for 4, Saturday 20:00, Ada","expires_at":"…"},"reservation":null,"fallback_url":null,"tools_called":["get_availability","propose_booking"]}}
+→ {"type":"request","id":"r-4","intent":"TALK","merchant":"le-petit-zinc","params":{"message":"Yes, please.","conversation":"c-9f2c…","confirm":"p-1","idempotency_key":"m-2"}}
+← {"type":"response","id":"r-4","status":200,"result":{"conversation":"c-9f2c…","reply":"Booked: R-002.","slots":[],"pending":null,"reservation":{"id":"R-002",…},"fallback_url":null,"tools_called":[]}}
 ```
+
+The agent's tools only propose a write (#246). On `confirm`, code runs it before any model call
+(#247), so `tools_called` is empty and `reservation` comes from the write itself.
 
 ## 12. The MCP bridge
 
@@ -258,11 +275,20 @@ major answers `welcome` with the highest minor both speak, and refuses another m
 `426`. A new intent or a new optional field is a minor change. Unknown fields in a frame are
 ignored; because `params` are strict, a caller only sends the params of the session's version.
 
+| Version | Adds |
+|---|---|
+| 0.1 | `DISCOVER`, `AVAILABILITY`, `BOOK`, `AMEND`, `CANCEL`, `RECALL`, `PING` |
+| 0.2 | `TALK` (#245, ADR-0021). A `0.1` session is neither offered nor served it (`400`), so a `0.1` caller keeps working (`batp.messages.SINCE_MINOR`) |
+
 ## 15. Where the reference node still differs from the draft
 
 The Internet-Draft is the normative text. The node in `code/packages/merchant_node/` differs
-from it on one point:
+from it on two points:
 
+- **`TALK` has no agent behind it yet.** Until #249, the node checks the merchant (`404` while
+  it isn't live, `503` with the fallback URL when it is `down`) and the params (`400`), then
+  answers `503 agent_unavailable` with the fallback URL. Conversations, proposals and replays
+  come with the agent (#246, #247).
 - **`via`:** the node records every `BOOK` as `claude`, whatever `kind` the caller declares
   (`merchant_node.agents.VIA`, §7; pinned by
   `tests/integration/test_batp_node.py`). The draft's BOOK section says a node MUST record

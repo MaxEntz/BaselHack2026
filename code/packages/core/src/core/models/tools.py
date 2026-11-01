@@ -161,17 +161,18 @@ ToolName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
 PendingKind = Literal["book", "change", "cancel"]
 
 
+# No docstrings on the TALK models: like the other contracts, their JSON Schemas go in the
+# draft's appendix (`scripts/batp_schemas.py`), where a docstring becomes a line too wide.
+
+
 class TalkInput(_Model):
-    """One message from the guest's agent to the merchant's agent.
-
-    `confirm` names a `pending` proposal of this conversation, sent only after the guest's
-    explicit yes (#247): a proposal only exists in a conversation, so it needs `conversation`.
-    """
-
+    # One message from the guest's agent to the merchant's agent.
     merchant: Slug
     message: TalkMessage
     idempotency_key: GuestText
     conversation: OpaqueId | None = None
+    # Names a `pending` proposal of this conversation, sent only after the guest's explicit yes
+    # (#247): a proposal only exists in a conversation, so it needs `conversation`.
     confirm: OpaqueId | None = None
 
     @model_validator(mode="after")
@@ -182,7 +183,7 @@ class TalkInput(_Model):
 
 
 class PendingAction(_Model):
-    """A write the agent proposes and won't run before a `confirm` that names it (#247)."""
+    # A write the agent proposes; it runs only on a later `confirm` that names it (#247).
 
     id: OpaqueId
     action: PendingKind
@@ -191,9 +192,8 @@ class PendingAction(_Model):
 
 
 class TalkOutput(_Model):
-    """The agent's answer. Only `reply` is the model's text; code builds every other field from
-    tool results (ADR-0003), so a guest's agent can rely on them."""
-
+    # The merchant agent's answer. Only `reply` is the model's text: code builds every other
+    # field from tool results (ADR-0003, ADR-0021), so a guest's agent can rely on them.
     conversation: OpaqueId
     reply: Annotated[str, StringConstraints(max_length=MAX_TALK_TEXT)]
     slots: tuple[Slot, ...] = ()
