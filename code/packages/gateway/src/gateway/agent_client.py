@@ -5,6 +5,7 @@ bridge: Claude still speaks MCP to it, and it speaks BATP to the node serving th
 (`documentation/PROTOCOL.md`, §12). Tools only know the `AgentClient` interface.
 """
 
+import logging
 from datetime import date, datetime
 from typing import Protocol
 from uuid import uuid4
@@ -37,6 +38,8 @@ from core.models import (
     UpdateReservationInput,
 )
 from gateway.fallback import batp_request
+
+log = logging.getLogger("gateway.agent_client")
 
 GATEWAY_AGENT = AgentIdentity(
     id="urn:batp:agent:claude-gateway",
@@ -246,6 +249,8 @@ class BatpAgentClient:
 def make_agent_client(settings: Settings, engine: AsyncEngine) -> AgentClient:
     """Over BATP when `BATP_URL` is set, in this process otherwise."""
     if not settings.batp_url:
+        if settings.gateway_talk:
+            log.warning("GATEWAY_TALK without BATP_URL: every talk gets the fallback URL")
         service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
         return LocalAgentClient(service, engine)
     host, port = parse_batp_url(settings.batp_url)

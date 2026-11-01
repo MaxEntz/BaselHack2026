@@ -5,6 +5,7 @@ both. The registry is patched here; the e2e tests run the same calls over a real
 """
 
 import asyncio
+import logging
 from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock
@@ -16,10 +17,16 @@ from mcp import Client
 from agent import discovery
 from agent.discovery import RegistryEntry
 from core.config import Settings
+from core.db import make_engine
 from core.errors import AgentUnavailable, NotFound
 from core.models import TalkInput, TalkOutput
 from gateway import merchant_server, server, tooling
-from gateway.agent_client import NO_TALK_IN_PROCESS, BatpAgentClient, LocalAgentClient
+from gateway.agent_client import (
+    NO_TALK_IN_PROCESS,
+    BatpAgentClient,
+    LocalAgentClient,
+    make_agent_client,
+)
 from gateway.fallback import budget_ms, deadline_in
 from gateway.merchant_server import create_merchant_server, describe
 from gateway.server import create_server
@@ -220,7 +227,7 @@ async def test_a_talk_may_take_longer_than_the_booking_tools() -> None:
 async def test_a_talk_over_its_deadline_gives_the_fallback_url(
     confirm: str | None, warned: bool
 ) -> None:
-    arguments = {**QUESTION, **({"confirm": confirm} if confirm else {})}
+    arguments = {**QUESTION, **({"conversation": "c-1", "confirm": confirm} if confirm else {})}
 
     answer = await talk(shared(FakeAgent(delay=1)), merchant=ZINC, **arguments)
 
@@ -248,10 +255,22 @@ async def test_an_unknown_merchant_never_reaches_the_agent() -> None:
     assert agent.turns == []
 
 
-async def test_a_message_outside_the_contract_is_invalid_input() -> None:
-    answer = await talk(shared(FakeAgent()), merchant=ZINC, message="", idempotency_key="m-1")
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"message": "   ", "idempotency_key": "m-1"},
+        {"message": "Yes", "idempotency_key": "m-1", "confirm": "p-1"},
+        {"message": "Yes", "idempotency_key": "m-1", "conversation": "c 1"},
+    ],
+    ids=["blank message", "confirm without its conversation", "conversation outside its shape"],
+)
+async def test_a_message_outside_the_contract_is_invalid_input(arguments: dict[str, Any]) -> None:
+    agent = FakeAgent()
+
+    answer = await talk(shared(agent), merchant=ZINC, **arguments)
 
     assert answer["error"] == "invalid_input"
+    assert agent.turns == []
 
 
 # Deadlines and clients
@@ -285,15 +304,27 @@ async def test_in_process_there_is_no_agent_to_talk_to() -> None:
         await client.talk(TalkInput(merchant=ZINC, **QUESTION))
 
 
+def test_talking_without_a_node_is_said_at_start(caplog: pytest.LogCaptureFixture) -> None:
+    settings = make_settings(batp_url=None)
+    engine = make_engine(settings.database_url)
+
+    with caplog.at_level(logging.WARNING, logger="gateway.agent_client"):
+        make_agent_client(settings, engine)
+
+    assert "GATEWAY_TALK without BATP_URL" in caplog.text
+
+
 async def test_over_batp_a_talk_is_a_talk_with_only_what_is_set() -> None:
     node = AsyncMock()
     node.request.return_value = ANSWER
 
-    answer = await BatpAgentClient(node).talk(TalkInput(merchant=ZINC, confirm="p-1", **QUESTION))
+    turn = TalkInput(merchant=ZINC, conversation="c-1", confirm="p-1", **QUESTION)
+
+    answer = await BatpAgentClient(node).talk(turn)
 
     intent, merchant, params = node.request.await_args.args
     assert (intent, merchant) == ("TALK", ZINC)
-    assert params == {**QUESTION, "confirm": "p-1"}
+    assert params == {**QUESTION, "conversation": "c-1", "confirm": "p-1"}
     assert answer.reply == ANSWER["reply"]
 
 
