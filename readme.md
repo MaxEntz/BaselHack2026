@@ -54,7 +54,7 @@ flowchart TD
     Site["The restaurant's website"] --> Sesame["Sésame"]
     Owner["The owner"] -- "checks and publishes" --> Sesame
     Sesame --> Agent["The restaurant's AI agent"]
-    Agent <-- "talk over BATP" --> AI["The guest's AI"]
+    Agent <-- "talk through Sésame's gateway" --> AI["The guest's AI"]
     Agent --> Bookings["Tables and bookings"]
 ```
 
@@ -63,7 +63,7 @@ flowchart TD
 3. **Talk.** Guests' AIs talk to the restaurant's agent in natural language. It answers, and calls its own booking tools.
 4. **Book.** Once confirmed, the booking appears on the management site within 2 seconds.
 
-Agents talk through **BATP**, a small protocol of our own, made for agents talking to agents. Claude connects through our gateway, which carries its messages over BATP.
+Behind the gateway, agents talk through **BATP**, a small protocol of our own, made for agents talking to agents. Claude connects to the gateway, which carries its messages over BATP. An agent that speaks BATP itself talks to the restaurant's agent directly, and we built one to show it.
 
 ## Today and next
 
@@ -110,6 +110,6 @@ To run it for real, with the agent and a model, see [`code/README.md`](code/READ
 
 ## Team
 
-[Enzo Laugel](https://github.com/Boz0o0) · [Maxime Entz](https://github.com/MaxEntz) · [Matteo Tutti](https://github.com/matteoepitech) · [Matthias Yildirim](https://github.com/Rimapus) · [Nicolas Bach](https://github.com/TheNotSoChosen0ne) · [Valentino Zarrillo](https://github.com/Chrystoval1) · [Yann Toison-Chabane](https://github.com/Yann-TC)
+[Antoine Malgat](https://github.com/ToadBleu) · [Enzo Laugel](https://github.com/Boz0o0) · [Maxime Entz](https://github.com/MaxEntz) · [Matteo Tutti](https://github.com/matteoepitech) · [Matthias Yildirim](https://github.com/Rimapus) · [Nicolas Bach](https://github.com/TheNotSoChosen0ne) · [Valentino Zarrillo](https://github.com/Chrystoval1) · [Yann Toison-Chabane](https://github.com/Yann-TC)
 
 MIT licensed, see [`license.txt`](license.txt).
