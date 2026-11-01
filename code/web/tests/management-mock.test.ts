@@ -47,21 +47,18 @@ test("the mock answers Studio's public site and its frames", async () => {
   const page = { path: "/", width: 1000, height: 900, image: "data:image/jpeg;base64,AA==" };
   const withPages = createMockManagementClient(data, { latencyMs: 0, liveBookingDelayMs: 0, sitePages: [page] });
   assert.deepEqual((await withPages.site(SLUG)).pages, [page]);
-  const live = await withPages.tryAgent(SLUG, "AVAILABILITY");
+  const live = await withPages.tryAgent(SLUG, "DISCOVER");
   assert.equal(live.status, 200);
-  assert.equal(JSON.parse(live.request).intent, "AVAILABILITY");
+  assert.equal(JSON.parse(live.request).intent, "DISCOVER");
+  assert.equal(JSON.parse(live.request).merchant, undefined);
   assert.equal(JSON.parse(live.response).status, 200);
+  // The buttons' intents address no merchant: unpublished or paused, the node answers them (#254).
   const hidden = createMockManagementClient(
     { ...data, merchant: { ...data.merchant, status: "building" } },
     { latencyMs: 0, liveBookingDelayMs: 0 },
   );
-  assert.equal((await hidden.tryAgent(SLUG, "BOOK")).status, 404);
+  assert.equal((await hidden.tryAgent(SLUG, "RECALL")).status, 200);
   assert.equal((await hidden.tryAgent(SLUG, "PING")).status, 200);
-  const paused = createMockManagementClient(
-    { ...data, merchant: { ...data.merchant, status: "down" } },
-    { latencyMs: 0, liveBookingDelayMs: 0 },
-  );
-  assert.equal((await paused.tryAgent(SLUG, "AVAILABILITY")).status, 503);
 });
 
 test("the dashboard shows tonight's room and the 30 days ending today", async () => {
@@ -335,11 +332,15 @@ test("saving rules, hours or settings rewrites what an AI agent reads", async ()
   const rules = await mock.saveRules(SLUG, { ...RULES, max_party_size: 2, cancellation_policy: "" });
 
   assert.equal(rules.cancellation_policy, null);
-  assert.equal(
-    rules.tools[0]?.description,
-    "Check free tables at La Graine (Mulhouse). Services: 11:30-14:30, 18:30-21:30. Groups up to 2.",
+  // One tool, to talk to the agent: only it calls the booking tools (#254).
+  assert.deepEqual(
+    rules.tools.map((tool) => tool.name),
+    ["talk_to_merchant"],
   );
-  assert.match(rules.tools[3]?.description ?? "", /Policy: see the restaurant's own website\.$/);
+  const read = rules.tools[0]?.description ?? "";
+  assert.ok(read.startsWith("Talk to the agent of La Graine (Mulhouse)"));
+  assert.ok(read.includes("Services: 11:30-14:30, 18:30-21:30. Groups up to 2."));
+  assert.match(read, /Policy: see the restaurant's own website\.$/);
   assert.equal((await mock.dashboard(SLUG)).room.largest_group, 2);
 });
 

@@ -6,7 +6,7 @@ bridge: Claude still speaks MCP to it, and it speaks BATP to the node serving th
 """
 
 import logging
-from datetime import date, datetime
+from datetime import date
 from typing import Protocol
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -21,21 +21,14 @@ from batp.messages import AgentIdentity, Intent
 from core.config import Settings
 from core.errors import AgentUnavailable
 from core.models import (
-    CancelReservationInput,
-    CreateReservationInput,
-    GetAvailabilityInput,
-    GetAvailabilityOutput,
     GetMyReservationsInput,
     GetMyReservationsOutput,
     Reservation,
-    ReservationOutput,
     SearchFilters,
     SearchMerchantsInput,
     SearchMerchantsOutput,
-    Slot,
     TalkInput,
     TalkOutput,
-    UpdateReservationInput,
 )
 from gateway.fallback import batp_request
 
@@ -58,33 +51,6 @@ class AgentClient(Protocol):
         self, query: str, near: str | None, day: date | None, filters: SearchFilters | None
     ) -> SearchMerchantsOutput: ...
 
-    async def get_availability(
-        self, merchant: str, day: date, party_size: int, time: str | None = None
-    ) -> list[Slot]: ...
-
-    async def create_reservation(
-        self,
-        merchant: str,
-        starts_at: datetime,
-        party_size: int,
-        guest_name: str,
-        idempotency_key: str,
-    ) -> Reservation: ...
-
-    async def update_reservation(
-        self,
-        merchant: str,
-        reservation_id: str,
-        guest_name: str,
-        idempotency_key: str,
-        starts_at: datetime | None = None,
-        party_size: int | None = None,
-    ) -> Reservation: ...
-
-    async def cancel_reservation(
-        self, merchant: str, reservation_id: str, guest_name: str
-    ) -> Reservation: ...
-
     async def get_my_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]: ...
 
     async def talk(self, turn: TalkInput) -> TalkOutput:
@@ -95,7 +61,8 @@ class AgentClient(Protocol):
 
 
 class LocalAgentClient:
-    """In-process calls. What goes through here comes from Claude: `via` and `by` are fixed."""
+    """In-process calls: the search and the guest's bookings. No talk: the merchant's agent is an
+    LLM that only the node runs."""
 
     def __init__(self, service: AgentService, engine: AsyncEngine) -> None:
         self.service = service
@@ -105,43 +72,6 @@ class LocalAgentClient:
         self, query: str, near: str | None, day: date | None, filters: SearchFilters | None
     ) -> SearchMerchantsOutput:
         return await discovery.search(query, near, day, filters, engine=self.engine)
-
-    async def get_availability(
-        self, merchant: str, day: date, party_size: int, time: str | None = None
-    ) -> list[Slot]:
-        return await self.service.get_availability(merchant, day, party_size, time)
-
-    async def create_reservation(
-        self,
-        merchant: str,
-        starts_at: datetime,
-        party_size: int,
-        guest_name: str,
-        idempotency_key: str,
-    ) -> Reservation:
-        return await self.service.create_reservation(
-            merchant, starts_at, party_size, guest_name, idempotency_key, via="claude"
-        )
-
-    async def update_reservation(
-        self,
-        merchant: str,
-        reservation_id: str,
-        guest_name: str,
-        idempotency_key: str,
-        starts_at: datetime | None = None,
-        party_size: int | None = None,
-    ) -> Reservation:
-        return await self.service.update_reservation(
-            merchant, reservation_id, guest_name, idempotency_key, starts_at, party_size
-        )
-
-    async def cancel_reservation(
-        self, merchant: str, reservation_id: str, guest_name: str
-    ) -> Reservation:
-        return await self.service.cancel_reservation(
-            merchant, reservation_id, by="guest", guest_name=guest_name
-        )
 
     async def get_my_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
         return await self.service.find_guest_reservations(guest_name)
@@ -179,60 +109,6 @@ class BatpAgentClient:
         params = SearchMerchantsInput(query=query, near=near, date=day, filters=filters)
         return await self._request("DISCOVER", None, params, SearchMerchantsOutput)
 
-    async def get_availability(
-        self, merchant: str, day: date, party_size: int, time: str | None = None
-    ) -> list[Slot]:
-        params = GetAvailabilityInput(merchant=merchant, date=day, time=time, party_size=party_size)
-        result = await self._request("AVAILABILITY", merchant, params, GetAvailabilityOutput)
-        return list(result.slots)
-
-    async def create_reservation(
-        self,
-        merchant: str,
-        starts_at: datetime,
-        party_size: int,
-        guest_name: str,
-        idempotency_key: str,
-    ) -> Reservation:
-        params = CreateReservationInput(
-            merchant=merchant,
-            starts_at=starts_at,
-            party_size=party_size,
-            guest_name=guest_name,
-            idempotency_key=idempotency_key,
-        )
-        result = await self._request("BOOK", merchant, params, ReservationOutput)
-        return result.reservation
-
-    async def update_reservation(
-        self,
-        merchant: str,
-        reservation_id: str,
-        guest_name: str,
-        idempotency_key: str,
-        starts_at: datetime | None = None,
-        party_size: int | None = None,
-    ) -> Reservation:
-        params = UpdateReservationInput(
-            merchant=merchant,
-            reservation_id=reservation_id,
-            guest_name=guest_name,
-            idempotency_key=idempotency_key,
-            starts_at=starts_at,
-            party_size=party_size,
-        )
-        result = await self._request("AMEND", merchant, params, ReservationOutput)
-        return result.reservation
-
-    async def cancel_reservation(
-        self, merchant: str, reservation_id: str, guest_name: str
-    ) -> Reservation:
-        params = CancelReservationInput(
-            merchant=merchant, reservation_id=reservation_id, guest_name=guest_name
-        )
-        result = await self._request("CANCEL", merchant, params, ReservationOutput)
-        return result.reservation
-
     async def get_my_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
         params = GetMyReservationsInput(guest_name=guest_name)
         result = await self._request("RECALL", None, params, GetMyReservationsOutput)
@@ -249,8 +125,7 @@ class BatpAgentClient:
 def make_agent_client(settings: Settings, engine: AsyncEngine) -> AgentClient:
     """Over BATP when `BATP_URL` is set, in this process otherwise."""
     if not settings.batp_url:
-        if settings.gateway_talk:
-            log.warning("GATEWAY_TALK without BATP_URL: every talk gets the fallback URL")
+        log.warning("no BATP_URL: talk_to_merchant gets the fallback URL; run `make node`")
         service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
         return LocalAgentClient(service, engine)
     host, port = parse_batp_url(settings.batp_url)

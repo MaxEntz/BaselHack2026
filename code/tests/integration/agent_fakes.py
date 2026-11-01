@@ -3,7 +3,7 @@ agent's tests, the node's (#249) and the guest agent's (#252)."""
 
 import asyncio
 import json
-from collections.abc import Awaitable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -110,7 +110,8 @@ async def cut_short(llm: HangingLLM, talking: Awaitable[TalkOutput]) -> None:
 
 
 class Node:
-    """A node serving `MerchantAgents` with the agent on `llm` (none: no OPENAI_API_KEY)."""
+    """A node serving `MerchantAgents` with the agent on `llm` (none: no OPENAI_API_KEY), on
+    `clock` (by default `NOW`; the e2e tests pass the real one)."""
 
     def __init__(
         self,
@@ -118,11 +119,13 @@ class Node:
         llm: ScriptedLLM | None,
         limits: TalkLimits | None = None,
         talk_seconds: float = TALK_TIMEOUT,
+        *,
+        clock: Callable[[], datetime] = lambda: NOW,
     ) -> None:
-        service = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
+        service = PgAgentService(engine, tz=TZ, clock=clock)
         talker = None
         if llm is not None:
-            talker = MerchantAgent(llm, service, registry_merchants(engine), TZ, clock=lambda: NOW)
+            talker = MerchantAgent(llm, service, registry_merchants(engine), TZ, clock=clock)
         agents = MerchantAgents(engine, service, talker, limits)
         self.server = NodeServer(
             node=NODE,

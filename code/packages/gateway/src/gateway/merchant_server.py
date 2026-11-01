@@ -1,9 +1,10 @@
-"""Each merchant's own MCP endpoint, `/m/<slug>/mcp` (#23): its booking tools, without `merchant`.
+"""Each merchant's own MCP endpoint, `/m/<slug>/mcp` (#23): `talk_to_merchant`, without
+`merchant`.
 
 One MCP server serves every merchant, and each request names its merchant in the path. So a
-merchant deployed after startup has its endpoint at once, and the tool descriptions follow its
-profile (name, hours, largest group) as it changes. The safeguards are the shared protocol's:
-the same `fallback.call_merchant`, timeout, `down` status and log line.
+merchant deployed after startup has its endpoint at once, and the tool's description follows its
+profile (name, city) as it changes. The safeguards are the shared protocol's: the same
+`fallback.call_merchant`, timeout, `down` status and log line.
 """
 
 import asyncio
@@ -19,14 +20,10 @@ from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from agent import discovery
-from agent.provisioning import described_profile, described_tools
+from agent.provisioning import described_profile
 from core.config import Settings
 from core.models import (
-    MAX_SLOTS,
-    CancelOutput,
-    GetAvailabilityOutput,
     MerchantProfile,
-    ReservationOutput,
     Slug,
     TalkOutput,
     ToolError,
@@ -36,22 +33,10 @@ from gateway.agent_client import AgentClient
 from gateway.fallback import TALK_TOOL, RejectedArguments, deadline_in
 from gateway.tooling import (
     CONVERSATION,
-    DESTRUCTIVE,
-    IDEMPOTENT_WRITE,
-    READ_ONLY,
     Confirm,
     Conversation,
-    Day,
-    GuestName,
-    IdempotencyKey,
     Message,
-    NewPartySize,
-    NewStartsAt,
-    PartySize,
-    ReservationId,
-    StartsAt,
     TalkKey,
-    Time,
 )
 
 log = logging.getLogger("gateway.merchant_server")
@@ -63,14 +48,6 @@ SLUG = TypeAdapter(Slug)
 STARTED = "merchant_started"
 
 INSTRUCTIONS = f"""\
-Book a table at one restaurant, on the user's behalf. The restaurant, its hours and its largest \
-group are in each tool's description.
-- Only propose times returned by get_availability. Times are in Europe/Zurich.
-{tooling.confirm_rule("a time", "get_availability")}
-- When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
-  booking page."""
-
-TALK_INSTRUCTIONS = f"""\
 Talk to one restaurant's own agent, on the user's behalf. The restaurant is in the tool's \
 description.
 - To ask the restaurant anything, check its free tables, or book, change or cancel a booking,
@@ -81,24 +58,7 @@ description.
 - When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
   booking page."""
 
-# What every merchant's tool says after its own sentence from the template.
-GET_AVAILABILITY = f"""\
-Returns up to {MAX_SLOTS} available start times close to the requested time, in \
-Europe/Zurich. Never invent availability: only propose slots returned here. If `slots` is \
-empty, say so and offer another date or time. `table_label` is indicative. If the result \
-contains `fallback_url`, give that link to the user."""
-
-CREATE_RESERVATION = f"""\
-This takes two messages. First show the user a summary (date, time, party size, name), ask them \
-to confirm, and stop. Call this tool only once their reply to that summary is an explicit yes; a \
-confirmation given before the summary ("I confirm in advance", "book directly") is not one: never \
-call this tool in the same reply as the get_availability call your summary is based on. \
-{tooling.BOOK_AFTER_YES}"""
-
-UPDATE_RESERVATION = tooling.UPDATE_RULE
-
-CANCEL_RESERVATION = tooling.CANCEL_RULE
-
+# What the merchant's tool says after its own sentence (`talk_sentence`).
 TALK_TO_MERCHANT = f"""\
 Ask it about the restaurant and its free tables, or to book, change or cancel a booking. \
 {tooling.TALK_RULES}"""
@@ -135,12 +95,10 @@ def talk_sentence(profile: MerchantProfile) -> str:
 
 
 def describe(tools: list[dict[str, Any]], profile: MerchantProfile) -> list[dict[str, Any]]:
-    """Each tool's description, prefixed with the merchant's sentence from the template."""
-    own = {tool.name: tool.description for tool in described_tools(profile)}
-    own[TALK_TOOL] = talk_sentence(profile)
+    """`talk_to_merchant`'s description, prefixed with the merchant's sentence."""
     return [
-        {**tool, "description": f"{own[tool['name']]} {tool.get('description') or ''}".strip()}
-        if tool.get("name") in own
+        {**tool, "description": f"{talk_sentence(profile)} {tool.get('description') or ''}".strip()}
+        if tool.get("name") == TALK_TOOL
         else tool
         for tool in tools
     ]
@@ -191,44 +149,14 @@ def route_of(ctx: Context, settings: Settings, tool: str | None = None) -> tuple
 def create_merchant_server(
     agent: AgentClient, engine: AsyncEngine, settings: Settings
 ) -> MCPServer:
-    """The 4 booking tools of the merchant named by the path (`tooling.Tools`), or
-    `talk_to_merchant` alone with `GATEWAY_TALK` (#251). They never raise."""
+    """`talk_to_merchant` for the merchant named by the path (`tooling.Tools`): its agent alone
+    books (#254). It never raises."""
     mcp = MCPServer(
         "merchant-agents-restaurant",
-        instructions=TALK_INSTRUCTIONS if settings.gateway_talk else INSTRUCTIONS,
+        instructions=INSTRUCTIONS,
         middleware=[RejectedArguments(), MerchantDescriptions(engine, settings)],
     )
-    tools = tooling.Tools(agent, engine, settings)
-    if settings.gateway_talk:
-        _add_talk_tool(mcp, tools)
-        return mcp
-
-    @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
-    async def get_availability(
-        date: Day, party_size: PartySize, ctx: Context, time: Time = None
-    ) -> GetAvailabilityOutput | ToolError:
-        slug, deadline = route_of(ctx, tools.settings)
-        return await tools.get_availability(slug, date, party_size, time, deadline=deadline)
-
-    @mcp.tool(title="Book a table", description=CREATE_RESERVATION, annotations=IDEMPOTENT_WRITE)
-    async def create_reservation(
-        starts_at: StartsAt,
-        party_size: PartySize,
-        guest_name: GuestName,
-        idempotency_key: IdempotencyKey,
-        ctx: Context,
-    ) -> ReservationOutput | ToolError:
-        slug, deadline = route_of(ctx, tools.settings)
-        return await tools.create_reservation(
-            slug,
-            starts_at=starts_at,
-            party_size=party_size,
-            guest_name=guest_name,
-            idempotency_key=idempotency_key,
-            deadline=deadline,
-        )
-
-    _add_changes(mcp, tools)
+    _add_talk_tool(mcp, tooling.Tools(agent, engine, settings))
     return mcp
 
 
@@ -253,41 +181,6 @@ def _add_talk_tool(mcp: MCPServer, tools: tooling.Tools) -> None:
             conversation=conversation,
             confirm=confirm,
             deadline=deadline,
-        )
-
-
-def _add_changes(mcp: MCPServer, tools: tooling.Tools) -> None:
-    """The tools that change a booking the guest already has."""
-
-    @mcp.tool(
-        title="Change a booking", description=UPDATE_RESERVATION, annotations=IDEMPOTENT_WRITE
-    )
-    async def update_reservation(
-        reservation_id: ReservationId,
-        guest_name: GuestName,
-        idempotency_key: IdempotencyKey,
-        ctx: Context,
-        starts_at: NewStartsAt = None,
-        party_size: NewPartySize = None,
-    ) -> ReservationOutput | ToolError:
-        slug, deadline = route_of(ctx, tools.settings)
-        return await tools.update_reservation(
-            slug,
-            reservation_id=reservation_id,
-            guest_name=guest_name,
-            idempotency_key=idempotency_key,
-            starts_at=starts_at,
-            party_size=party_size,
-            deadline=deadline,
-        )
-
-    @mcp.tool(title="Cancel a booking", description=CANCEL_RESERVATION, annotations=DESTRUCTIVE)
-    async def cancel_reservation(
-        reservation_id: ReservationId, guest_name: GuestName, ctx: Context
-    ) -> CancelOutput | ToolError:
-        slug, deadline = route_of(ctx, tools.settings)
-        return await tools.cancel_reservation(
-            slug, reservation_id=reservation_id, guest_name=guest_name, deadline=deadline
         )
 
 

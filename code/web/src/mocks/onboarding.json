@@ -320,20 +320,8 @@
       ],
       "tools": [
         {
-          "name": "get_availability",
-          "description": "Check free tables at La Graine Verte (Mulhouse). Services: 11:30–14:30, 18:30–21:30. Groups up to 4."
-        },
-        {
-          "name": "create_reservation",
-          "description": "Book a table at La Graine Verte. Always confirm with the guest first."
-        },
-        {
-          "name": "update_reservation",
-          "description": "Move or resize a booking at La Graine Verte."
-        },
-        {
-          "name": "cancel_reservation",
-          "description": "Cancel a booking at La Graine Verte. Policy: Free cancellation up to 1 hour before the booking."
+          "name": "talk_to_merchant",
+          "description": "Talk to the agent of La Graine Verte (Mulhouse) in natural language: it answers about the restaurant, offers free tables and books once the guest says yes. Services: 11:30–14:30, 18:30–21:30. Groups up to 4. Policy: Free cancellation up to 1 hour before the booking."
         }
       ],
       "mcp_url": "http://localhost:8001/mcp"

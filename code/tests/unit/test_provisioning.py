@@ -62,10 +62,9 @@ def test_generated_tools_fill_every_placeholder(profile_data: dict[str, Any]) ->
     tools = generated_tools(MerchantProfile.model_validate(profile_data))
 
     assert [tool.name for tool in tools] == [tool.name for tool in TEMPLATE.tools]
-    assert tools[0].description == (
-        "Check free tables at Le Petit Zinc (Mulhouse). "
-        "Services: 12:00-14:00, 19:00-22:00. Groups up to 6."
-    )
+    assert [tool.name for tool in tools] == ["talk_to_merchant"]  # the only tool agents get (#254)
+    assert tools[0].description.startswith("Talk to the agent of Le Petit Zinc (Mulhouse)")
+    assert "Services: 12:00-14:00, 19:00-22:00. Groups up to 6." in tools[0].description
     assert all("{" not in tool.description and "}" not in tool.description for tool in tools)
 
 
@@ -78,8 +77,8 @@ def test_generated_tools_without_city_or_cancellation_policy(
 
     descriptions = {tool.name: tool.description for tool in generated_tools(profile)}
 
-    assert "(unknown city)" in descriptions["get_availability"]
-    assert descriptions["cancel_reservation"].endswith("Policy: none stated.")
+    assert "(unknown city)" in descriptions["talk_to_merchant"]
+    assert descriptions["talk_to_merchant"].endswith("Policy: none stated.")
 
 
 def test_template_defaults_match_agents_md() -> None:
@@ -110,7 +109,7 @@ def test_load_template_rejects_descriptions_that_do_not_render(
     tmp_path: Path, description: str, reported: str
 ) -> None:
     path = write_template(
-        tmp_path, tools=[{"name": "get_availability", "description": description}]
+        tmp_path, tools=[{"name": "talk_to_merchant", "description": description}]
     )
 
     with pytest.raises(RuntimeError, match=rf"(?s)restaurant\.json.*{reported}"):

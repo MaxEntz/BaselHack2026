@@ -17,18 +17,12 @@ from typing import Any, Literal
 from pydantic import AwareDatetime, BaseModel
 
 from core.models import (
-    CancelReservationInput,
-    CreateReservationInput,
-    GetAvailabilityInput,
-    GetAvailabilityOutput,
     GetMyReservationsInput,
     GetMyReservationsOutput,
-    ReservationOutput,
     SearchMerchantsInput,
     SearchMerchantsOutput,
     TalkInput,
     TalkOutput,
-    UpdateReservationInput,
 )
 
 SCHEMAS = Path(__file__).resolve().parents[2] / "documentation" / "rfc" / "schemas"
@@ -47,10 +41,6 @@ class PingResult(BaseModel):
 # Intent -> (params, result, the request's `merchant` moves out of params). PROTOCOL.md §7.
 INTENTS: dict[str, tuple[type[BaseModel], type[BaseModel], bool]] = {
     "DISCOVER": (SearchMerchantsInput, SearchMerchantsOutput, False),
-    "AVAILABILITY": (GetAvailabilityInput, GetAvailabilityOutput, True),
-    "BOOK": (CreateReservationInput, ReservationOutput, True),
-    "AMEND": (UpdateReservationInput, ReservationOutput, True),
-    "CANCEL": (CancelReservationInput, ReservationOutput, True),
     "TALK": (TalkInput, TalkOutput, True),
     "RECALL": (GetMyReservationsInput, GetMyReservationsOutput, False),
     "PING": (PingParams, PingResult, False),

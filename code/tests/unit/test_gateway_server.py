@@ -10,14 +10,7 @@ from starlette.testclient import TestClient
 
 from core.config import Settings
 from core.db import make_engine
-from core.models import (
-    CancelReservationInput,
-    CreateReservationInput,
-    GetAvailabilityInput,
-    GetMyReservationsInput,
-    SearchMerchantsInput,
-    UpdateReservationInput,
-)
+from core.models import GetMyReservationsInput, SearchMerchantsInput, TalkInput
 from gateway.agent_client import AgentClient
 from gateway.server import INSTRUCTIONS, allowed_hosts, create_app, create_server
 
@@ -34,15 +27,12 @@ INITIALIZE = {
     },
 }
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
-CONFIRMED_WRITES = ("create_reservation", "update_reservation", "cancel_reservation")
 TOOL_INPUTS: dict[str, type[BaseModel]] = {
     "search_merchants": SearchMerchantsInput,
-    "get_availability": GetAvailabilityInput,
-    "create_reservation": CreateReservationInput,
-    "update_reservation": UpdateReservationInput,
-    "cancel_reservation": CancelReservationInput,
+    "talk_to_merchant": TalkInput,
     "get_my_reservations": GetMyReservationsInput,
 }
+KEY = "0b6c3e1a-5f7d-4c2e-9a8b-1d2e3f405162"
 
 
 def make_settings(**overrides: Any) -> Settings:
@@ -73,8 +63,9 @@ async def list_tools() -> dict[str, Tool]:
         return {tool.name: tool for tool in (await client.list_tools()).tools}
 
 
-async def test_exposes_the_six_user_tools_and_nothing_else() -> None:
-    assert (await list_tools()).keys() == TOOL_INPUTS.keys()
+async def test_exposes_the_three_user_tools_and_nothing_else() -> None:
+    # Only the merchant's agent books (#254): no booking tool is left to call directly.
+    assert list((await list_tools()).keys()) == list(TOOL_INPUTS)
 
 
 @pytest.mark.parametrize("name", TOOL_INPUTS)
@@ -87,18 +78,14 @@ async def test_tool_arguments_follow_the_frozen_contract(name: str) -> None:
     assert all(property_["description"] for property_ in schema["properties"].values())
 
 
-@pytest.mark.parametrize("name", CONFIRMED_WRITES)
-async def test_writes_tell_claude_to_confirm_first(name: str) -> None:
-    description = (await list_tools())[name].description or ""
+async def test_the_talk_tells_claude_to_confirm_first() -> None:
+    description = (await list_tools())["talk_to_merchant"].description or ""
 
-    assert "confirm" in description.lower() or "explicit yes" in description
+    assert "explicit yes" in description
     # A user pre-confirming in their request still gets the summary first (#14).
     assert "in advance" in description
-    if name == "create_reservation":
-        # Only the call the summary is based on can't come with the booking (#109).
-        assert "call your summary is based on" in description
-        assert "availability again" in description
-        assert "don't book another one" in description
+    # Never the `confirm` in the reply that got the proposal (#109).
+    assert "never in the same reply as the call that returned the `pending`" in description
     assert "fallback_url" in description
 
 
@@ -134,11 +121,9 @@ async def test_annotations_describe_each_tool() -> None:
         )
 
     assert hints("search_merchants")[0] is True
-    assert hints("get_availability")[0] is True
     assert hints("get_my_reservations")[0] is True
-    assert hints("create_reservation") == (False, False, True)
-    assert hints("update_reservation") == (False, False, True)
-    assert hints("cancel_reservation") == (False, True, True)
+    # A conversation may end in a cancellation; its key makes a resend harmless.
+    assert hints("talk_to_merchant") == (False, True, True)
 
 
 async def test_server_sends_its_rules_to_claude() -> None:
@@ -148,20 +133,19 @@ async def test_server_sends_its_rules_to_claude() -> None:
     flat = " ".join(instructions.split())
     assert "explicit yes" in flat
     assert "in advance" in flat
-    # A check after the yes may come with the booking (#109).
-    assert "get_availability call your summary is based on" in flat
-    assert "availability again" in flat
-    assert "don't book another one" in flat
+    # The `confirm` never goes with the call that got the proposal (#109).
+    assert "never send `confirm` in the same reply as the talk_to_merchant call" in flat
+    assert "don't confirm another one" in flat
     assert "fallback_url" in flat
 
 
 @pytest.mark.parametrize(
     ("arguments", "field"),
     [
-        ({"merchant": "Le Petit Zinc", "date": "2026-11-01", "party_size": 2}, "merchant"),
-        ({"merchant": "le-petit-zinc", "date": "tonight", "party_size": 2}, "date"),
-        ({"merchant": "le-petit-zinc", "date": "2026-11-01", "party_size": 0}, "party_size"),
-        ({"merchant": "le-petit-zinc", "party_size": 2}, "date"),
+        ({"merchant": "Le Petit Zinc", "message": "Hi", "idempotency_key": KEY}, "merchant"),
+        ({"merchant": "le-petit-zinc", "message": "Hi", "idempotency_key": "k-1"}, "idempotency"),
+        ({"merchant": "le-petit-zinc", "message": "", "idempotency_key": KEY}, "message"),
+        ({"merchant": "le-petit-zinc", "idempotency_key": KEY}, "message"),
     ],
 )
 async def test_rejected_arguments_answer_invalid_input_and_are_logged(
@@ -169,7 +153,7 @@ async def test_rejected_arguments_answer_invalid_input_and_are_logged(
 ) -> None:
     with caplog.at_level(logging.INFO, logger="gateway.tools"):
         async with make_client() as client:
-            result = await client.call_tool("get_availability", arguments)
+            result = await client.call_tool("talk_to_merchant", arguments)
 
     assert not result.is_error
     assert result.structured_content is not None
@@ -178,22 +162,7 @@ async def test_rejected_arguments_answer_invalid_input_and_are_logged(
     assert field in error["message"]
     assert "errors.pydantic.dev" not in error["message"]
     logged = [r.__dict__ for r in caplog.records if r.getMessage() == "tool_call"]
-    assert [(r["tool"], r["outcome"]) for r in logged] == [("get_availability", "invalid_input")]
-
-
-async def test_a_naive_start_time_is_rejected() -> None:
-    arguments = {
-        "merchant": "le-petit-zinc",
-        "starts_at": "2026-11-01T20:00:00",
-        "party_size": 2,
-        "guest_name": "Alex",
-        "idempotency_key": "key",
-    }
-    async with make_client() as client:
-        result = await client.call_tool("create_reservation", arguments)
-
-    assert result.structured_content is not None
-    assert result.structured_content["result"]["error"] == "invalid_input"
+    assert [(r["tool"], r["outcome"]) for r in logged] == [("talk_to_merchant", "invalid_input")]
 
 
 def test_health_is_degraded_without_database_and_needs_no_token() -> None:

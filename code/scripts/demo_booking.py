@@ -1,23 +1,28 @@
 """The demo's live booking (#131): Kim Weber, 2 guests tonight at 20:00 at La Graine Verte.
 
-It goes through the gateway's `create_reservation`, the tool Claude calls, so the merchant sees
-the same "New booking via Claude" as for a guest in Claude. Run from `code/`, with the gateway up
-(`make gateway`; on the team server, over SSH against its local port):
+It books the way Claude does since #254: through the gateway's `talk_to_merchant`, so the
+merchant's agent proposes the booking, the script checks the proposal and confirms it, and the
+merchant sees the same "New booking via Claude" and the same requests on the Agent page as for
+a guest in Claude. Run from `code/`, with the gateway and the node up (`make gateway`,
+`make node`; on the team server, against the gateway's local port):
 
     uv run python scripts/demo_booking.py
     uv run python scripts/demo_booking.py --url http://127.0.0.1:8001/mcp --date 2026-11-01
 
-The idempotency key is made of the arguments: running it twice books once. A booking cancelled
-since then isn't booked again (the key replays it): `--key` with any word gives a new one.
+It lists the guest's bookings first: a second run books nothing. A booking cancelled since is no
+longer listed, so the next run books it again. Every check reads what code wrote (the
+proposal's action and summary, the booking), never the model's words: when the agent proposes
+nothing, or something else, the script prints its reply and exits 1 without confirming.
 """
 
 import argparse
 import asyncio
-import hashlib
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, time
 from typing import Any
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx2
@@ -37,6 +42,62 @@ class GatewaySettings(Settings):
     database_url: str = ""
 
 
+class Refused(Exception):
+    """The gateway or the agent didn't book: the lines to print, on stderr."""
+
+
+@dataclass(frozen=True)
+class Booking:
+    """What to book, and how to recognise it in what code wrote."""
+
+    merchant: str
+    starts_at: datetime
+    party_size: int
+    guest: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.merchant} {self.starts_at:%Y-%m-%d %H:%M}"
+
+    def request(self) -> str:
+        """The message to the merchant's agent, as a guest's agent would write it."""
+        return (
+            f"Please book a table for {self.party_size} on {self.starts_at:%A} "
+            f"{self.starts_at.day} {self.starts_at:%B %Y} at {self.starts_at:%H:%M}, "
+            f"under the name {self.guest}."
+        )
+
+    def proposed_in(self, pending: dict[str, Any] | None) -> bool:
+        """Whether `pending` books this: its summary is written by code from the proposal's own
+        arguments (`agent.guest_tools`)."""
+        if not pending or pending.get("action") != "book":
+            return False
+        summary = str(pending.get("summary", ""))
+        day = f"{self.starts_at.day} {self.starts_at:%B %Y} at {self.starts_at:%H:%M},"
+        return (
+            summary.startswith(f"A table for {self.party_size} at ")
+            and day in summary
+            and summary.endswith(f"under the name {self.guest}.")
+        )
+
+    def matches(self, reservation: dict[str, Any]) -> bool:
+        """Whether `reservation` is this booking, confirmed."""
+        return (
+            reservation.get("merchant") == self.merchant
+            and datetime.fromisoformat(reservation["starts_at"]) == self.starts_at
+            and reservation.get("party_size") == self.party_size
+            and reservation.get("guest_name") == self.guest
+            and reservation.get("status") == "confirmed"
+        )
+
+    def line(self, reservation: dict[str, Any]) -> str:
+        return (
+            f"{self.label}: {reservation['id']}, {reservation['party_size']} guests, "
+            f"table {reservation['table_label']}, via {reservation['via']}, "
+            f"{reservation['status']}"
+        )
+
+
 def parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="The demo's live booking, through the gateway.")
     parser.add_argument("--url", default=GATEWAY_URL, help=f"gateway MCP URL ({GATEWAY_URL})")
@@ -45,28 +106,69 @@ def parser() -> argparse.ArgumentParser:
     parser.add_argument("--time", type=time.fromisoformat, default=time(20, 0), metavar="HH:MM")
     parser.add_argument("--party-size", type=int, default=2)
     parser.add_argument("--guest", default=GUEST)
-    parser.add_argument("--key", default="", help="any word, for a new booking with these values")
     return parser
 
 
-def idempotency_key(args: argparse.Namespace, starts_at: datetime) -> str:
-    """The same for the same arguments, and short whatever the guest's name (`GuestText`)."""
-    values = (args.merchant, starts_at.isoformat(), str(args.party_size), args.guest, args.key)
-    return f"demo-booking-{hashlib.sha256(repr(values).encode()).hexdigest()[:32]}"
+async def call(client: Client, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """A tool's result; a §8.4 error raises `Refused` with its lines."""
+    result = await client.call_tool(tool, arguments)
+    if result.is_error or result.structured_content is None:
+        raise RuntimeError(f"{tool} failed: {result.content}")
+    content: dict[str, Any] = result.structured_content["result"]
+    if "error" in content:
+        raise Refused(f"{content['error']}: {content['message']}", *fallback(content))
+    return content
 
 
-async def book(url: str, arguments: dict[str, Any], token: str | None) -> dict[str, Any]:
-    """`create_reservation`'s result: `{"reservation": …}`, or a §8.4 error."""
+def fallback(answer: dict[str, Any]) -> list[str]:
+    return [f"Fallback: {answer['fallback_url']}"] if answer.get("fallback_url") else []
+
+
+async def talk(client: Client, booking: Booking, message: str, **turn: str) -> dict[str, Any]:
+    """One message to the merchant's agent, with a fresh key."""
+    arguments = {"merchant": booking.merchant, "message": message, "idempotency_key": str(uuid4())}
+    return await call(client, "talk_to_merchant", {**arguments, **turn})
+
+
+async def book(client: Client, booking: Booking) -> tuple[dict[str, Any], bool]:
+    """The booking, and whether it existed already. `Refused` when the agent proposes anything
+    else than `booking`, or doesn't book it on the confirm."""
+    mine = await call(client, "get_my_reservations", {"guest_name": booking.guest})
+    for reservation in mine["reservations"]:
+        if booking.matches(reservation):
+            return reservation, True
+    proposed = await talk(client, booking, booking.request())
+    if not booking.proposed_in(proposed.get("pending")):
+        raise Refused(
+            "the agent proposed no such booking. It said:", proposed["reply"], *fallback(proposed)
+        )
+    done = await talk(
+        client,
+        booking,
+        "Yes, please book it.",
+        conversation=proposed["conversation"],
+        confirm=proposed["pending"]["id"],
+    )
+    reservation = done.get("reservation")
+    if not reservation or not booking.matches(reservation):
+        raise Refused("the agent didn't book it. It said:", done["reply"], *fallback(done))
+    return reservation, False
+
+
+async def run(
+    url: str, booking: Booking, token: str | None
+) -> tuple[dict[str, Any], bool] | Refused:
+    """`book` over one MCP session. A refusal is returned: raised inside the client's task group,
+    it would come out of it as an `ExceptionGroup`."""
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     async with (
-        httpx2.AsyncClient(headers=headers, timeout=10) as http,
+        httpx2.AsyncClient(headers=headers, timeout=60) as http,
         Client(streamable_http_client(url, http_client=http)) as client,
     ):
-        result = await client.call_tool("create_reservation", arguments)
-    if result.is_error or result.structured_content is None:
-        raise RuntimeError(f"create_reservation failed: {result.content}")
-    content: dict[str, Any] = result.structured_content["result"]
-    return content
+        try:
+            return await book(client, booking)
+        except Refused as refused:
+            return refused
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -74,43 +176,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = GatewaySettings()
     tz = ZoneInfo(settings.merchant_tz)
     starts_at = datetime.combine(args.date or datetime.now(tz).date(), args.time, tz)
-    arguments = {
-        "merchant": args.merchant,
-        "starts_at": starts_at.isoformat(),
-        "party_size": args.party_size,
-        "guest_name": args.guest,
-        "idempotency_key": idempotency_key(args, starts_at),
-    }
+    booking = Booking(args.merchant, starts_at, args.party_size, args.guest)
     token = settings.gateway_token.get_secret_value() if settings.gateway_token else None
-    label = f"{args.merchant} {starts_at:%Y-%m-%d %H:%M}"
     try:
-        result = asyncio.run(book(args.url, arguments, token))
+        outcome = asyncio.run(run(args.url, booking, token))
     except ExceptionGroup as group:  # the MCP client's task group: nothing listening, a 401…
         http, other = group.split(httpx2.HTTPError)
         if http is None or other is not None:
             raise
-        print(f"{label}: gateway at {args.url}: {http.exceptions[0]}", file=sys.stderr)
+        print(f"{booking.label}: gateway at {args.url}: {http.exceptions[0]}", file=sys.stderr)
         print("Is it up (`make gateway`), and is GATEWAY_TOKEN right?", file=sys.stderr)
         return 1
-    if "error" in result:
-        print(f"{label}: {result['error']}: {result['message']}", file=sys.stderr)
-        if result.get("fallback_url"):
-            print(f"Fallback: {result['fallback_url']}", file=sys.stderr)
+    if isinstance(outcome, Refused):
+        first, *rest = outcome.args
+        print(f"{booking.label}: {first}", *rest, sep="\n", file=sys.stderr)
         return 1
-    reservation = result["reservation"]
-    summary = (
-        f"{label}: {reservation['id']}, {reservation['party_size']} guests, "
-        f"table {reservation['table_label']}, via {reservation['via']}, {reservation['status']}"
-    )
-    if reservation["status"] == "cancelled":  # a replay: the merchant gets no notification
-        print(summary, file=sys.stderr)
-        print(
-            "Already booked with these values, then cancelled: `make demo-reset`, "
-            'or BOOKING="--key 2" for a new booking.',
-            file=sys.stderr,
-        )
-        return 1
-    print(summary)
+    reservation, existed = outcome
+    print(booking.line(reservation))
+    if existed:
+        print("Already booked with these values: nothing sent to the agent.", file=sys.stderr)
     return 0
 
 

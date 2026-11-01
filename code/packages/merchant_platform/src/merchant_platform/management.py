@@ -277,7 +277,7 @@ async def try_agent(
     settings: Settings = request.app.state.settings
     if isinstance(body, AgentTalkInput):
         return await try_talk(settings, slug, body)
-    return await try_intent(settings, _agent(request), slug, body.intent)
+    return await try_intent(settings, slug, body.intent)
 
 
 @router.get("/agent/requests")

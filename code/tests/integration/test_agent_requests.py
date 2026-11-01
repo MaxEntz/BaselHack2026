@@ -1,4 +1,8 @@
-"""The node's request log and the pause switch (#146), on a real Postgres 16."""
+"""The node's request log and the pause switch (#146), on a real Postgres 16.
+
+Since BATP 0.3 (#254) a merchant is addressed only by `TALK`: the merchant's agent runs on a
+scripted model here, so each test says what the model answers.
+"""
 
 import asyncio
 import json
@@ -15,18 +19,20 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import PgAgentService
+from agent.talk import MerchantAgent, registry_merchants
 from batp.client import BatpClient
 from batp.codec import encode
 from batp.messages import AgentIdentity, Hello, Request, Response
 from batp.server import NodeServer, Recorder
 from core.config import Settings
 from core.db import agent_requests_t
-from core.errors import AgentUnavailable, InvalidInput, NotFound, PartyTooLarge
+from core.errors import AgentUnavailable, InvalidInput, NotFound
 from core.models import AgentRequests
 from merchant_node.__main__ import NODE
 from merchant_node.agents import MerchantAgents
 from merchant_node.requests_log import RequestLog, log_engine
 from merchant_platform.api import create_app
+from tests.integration.agent_fakes import ScriptedLLM, call, calls, says
 
 pytestmark = pytest.mark.integration
 
@@ -50,13 +56,26 @@ def at(hhmm: str) -> str:
     return datetime.combine(DAY, time.fromisoformat(hhmm), tzinfo=TZ).isoformat()
 
 
+def talk(message: str, **more: str) -> dict[str, str]:
+    """`TALK` params: a new key for each message."""
+    return {"message": message, "idempotency_key": str(uuid4()), **more}
+
+
 @pytest.fixture
 def service(engine: AsyncEngine) -> PgAgentService:
     return PgAgentService(engine, tz=TZ, clock=lambda: NOW)
 
 
 @pytest.fixture
-async def connect(engine: AsyncEngine, service: PgAgentService) -> AsyncIterator[NodeFactory]:
+def llm() -> ScriptedLLM:
+    """The merchant agent's model: each test queues what it answers (`llm.then`)."""
+    return ScriptedLLM()
+
+
+@pytest.fixture
+async def connect(
+    engine: AsyncEngine, service: PgAgentService, llm: ScriptedLLM
+) -> AsyncIterator[NodeFactory]:
     """A node with the given recorder, and a client signed in as the gateway."""
     nodes: list[NodeServer] = []
     clients: list[BatpClient] = []
@@ -65,7 +84,8 @@ async def connect(engine: AsyncEngine, service: PgAgentService) -> AsyncIterator
         return hello.agent.id == GATEWAY.id and hello.token == TOKEN
 
     async def start(record: Recorder | None) -> BatpClient:
-        agents = MerchantAgents(engine, service)
+        talker = MerchantAgent(llm, service, registry_merchants(engine), TZ, clock=lambda: NOW)
+        agents = MerchantAgents(engine, service, talker)
         node = NodeServer(
             node=NODE,
             handle=agents,
@@ -117,53 +137,53 @@ async def settled(engine: AsyncEngine, slug: str, count: int) -> list[dict[str, 
     return await rows(engine, slug)
 
 
-async def test_a_booking_is_logged_with_both_frames_and_never_the_token(
-    engine: AsyncEngine, connect: NodeFactory, make_merchant: MerchantFactory
+async def test_a_turn_is_logged_with_both_frames_and_never_the_token(
+    engine: AsyncEngine, connect: NodeFactory, llm: ScriptedLLM, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant()
     client = await connect(RequestLog(engine))
-    booking = {
-        "starts_at": at("20:00"),
-        "party_size": 2,
-        "guest_name": GUEST,
-        "idempotency_key": str(uuid4()),
-    }
+    params = talk("A table for 2 on Monday?")
+    llm.then(says("Which time?"))
 
-    booked = await client.request("BOOK", slug, booking)
+    answered = await client.request("TALK", slug, params)
 
     [row] = await settled(engine, slug, 1)
-    assert (row["agent_name"], row["intent"], row["status"]) == (GATEWAY.name, "BOOK", 200)
-    assert row["request"]["intent"] == "BOOK"
+    assert (row["agent_name"], row["intent"], row["status"]) == (GATEWAY.name, "TALK", 200)
+    assert row["request"]["intent"] == "TALK"
     assert row["request"]["merchant"] == slug
-    assert row["request"]["params"] == booking
+    assert row["request"]["params"] == params
     assert row["response"]["status"] == 200
-    assert row["response"]["result"] == booked
+    assert row["response"]["result"] == answered
     stored = row["request_text"] + row["response_text"]
     assert TOKEN not in stored
     assert "hello" not in stored
     # The text that was on the wire, never re-serialized by Postgres (#129).
-    response = Response(id=row["response"]["id"], status=200, result=booked)
+    response = Response(id=row["response"]["id"], status=200, result=answered)
     assert row["response_text"] == encode(response).decode().removesuffix("\n")
     assert row["request_text"].startswith('{"type":"request","id":')
 
 
-async def test_a_refusal_is_logged_with_its_status_and_fallback_url(
-    engine: AsyncEngine, connect: NodeFactory, make_merchant: MerchantFactory
+async def test_a_refusal_is_logged_with_its_fallback_url(
+    engine: AsyncEngine, connect: NodeFactory, llm: ScriptedLLM, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant(tables=[{"label": "T1", "seats": 4}], seats=4)
     client = await connect(RequestLog(engine))
+    llm.then(
+        calls(call("get_availability", date=DAY.isoformat(), party_size=12)),
+        says("We can't seat 12 online."),
+    )
 
-    with pytest.raises(PartyTooLarge):
-        await client.request("AVAILABILITY", slug, {"date": DAY.isoformat(), "party_size": 12})
+    # A tool's refusal goes to the model: the agent answered, and code sets the link.
+    answered = await client.request("TALK", slug, talk("A table for 12 on Monday?"))
 
     [row] = await settled(engine, slug, 1)
-    assert row["status"] == 413
-    assert row["response"]["error"]["code"] == "party_too_large"
-    assert row["response"]["error"]["fallback_url"]
+    assert answered["fallback_url"]
+    assert row["status"] == 200
+    assert row["response"]["result"]["fallback_url"] == answered["fallback_url"]
 
 
 async def test_requests_without_a_published_merchant_leave_no_row(
-    engine: AsyncEngine, connect: NodeFactory, make_merchant: MerchantFactory
+    engine: AsyncEngine, connect: NodeFactory, llm: ScriptedLLM, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant()
     building = await make_merchant(live=False)
@@ -173,12 +193,11 @@ async def test_requests_without_a_published_merchant_leave_no_row(
     await client.request("DISCOVER", params={"query": "zinc"})
     await client.request("RECALL", params={"guest_name": GUEST})
     with pytest.raises(NotFound):
-        await client.request(
-            "AVAILABILITY", "chez-personne", {"date": DAY.isoformat(), "party_size": 2}
-        )
+        await client.request("TALK", "chez-personne", talk("A table?"))
     with pytest.raises(NotFound):
-        await client.request("AVAILABILITY", building, {"date": DAY.isoformat(), "party_size": 2})
-    await client.request("AVAILABILITY", slug, {"date": DAY.isoformat(), "party_size": 2})
+        await client.request("TALK", building, talk("A table?"))
+    llm.then(says("Which day?"))
+    await client.request("TALK", slug, talk("A table?"))
 
     found = await settled(engine, slug, 1)
     async with engine.connect() as conn:
@@ -187,13 +206,13 @@ async def test_requests_without_a_published_merchant_leave_no_row(
             .select_from(agent_requests_t)
             .where(agent_requests_t.c.merchant_slug == "chez-personne")
         )
-    assert [row["intent"] for row in found] == ["AVAILABILITY"]
+    assert [row["intent"] for row in found] == ["TALK"]
     assert unknown == 0
     assert await rows(engine, building) == []
 
 
 async def test_rows_older_than_7_days_are_purged_as_new_ones_arrive(
-    engine: AsyncEngine, connect: NodeFactory, make_merchant: MerchantFactory
+    engine: AsyncEngine, connect: NodeFactory, llm: ScriptedLLM, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant()
     async with engine.begin() as conn:
@@ -209,8 +228,9 @@ async def test_rows_older_than_7_days_are_purged_as_new_ones_arrive(
             )
         )
     client = await connect(RequestLog(engine))
+    llm.then(says("Which day?"))
 
-    await client.request("AVAILABILITY", slug, {"date": DAY.isoformat(), "party_size": 2})
+    await client.request("TALK", slug, talk("A table?"))
 
     for _ in range(100):
         found = await rows(engine, slug)
@@ -221,7 +241,7 @@ async def test_rows_older_than_7_days_are_purged_as_new_ones_arrive(
 
 
 async def test_a_failing_or_slow_log_never_delays_or_fails_the_answer(
-    connect: NodeFactory, make_merchant: MerchantFactory
+    connect: NodeFactory, llm: ScriptedLLM, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant()
     calls: list[str] = []
@@ -233,23 +253,24 @@ async def test_a_failing_or_slow_log_never_delays_or_fails_the_answer(
     async def slow(agent: AgentIdentity, request: Request, response: Response) -> None:
         await asyncio.sleep(3)
 
-    params = {"date": DAY.isoformat(), "party_size": 2}
+    llm.then(says("Which day?"), says("Which day?"), says("Which day?"))
     failing = await connect(broken)
-    assert (await failing.request("AVAILABILITY", slug, params))["slots"]
-    assert (await failing.request("AVAILABILITY", slug, params))["slots"]
+    assert (await failing.request("TALK", slug, talk("A table?")))["reply"]
+    assert (await failing.request("TALK", slug, talk("A table?")))["reply"]
 
     lagging = await connect(slow)
     started = clock.monotonic()
-    assert (await lagging.request("AVAILABILITY", slug, params))["slots"]
+    assert (await lagging.request("TALK", slug, talk("A table?")))["reply"]
     assert clock.monotonic() - started < 1
 
     await asyncio.sleep(0.05)
-    assert calls == ["AVAILABILITY", "AVAILABILITY"]
+    assert calls == ["TALK", "TALK"]
 
 
 async def test_the_log_has_its_own_small_pool_and_drops_records_when_full(
     engine: AsyncEngine,
     connect: NodeFactory,
+    llm: ScriptedLLM,
     make_merchant: MerchantFactory,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -259,14 +280,13 @@ async def test_the_log_has_its_own_small_pool_and_drops_records_when_full(
         assert (own.pool.size(), own.pool._max_overflow) == (1, 1)  # type: ignore[attr-defined]
         client = await connect(RequestLog(own, max_pending=0))
 
-        answered = await client.request(
-            "AVAILABILITY", slug, {"date": DAY.isoformat(), "party_size": 2}
-        )
+        llm.then(says("Which day?"))
+        answered = await client.request("TALK", slug, talk("A table?"))
         await asyncio.sleep(0.2)
     finally:
         await own.dispose()
 
-    assert answered["slots"]
+    assert answered["reply"] == "Which day?"
     assert await rows(engine, slug) == []
     assert "request log full: record dropped" in caplog.text
 
@@ -275,17 +295,19 @@ async def test_pause_sends_agents_to_the_booking_page_and_resume_brings_slots_ba
     engine: AsyncEngine,
     service: PgAgentService,
     connect: NodeFactory,
+    llm: ScriptedLLM,
     make_merchant: MerchantFactory,
 ) -> None:
     slug = await make_merchant()
     client = await connect(RequestLog(engine))
-    params = {"date": DAY.isoformat(), "time": "20:00", "party_size": 2}
+    asked = {"date": DAY.isoformat(), "time": "20:00", "party_size": 2}
 
     await service.set_status(slug, "down")
     with pytest.raises(AgentUnavailable):
-        await client.request("AVAILABILITY", slug, params)
+        await client.request("TALK", slug, talk("A table for 2 on Monday at 8?"))
     await service.set_status(slug, "live")
-    resumed = await client.request("AVAILABILITY", slug, params)
+    llm.then(calls(call("get_availability", **asked)), says("20:00 is free."))
+    resumed = await client.request("TALK", slug, talk("A table for 2 on Monday at 8?"))
 
     paused, live = await settled(engine, slug, 2)
     assert paused["status"] == 503
@@ -337,22 +359,27 @@ async def local_day(engine: AsyncEngine, slug: str) -> date:
 async def test_the_agent_page_lists_the_days_requests_worded_newest_first(
     engine: AsyncEngine,
     connect: NodeFactory,
+    llm: ScriptedLLM,
     make_merchant: MerchantFactory,
     page: Callable[[str], httpx.AsyncClient],
 ) -> None:
     slug = await make_merchant(max_party_size=6)
     client = await connect(RequestLog(engine))
-    booking = {
-        "starts_at": at("20:00"),
-        "party_size": 2,
-        "guest_name": GUEST,
-        "idempotency_key": str(uuid4()),
-    }
-    await client.request("BOOK", slug, booking)
+    llm.then(
+        calls(call("propose_booking", starts_at=at("20:00"), party_size=2, guest_name=GUEST)),
+        says("A table for 2 on Monday at 20:00. Shall I book it?"),
+        says("Booked."),
+    )
+    proposed = await client.request("TALK", slug, talk("Monday 20:00 for 2, Ada Lovelace"))
+    conversation, proposal = proposed["conversation"], proposed["pending"]["id"]
     await settled(engine, slug, 1)
-    with pytest.raises(PartyTooLarge):
-        await client.request("AVAILABILITY", slug, {"date": DAY.isoformat(), "party_size": 9})
-    stored = await settled(engine, slug, 2)
+    booked = await client.request(
+        "TALK", slug, talk("Yes", conversation=conversation, confirm=proposal)
+    )
+    await settled(engine, slug, 2)
+    with pytest.raises(NotFound):
+        await client.request("TALK", slug, talk("Hello again", conversation="c-ended"))
+    stored = await settled(engine, slug, 3)
     day = await local_day(engine, slug)
 
     async with page(slug) as http:
@@ -363,29 +390,27 @@ async def test_the_agent_page_lists_the_days_requests_worded_newest_first(
         )
 
     assert everything.status_code == 200
+    assert booked["reservation"]["status"] == "confirmed"
     listed = AgentRequests.model_validate(everything.json()).requests
     assert [(r.intent, r.status, r.refused) for r in listed] == [
-        ("AVAILABILITY", 413, True),
-        ("BOOK", 200, False),
+        ("TALK", 404, True),
+        ("TALK", 200, False),
+        ("TALK", 200, False),
     ]
-    too_many, booked = listed
-    assert (too_many.title, too_many.text) == (
-        "A group of 9 was sent to your booking page",
-        "Your limit is 6, so the guest got your link instead.",
-    )
-    assert booked.title == f"{GUEST} booked through {GATEWAY.name}"
-    assert booked.text.startswith("Mon 2 Nov, 20:00, 2 guests, table ")
-    assert booked.agent_name == GATEWAY.name
-    assert booked.at.utcoffset() == TZ.utcoffset(booked.at.replace(tzinfo=None))
+    ended, done, waiting = listed
+    assert ended.title == f"{GATEWAY.name} wrote in a conversation that had ended"
+    assert done.title == f"{GUEST} booked through {GATEWAY.name}"
+    assert done.text.startswith("Mon 2 Nov, 20:00, 2 guests, table ")
+    assert waiting.title == f"{GATEWAY.name} is waiting for its guest's yes"
+    assert done.agent_name == GATEWAY.name
+    assert done.at.utcoffset() == TZ.utcoffset(done.at.replace(tzinfo=None))
     # The frames as stored: the wire's text, never re-serialized.
-    assert (booked.request, booked.response) == (
-        stored[0]["request_text"],
-        stored[0]["response_text"],
+    assert (done.request, done.response) == (
+        stored[1]["request_text"],
+        stored[1]["response_text"],
     )
     assert TOKEN not in everything.text
-    assert [r.intent for r in AgentRequests.model_validate(refused.json()).requests] == [
-        "AVAILABILITY"
-    ]
+    assert [r.status for r in AgentRequests.model_validate(refused.json()).requests] == [404]
     assert other_day.json() == {"requests": []}
 
 
@@ -423,23 +448,25 @@ async def test_the_agent_page_shows_the_latest_10(
 async def test_pause_and_resume_from_the_agent_page(
     engine: AsyncEngine,
     connect: NodeFactory,
+    llm: ScriptedLLM,
     make_merchant: MerchantFactory,
     page: Callable[[str], httpx.AsyncClient],
 ) -> None:
     slug = await make_merchant()
     client = await connect(None)
-    params = {"date": DAY.isoformat(), "time": "20:00", "party_size": 2}
+    asked = {"date": DAY.isoformat(), "time": "20:00", "party_size": 2}
 
     async with page(slug) as http:
         paused = await http.post(f"/merchants/{slug}/agent/pause")
         with pytest.raises(AgentUnavailable, match="not taking bookings through agents"):
-            await client.request("AVAILABILITY", slug, params)
+            await client.request("TALK", slug, talk("A table for 2 on Monday at 8?"))
         resumed = await http.post(f"/merchants/{slug}/agent/resume")
-        slots = await client.request("AVAILABILITY", slug, params)
+        llm.then(calls(call("get_availability", **asked)), says("20:00 is free."))
+        answered = await client.request("TALK", slug, talk("A table for 2 on Monday at 8?"))
 
     assert (paused.status_code, paused.json()) == (200, {"status": "down"})
     assert (resumed.status_code, resumed.json()) == (200, {"status": "live"})
-    assert slots["slots"]
+    assert answered["slots"]
 
 
 async def test_a_building_agent_cant_be_resumed_from_the_agent_page(

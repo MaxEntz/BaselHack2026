@@ -10,7 +10,6 @@ import pytest
 from pydantic import AwareDatetime, BaseModel, ConfigDict, TypeAdapter
 
 from agent.provisioning import described_tools
-from batp.messages import Request, Response
 from core import models as core_models
 from core.availability import bookable_starts
 from core.models import (
@@ -206,9 +205,15 @@ def test_management_blocked_times_and_frames_are_consistent(
         assert (local.date(), local.strftime("%H:%M")) == (blocked.date, blocked.time)
 
     for request in management.agent_requests:
-        sent = Request.model_validate_json(request.request)
-        answer = Response.model_validate_json(request.response)
-        assert (sent.intent, answer.id, answer.status) == (request.intent, sent.id, request.status)
+        # Read as sent: the log keeps 7 days of frames, some from before BATP 0.3 closed `BOOK`
+        # and the other direct intents (#254), so they're JSON, not frames of today's protocol.
+        sent, answer = json.loads(request.request), json.loads(request.response)
+        assert sent["type"] == "request" and answer["type"] == "response"
+        assert (sent["intent"], answer["id"], answer["status"]) == (
+            request.intent,
+            sent["id"],
+            request.status,
+        )
         assert request.refused == (request.status >= 400)
         assert "token" not in request.request
 

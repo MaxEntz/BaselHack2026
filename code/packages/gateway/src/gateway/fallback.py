@@ -27,9 +27,8 @@ batp_request: ContextVar[str | None] = ContextVar("batp_request", default=None)
 
 # A conversation with the merchant's agent (#251): a model turn, so it has its own deadline.
 TALK_TOOL = "talk_to_merchant"
-# A timeout can hit after the COMMIT: these calls may have succeeded although Claude sees an error.
-# `talk_to_merchant` only writes when it carries a `confirm`, so its caller says so (`writes`).
-WRITE_TOOLS = frozenset({"create_reservation", "update_reservation", "cancel_reservation"})
+# A timeout can hit after the COMMIT: a call that may have written may have succeeded although
+# Claude sees an error. Only a `talk_to_merchant` carrying a `confirm` writes (`writes`, #254).
 MAYBE_SAVED = (
     "The change may have gone through: check get_my_reservations before retrying, "
     "with the same idempotency_key if the tool takes one."
@@ -131,7 +130,7 @@ async def call_agent[T](
     settings: Settings | None = None,
     started: float | None = None,
     deadline: float | None = None,
-    writes: bool | None = None,
+    writes: bool = False,
 ) -> T | ToolError:
     """Run `op` for a merchant: the result, or the `ToolError` Claude should read instead.
 
@@ -139,13 +138,11 @@ async def call_agent[T](
     its fallback URL: neither reaches `op`. Cancellation (the client went away) is not an
     `Exception` and propagates. `started` counts earlier work in the logged latency, `deadline`
     (event loop time, default: the tool's full budget from now) the time it already took.
-    `writes` says whether `op` may write, so that a timeout says it may have (default: the tool
-    is one of `WRITE_TOOLS`).
+    `writes` says whether `op` may write, so that a timeout says it may have.
     """
     settings = settings or get_settings()
     started = started or time.perf_counter()
     deadline = deadline or deadline_in(settings, tool)
-    may_write = tool in WRITE_TOOLS if writes is None else writes
 
     async def attempt(target: RegistryEntry) -> T:
         if delay := _chaos_delay(target.slug, settings):
@@ -166,7 +163,7 @@ async def call_agent[T](
             async with asyncio.timeout_at(deadline):
                 result = await attempt(target)
         except Exception as exc:
-            result = _to_error(exc, target, tool, may_write)
+            result = _to_error(exc, target, tool, writes)
     log_call(tool, merchant.slug if merchant else None, started, result)
     return result
 
@@ -179,7 +176,7 @@ async def call_merchant[T](
     *,
     settings: Settings | None = None,
     deadline: float | None = None,
-    writes: bool | None = None,
+    writes: bool = False,
 ) -> T | ToolError:
     """`call_agent` after looking the merchant up; without the registry there is no URL to give.
 

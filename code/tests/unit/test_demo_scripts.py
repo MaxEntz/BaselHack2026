@@ -325,16 +325,55 @@ def test_outage_switch(registry: FakeRegistry, capsys: pytest.CaptureFixture[str
     assert "not_found" in capsys.readouterr().err
 
 
-def test_the_live_booking_key_is_stable_and_short() -> None:
-    """`GuestText` caps the key at 200 characters, and a guest name may take all 200 (#79)."""
-    starts_at = datetime(2026, 10, 31, 20, 0, tzinfo=ZURICH)
-    longest = ["--merchant", "m" * 61, "--guest", "K" * 200]
-    key = demo_booking.idempotency_key(demo_booking.parser().parse_args(longest), starts_at)
+LIVE_BOOKING = demo_booking.Booking(
+    "la-graine-verte", datetime(2026, 11, 2, 20, 0, tzinfo=ZURICH), 2, "Kim Weber"
+)
+# As `agent.guest_tools` writes it from the proposal's arguments.
+SUMMARY = (
+    "A table for 2 at La Graine Verte on Monday 2 November 2026 at 20:00, under the name Kim Weber."
+)
 
-    assert key == demo_booking.idempotency_key(demo_booking.parser().parse_args(longest), starts_at)
-    assert len(key) <= 200
-    other = demo_booking.parser().parse_args([*longest, "--key", "2"])
-    assert demo_booking.idempotency_key(other, starts_at) != key
+
+@pytest.mark.parametrize(
+    ("pending", "confirmed"),
+    [
+        ({"action": "book", "summary": SUMMARY}, True),
+        ({"action": "change", "summary": SUMMARY}, False),
+        ({"action": "book", "summary": SUMMARY.replace("20:00", "19:30")}, False),
+        ({"action": "book", "summary": SUMMARY.replace("for 2", "for 4")}, False),
+        ({"action": "book", "summary": SUMMARY.replace("2 November", "3 November")}, False),
+        ({"action": "book", "summary": SUMMARY.replace("Kim Weber", "Kim Webers")}, False),
+        (None, False),
+    ],
+    ids=["same", "change", "time", "party", "day", "name", "none"],
+)
+def test_the_live_booking_confirms_only_its_own_proposal(
+    pending: dict[str, str] | None, confirmed: bool
+) -> None:
+    assert LIVE_BOOKING.proposed_in(pending) is confirmed
+
+
+def test_the_live_booking_recognises_itself_confirmed() -> None:
+    booked = {
+        "id": "R-056",
+        "merchant": "la-graine-verte",
+        "starts_at": "2026-11-02T19:00:00+00:00",  # 20:00 in Zurich
+        "party_size": 2,
+        "guest_name": "Kim Weber",
+        "table_label": "T1",
+        "via": "claude",
+        "status": "confirmed",
+    }
+
+    assert LIVE_BOOKING.matches(booked)
+    assert not LIVE_BOOKING.matches({**booked, "status": "cancelled"})
+    assert not LIVE_BOOKING.matches({**booked, "merchant": "le-petit-zinc"})
+    assert LIVE_BOOKING.line(booked) == (
+        "la-graine-verte 2026-11-02 20:00: R-056, 2 guests, table T1, via claude, confirmed"
+    )
+    assert LIVE_BOOKING.request() == (
+        "Please book a table for 2 on Monday 2 November 2026 at 20:00, under the name Kim Weber."
+    )
 
 
 def test_the_live_booking_needs_no_database(monkeypatch: pytest.MonkeyPatch) -> None:

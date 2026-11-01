@@ -10,16 +10,16 @@ Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not f
 
 ## Validation status
 
-Everything else in this runbook has been run end to end: deploy, HTTPS, Caddy's filter, the 6 tools and the BATP node on the server, Claude.ai and Claude Desktop through the connector, Claude Code locally. Status of the checks:
+Everything else in this runbook has been run end to end: deploy, HTTPS, Caddy's filter, the tools and the BATP node on the server, Claude.ai and Claude Desktop through the connector, Claude Code locally. Since #254, Claude books only by talking to the merchant's agent (`talk_to_merchant`): the checks marked ✅ below were made with the booking tools it replaced, and step 4's talk scenarios are to run again. Status of the checks:
 
 | Check | Status | Issue |
 |---|---|---|
 | One restaurant's endpoint `/m/<slug>/mcp` from Claude.ai | 🔶 validated locally (e2e, in-process and over BATP), ⏳ Claude.ai (step 3) | [#23](https://github.com/MaxEntz/BaselHack2026/issues/23) |
 | Claude Desktop, §9 scenarios | ✅ on the deployed server, 2026-11-01: the six scenarios of step 4, each write after a "Yes"; ⏳ the pre-confirmed booking, not retested there | [#14](https://github.com/MaxEntz/BaselHack2026/issues/14) |
-| `talk_to_merchant` (`GATEWAY_TALK=1`) from Claude.ai, step 4's last table | 🔶 validated locally (e2e: a real MCP client, the gateway and a scripted node), ⏳ on the server, after #249 and #250 | [#251](https://github.com/MaxEntz/BaselHack2026/issues/251) |
+| `talk_to_merchant` from Claude.ai, step 4 | 🔶 validated locally (e2e: a real MCP client, the gateway and a node with a scripted model), ⏳ on the server | [#251](https://github.com/MaxEntz/BaselHack2026/issues/251), [#254](https://github.com/MaxEntz/BaselHack2026/issues/254) |
 | How long Claude.ai waits for one tool call | ⏳ unknown: measure it (step 4, *How long Claude.ai waits*) and note it here | [#251](https://github.com/MaxEntz/BaselHack2026/issues/251) |
 | ngrok tunnel | ⏳ never tested, plan B only | — |
-| Public URL with a token (ADR-0019): Claude.ai through Caddy's added token, another assistant with its own | ✅ on the server (#142): `/mcp` answers `403` from outside Anthropic's range, `401` on loopback without the token, the 6 tools with it; Claude Desktop booked through it (#14) | #71 |
+| Public URL with a token (ADR-0019): Claude.ai through Caddy's added token, another assistant with its own | ✅ on the server (#142): `/mcp` answers `403` from outside Anthropic's range, `401` on loopback without the token, the tools with it; Claude Desktop booked through it (#14) | #71 |
 
 ![Claude.ai calls ping and shows pong](img/connector-ping.png)
 
@@ -83,7 +83,7 @@ cd /opt/merchant-agents/code
 # gateway up and reaching Postgres
 .venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8001/health').read().decode())"
 
-# the 6 tools, through the gateway, the node and Postgres, without Caddy (with the token)
+# the 3 tools (search_merchants, talk_to_merchant, get_my_reservations), without Caddy (with the token)
 .venv/bin/python -c "
 import asyncio, httpx2
 from core.config import get_settings
@@ -134,11 +134,11 @@ You need a Claude account that can add a custom connector: Free (only 1), Pro, M
 
 **In a conversation:** **+ > Connectors**, enable `merchant-agents`, ask "Table for 4 tonight at 8pm in Mulhouse". Claude must propose times, then ask for confirmation before booking.
 
-**One restaurant's own connector** ([ADR-0012](../adr/0012-one-mcp-server-for-every-merchant-endpoint.md)): each live restaurant also has `/m/<slug>/mcp`, with its 4 booking tools (no `search_merchants`) and descriptions naming the restaurant, its hours and its largest group.
+**One restaurant's own connector** ([ADR-0012](../adr/0012-one-mcp-server-for-every-merchant-endpoint.md)): each live restaurant also has `/m/<slug>/mcp`, with `talk_to_merchant` alone (no `search_merchants`), its description naming the restaurant.
 
 1. Add a connector named after the restaurant, URL `https://191-96-88-152.sslip.io/m/le-petit-zinc/mcp`.
 2. Enable only that connector and ask "Table for 2 tomorrow at 8pm".
-3. Claude must call `get_availability` directly, without a search, and confirm before booking. This is the open #23 check.
+3. Claude must call `talk_to_merchant` directly, without a search, show the agent's proposal and wait for a yes before confirming. This is the open #23 check.
 
 An unknown restaurant, or one still being built, answers `404`; a `down` one keeps its endpoint and gives its fallback link. A restaurant onboarded after the gateway started has its endpoint at once, without a deploy.
 
@@ -148,33 +148,25 @@ Start from a known state (step 2). With La Graine Verte's management data (`--wi
 
 In Claude, under **Settings > Account > Instructions for Claude**, set: *"I'm vegetarian. My budget is mid-range (max €€). My name is Alex Martin."* Name the city in prompts: the demo restaurants are in Mulhouse, and without it Claude may use its own place search.
 
-| Message | Expected | Claude Code (local) | Claude Desktop (server) |
-|---|---|---|---|
-| "Table for 4 tonight at 8pm in Mulhouse" | `filters` passed, times proposed, **confirmation requested**, booking, summary | ✅ | ✅ |
-| "Move it to 9pm" | Confirmation, then `update_reservation` | ✅ | ✅ |
-| "Cancel my booking" | Confirmation, then `cancel_reservation` | ✅ | ✅ |
-| "Book … tomorrow at 7:30pm under the name Test. I confirm in advance, no need to ask me." | Summary anyway, then **wait for the yes** | ✅ | ⏳ |
-| "A vegan place with a terrace in Mulhouse" | No results, Claude offers to drop a filter | ✅ | ✅ |
-| "Table for 8 at Le Petit Zinc" | Fallback link (`party_too_large`) | ✅ | ✅ |
-| Le Petit Zinc `down`, then "Table for 2 at Le Petit Zinc" | Fallback link (`agent_unavailable`); back `live`, it works without a restart | ✅ | ✅ |
-
-Watch the confirmation: in Claude.ai, no booking may go out before your "yes". The tool descriptions enforce it (AGENTS.md §6; wording and measurements in #14 and #109). Store a screenshot of each Claude.ai conversation in a new `assets/screenshots/` folder.
-
-### Talking to the merchant's agent (`GATEWAY_TALK=1`, #251)
-
-With `GATEWAY_TALK=1` in the server's `code/.env` (then `systemctl restart merchant-gateway`), the gateway offers `talk_to_merchant` instead of the 4 booking tools, on `/mcp` and on every `/m/<slug>/mcp`. Claude writes to the restaurant's own agent, which runs on the BATP node (#249) with the builder's OpenAI key (#250): without them, every talk answers `agent_unavailable` with the fallback link. Reconnect the connector in Claude.ai after the switch, since it caches the tool list.
+Claude writes to the restaurant's own agent, which runs on the BATP node (#249) with the builder's OpenAI key (#250): without them, every talk answers `agent_unavailable` with the fallback link. Reconnect the connector in Claude.ai after a deploy that changes the tools, since it caches the tool list.
 
 | Message | Expected |
 |---|---|
-| "Table for 4 tonight around 8pm at Le Petit Zinc, do you have vegetarian dishes?" | `talk_to_merchant`, Claude relays the agent's `reply` and its times |
+| "Table for 4 tonight at 8pm in Mulhouse, do you have vegetarian dishes?" | `search_merchants` with `filters`, then `talk_to_merchant`: Claude relays the agent's `reply` and its times |
 | "20:00, under Alex Martin" | The agent proposes (`pending`): Claude shows its `summary`, asks, and **stops** |
 | "Yes" | `talk_to_merchant` with `confirm`, booking, "New booking via Claude" in the management site within 2 s |
-| "Book 20:00 under Test, I confirm in advance" | The summary anyway, then **wait for the yes** |
-| Le Petit Zinc `down` | Fallback link (`agent_unavailable`) |
+| "Move it to 9pm", then "Yes" | A `change` proposal, then the move after the yes |
+| "Cancel my booking", then "Yes" | A `cancel` proposal, then the cancellation after the yes |
+| "Book … tomorrow at 7:30pm under the name Test. I confirm in advance, no need to ask me." | The summary anyway, then **wait for the yes** |
+| "A vegan place with a terrace in Mulhouse" | No results, Claude offers to drop a filter |
+| "Table for 8 at Le Petit Zinc" | The agent answers that it can't, and Claude gives the fallback link |
+| Le Petit Zinc `down`, then "Table for 2 at Le Petit Zinc" | Fallback link (`agent_unavailable`); back `live`, it works without a restart |
 
-**How long Claude.ai waits.** A talk may take up to `AGENT_TALK_TIMEOUT_MS` (30 s), and we don't know how long Claude.ai waits for one tool call. On the server, set `GATEWAY_TALK=1`, `AGENT_TALK_TIMEOUT_MS=120000` and `CHAOS_DELAY_MS=20000` (`CHAOS_MERCHANTS=le-petit-zinc`), restart the gateway, and ask for a table at Le Petit Zinc: the answer comes after the delay, even if it is only the fallback link. Raise the delay (30 s, 45 s, 60 s) until Claude.ai reports a tool error rather than the answer, and note the last delay that worked in the table above. If it is under 30 s, lower `AGENT_TALK_TIMEOUT_MS`, the node's `TALK` deadline (#245) and its `MAX_STEPS` (#246) to fit. Put the three settings back afterwards.
+Watch the confirmation: in Claude.ai, no `confirm` may go out before your "yes". The tool's description and the instructions ask for it (AGENTS.md §6; wording and measurements in #14 and #109), and the agent writes only on a `confirm` naming its live proposal (#247). Store a screenshot of each Claude.ai conversation in a new `assets/screenshots/` folder.
 
-Without `DEMO_SITES_DOMAIN`, the seeded merchants' fallback links point to the demo sites on `localhost` (`make sites`), so they only open on the machine serving them; the server's seed sets it, so there they open the public sites (#227). A merchant built in Studio from its public host (`https://<site>.191-96-88-152.sslip.io`, [platform.md](platform.md)) gets links that open for anyone: the demo uses Le Petit Zinc built that way ([demo.md](demo.md)). To simulate a slow agent, `CHAOS_DELAY_MS=3000` (optionally `CHAOS_MERCHANTS=le-petit-zinc`) triggers the 2 s timeout, then the fallback link.
+**How long Claude.ai waits.** A talk may take up to `AGENT_TALK_TIMEOUT_MS` (30 s), and we don't know how long Claude.ai waits for one tool call. On the server, set `AGENT_TALK_TIMEOUT_MS=120000` and `CHAOS_DELAY_MS=20000` (`CHAOS_MERCHANTS=le-petit-zinc`), restart the gateway, and ask for a table at Le Petit Zinc: the answer comes after the delay. Raise the delay (30 s, 45 s, 60 s) until Claude.ai reports a tool error rather than the answer, and note the last delay that worked in the table above. If it is under 30 s, lower `AGENT_TALK_TIMEOUT_MS`, the node's `TALK` deadline (#245) and its `MAX_STEPS` (#246) to fit. Put the settings back afterwards.
+
+Without `DEMO_SITES_DOMAIN`, the seeded merchants' fallback links point to the demo sites on `localhost` (`make sites`), so they only open on the machine serving them; the server's seed sets it, so there they open the public sites (#227). A merchant built in Studio from its public host (`https://<site>.191-96-88-152.sslip.io`, [platform.md](platform.md)) gets links that open for anyone: the demo uses Le Petit Zinc built that way ([demo.md](demo.md)). To simulate a slow agent, set `CHAOS_DELAY_MS` above `AGENT_TALK_TIMEOUT_MS` (optionally `CHAOS_MERCHANTS=le-petit-zinc`): the talk times out, then gives the fallback link.
 
 ## 5. Troubleshooting
 
