@@ -59,7 +59,6 @@ deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web ap
 	rsync -rlptz --chmod=a+rX --delete -e "$(DEPLOY_SSH)" web/dist/ $(DEPLOY_HOST):$(DEPLOY_DIR)/web/dist/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) '\
 		cd $(DEPLOY_DIR) && \
-		sed -i -E "s/^MATP_/BATP_/; s/urn:matp:/urn:batp:/g; s,matp://,batp://,g" .env && \
 		{ id -u sesame >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin sesame; } && \
 		chown root:gateway .env && chmod 640 .env && \
 		chown -R root:sesame ../platform && chmod 750 ../platform && chmod 640 ../platform/.env && \
@@ -120,7 +119,7 @@ test-stack: web-dist ## The browser test of the whole stack on a fresh build of 
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node
+	uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node packages/builder packages/merchant_platform
 
 fmt:
 	uv run ruff check --fix .

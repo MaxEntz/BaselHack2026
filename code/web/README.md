@@ -74,18 +74,20 @@ the code once and removes it from the address bar.
   shows: the phase, the feed, the chips and the top bar's pill. `feed.tsx` draws the feed and its
   cards with the fixed sentences, `Canvas.tsx` the pasteboard and the public site as read,
   `AgentSheet.tsx` the agent site's frames, `motion.ts` the split's opening (the crossfades are
-  `src/management/motion.ts`'s), `chatClient.ts` the chat's client, the mock's with `VITE_MOCK=1`.
+  `src/management/motion.ts`'s), `publish.ts` the top bar's Publish (the route, with no model in
+  the way), `chatClient.ts` the chat's client, the mock's with `VITE_MOCK=1`.
   `src/moments.ts` works out the moment of the day for Home's top and for Studio's dock; add
   `?moment=morning|before|during|after` to `/manage/<slug>` to preview one. Its classes start with `st-`, because `cards.css` is global.
 - `src/chat/state.ts`: `ChatItem` union and the pure reducer that turns `ChatEvent`
   and `LiveEvent` into chat items (steps of one build grouped, text deltas merged).
 - `src/chat/client.ts`: `POST /api/chat` SSE client and `EventSource` on
-  `/api/events?merchant=<slug>`; `src/mocks/mockClient.ts` is its mock twin.
+  `/api/events?merchant=<slug>`; `src/mocks/mockClient.ts` is its mock twin. `sse.ts` splits
+  the stream into frames, `changes.ts` says when a turn changed the merchant's data (#152),
+  `chime.ts` plays the live notifications' sound.
 - `src/chat/useChat.ts`: wires the client to the reducer.
 - `src/management/client.ts`: the management site's calls, one per `/api/merchants/<slug>` route
   (`ManagementClient`, #129); `src/mocks/managementClient.ts` is its mock twin, and
   `src/management/index.ts` picks one of them.
-- `src/components/`: header, message list (auto-scroll), composer.
 - `src/cards/`: rich messages rendered from `step`/`card` events and live
   notifications, never from the assistant's Markdown; `Gallery.tsx` is `/?gallery`.
 - `src/router.tsx`, `src/Studio.tsx`: the routes; `src/RouteError.tsx`, what a page that fails to
@@ -94,8 +96,8 @@ the code once and removes it from the address bar.
 - `src/management/`: the management site. `tokens.css` (scoped to `.mg`, light only),
   `fonts.css` and `fonts/` (Fraunces Soft, Karla, self-hosted with their OFL licences),
   `ui/` (Pill, Tag, Box, Blob, Under, Doodle, Seed, Icon, Field, Dialog, Toast, SaveBar, Source),
-  `pages.ts` (page ids and titles), `PrimitivesGallery.tsx`. `pages/` holds the pages built
-  so far (Home, Opening hours, Booking rules, Settings, Guests, Floor plan), styled by `pages.css`;
+  `pages.ts` (page ids and titles), `PrimitivesGallery.tsx`. `pages/` holds the pages
+  (Home, Reservations, Guests, Opening hours, Floor plan, Booking rules, Agent, Settings), styled by `pages.css`;
   they read through `data.ts` (`useClient`, which tests provide, and `useLoad`), save through
   `useSavedForm.tsx` and ask before leaving unsaved changes (`LeaveGuard.tsx`). `problems.ts`
   words the rule a form broke; `DayBar.tsx` picks a day of the next 7 and a service;
@@ -103,7 +105,7 @@ the code once and removes it from the address bar.
 - `src/management/ManagePage.tsx` and `shell/` (#137): the frame around every page. The sidebar,
   the top bar (search of pages and bookings, Cmd/Ctrl+K, the platform's clock in the merchant's
   zone, the bell and its popover, the avatar), the footer, the assistant's column (open above
-  1240 px, following resizes; #140 fills it). Live refresh: `/events` and the site's own changes
+  1240 px, following resizes; the real assistant, #140). Live refresh: `/events` and the site's own changes
   (`changes.ts`: every mutation of the client, and `announceChange(slug)` for the assistant's
   tools) bump `live.ts`'s version; a dialog or `useHoldRefresh` holds the page's version until
   it closes. New content crossfades through the View Transitions API (`motion.ts`), never with

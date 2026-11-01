@@ -25,6 +25,8 @@ ZURICH = ZoneInfo("Europe/Zurich")
 TODAY = date(2026, 11, 14)  # not the fixture's day: every date moves
 NOW = datetime.combine(TODAY, time(19, 40), ZURICH)
 
+pytestmark = pytest.mark.integration
+
 
 async def home(engine: AsyncEngine) -> tuple[int, int, int, int, int, int]:
     """30 days of guests, through the agent, cancelled; tonight's guests and bookings; guests

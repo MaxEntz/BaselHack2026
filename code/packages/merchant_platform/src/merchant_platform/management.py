@@ -1,10 +1,9 @@
 """The management site's routes, `/merchants/{slug}/…` (#129).
 
-Their shapes are frozen in `core.models` and `web/src/types.ts`, so that the pages and the
-backend are built in parallel. Each route answers `501` until the issue named in its message
-implements it, after checking its input: a form that breaks a rule answers `422` with its
-`problem` already. Errors use the `ManagementError` body. Every route needs the merchant's
-owner (`auth.owner_of_path`): `401` without one, `403` for another merchant.
+Their shapes are frozen in `core.models` and `web/src/types.ts`, and every route is built. A form
+that breaks a rule answers `422` with its `problem`. Errors use the `ManagementError` body. Every
+route needs the merchant's owner (`auth.owner_of_path`): `401` without one, `403` for another
+merchant.
 """
 
 from datetime import UTC, datetime

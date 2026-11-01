@@ -1,6 +1,6 @@
 # ADR-0009 — Serve the gateway from the team server behind Caddy
 
-- **Status**: Accepted (access restriction superseded by [ADR-0010](0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md))
+- **Status**: Accepted (access restriction superseded by [ADR-0010](0010-allow-only-anthropics-outbound-range-on-the-public-gateway.md), then [ADR-0019](0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md))
 - **Date**: 2026-10-31
 
 ## Context

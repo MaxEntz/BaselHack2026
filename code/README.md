@@ -33,7 +33,7 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 
 Le Petit Zinc's booking form posts to `http://localhost:8002/public/le-petit-zinc/reservations` (#15); served from the team server, to `https://sesame.<server>/api/…` (#142). Open it at the `localhost` URL that `make site` prints, not at the `127.0.0.1` link `http.server` prints: the platform only accepts the form from the origins in its CORS list. Without the platform, the form asks guests to call.
 
-Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md). The web app, the platform and the demo sites go to the same server on their own hosts (#142, once merchant accounts exist): see [`documentation/runbooks/platform.md`](../documentation/runbooks/platform.md).
+Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team server (`https://191-96-88-152.sslip.io/mcp`). See [`documentation/runbooks/connector.md`](../documentation/runbooks/connector.md). The web app, the platform and the demo sites run on the same server, each on its own host (#142): see [`documentation/runbooks/platform.md`](../documentation/runbooks/platform.md).
 
 ## Demo data
 
@@ -59,7 +59,9 @@ La Graine Verte's management data (`--with-management`, #131) is the management 
 
 | Command | What |
 |---|---|
-| `make deploy` | Ships the BATP node and the gateway to the team server, applies the migrations, installs the systemd units, and updates Caddy when `deploy/Caddyfile` changed (`documentation/runbooks/connector.md`) |
+| `make deploy` | Builds `web/dist`, then ships the gateway, the BATP node, the platform and the web app to the team server, applies the migrations, installs the systemd units, and updates Caddy when `deploy/Caddyfile` changed ([connector.md](../documentation/runbooks/connector.md), [platform.md](../documentation/runbooks/platform.md)) |
+| `make web-dist` | Builds `web/dist`, the web app `make deploy` ships; refuses a mock build (`VITE_MOCK`) |
+| `make owner-link SLUG=…` | A new secret link for a merchant's owner (`NAME=…` optional); the old one stops working (#132) |
 | `make tunnel` | Exposes a local gateway on `GATEWAY_PUBLIC_URL` through ngrok, when the team server can't be used |
 | `make rfc` | Rebuilds the BATP Internet-Draft in `documentation/rfc/`: JSON schemas, `.xml`, `.txt`, `.html`, then idnits (needs Docker and `npx`) |
 
@@ -67,16 +69,16 @@ La Graine Verte's management data (`--with-management`, #131) is the management 
 
 ```bash
 make test                         # uv run pytest
-make lint                         # ruff check, ruff format --check, mypy (the `ruff`/`mypy` line below)
+make lint                         # ruff check, ruff format --check, mypy --strict on every package (as CI runs it)
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
 uv run pytest tests/e2e           # §9 user scenarios through a real MCP client
 uv run pytest tests/e2e/test_demo_scenario.py   # the demo's order over HTTP, before each rehearsal (#25)
 make test-stack                   # Chromium on the built web app, the platform and the gateway: build, publish, book, block, pause (#153)
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
 uv run scripts/bench_extract.py    # builder extraction, 5 runs on 6 sites (needs OPENAI_API_KEY; `--local` for the 4 local ones)
-uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node
 make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
+cd web && npm test && npm run lint && npm run test:e2e   # the web app: unit, lint, browser (web/README.md)
 ```
 
 Test markers: `integration` (needs Docker), `llm` (calls the OpenAI API, skipped when `OPENAI_API_KEY` is empty), `browser` (Playwright's Chromium, skipped when it isn't installed). `tests/e2e/test_web_stack.py` also needs `web/dist`: without it a local run skips it, and CI, which builds it, fails. The `llm` tests (the builder on the demo sites, the extraction bench on the 4 local sites, the onboarding conversation) run in the **LLM** workflow on pushes to `main` and by hand (Actions → LLM → Run workflow), with the repository secret `OPENAI_API_KEY`; without it the job is skipped with a notice. About 50 s and a few cents per run. `tests/fixtures/generated/` holds profiles generated from 3 real websites.
@@ -93,13 +95,15 @@ packages/
 ├── batp/               BATP library: messages, framing, status codes, client, generic node
 ├── merchant_node/      the BATP node that serves this backend's merchant agents
 ├── builder/            crawl (Playwright) + extraction (OpenAI API) -> MerchantProfile
-└── merchant_platform/  FastAPI /chat + /events, platform assistant
+└── merchant_platform/  FastAPI: /chat, /events, the management routes, accounts; the platform assistant
 web/                    Studio and the management site (Vite + React + TS)
 sites/                  demo restaurant websites: le-petit-zinc (crawl target), 2 one-page sites
 migrations/             Alembic (public schema only; merchant schemas come from provisioning)
-scripts/                seed.py, demo_reset.py, set_status.py (outage switch), caddy_env.py and
-                        platform_env.py (make deploy), crawl_site.py, bench_extract.py (+ bench_sites/),
-                        batp_schemas.py (make rfc), spike_extract.py (+ spike_samples/, the #4 spike)
+scripts/                seed.py, demo_reset.py, demo_booking.py (make demo-booking), demo_management.py
+                        (La Graine Verte's management data), export_management_fixture.py, owner_link.py
+                        (make owner-link), set_status.py (outage switch), caddy_env.py and platform_env.py
+                        (make deploy), crawl_site.py, bench_extract.py (+ bench_sites/), batp_schemas.py
+                        (make rfc), spike_extract.py (+ spike_samples/, the #4 spike)
 deploy/                 systemd units and Caddyfile for make deploy
 tests/{unit,integration,e2e,fixtures}/
 ```

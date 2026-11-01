@@ -9,7 +9,7 @@ write a new one and mark the old one `Superseded by ADR-NNNN`.
 | [0019](0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md) | A token for every caller of the public gateway, added by Caddy for Claude.ai | Accepted | 2026-10-31 |
 | [0018](0018-open-a-merchants-site-with-a-secret-link.md) | Open a merchant's site with a secret link and a signed cookie | Accepted | 2026-10-31 |
 | [0017](0017-router-and-test-tools-for-the-management-site.md) | Use React Router, Vitest with Testing Library, and Playwright in the web app | Accepted | 2026-10-31 |
-| [0016](0016-serve-the-web-app-and-the-platform-from-the-team-server.md) | Serve the web app, the platform and the demo sites from the team server, each on its own host | Proposed | 2026-10-31 |
+| [0016](0016-serve-the-web-app-and-the-platform-from-the-team-server.md) | Serve the web app, the platform and the demo sites from the team server, each on its own host | Accepted (the gateway's access: 0019) | 2026-10-31 |
 | [0015](0015-give-merchants-a-management-site-next-to-the-chat.md) | Give merchants a management site next to the chat | Accepted | 2026-10-31 |
 | [0014](0014-rename-matp-to-batp.md) | Rename our agent protocol from MATP to BATP (Broad Agent Transfer Protocol) | Accepted | 2026-10-31 |
 | [0013](0013-store-update-idempotency-keys-in-public.md) | Store the idempotency keys of applied updates in `public`, not in each merchant schema | Accepted | 2026-10-31 |

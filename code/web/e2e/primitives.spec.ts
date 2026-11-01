@@ -1,13 +1,10 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type Page, expect, test } from "@playwright/test";
-import { openMockup } from "./mockup.ts";
+import { MOCKUP, mockupMissing, openMockup } from "./mockup.ts";
 
 // Each primitive in /?gallery against the same markup inside the v10 mockup, at 1440 px:
 // the computed styles that make up its look must match. SESAME_MOCKUP points to another copy;
-// without a mockup, this file is skipped.
-const MOCKUP = process.env.SESAME_MOCKUP ?? resolve(import.meta.dirname, "../../../documentation/design/poc-v10/sesame-management.html");
+// without one, this file is skipped locally and fails in CI (mockup.ts).
 
 const PROPS = [
   "min-height", "padding-top", "padding-right", "padding-bottom", "padding-left",
@@ -67,7 +64,7 @@ async function styles(page: Page, selector: string) {
 }
 
 test.describe("primitives match the mockup", () => {
-  test.skip(!existsSync(MOCKUP), `mockup not found: ${MOCKUP}`);
+  test.skip(mockupMissing(), `mockup not found: ${MOCKUP}`);
 
   for (const [name, ours, markup, parent] of CASES) {
     test(name, async ({ page, browser }) => {
