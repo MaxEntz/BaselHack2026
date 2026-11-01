@@ -26,11 +26,7 @@ from agent import discovery
 from core.config import Settings
 from core.db import make_engine
 from core.models import (
-    MAX_SLOTS,
-    CancelOutput,
-    GetAvailabilityOutput,
     GetMyReservationsOutput,
-    ReservationOutput,
     SearchFilters,
     SearchMerchantsOutput,
     Slug,
@@ -43,22 +39,12 @@ from gateway.fallback import RejectedArguments
 from gateway.merchant_server import MERCHANT_PATH, MerchantEndpoint, create_merchant_server
 from gateway.tooling import (
     CONVERSATION,
-    DESTRUCTIVE,
-    IDEMPOTENT_WRITE,
     READ_ONLY,
     Confirm,
     Conversation,
-    Day,
     GuestName,
-    IdempotencyKey,
     Message,
-    NewPartySize,
-    NewStartsAt,
-    PartySize,
-    ReservationId,
-    StartsAt,
     TalkKey,
-    Time,
 )
 
 log = logging.getLogger("gateway.server")
@@ -72,35 +58,22 @@ ALLOWED_ORIGINS = [
 ]
 HEALTH_PATH = "/health"
 
-# The instructions open and close the same way, whichever booking path is offered (#251).
-OPENING = """\
+INSTRUCTIONS = f"""\
 Find restaurants and book tables, on the user's behalf, at merchants connected to this protocol.
 - When the user looks for a restaurant, a table or a place to eat, call search_merchants first,
   even if they don't mention booking, and before any web or map search.
 - Pass the user's known preferences (dietary needs, terrace, kid-friendly, budget) as `filters` on
   every search_merchants call, even if this message does not repeat them. Never drop a filter
-  silently: when nothing matches, say which filter blocks the search and offer to drop it."""
-CLOSING = """\
-- When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
-  booking page.
-- Relay the notices returned by get_my_reservations. A notice can come back for 24 hours: tell
-  the user each one once per conversation, matching notices by their text."""
-
-INSTRUCTIONS = f"""\
-{OPENING}
-- Only propose times returned by get_availability. Times are in Europe/Zurich.
-{tooling.confirm_rule("a restaurant or a time", "search_merchants or get_availability")}
-{CLOSING}"""
-
-# With `GATEWAY_TALK`: the restaurant's own agent answers, and writes only after a `confirm`.
-TALK_INSTRUCTIONS = f"""\
-{OPENING}
+  silently: when nothing matches, say which filter blocks the search and offer to drop it.
 - To ask a restaurant anything, check its free tables, or book, change or cancel a booking, call
   talk_to_merchant with its slug: write to the restaurant's agent in natural language, with what
   the user wants and their known preferences, and relay its `reply`. Pass back `conversation` to
   go on with the same agent. Only propose times the agent offered. Times are in Europe/Zurich.
 {tooling.talk_confirm_rule("a restaurant or a time")}
-{CLOSING}"""
+- When a result contains `fallback_url`, give that link to the user: it is the restaurant's own
+  booking page.
+- Relay the notices returned by get_my_reservations. A notice can come back for 24 hours: tell
+  the user each one once per conversation, matching notices by their text."""
 
 SEARCH_MERCHANTS = """\
 Find restaurants that can be booked through this connector. Use this tool first whenever the \
@@ -114,25 +87,6 @@ silently. `suggestions[].drop` names the filter and `matches` how many restauran
 would find. If `ignored_filters` is not empty, tell the user those preferences could not be \
 applied. If the result contains `fallback_url`, the restaurant is not bookable here right now: \
 give that link to the user."""
-
-GET_AVAILABILITY = f"""\
-Get up to {MAX_SLOTS} available start times close to the requested time. Times are in \
-Europe/Zurich. Never invent availability: only propose slots returned here. If `slots` is \
-empty, say so and offer another date or time. `table_label` is indicative: don't promise a \
-table, it is assigned at booking. If the result contains `fallback_url`, give that link to the \
-user."""
-
-CREATE_RESERVATION = f"""\
-Book a table. This takes two messages. First show the user a summary (restaurant, date, time, \
-party size, name), ask them to confirm, and stop. Call this tool only once their reply to that \
-summary is an explicit yes. Choosing a restaurant or a time is not a yes, even when the request \
-looks complete, and neither is a confirmation given before the summary ("I confirm in advance", \
-"book directly"): never call this tool in the same reply as the search_merchants or \
-get_availability call your summary is based on. {tooling.BOOK_AFTER_YES}"""
-
-UPDATE_RESERVATION = f"Change the time or party size of a booking. {tooling.UPDATE_RULE}"
-
-CANCEL_RESERVATION = f"Cancel a booking. {tooling.CANCEL_RULE}"
 
 GET_MY_RESERVATIONS = """\
 List the user's upcoming bookings and any notices from restaurants (e.g. a cancellation by the \
@@ -164,14 +118,13 @@ Filters = Annotated[
 
 
 def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -> MCPServer:
-    """The 6 user tools, or 3 with `GATEWAY_TALK`: `talk_to_merchant` in place of the 4 booking
-    tools, never both, or Claude would pick (#251). Each one answers with its result or a
-    `ToolError`, and never raises.
+    """The 3 user tools: a search, a conversation with the merchant's agent, which alone books
+    (#254), and the guest's bookings. Each one answers with its result or a `ToolError`, and
+    never raises.
 
     Their bodies are `tooling.Tools`'; registered in this order, which `tools/list` keeps.
     """
-    instructions = TALK_INSTRUCTIONS if settings.gateway_talk else INSTRUCTIONS
-    mcp = MCPServer("merchant-agents", instructions=instructions, middleware=[RejectedArguments()])
+    mcp = MCPServer("merchant-agents", instructions=INSTRUCTIONS, middleware=[RejectedArguments()])
     tools = tooling.Tools(agent, engine, settings)
 
     @mcp.tool(title="Search restaurants", description=SEARCH_MERCHANTS, annotations=READ_ONLY)
@@ -180,10 +133,7 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
     ) -> SearchMerchantsOutput | ToolError:
         return await tools.search_merchants(query, near, date, filters)
 
-    if settings.gateway_talk:
-        _add_talk_tool(mcp, tools)
-    else:
-        _add_booking_tools(mcp, tools)
+    _add_talk_tool(mcp, tools)
 
     @mcp.tool(title="My bookings", description=GET_MY_RESERVATIONS, annotations=READ_ONLY)
     async def get_my_reservations(guest_name: GuestName) -> GetMyReservationsOutput | ToolError:
@@ -191,60 +141,6 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
 
     _add_health(mcp, engine, settings)
     return mcp
-
-
-def _add_booking_tools(mcp: MCPServer, tools: tooling.Tools) -> None:
-    """The 4 booking tools, routed by their `merchant` argument."""
-
-    @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
-    async def get_availability(
-        merchant: Merchant, date: Day, party_size: PartySize, time: Time = None
-    ) -> GetAvailabilityOutput | ToolError:
-        return await tools.get_availability(merchant, date, party_size, time)
-
-    @mcp.tool(title="Book a table", description=CREATE_RESERVATION, annotations=IDEMPOTENT_WRITE)
-    async def create_reservation(
-        merchant: Merchant,
-        starts_at: StartsAt,
-        party_size: PartySize,
-        guest_name: GuestName,
-        idempotency_key: IdempotencyKey,
-    ) -> ReservationOutput | ToolError:
-        return await tools.create_reservation(
-            merchant,
-            starts_at=starts_at,
-            party_size=party_size,
-            guest_name=guest_name,
-            idempotency_key=idempotency_key,
-        )
-
-    @mcp.tool(
-        title="Change a booking", description=UPDATE_RESERVATION, annotations=IDEMPOTENT_WRITE
-    )
-    async def update_reservation(
-        merchant: Merchant,
-        reservation_id: ReservationId,
-        guest_name: GuestName,
-        idempotency_key: IdempotencyKey,
-        starts_at: NewStartsAt = None,
-        party_size: NewPartySize = None,
-    ) -> ReservationOutput | ToolError:
-        return await tools.update_reservation(
-            merchant,
-            reservation_id=reservation_id,
-            guest_name=guest_name,
-            idempotency_key=idempotency_key,
-            starts_at=starts_at,
-            party_size=party_size,
-        )
-
-    @mcp.tool(title="Cancel a booking", description=CANCEL_RESERVATION, annotations=DESTRUCTIVE)
-    async def cancel_reservation(
-        merchant: Merchant, reservation_id: ReservationId, guest_name: GuestName
-    ) -> CancelOutput | ToolError:
-        return await tools.cancel_reservation(
-            merchant, reservation_id=reservation_id, guest_name=guest_name
-        )
 
 
 def _add_talk_tool(mcp: MCPServer, tools: tooling.Tools) -> None:
