@@ -9,11 +9,14 @@ confirms makes a real booking under that name.
 """
 
 import asyncio
+import logging
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
+
+from pydantic import ValidationError
 
 from agent.service import AgentService
 from batp.client import BatpClient, parse_batp_url
@@ -41,6 +44,8 @@ NO_BOOKING = "R-000"
 NOON = time(12)
 
 Clock = Callable[[], datetime]
+
+log = logging.getLogger("merchant_platform.agent_try")
 
 
 async def try_intent(
@@ -97,15 +102,24 @@ async def _exchange(
         request, response = await client.exchange(
             intent, merchant, params, request_id=f"r-{uuid4().hex[:6]}"
         )
-    talk = None
-    if intent == "TALK" and response.status == 200:
-        talk = TalkOutput.model_validate(response.result)
+    talk = _talk(response.result) if intent == "TALK" and response.status == 200 else None
     return AgentTryOutput(
         request=encode(request).decode().removesuffix("\n"),
         response=encode(response).decode().removesuffix("\n"),
         status=response.status,
         talk=talk,
     )
+
+
+def _talk(result: dict[str, Any] | None) -> TalkOutput | None:
+    """The answer for the page, or `None` when it isn't a `TalkOutput`: the frames still show
+    what the agent sent, a booking it made included, rather than the route failing."""
+    try:
+        return TalkOutput.model_validate(result)
+    except ValidationError as error:
+        fields = sorted({".".join(map(str, e["loc"]))[:60] for e in error.errors()})
+        log.warning("talk_answer_off_contract", extra={"fields": fields[:5]})
+        return None
 
 
 async def _frame_for(
