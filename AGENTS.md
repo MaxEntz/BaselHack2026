@@ -145,7 +145,7 @@ Rules for DB code:
 
 ## 8. Tool contracts
 
-Exact fields, bounds and error cases: [`documentation/CONTRACTS.md`](documentation/CONTRACTS.md). Tools take flat typed arguments (the fields of the `*Input` models in `core/models.py`) and return `<Result> | ToolError`.
+Exact fields, bounds and error cases: [`documentation/CONTRACTS.md`](documentation/CONTRACTS.md). Tools take flat typed arguments (the fields of the `*Input` models in `core.models`) and return `<Result> | ToolError`.
 
 ### 8.1 User tools
 

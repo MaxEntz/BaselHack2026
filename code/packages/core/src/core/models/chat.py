@@ -3,9 +3,7 @@
 from datetime import date as Date
 from typing import Annotated, Literal
 
-from pydantic import (
-    Field,
-)
+from pydantic import Field
 
 from core.models.base import Via, _Model
 from core.models.management import SitePage
