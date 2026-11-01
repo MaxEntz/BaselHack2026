@@ -69,8 +69,8 @@ export function AgentPage({ slug, version }: { slug: string; version: number }) 
   return (
     <>
       <PageTitle title={PAGES.agent}>
-        Your agent has no pages and no design. Other agents connect to its address and book in JSON, and
-        Claude comes through our bridge.
+        Your agent has no pages and no design. Other agents connect to its address and talk with it in
+        JSON frames, and Claude comes through our bridge.
       </PageTitle>
       {merchant.error && (
         <p className="err" role="alert">
