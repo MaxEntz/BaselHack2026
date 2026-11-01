@@ -13,8 +13,7 @@ from core.config import Settings
 from core.models import MerchantProfile, TextEvent
 from merchant_platform.api import create_app
 from merchant_platform.logs import configure_logging, session_tag
-from merchant_platform.sessions import Session
-from merchant_platform.tools import Emit
+from merchant_platform.sessions import Emit, Session
 
 
 @pytest.fixture

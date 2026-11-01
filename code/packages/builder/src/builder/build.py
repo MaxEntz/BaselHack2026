@@ -8,17 +8,20 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import NotBuilding, deploy, deprovision, generated_tools, provision
-from builder.cache import BuildCache, crawl_key, extraction_key
-from builder.crawl import CrawlResult, StepEmitter, crawl, normalize_url, pages_read
+from builder.cache import CACHE_ROOT, BuildCache, crawl_key, extraction_key
+from builder.crawl import CrawlResult, StepEmitter, crawl, pages_read
 from builder.extract import PROMPT_VERSION, ExtractionFailed, ExtractionResult, extract_profile
 from builder.llm import LLMClient, LLMUnavailable
 from builder.site import save_site, site_pages
+from builder.slugs import numbered
+from builder.urls import normalize_url
 from core.db import merchants_t
 from core.errors import AgentUnavailable, InvalidInput, NotFound
 from core.models import BuildAgentOutput, MerchantProfile, SitePageEvent, StepEvent
@@ -32,7 +35,7 @@ Crawl = Callable[[str, StepEmitter], Awaitable[CrawlResult]]
 
 # Generated profiles, kept as proof: copy the ones worth committing to tests/fixtures/.
 # Under .cache (ignored by git): a build never writes into the source tree.
-GENERATED_DIR = Path(__file__).parents[4] / ".cache" / "builder" / "generated"
+GENERATED_DIR = CACHE_ROOT / "generated"
 LLM_DOWN = "The AI service is unavailable right now. Please try again in a moment."
 WAITING = "Waiting for you."
 PUBLISHED = "Your agent is live."
@@ -180,19 +183,15 @@ class Builder:
         key = extraction_key(crawled, description, self._model, PROMPT_VERSION)
         cached = self._cache.get_extraction(key)
         log.info("builder_cache", extra={"stage": "extract", "hit": cached is not None})
-        current: list[tuple[StepName, float]] = [("extract", time.monotonic())]
+        # The step running now, and since when: `extract`, then `validate`.
+        step: tuple[StepName, float] = ("extract", time.monotonic())
         await on_event(StepEvent(step="extract", status="running"))
 
         async def validating() -> None:
-            name, started = current[-1]
-            await on_event(
-                StepEvent(
-                    step=name,
-                    status="done",
-                    duration_ms=_ms_since(started),
-                )
-            )
-            current.append(("validate", time.monotonic()))
+            nonlocal step
+            name, started = step
+            await on_event(StepEvent(step=name, status="done", duration_ms=_ms_since(started)))
+            step = ("validate", time.monotonic())
             await on_event(StepEvent(step="validate", status="running"))
 
         try:
@@ -205,20 +204,20 @@ class Builder:
                 await validating()
                 result = cached
         except ExtractionFailed as error:
-            await self._failed(on_event, current[-1], str(error))
+            await self._failed(on_event, step, str(error))
             raise
         except LLMUnavailable as error:
-            await self._failed(on_event, current[-1], LLM_DOWN)
+            await self._failed(on_event, step, LLM_DOWN)
             raise AgentUnavailable(LLM_DOWN) from error
         except Exception:
-            await self._failed(on_event, current[-1], STEP_FAILED)
+            await self._failed(on_event, step, STEP_FAILED)
             raise
         await on_event(
             StepEvent(
                 step="validate",
                 status="done",
                 detail="Hours, tables and links are valid.",
-                duration_ms=_ms_since(current[-1][1]),
+                duration_ms=_ms_since(step[1]),
             )
         )
         return result
@@ -265,17 +264,15 @@ class Builder:
             await deprovision(slug, engine=self._engine)
 
     async def _merchants_with_site(self, site: str) -> list[tuple[str, str, datetime]]:
+        """The merchants whose website normalizes to `site`. Only the rows naming its host are
+        read: the registry stores websites as `HttpUrl` writes them, with an ASCII host."""
+        columns = merchants_t.c
+        host = urlsplit(site).hostname or ""
+        query = select(columns.slug, columns.website, columns.status, columns.created_at).where(
+            func.lower(columns.website).contains(host, autoescape=True)
+        )
         async with self._engine.connect() as conn:
-            rows = (
-                await conn.execute(
-                    select(
-                        merchants_t.c.slug,
-                        merchants_t.c.website,
-                        merchants_t.c.status,
-                        merchants_t.c.created_at,
-                    )
-                )
-            ).all()
+            rows = (await conn.execute(query)).all()
         found = []
         for slug, website, status, created_at in rows:
             try:
@@ -297,8 +294,7 @@ class Builder:
         slug, number = base, 1
         while slug in taken:
             number += 1
-            suffix = f"-{number}"
-            slug = base[: 61 - len(suffix)].rstrip("-") + suffix
+            slug = numbered(base, number)
         return slug
 
     def _save(self, profile: MerchantProfile) -> None:

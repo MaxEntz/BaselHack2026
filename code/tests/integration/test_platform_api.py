@@ -37,9 +37,9 @@ from merchant_platform.accounts import (
     hash_token,
 )
 from merchant_platform.api import create_app
-from merchant_platform.assistant import Emit, ProfileLookup, RunTurn
 from merchant_platform.events import LiveBus
-from merchant_platform.sessions import Session
+from merchant_platform.registry import ProfileLookup
+from merchant_platform.sessions import Emit, RunTurn, Session
 
 SITE = "http://localhost:8080"
 NOTIFICATION = Path(__file__).parents[2] / "web" / "src" / "mocks" / "notification.json"

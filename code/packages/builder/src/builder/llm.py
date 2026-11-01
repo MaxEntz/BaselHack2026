@@ -89,7 +89,7 @@ class LLMClient(Protocol):
 
 
 def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Adapt a Pydantic schema to OpenAI's strict mode (same rules as the spike #4 script).
+    """Adapt a Pydantic schema to OpenAI's strict mode (the rules spike #4 found).
 
     Strict mode rejects unsupported string formats and wants every property in `required`:
     fields with a `None` default are already nullable through `anyOf`, so they become
@@ -181,6 +181,21 @@ class OpenAIClient:
         on_text: OnText,
         tool_choice: str | None = None,
     ) -> LLMReply:
+        request = self._request(instructions, tools, history, tool_choice)
+        try:
+            return await self._attempt(request, on_text, may_retry=True)
+        except _Retry as retry:
+            log.warning("llm_retry", extra={"error": retry.error})
+            await asyncio.sleep(self._retry_delay_s)
+        return await self._attempt(request, on_text, may_retry=False)
+
+    def _request(
+        self,
+        instructions: str,
+        tools: Sequence[ToolSpec],
+        history: Sequence[Message],
+        tool_choice: str | None,
+    ) -> dict[str, Any]:
         request: dict[str, Any] = {
             "model": self._model,
             "instructions": instructions,
@@ -205,34 +220,43 @@ class OpenAIClient:
         if self._reasoning_effort != "none":
             # With store=False, reasoning comes back encrypted so that we can resend it.
             request["include"] = ["reasoning.encrypted_content"]
+        return request
 
-        for attempt in range(2):
-            streamed = False
-            try:
-                async with self._client.responses.stream(**request) as stream:
-                    async for event in stream:
-                        if event.type == "response.output_text.delta":
-                            streamed = True
-                            await on_text(event.delta)
-                    response = await stream.get_final_response()
-            except TRANSIENT as error:
-                # Retrying after text reached the merchant would repeat it.
-                if attempt or streamed:
-                    raise LLMUnavailable(type(error).__name__) from error
-                log.warning("llm_retry", extra={"error": type(error).__name__})
-                await asyncio.sleep(self._retry_delay_s)
-                continue
-            except openai.OpenAIError as error:
-                raise LLMUnavailable(type(error).__name__) from error
-            calls = tuple(
-                ToolCall(id=item.call_id, name=item.name, arguments=item.arguments)
-                for item in response.output
-                if item.type == "function_call"
-            )
-            reasoning = tuple(
-                item.model_dump(mode="json", exclude_none=True)
-                for item in response.output
-                if item.type == "reasoning"
-            )
-            return LLMReply(text=response.output_text, tool_calls=calls, provider_items=reasoning)
-        raise AssertionError("unreachable")
+    async def _attempt(
+        self, request: dict[str, Any], on_text: OnText, *, may_retry: bool
+    ) -> LLMReply:
+        """One streamed call. `_Retry` after a transient error when `may_retry` and no text
+        reached the merchant yet (a retry would repeat it); `LLMUnavailable` for any other."""
+        streamed = False
+        try:
+            async with self._client.responses.stream(**request) as stream:
+                async for event in stream:
+                    if event.type == "response.output_text.delta":
+                        streamed = True
+                        await on_text(event.delta)
+                response = await stream.get_final_response()
+        except TRANSIENT as error:
+            if may_retry and not streamed:
+                raise _Retry(type(error).__name__) from error
+            raise LLMUnavailable(type(error).__name__) from error
+        except openai.OpenAIError as error:
+            raise LLMUnavailable(type(error).__name__) from error
+        calls = tuple(
+            ToolCall(id=item.call_id, name=item.name, arguments=item.arguments)
+            for item in response.output
+            if item.type == "function_call"
+        )
+        reasoning = tuple(
+            item.model_dump(mode="json", exclude_none=True)
+            for item in response.output
+            if item.type == "reasoning"
+        )
+        return LLMReply(text=response.output_text, tool_calls=calls, provider_items=reasoning)
+
+
+class _Retry(Exception):
+    """A transient error before any text: worth the one retry."""
+
+    def __init__(self, error: str) -> None:
+        super().__init__(error)
+        self.error = error

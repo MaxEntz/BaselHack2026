@@ -10,7 +10,8 @@ from core.config import Settings
 from core.models import MerchantOverview
 from merchant_platform.accounts import OWNER_COOKIE, Accounts, MemoryOwnerStore, Signer
 from merchant_platform.api import create_app
-from merchant_platform.overview import MerchantRecord, is_demo, merchant_overview
+from merchant_platform.overview import is_demo, merchant_overview
+from merchant_platform.registry import MerchantRecord
 
 SLUG = "la-graine-verte"
 RECORD = MerchantRecord(
@@ -106,7 +107,7 @@ async def test_a_merchant_missing_from_the_registry(registry_given: bool, status
 
 def test_the_overview_carries_the_stored_look() -> None:
     from builder.look import DEFAULT_LOOK
-    from merchant_platform.overview import stored_look
+    from merchant_platform.registry import stored_look
 
     stored = DEFAULT_LOOK.model_dump(mode="json")
     with_look = MerchantRecord(**{**RECORD.__dict__, "look": stored_look({"look": stored})})
@@ -122,6 +123,6 @@ def test_the_overview_carries_the_stored_look() -> None:
     "profile", [{}, {"look": None}, {"look": {"bg": "red"}}, "not a profile", None]
 )
 def test_a_profile_without_a_readable_look_gives_none(profile: Any) -> None:
-    from merchant_platform.overview import stored_look
+    from merchant_platform.registry import stored_look
 
     assert stored_look(profile) is None

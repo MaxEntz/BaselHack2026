@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from builder.crawl import USEFUL_LINK
+from builder.urls import USEFUL_LINK
 from core.models import MerchantProfile
 
 SITES = Path(__file__).parents[2] / "sites"

@@ -2,6 +2,7 @@
 
 `create_app` puts the `Accounts`, the development merchant (PLATFORM_MERCHANT) and whether
 cookies are `Secure` on `app.state`; these dependencies and routes read them from the request.
+The errors they raise are `accounts.py`'s, answered by `errors.py`.
 """
 
 import logging
@@ -15,25 +16,15 @@ from core.models import Slug
 from merchant_platform.accounts import (
     COOKIE_MAX_AGE,
     INVITE_COOKIE,
+    NOT_SIGNED_IN,
+    OTHER_MERCHANT,
     OWNER_COOKIE,
     Accounts,
+    NeedsInvite,
+    NotSignedIn,
+    OtherMerchant,
     Owner,
 )
-
-NOT_SIGNED_IN = "Open your private link to manage this restaurant."
-OTHER_MERCHANT = "Your link opens another restaurant."
-
-
-class NotSignedIn(Exception):
-    """`401` `not_signed_in`: no valid owner cookie."""
-
-
-class OtherMerchant(Exception):
-    """`403` `other_merchant`: the cookie is another merchant's."""
-
-
-class NeedsInvite(Exception):
-    """`403` `needs_invite`: starting a build needs PLATFORM_INVITE_CODE's invitation."""
 
 
 def accounts_of(request: Request) -> Accounts:

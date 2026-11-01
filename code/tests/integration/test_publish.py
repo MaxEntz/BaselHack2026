@@ -23,10 +23,8 @@ from merchant_platform.assistant import (
     STATUS_LINES,
     Assistant,
     default_assistant,
-    registry_profiles,
-    registry_statuses,
 )
-from merchant_platform.overview import registry_records
+from merchant_platform.registry import look_store, registry_profiles, registry_records
 from merchant_platform.sessions import Session
 from merchant_platform.tools import AdminTools
 
@@ -101,9 +99,8 @@ async def test_the_assistant_hears_of_a_publish_through_the_route(
     assistant = Assistant(
         llm,
         AdminTools(None, no_build, TZ, today=date.today),
-        registry_profiles(engine),
+        registry_records(engine),
         TZ,
-        statuses=registry_statuses(engine),
     )
     app = create_app(
         settings(),
@@ -132,7 +129,6 @@ async def test_a_look_changed_in_studio_is_what_the_overview_reads(
 ) -> None:
     # #152: update_look stores into the registry's profile copy; GET /merchants/{slug} reads it.
     from builder.look import DEFAULT_LOOK
-    from merchant_platform.overview import look_store
 
     slug = await make_merchant()
     look = DEFAULT_LOOK.model_copy(update={"accent": "#2450c8", "corners": "square"})

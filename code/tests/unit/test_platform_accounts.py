@@ -21,9 +21,9 @@ from merchant_platform.accounts import (
     hash_token,
 )
 from merchant_platform.api import create_app
-from merchant_platform.assistant import Emit
 from merchant_platform.logs import RedactTokens
-from merchant_platform.sessions import Session
+from merchant_platform.sessions import Emit, Session
+from tests.unit.test_accounts import ForgettingStore
 
 SLUG = "la-graine-verte"
 SECRET = b"k" * 32
@@ -302,7 +302,7 @@ async def test_a_new_link_ends_the_session_that_built_the_merchant() -> None:
 
 
 async def test_a_deleted_merchant_ends_its_chat_sessions() -> None:
-    store = MemoryOwnerStore()
+    store = ForgettingStore()
     owners = Accounts(store, Signer(SECRET))
     app = remembering_app(owners)
     cookie = await signed_in(owners)

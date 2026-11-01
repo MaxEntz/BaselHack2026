@@ -16,9 +16,8 @@ from core.models import (
     TextEvent,
     ToolStartEvent,
 )
-from merchant_platform.assistant import Emit
-from merchant_platform.sessions import MAX_ITEMS, Session, SessionStore
-from merchant_platform.tools import PAGE_LINKS
+from merchant_platform.sessions import MAX_ITEMS, Emit, Session, SessionStore
+from merchant_platform.specs import PAGE_LINKS
 from tests.unit.test_platform_accounts import SLUG, accounts, client, profiles, settings, signed_in
 
 ROW = AdminReservationRow(

@@ -16,16 +16,15 @@ from core.models import (
     BuildAgentOutput,
     ChatEvent,
     Look,
-    MerchantProfile,
     Reservation,
     Rules,
     Slot,
 )
 from merchant_platform.assistant import Assistant, system_prompt
-from merchant_platform.overview import MerchantRecord
+from merchant_platform.registry import MerchantRecord
 from merchant_platform.sessions import Session
 from merchant_platform.tools import AdminTools
-from tests.unit.test_assistant import NOW, PROFILE, SLUG, TODAY, TZ, ScriptedLLM, call
+from tests.unit.assistant_fakes import NOW, PROFILE, SLUG, TODAY, TZ, ScriptedLLM, call
 
 AT = datetime(2026, 10, 31, 20, 0, tzinfo=ZoneInfo("Europe/Zurich"))
 
@@ -97,7 +96,7 @@ class Studio:
         async def merchant(slug: str) -> MerchantRecord:
             return MerchantRecord(
                 slug, "Le Petit Zinc", "Mulhouse", "€€", (), "https://zinc.example/",
-                self.status, self.look,  # type: ignore[arg-type]
+                self.status, self.look, PROFILE.model_dump(mode="json"),  # type: ignore[arg-type]
             )  # fmt: skip
 
         async def save_look(slug: str, look: Look) -> None:
@@ -110,9 +109,6 @@ class Studio:
         async def build(arguments: BuildAgentInput, emit: Any) -> BuildAgentOutput:
             raise AssertionError("no build here")
 
-        async def profiles(slug: str) -> MerchantProfile:
-            return PROFILE
-
         tools = AdminTools(
             cast(AgentService, self.agent),
             build,
@@ -122,11 +118,7 @@ class Studio:
             save_look=save_look,
             site_look=site_look,
         )
-
-        async def statuses(slug: str) -> Any:
-            return self.status
-
-        self.assistant = Assistant(llm, tools, profiles, TZ, statuses=statuses, clock=lambda: NOW)
+        self.assistant = Assistant(llm, tools, merchant, TZ, clock=lambda: NOW)
 
     async def turn(self, message: str) -> list[dict[str, Any]]:
         session = Session(id="s")

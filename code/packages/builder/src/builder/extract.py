@@ -21,6 +21,9 @@ from builder.crawl import CrawlResult
 from builder.llm import LLMClient, Message, ToolSpec
 from builder.look import describe as describe_look
 from builder.look import read_look
+from builder.slugs import slugify
+from builder.urls import PageKey, page_key, page_path, same_site
+from builder.words import joined
 from core.errors import InvalidInput
 from core.models import (
     BuildFact,
@@ -237,7 +240,7 @@ def finalize(draft: ProfileDraft, crawl: CrawlResult, description: str = "") -> 
     assumptions = list(draft.assumptions)
     if draft.closed_days:
         # Services have no weekdays yet (#73): say so rather than book on a closed day.
-        days = _join([day for day in WEEKDAYS if day in draft.closed_days])
+        days = joined([day for day in WEEKDAYS if day in draft.closed_days])
         assumptions.append(
             f"Closed on {days}: the agent can't skip a weekday yet, so {days} bookings stay open."
         )
@@ -339,7 +342,7 @@ def verified_sources(sources: Sources, crawl: CrawlResult, description: str) -> 
         if len(wanted) < MIN_QUOTE and name not in SHORT_QUOTE_FIELDS:
             continue
         named = _named_page(source.page)
-        ordered = sorted(pages, key=lambda url: _page_key(url) != named)
+        ordered = sorted(pages, key=lambda url: page_key(url) != named)
         where = next((url for url in ordered if wanted in pages[url]), None)
         if where is not None:
             kept[name] = Verified(_path(where), quote)
@@ -348,13 +351,13 @@ def verified_sources(sources: Sources, crawl: CrawlResult, description: str) -> 
     return kept
 
 
-def _named_page(page: str | None) -> str | None:
+def _named_page(page: str | None) -> PageKey | None:
     """The key of the page a source names, or None: the model's URL is untrusted (ADR-0003),
     and one that doesn't parse names no page (#220)."""
     if not page:
         return None
     try:
-        return _page_key(page)
+        return page_key(page)
     except ValueError:
         log.info("source_page_unparsable")
         return None
@@ -363,8 +366,8 @@ def _named_page(page: str | None) -> str | None:
 def _path(url: str) -> str:
     """`/horaires.html` for a page of the site, `/` for its homepage, `/#reserver` for a
     section."""
-    parts = urlsplit(url)
-    return (parts.path or "/") + (f"#{parts.fragment}" if parts.fragment else "")
+    fragment = urlsplit(url).fragment
+    return page_path(url) + (f"#{fragment}" if fragment else "")
 
 
 def located(facts: list[BuildFact], crawl: CrawlResult) -> list[BuildFact]:
@@ -424,7 +427,6 @@ def facts_of(profile: MerchantProfile, sources: dict[str, Verified]) -> list[Bui
                 quote=source.quote if source else None,
             )
         )
-    # Read from the homepage's styles, or the default look when nothing could be.
     # Read from the homepage's styles; None means the default look (#150).
     read_from = "/" if profile.look is not None else None
     facts.append(BuildFact(key="look", label="Look", value=look_line, source=read_from, quote=None))
@@ -438,6 +440,18 @@ def _range(low: int, high: int) -> str:
     return f"{low} or {high}" if high == low + 1 else f"{low} to {high}"
 
 
+@dataclass(frozen=True)
+class _Review:
+    """What the flags are written from."""
+
+    profile: MerchantProfile
+    draft: ProfileDraft
+    sources: dict[str, Verified]
+    drafted_tables: bool
+    # The seat count the sources gave, if any.
+    seats: int | None
+
+
 def flags_of(
     profile: MerchantProfile,
     draft: ProfileDraft,
@@ -447,74 +461,91 @@ def flags_of(
     seats: int | None,
 ) -> list[BuildFlag]:
     """What the owner should check before publishing, in the mockup's words (#136)."""
-    flags: list[BuildFlag] = []
-    tables, total = len(profile.tables), profile.seats
-    if drafted_tables and seats:
-        flags.append(
-            BuildFlag(
-                title="I drafted your floor plan from the seat count.",
-                detail=f"{tables} tables for {total} seats. Correct it by asking.",
-            )
+    review = _Review(profile, draft, sources, drafted_tables, seats)
+    return [flag for rule in FLAG_RULES if (flag := rule(review)) is not None]
+
+
+def _floor_plan_flag(review: _Review) -> BuildFlag | None:
+    if not review.drafted_tables:
+        return None
+    tables, total = len(review.profile.tables), review.profile.seats
+    if review.seats:
+        return BuildFlag(
+            title="I drafted your floor plan from the seat count.",
+            detail=f"{tables} tables for {total} seats. Correct it by asking.",
         )
-    elif drafted_tables:
-        flags.append(
-            BuildFlag(
-                title="No floor plan found.",
-                detail=f"I drafted {tables} tables for {total} seats. Correct it by asking.",
-            )
-        )
-    site, mine = draft.site_max_party_size, profile.max_party_size
-    said = sources.get("max_party_size")
-    if site is not None and site != mine and said is not None and said.where == "you":
-        flags.append(
-            BuildFlag(
-                title="Your description and your site disagree on group size.",
-                detail=f"Your site suggests {site}, you said {mine}. Your words win.",
-            )
-        )
-    largest = max(table.seats for table in profile.tables)
-    if largest < mine:
-        flags.append(
-            BuildFlag(
-                title=f"Your largest table seats {largest} and you accept groups up to {mine}.",
-                detail=(
-                    f"A group of {_range(largest + 1, mine)} goes to your booking page until "
-                    "you add a larger table."
-                ),
-            )
-        )
-    if draft.bookings_by_phone_only:
-        where = "that section" if urlsplit(str(profile.fallback_url)).fragment else "your site"
-        flags.append(
-            BuildFlag(
-                title="Your site only takes bookings by phone.",
-                detail=(
-                    f"The fallback link goes to {where}, so a guest who can't book through "
-                    "Claude still finds your number."
-                ),
-            )
-        )
-    if not profile.cancellation_policy:
-        flags.append(
-            BuildFlag(
-                title="No cancellation policy on your site.",
-                detail="Guests see none until you give me one.",
-            )
-        )
-    if draft.closed_days:
-        days = _join([day for day in WEEKDAYS if day in draft.closed_days])
-        flags.append(
-            BuildFlag(
-                title=f"Closed on {days} on your site.",
-                detail=f"The agent can't skip a weekday yet, so {days} bookings stay open.",
-            )
-        )
+    return BuildFlag(
+        title="No floor plan found.",
+        detail=f"I drafted {tables} tables for {total} seats. Correct it by asking.",
+    )
+
+
+def _group_size_flag(review: _Review) -> BuildFlag | None:
+    site, mine = review.draft.site_max_party_size, review.profile.max_party_size
+    said = review.sources.get("max_party_size")
+    if site is None or site == mine or said is None or said.where != "you":
+        return None
+    return BuildFlag(
+        title="Your description and your site disagree on group size.",
+        detail=f"Your site suggests {site}, you said {mine}. Your words win.",
+    )
+
+
+def _largest_table_flag(review: _Review) -> BuildFlag | None:
+    largest = max(table.seats for table in review.profile.tables)
+    mine = review.profile.max_party_size
+    if largest >= mine:
+        return None
+    return BuildFlag(
+        title=f"Your largest table seats {largest} and you accept groups up to {mine}.",
+        detail=(
+            f"A group of {_range(largest + 1, mine)} goes to your booking page until you add a "
+            "larger table."
+        ),
+    )
+
+
+def _phone_only_flag(review: _Review) -> BuildFlag | None:
+    if not review.draft.bookings_by_phone_only:
+        return None
+    where = "that section" if urlsplit(str(review.profile.fallback_url)).fragment else "your site"
+    return BuildFlag(
+        title="Your site only takes bookings by phone.",
+        detail=(
+            f"The fallback link goes to {where}, so a guest who can't book through Claude still "
+            "finds your number."
+        ),
+    )
+
+
+def _no_policy_flag(review: _Review) -> BuildFlag | None:
+    if review.profile.cancellation_policy:
+        return None
+    return BuildFlag(
+        title="No cancellation policy on your site.",
+        detail="Guests see none until you give me one.",
+    )
+
+
+def _closed_days_flag(review: _Review) -> BuildFlag | None:
+    if not review.draft.closed_days:
+        return None
+    days = joined([day for day in WEEKDAYS if day in review.draft.closed_days])
+    return BuildFlag(
+        title=f"Closed on {days} on your site.",
+        detail=f"The agent can't skip a weekday yet, so {days} bookings stay open.",
+    )
+
+
+def _defaults_flag(review: _Review) -> BuildFlag | None:
+    """One flag for every value that is a template default no source gave."""
+    profile = review.profile
     defaults = [
         ("services", profile.services == _DEFAULTS.services, "Your hours are a default."),
         (
             "max_party_size",
-            mine == _DEFAULTS.max_party_size,
-            f"Groups up to {mine} is a default.",
+            profile.max_party_size == _DEFAULTS.max_party_size,
+            f"Groups up to {profile.max_party_size} is a default.",
         ),
         (
             "price_level",
@@ -522,40 +553,27 @@ def flags_of(
             f"{profile.price_level} is a default price level.",
         ),
     ]
-    guessed = [title for name, is_default, title in defaults if is_default and name not in sources]
-    if guessed:
-        flags.append(
-            BuildFlag(
-                title=" ".join(guessed),
-                detail="Neither your site nor your description said. Tell me the real ones.",
-            )
-        )
-    return flags
+    guessed = [
+        title for name, is_default, title in defaults if is_default and name not in review.sources
+    ]
+    if not guessed:
+        return None
+    return BuildFlag(
+        title=" ".join(guessed),
+        detail="Neither your site nor your description said. Tell me the real ones.",
+    )
 
 
-def _join(words: list[str]) -> str:
-    """`Monday`, `Monday and Tuesday`, `Monday, Tuesday and Sunday`."""
-    return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} and {words[-1]}"
-
-
-def slugify(name: str, website: str) -> str:
-    """Slug from the name, or from the site's host when the name gives under 3 characters
-    ("Bo", "寿司"). The builder still adds a suffix when the slug is taken."""
-    host = (urlsplit(website).hostname or "").removeprefix("www.")
-    slug = ""
-    for source in (name, host, "restaurant"):
-        ascii_text = unicodedata.normalize("NFKD", source).encode("ascii", "ignore").decode()
-        slug = re.sub(r"[^a-z0-9]+", "-", ascii_text.lower()).strip("-")[:61].rstrip("-")
-        if len(slug) >= 3:
-            break
-    return slug
-
-
-def same_site(url: str, website: str) -> bool:
-    def host(value: str) -> str:
-        return (urlsplit(value).hostname or "").removeprefix("www.")
-
-    return bool(host(url)) and host(url) == host(website)
+# In the order the review card lists them.
+FLAG_RULES: tuple[Callable[[_Review], BuildFlag | None], ...] = (
+    _floor_plan_flag,
+    _group_size_flag,
+    _largest_table_flag,
+    _phone_only_flag,
+    _no_policy_flag,
+    _closed_days_flag,
+    _defaults_flag,
+)
 
 
 def fallback_url(proposed: str | None, crawl: CrawlResult) -> str:
@@ -582,8 +600,8 @@ def _was_crawled(url: str, crawl: CrawlResult) -> bool:
     try:
         if not same_site(url, crawl.website):
             return False
-        crawled = {_page_key(page.url) for page in crawl.pages} | {_page_key(crawl.website)}
-        return _page_key(urldefrag(url).url) in crawled
+        crawled = {page_key(page.url) for page in crawl.pages} | {page_key(crawl.website)}
+        return page_key(url) in crawled
     except ValueError:
         log.info("fallback_url_unparsable")
         return False
@@ -591,18 +609,10 @@ def _was_crawled(url: str, crawl: CrawlResult) -> bool:
 
 def _with_booking_section(url: str, crawl: CrawlResult) -> str:
     """`url` with the homepage's booking section, when `url` is the homepage without one."""
-    if urldefrag(url).fragment or _page_key(url) != _page_key(crawl.website) or not crawl.pages:
+    if urldefrag(url).fragment or page_key(url) != page_key(crawl.website) or not crawl.pages:
         return url
     anchor = next((a for a in crawl.pages[0].anchors if BOOKING_ANCHOR.search(a)), None)
     return f"{urldefrag(url).url}#{anchor}" if anchor else url
-
-
-def _page_key(url: str) -> str:
-    """Compare pages regardless of `www.`, a trailing slash or the fragment."""
-    parts = urlsplit(urldefrag(url).url)
-    host = (parts.hostname or "").removeprefix("www.")
-    port = f":{parts.port}" if parts.port else ""
-    return f"{host}{port}{parts.path.rstrip('/')}?{parts.query}"
 
 
 def describe(error: ValidationError) -> str:

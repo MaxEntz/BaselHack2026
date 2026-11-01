@@ -39,7 +39,8 @@ from core.models import BuildAgentInput, BuildAgentOutput, FactBox, SitePageEven
 from gateway.discovery import search
 from merchant_node.agents import MerchantAgents
 from merchant_platform.api import create_app
-from merchant_platform.assistant import Assistant, registry_profiles, registry_statuses
+from merchant_platform.assistant import Assistant
+from merchant_platform.registry import registry_records
 from merchant_platform.tools import AdminTools
 
 pytestmark = pytest.mark.integration
@@ -421,9 +422,7 @@ async def test_onboarding_through_the_chat_api(
     tools = AdminTools(None, build, tz, today=date.today)
     app = create_app(
         Settings(_env_file=None, database_url="postgresql+psycopg://unused/db"),  # type: ignore[call-arg]
-        assistant=Assistant(
-            llm, tools, registry_profiles(engine), tz, statuses=registry_statuses(engine)
-        ),
+        assistant=Assistant(llm, tools, registry_records(engine), tz),
     )
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:

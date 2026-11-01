@@ -16,7 +16,7 @@ pytestmark = [pytest.mark.browser, pytest.mark.llm]
 
 @pytest.mark.parametrize("site", [s for s in bench_extract.SITES if s.local], ids=lambda s: s.name)
 async def test_extraction_matches_what_the_site_states(site: bench_extract.Site) -> None:
-    env = bench_extract.Env()
+    env = bench_extract.settings()
     assert env.openai_api_key is not None
     llm = OpenAIClient(
         AsyncOpenAI(api_key=env.openai_api_key.get_secret_value()),

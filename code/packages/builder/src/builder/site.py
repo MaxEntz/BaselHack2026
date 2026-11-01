@@ -6,7 +6,8 @@ from collections.abc import Sequence
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from builder.crawl import Page, page_path
+from builder.crawl import Page
+from builder.urls import page_path
 from core.db import merchant_sites_t
 from core.models import PublicSite, SitePage
 

@@ -2,16 +2,9 @@
 
 import pytest
 
-from builder.crawl import (
-    HostGuard,
-    crawl,
-    is_refused,
-    normalize_text,
-    normalize_url,
-    page_name,
-    parse_json_ld,
-    useful_links,
-)
+from builder.crawl import crawl, normalize_text, parse_json_ld
+from builder.guard import HostGuard, is_refused
+from builder.urls import normalize_url, page_key, page_name, same_site, useful_links
 from core.errors import InvalidInput
 from core.models import StepEvent
 
@@ -152,6 +145,17 @@ def test_useful_links_keeps_same_site_pages_named_like_useful_ones() -> None:
         "https://www.bistrot.example/p/42",
         "https://bistrot.example/contact",
         "https://www.bistrot.example/r%C3%A9servation",
+    ]
+
+
+def test_a_trailing_slash_or_a_default_port_is_the_same_page() -> None:
+    # One page key for the crawl and the extraction (#220).
+    assert page_key(f"{HOME}menu/") == page_key("https://bistrot.example:443/menu#plats")
+    assert page_key(f"{HOME}menu?lang=de") != page_key(f"{HOME}menu")
+    assert same_site("http://bistrot.example/x", HOME)
+    assert not same_site("https://www.bistrot.example:8443/menu", HOME)
+    assert useful_links([(f"{HOME}menu/", "Menu"), (f"{HOME}menu", "Menu")], HOME, 5) == [
+        f"{HOME}menu/"
     ]
 
 

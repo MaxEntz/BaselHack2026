@@ -1,9 +1,9 @@
 """Put the demo database back into a known state (#10), whatever its current state.
 
-Applies the migrations, drops every merchant schema (`m_*`), empties the registry and the guest
-notices, then runs `scripts/seed.py` with the same options. Without options: demo mode, where
-the onboarding builds Le Petit Zinc live and La Graine Verte has its management data. Refuses
-a DATABASE_URL that is not on localhost.
+Applies the migrations, drops every merchant schema (`m_*`), empties the registry and every
+`public` table that refers to it, then runs `scripts/seed.py` with the same options. Without
+options: demo mode, where the onboarding builds Le Petit Zinc live and La Graine Verte has its
+management data. Refuses a DATABASE_URL that is not on localhost.
 
     uv run python scripts/demo_reset.py           # = --except le-petit-zinc --with-management
     uv run python scripts/demo_reset.py --all --with-bookings
@@ -54,16 +54,9 @@ async def wipe(conn: AsyncConnection) -> list[str]:
     )
     for schema in schemas:
         await conn.execute(DropSchema(schema, cascade=True))
-    await conn.execute(
-        text(
-            "TRUNCATE public.merchant_sites, public.merchant_activity, public.merchant_owners,"
-            " public.agent_requests,"
-            " public.reservation_changes,"
-            " public.guest_notices,"
-            " public.merchants"
-            " RESTART IDENTITY"
-        )
-    )
+    # Every other `public` table refers to `merchants (slug)` (migrations 0001-0008): CASCADE
+    # empties them with it, a new one included.
+    await conn.execute(text("TRUNCATE public.merchants RESTART IDENTITY CASCADE"))
     return schemas
 
 

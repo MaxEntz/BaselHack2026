@@ -16,10 +16,10 @@ from builder.extract import (
     TOOL_NAME,
     ExtractionFailed,
     extract_profile,
-    slugify,
     user_message,
 )
 from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec, strict_schema
+from builder.slugs import slugify
 from core.models import TableSpec
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())

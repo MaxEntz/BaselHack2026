@@ -30,6 +30,22 @@ TOKEN_BYTES = 32
 # Enough of the token's hash to tell one link from the next; the cookie is signed anyway.
 FINGERPRINT_CHARS = 16
 
+NOT_SIGNED_IN = "Open your private link to manage this restaurant."
+OTHER_MERCHANT = "Your link opens another restaurant."
+NEEDS_INVITE = "Building a new agent needs an invitation: open the link you were given."
+
+
+class NotSignedIn(Exception):
+    """`401` `not_signed_in`: no valid owner cookie."""
+
+
+class OtherMerchant(Exception):
+    """`403` `other_merchant`: the cookie is another merchant's."""
+
+
+class NeedsInvite(Exception):
+    """`403` `needs_invite`: starting a build needs PLATFORM_INVITE_CODE's invitation."""
+
 
 @dataclass(frozen=True)
 class Owner:
@@ -119,9 +135,6 @@ class MemoryOwnerStore:
 
     async def by_slug(self, slug: str) -> Owner | None:
         return self._owners.get(slug)
-
-    def forget(self, slug: str) -> None:
-        self._owners.pop(slug, None)
 
 
 def login_url(web_url: str, token: str) -> str:

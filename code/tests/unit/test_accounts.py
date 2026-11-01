@@ -17,8 +17,16 @@ SECRET = b"s" * 32
 NOW = datetime(2026, 10, 31, 19, 40, tzinfo=UTC)
 
 
-def accounts(clock: datetime = NOW, invite: str | None = None) -> tuple[Accounts, MemoryOwnerStore]:
-    store = MemoryOwnerStore()
+class ForgettingStore(MemoryOwnerStore):
+    """An owner store whose merchant can be deleted, as `merchant_owners` loses its row when the
+    registry's does (ON DELETE CASCADE)."""
+
+    def forget(self, slug: str) -> None:
+        self._owners.pop(slug, None)
+
+
+def accounts(clock: datetime = NOW, invite: str | None = None) -> tuple[Accounts, ForgettingStore]:
+    store = ForgettingStore()
     return Accounts(store, Signer(SECRET, clock=lambda: clock), invite), store
 
 

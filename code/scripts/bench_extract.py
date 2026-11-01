@@ -27,8 +27,6 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from openai import AsyncOpenAI
-from pydantic import SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from builder.crawl import CrawlResult, crawl
 from builder.extract import (
@@ -39,22 +37,22 @@ from builder.extract import (
     extract_profile,
 )
 from builder.llm import OpenAIClient
+from core.config import Settings
 from core.models import MerchantProfile, StepEvent
 
 DEMO_SITES = Path(__file__).resolve().parents[1] / "sites"
 BENCH_SITES = Path(__file__).resolve().parent / "bench_sites"
 
 
-class Env(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=Path(__file__).resolve().parents[1] / ".env",
-        env_ignore_empty=True,
-        extra="ignore",
-    )
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+# The bench reads no database: DATABASE_URL may stay unset.
+NO_DATABASE = "postgresql+psycopg://unused/bench"
 
-    openai_api_key: SecretStr | None = None
-    openai_model: str = "gpt-6.1-terra"
-    builder_reasoning_effort: str | None = "none"
+
+def settings() -> Settings:
+    """`code/.env`'s OPENAI_API_KEY, OPENAI_MODEL and BUILDER_REASONING_EFFORT, as the
+    builder reads them."""
+    return Settings(_env_file=ENV_FILE, database_url=NO_DATABASE)  # type: ignore[call-arg]
 
 
 Check = Callable[[ExtractionResult], bool]
@@ -241,7 +239,7 @@ async def main() -> int:
     parser.add_argument("--site", action="append", choices=[s.name for s in SITES])
     parser.add_argument("--local", action="store_true", help="only the sites served locally")
     args = parser.parse_args()
-    env = Env()
+    env = settings()
     if env.openai_api_key is None:
         print("OPENAI_API_KEY is not set (code/.env)", file=sys.stderr)
         return 2

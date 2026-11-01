@@ -31,7 +31,8 @@ from core.config import Settings
 from core.models import BuildAgentInput, BuildAgentOutput, StepEvent
 from merchant_platform.accounts import Accounts, IssuedLink, MemoryOwnerStore, Signer, issued
 from merchant_platform.api import create_app
-from merchant_platform.assistant import Assistant, registry_profiles, registry_statuses
+from merchant_platform.assistant import Assistant
+from merchant_platform.registry import registry_records
 from merchant_platform.tools import AdminTools
 
 pytestmark = [pytest.mark.integration, pytest.mark.llm]
@@ -113,9 +114,8 @@ def _platform(engine: AsyncEngine, tmp_path: Path) -> _Platform:
     assistant = Assistant(
         OpenAIClient(openai, env.openai_model, reasoning_effort=env.openai_reasoning_effort),
         AdminTools(None, build, TZ, today=date.today, issue_link=issue_link, publish=publish_agent),
-        registry_profiles(engine),
+        registry_records(engine),
         TZ,
-        statuses=registry_statuses(engine),
     )
     app = create_app(
         Settings(_env_file=None, database_url="postgresql+psycopg://unused/db"),  # type: ignore[call-arg]
