@@ -124,6 +124,12 @@ class RestaurantTemplate(_Frozen):
 
 
 TEMPLATE_PATH = files("agent") / "templates" / "restaurant.json"
+# The tool Claude reads instead of the 4 booking tools, and what its owner reads about it.
+TALK_TOOL = "talk_to_merchant"
+TALK_SHOWN = (
+    "It answers in natural language from what your site says, and books, changes or cancels only "
+    "after the guest's yes."
+)
 
 
 def load_template(path: Traversable = TEMPLATE_PATH) -> RestaurantTemplate:
@@ -206,6 +212,21 @@ def described_profile(profile: MerchantProfile) -> MerchantProfile:
             "cancellation_policy": POLICY_ELSEWHERE,
         }
     )
+
+
+def talk_sentence(profile: MerchantProfile) -> str:
+    """How `talk_to_merchant` opens, from the described profile: no merchant free text (#22)."""
+    shown = described_profile(profile)
+    city = shown.location.city if shown.location else None
+    return f"Talk to the agent of {shown.name}{f' ({city})' if city else ''}."
+
+
+def tools_agents_read(profile: MerchantProfile, *, talk: bool) -> list[GeneratedTool]:
+    """What agents read of this merchant, as its owner sees it (#253): the one tool while the
+    gateway offers the merchant's agent (`GATEWAY_TALK`, #251), else the 4 booking tools."""
+    if talk:
+        return [GeneratedTool(name=TALK_TOOL, description=f"{talk_sentence(profile)} {TALK_SHOWN}")]
+    return generated_tools(profile)
 
 
 def described_tools(profile: MerchantProfile) -> list[GeneratedTool]:

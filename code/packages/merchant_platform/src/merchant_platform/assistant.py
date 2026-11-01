@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from openai import AsyncOpenAI, Timeout
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.provisioning import generated_tools
+from agent.provisioning import tools_agents_read
 from agent.service import AgentService
 from agent.times import clock_line
 from builder.build import BuildEmitter, Builder, Crawl, gateway_mcp_url, publish
@@ -137,7 +137,11 @@ STATUS_RULE = (
 
 
 def system_prompt(
-    now: datetime, profile: MerchantProfile | None, status: MerchantStatus | None = None
+    now: datetime,
+    profile: MerchantProfile | None,
+    status: MerchantStatus | None = None,
+    *,
+    talk: bool = False,
 ) -> str:
     tz = str(now.tzinfo)
     parts = [BASE_PROMPT.format(tz=tz), clock_line(now)]
@@ -149,7 +153,8 @@ def system_prompt(
             OPERATIONS_PROMPT.format(status=line, profile=profile.model_dump_json(indent=1))
         )
         # Code-written from the template, merchant free text left out (#23): what agents read.
-        read = "\n".join(f"- {t.name}: {t.description}" for t in generated_tools(profile))
+        tools = tools_agents_read(profile, talk=talk)
+        read = "\n".join(f"- {t.name}: {t.description}" for t in tools)
         parts.append(f"What agents read:\n{read}")
     return "\n".join(parts)
 
@@ -202,6 +207,7 @@ class Assistant:
         *,
         default_merchant: str | None = None,
         clock: Callable[[], datetime] | None = None,
+        talk: bool = False,
     ) -> None:
         """`merchants` reads the registry row the prompt is built from: the merchant's profile
         and status, in one query."""
@@ -209,6 +215,7 @@ class Assistant:
         self._tools = tools
         self._merchants = merchants
         self._default_merchant = default_merchant
+        self._talk = talk  # `GATEWAY_TALK`: which tools the prompt says agents read (#253)
         self._clock = clock or (lambda: datetime.now(tz))
 
     async def __call__(self, session: Session, user_message: str, emit: Emit) -> None:
@@ -228,7 +235,7 @@ class Assistant:
             profile, status = await self._merchant(slug) if slug else (None, None)
             try:
                 reply = await self._llm.respond(
-                    instructions=system_prompt(self._clock(), profile, status),
+                    instructions=system_prompt(self._clock(), profile, status, talk=self._talk),
                     tools=SPECS,
                     history=compact(close_dangling_calls(session.messages)),
                     on_text=on_text,
@@ -304,7 +311,14 @@ def default_assistant(
         save_look=look_store(engine),
         site_look=partial(_site_look, merchants, crawler or partial(crawl, max_pages=0)),
     )
-    return Assistant(chat, tools, merchants, tz, default_merchant=settings.platform_merchant)
+    return Assistant(
+        chat,
+        tools,
+        merchants,
+        tz,
+        default_merchant=settings.platform_merchant,
+        talk=settings.gateway_talk,
+    )
 
 
 def _openai_clients(settings: Settings) -> tuple[LLMClient, LLMClient] | None:
@@ -337,6 +351,7 @@ def _builder(
         cache=BuildCache(settings.builder_cache),
         crawl=crawler or crawl,
         tz=tz,
+        talk=settings.gateway_talk,
     )
 
 

@@ -132,7 +132,7 @@ def default_app(
     engine = make_engine(settings.database_url)
     tz = ZoneInfo(settings.merchant_tz)
     bus = LiveBus()
-    agent = PgAgentService(engine, tz=tz)
+    agent = PgAgentService(engine, tz=tz, talk=settings.gateway_talk)
     accounts = default_accounts(settings, PgOwnerStore(engine))
     return create_app(
         settings,

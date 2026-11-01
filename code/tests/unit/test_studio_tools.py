@@ -373,3 +373,13 @@ def test_the_prompt_answers_what_agents_read_and_refuses_to_touch_the_site() -> 
     assert "What agents read:\n- get_availability:" in prompt
     assert "No. Sésame only reads your public site." in prompt
     assert "Your agent site has no interface, so there's nothing to colour." in prompt
+
+
+def test_the_prompt_says_which_tools_agents_read() -> None:
+    four = system_prompt(NOW, PROFILE)
+    one = system_prompt(NOW, PROFILE, talk=True)
+
+    assert "- create_reservation:" in four
+    assert "- talk_to_merchant:" not in four
+    assert "- talk_to_merchant:" in one
+    assert "- create_reservation:" not in one

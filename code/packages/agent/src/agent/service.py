@@ -121,9 +121,15 @@ class PgAgentService:
     """
 
     def __init__(
-        self, engine: AsyncEngine, *, tz: ZoneInfo | None = None, clock: Clock | None = None
+        self,
+        engine: AsyncEngine,
+        *,
+        tz: ZoneInfo | None = None,
+        clock: Clock | None = None,
+        talk: bool = False,
     ) -> None:
         self.engine = engine
+        self.talk = talk  # `GATEWAY_TALK`: which tools the rules say agents read (#253)
         self.tz = tz or ZoneInfo(get_settings().merchant_tz)
         self.clock = clock or (lambda: datetime.now(self.tz))
 
@@ -421,7 +427,7 @@ class PgAgentService:
     async def get_rules(self, slug: str) -> Rules:
         async with merchant_conn(self.engine, slug) as conn:
             await load_merchant(conn, slug, merchant_side=True)
-            return await site_forms.get_rules(conn, slug)
+            return await site_forms.get_rules(conn, slug, talk=self.talk)
 
     async def update_rules(
         self,

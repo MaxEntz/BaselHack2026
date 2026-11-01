@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.provisioning import NotBuilding, deploy, deprovision, generated_tools, provision
+from agent.provisioning import NotBuilding, deploy, deprovision, provision, tools_agents_read
 from builder.cache import CACHE_ROOT, BuildCache, crawl_key, extraction_key
 from builder.crawl import CrawlResult, StepEmitter, crawl, pages_read
 from builder.extract import PROMPT_VERSION, ExtractionFailed, ExtractionResult, extract_profile
@@ -96,6 +96,7 @@ class Builder:
         crawl: Crawl = crawl,
         generated_dir: Path | None = GENERATED_DIR,
         tz: ZoneInfo | None = None,
+        talk: bool = False,
     ) -> None:
         self._llm = llm
         self._engine = engine
@@ -105,6 +106,7 @@ class Builder:
         self._crawl = crawl
         self._generated_dir = generated_dir
         self._tz = tz  # the merchants' zone, for the times they read; None: UTC
+        self._talk = talk  # `GATEWAY_TALK`: which tools the card says agents read (#253)
 
     async def build_agent(
         self, website: str, description: str, on_event: BuildEmitter
@@ -162,7 +164,7 @@ class Builder:
             assumptions=tuple(extracted.assumptions),
             facts=tuple(extracted.facts),
             flags=tuple(extracted.flags),
-            tools=tuple(generated_tools(profile)),
+            tools=tuple(tools_agents_read(profile, talk=self._talk)),
             mcp_url=self._mcp_url,
         )
 

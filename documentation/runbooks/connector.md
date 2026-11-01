@@ -158,7 +158,7 @@ Watch the confirmation: in Claude.ai, no booking may go out before your "yes". T
 
 ### Talking to the merchant's agent (`GATEWAY_TALK=1`, #251)
 
-With `GATEWAY_TALK=1` in the server's `code/.env` (then `systemctl restart merchant-gateway`), the gateway offers `talk_to_merchant` instead of the 4 booking tools, on `/mcp` and on every `/m/<slug>/mcp`. Claude writes to the restaurant's own agent, which runs on the BATP node (#249) with the builder's OpenAI key (#250): without them, every talk answers `agent_unavailable` with the fallback link. Reconnect the connector in Claude.ai after the switch, since it caches the tool list.
+With `GATEWAY_TALK=1` in the server's `code/.env` (then `systemctl restart merchant-gateway`), the gateway offers `talk_to_merchant` instead of the 4 booking tools, on `/mcp` and on every `/m/<slug>/mcp`. Set it in `platform/.env` too (then `systemctl restart merchant-platform`): the profile card, the Booking rules page, Studio's agent tab and the assistant then show that one tool. Without it, the gateway still talks, and only what the owner is told stays on the 4 tools. Claude writes to the restaurant's own agent, which runs on the BATP node (#249) with the builder's OpenAI key (#250): without them, every talk answers `agent_unavailable` with the fallback link. Reconnect the connector in Claude.ai after the switch, since it caches the tool list.
 
 | Message | Expected |
 |---|---|

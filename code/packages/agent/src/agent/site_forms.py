@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from agent import activity
 from agent.admin import update_profile
-from agent.provisioning import described_tools, one_line
+from agent.provisioning import described_profile, one_line, tools_agents_read
 from agent.times import day_bounds, hhmm
 from agent.writes import not_a_start
 from core.availability import bookable_starts
@@ -63,7 +63,7 @@ async def get_tables(conn: AsyncConnection, slug: str) -> list[TableSpec]:
     return [TableSpec(label=row.label, seats=row.seats) for row in ordered]
 
 
-async def get_rules(conn: AsyncConnection, slug: str) -> Rules:
+async def get_rules(conn: AsyncConnection, slug: str, *, talk: bool = False) -> Rules:
     registry = await _registry(conn, slug)
     policy = await get_policy(conn)
     stored = registry.profile.get("cancellation_policy")
@@ -81,7 +81,7 @@ async def get_rules(conn: AsyncConnection, slug: str) -> Rules:
         slot_length_min=policy.slot_length_min,
         fallback_url=registry.fallback_url,
         cancellation_policy=paragraph or None,
-        tools=tuple(described_tools(profile)),
+        tools=tuple(tools_agents_read(described_profile(profile), talk=talk)),
     )
 
 

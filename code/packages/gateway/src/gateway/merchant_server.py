@@ -19,7 +19,7 @@ from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from agent import discovery
-from agent.provisioning import described_profile, described_tools
+from agent.provisioning import described_tools, talk_sentence
 from core.config import Settings
 from core.models import (
     MAX_SLOTS,
@@ -125,13 +125,6 @@ def deadline_of(request: Any, settings: Settings, tool: str | None = None) -> fl
     scope = getattr(request, "scope", None) or {}
     started = (scope.get("state") or {}).get(STARTED)
     return deadline_in(settings, tool, start=started) if isinstance(started, float) else None
-
-
-def talk_sentence(profile: MerchantProfile) -> str:
-    """How `talk_to_merchant` opens, from the described profile: no merchant free text (#22)."""
-    shown = described_profile(profile)
-    city = shown.location.city if shown.location else None
-    return f"Talk to the agent of {shown.name}{f' ({city})' if city else ''}."
 
 
 def describe(tools: list[dict[str, Any]], profile: MerchantProfile) -> list[dict[str, Any]]:

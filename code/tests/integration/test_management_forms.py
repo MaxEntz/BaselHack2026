@@ -239,6 +239,16 @@ async def test_a_table_past_bookings_refer_to_names_their_guest(
 # Rules
 
 
+async def test_the_rules_name_the_one_tool_while_the_gateway_talks(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+
+    rules = await PgAgentService(engine, tz=TZ, talk=True).get_rules(slug)
+
+    assert [tool.name for tool in rules.tools] == ["talk_to_merchant"]
+
+
 async def test_saving_the_rules_updates_the_policy_the_registry_and_the_descriptions(
     service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
 ) -> None:
