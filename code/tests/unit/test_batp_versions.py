@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from batp.client import BatpClient
 from batp.codec import MAX_FRAME, encode
 from batp.messages import (
     ADDRESSED,
@@ -19,7 +20,8 @@ from batp.messages import (
     intents_of,
     negotiate,
 )
-from batp.server import NodeServer
+from batp.server import HANDLER_TIMEOUT, INTENT_TIMEOUTS, NodeServer
+from core.errors import AgentUnavailable
 
 CALLER = AgentIdentity(
     id="urn:batp:agent:test", name="Test agent", kind="user-agent", operator="tests"
@@ -125,3 +127,57 @@ async def test_talk_needs_a_merchant(node: NodeServer) -> None:
         assert "TALK needs a merchant" in answer["error"]["message"]
     finally:
         writer.close()
+
+
+async def test_talk_has_its_own_deadline_and_the_others_keep_theirs() -> None:
+    assert (INTENT_TIMEOUTS["TALK"], HANDLER_TIMEOUT) == (25.0, 10.0)
+
+    async def slow(agent: AgentIdentity, request: Request) -> dict[str, Any]:
+        await asyncio.sleep(0.2)
+        return {"intent": request.intent}
+
+    server = NodeServer(
+        node=NODE,
+        handle=slow,
+        authenticate=lambda h: True,
+        handler_timeout=0.05,
+        intent_timeouts={"TALK": 1.0},
+    )
+    await server.start("127.0.0.1", 0)
+    try:
+        async with BatpClient("127.0.0.1", server.port, CALLER) as client:
+            _, ping = await client.exchange("PING")
+            _, talk = await client.exchange("TALK", "le-petit-zinc", TALK["params"])
+    finally:
+        await server.stop()
+
+    assert (ping.status, talk.status) == (503, 200)
+
+
+async def test_a_talk_lost_with_its_session_is_not_sent_again() -> None:
+    calls: list[str] = []
+    started = asyncio.Event()
+
+    async def hold(agent: AgentIdentity, request: Request) -> dict[str, Any]:
+        calls.append(request.intent)
+        started.set()
+        await asyncio.sleep(5)
+        return {}
+
+    server = NodeServer(node=NODE, handle=hold, authenticate=lambda h: True)
+    await server.start("127.0.0.1", 0)
+    client = BatpClient("127.0.0.1", server.port, CALLER)
+    try:
+        async with asyncio.timeout(5):  # a regression must fail, not hang
+            talk = asyncio.create_task(client.request("TALK", "le-petit-zinc", TALK["params"]))
+            await started.wait()
+            for writer in list(server._writers):  # the session drops, the node keeps listening
+                writer.close()
+
+            # Not read-only: the caller retries with the same key, the client never does.
+            with pytest.raises(AgentUnavailable, match="closed before the answer"):
+                await talk
+        assert calls == ["TALK"]
+    finally:
+        await client.close()
+        await server.stop()

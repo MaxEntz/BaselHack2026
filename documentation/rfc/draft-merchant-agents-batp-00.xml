@@ -18,7 +18,7 @@
         <uri>https://github.com/MaxEntz/BaselHack2026</uri>
       </address>
     </author>
-    <date year="2026" month="October" day="31"/>
+    <date year="2026" month="November" day="01"/>
     <area>Applications</area>
     <keyword>agents</keyword>
     <keyword>booking</keyword>
@@ -31,15 +31,17 @@ application protocol reserved for software agents that book with merchants
 on behalf of people or businesses. A BATP session runs over TCP, starts with
 a handshake that names the calling agent, and carries newline-delimited JSON
 frames. Each request states an intent (discover merchants, check
-availability, book, amend, cancel, recall bookings, ping) and the merchant it
-addresses. Responses carry numeric status codes and, when the merchant's own
-agent cannot serve the request, a fallback URL to the merchant's website.
-BATP is designed to sit behind a Model Context Protocol (MCP) server, which
-acts as a bridge for assistants that only speak MCP.</t>
+availability, book, amend, cancel, talk with the merchant's agent in natural
+language, recall bookings, ping) and the merchant it addresses. Responses
+carry numeric status codes and, when the merchant's own agent cannot serve
+the request, a fallback URL to the merchant's website. A write proposed in a
+conversation is carried out only once the caller confirms it. BATP is
+designed to sit behind a Model Context Protocol (MCP) server, which acts as
+a bridge for assistants that only speak MCP.</t>
     </abstract>
   </front>
   <middle>
-    <?line 66?>
+    <?line 68?>
 
 <section anchor="introduction">
       <name>Introduction</name>
@@ -51,11 +53,15 @@ route agent traffic separately, or apply rules meant for agents.</t>
 talking (established once per session), what it intends to do, and to which
 merchant. The protocol is deliberately small: it covers what a network of
 merchant agents needs to take bookings, and nothing else.</t>
+      <t>This document defines version 0.2 of BATP. Version 0.2 adds one intent to
+version 0.1: TALK, with which a guest's agent talks with the merchant's agent
+in natural language (<xref target="talk"/>). The changes are listed in <xref target="changes"/>.</t>
       <section anchor="scope">
         <name>Scope</name>
         <t>This version covers the guest side of booking with restaurants: discovery,
 availability, booking, amending, cancelling and recalling a guest's
-bookings. Merchant-side operations (listing a day's bookings, blocking a
+bookings, and a conversation with the merchant's agent about any of these.
+Merchant-side operations (listing a day's bookings, blocking a
 slot, changing a policy) are out of scope: they stay on the merchant's own
 platform.</t>
       </section>
@@ -94,7 +100,9 @@ appear in all capitals, as shown here.</t>
         <dt>Merchant agent:</dt>
         <dd>
           <t>One merchant's booking logic and data, served by a node and addressed by
-the merchant's slug.</t>
+the merchant's slug. Since version 0.2, it also includes the
+conversational agent, built on a language model, that answers TALK
+(<xref target="talk"/>).</t>
         </dd>
         <dt>Caller:</dt>
         <dd>
@@ -123,6 +131,17 @@ lowercase ASCII letters, digits and "-".</t>
         <dd>
           <t>The person a booking is for, identified in this version by the name the
 caller gives (see <xref target="privacy"/>).</t>
+        </dd>
+        <dt>Conversation:</dt>
+        <dd>
+          <t>A sequence of TALK requests from one caller to one merchant agent, named
+by an opaque identifier that the node chooses (<xref target="talk"/>).</t>
+        </dd>
+        <dt>Proposal:</dt>
+        <dd>
+          <t>A write (a booking, a change or a cancellation) that a merchant agent
+offers in a conversation, and carries out only when a later TALK confirms
+it (<xref target="talk"/>).</t>
         </dd>
       </dl>
     </section>
@@ -156,11 +175,12 @@ in any order.</t>
         <name>A session with two requests answered out of order</name>
         <artwork type="ascii-art"><![CDATA[
   Caller                                        Node
-    |  hello {agent, token, batp: "0.1"}         |
+    |  hello {agent, token, batp: "0.2"}         |
     |------------------------------------------->|
-    |  welcome {node, intents, session}          |
+    |  welcome {batp: "0.2", node, intents,      |
+    |           session}                         |
     |<-------------------------------------------|
-    |  request {id: "r-1", intent: AVAILABILITY} |
+    |  request {id: "r-1", intent: TALK}         |
     |------------------------------------------->|
     |  request {id: "r-2", intent: DISCOVER}     |
     |------------------------------------------->|
@@ -170,6 +190,8 @@ in any order.</t>
     |<-------------------------------------------|
 ]]></artwork>
       </figure>
+      <t>In this example, the TALK takes longer than the DISCOVER sent after it,
+because the merchant's agent runs a model turn to answer it (<xref target="deadlines"/>).</t>
     </section>
     <section anchor="transport">
       <name>Transport</name>
@@ -372,7 +394,7 @@ A node <bcp14>MAY</bcp14> accept a <tt>hello</tt> without <tt>token</tt> on the 
             <tr>
               <td align="left">
                 <tt>batp</tt></td>
-              <td align="left">the version the node will use for this session</td>
+              <td align="left">the version of the session (<xref target="versioning"/>)</td>
               <td align="left">
                 <bcp14>REQUIRED</bcp14></td>
             </tr>
@@ -386,7 +408,7 @@ A node <bcp14>MAY</bcp14> accept a <tt>hello</tt> without <tt>token</tt> on the 
             <tr>
               <td align="left">
                 <tt>intents</tt></td>
-              <td align="left">array of intent names the node serves</td>
+              <td align="left">array of the intent names the node serves in this session</td>
               <td align="left">
                 <bcp14>REQUIRED</bcp14></td>
             </tr>
@@ -399,8 +421,11 @@ A node <bcp14>MAY</bcp14> accept a <tt>hello</tt> without <tt>token</tt> on the 
             </tr>
           </tbody>
         </table>
-        <t>A caller <bcp14>MUST NOT</bcp14> send a request whose intent is not in <tt>intents</tt>. A node
-that receives one <bcp14>MUST</bcp14> answer it with status 400.</t>
+        <t><tt>intents</tt> lists only intents that the session's version defines: in a
+session of version 0.1, a node that speaks 0.2 does not list TALK
+(<xref target="versioning"/>). A caller <bcp14>MUST NOT</bcp14> send a request whose intent is not in
+<tt>intents</tt>. A node that receives one <bcp14>MUST</bcp14> answer it with status 400 and code
+<tt>invalid_input</tt>, without carrying it out.</t>
       </section>
       <section anchor="reject">
         <name>reject</name>
@@ -502,7 +527,7 @@ required, or the token does not match the agent.</t>
                 <tt>merchant</tt></td>
               <td align="left">slug</td>
               <td align="left">
-                <bcp14>REQUIRED</bcp14> for AVAILABILITY, BOOK, AMEND and CANCEL; absent otherwise</td>
+                <bcp14>REQUIRED</bcp14> for AVAILABILITY, BOOK, AMEND, CANCEL and TALK; absent otherwise</td>
             </tr>
             <tr>
               <td align="left">
@@ -643,6 +668,20 @@ answer a request beyond its limit with status 429 and code
 valid: the caller <bcp14>MAY</bcp14> send it again once one of its earlier requests has
 been answered.</t>
       </section>
+      <section anchor="deadlines">
+        <name>Deadlines</name>
+        <t>A node <bcp14>SHOULD</bcp14> answer a TALK within 25 seconds of receiving it, and a
+request of any other intent within 10 seconds. A TALK gets longer because
+the merchant's agent answers it with a model turn and the tool calls that
+turn makes (<xref target="talk"/>).</t>
+        <t>A node that has not carried out a request by the deadline it applies <bcp14>MUST</bcp14>
+answer it with status 503 and code <tt>agent_unavailable</tt> (<xref target="status-codes"/>),
+rather than leave it unanswered. A caller <bcp14>SHOULD</bcp14> wait for the answer to a
+TALK at least as long as the node's deadline for TALK, so that the guest
+gets the node's answer, or its <tt>fallback_url</tt>, rather than the caller's own
+timeout. A caller that stops waiting for a request before its answer <bcp14>MUST
+NOT</bcp14> assume that the request was or was not carried out.</t>
+      </section>
       <section anchor="idle-sessions">
         <name>Idle sessions</name>
         <t>A node <bcp14>SHOULD</bcp14> close a session that has received no frame for 60 seconds,
@@ -699,9 +738,10 @@ versions can add frames sent by the node (<xref target="events"/>).</t>
         <t>A write sent again after a lost session must not book twice.</t>
         <ul spacing="normal">
           <li>
-            <t>BOOK and AMEND carry <tt>params.idempotency_key</tt>, chosen by the caller. A
-caller retrying a write <bcp14>MUST</bcp14> reuse the key of the first attempt, with the
-same params, and <bcp14>SHOULD</bcp14> use a fresh unpredictable key for every new write.</t>
+            <t>BOOK, AMEND and TALK carry <tt>params.idempotency_key</tt>, chosen by the
+caller. A caller retrying one of them <bcp14>MUST</bcp14> reuse the key of the first
+attempt, with the same params, and <bcp14>SHOULD</bcp14> use a fresh unpredictable key
+for every new write and every new TALK message.</t>
           </li>
           <li>
             <t>For BOOK, the key is scoped to the merchant. A node that receives a BOOK
@@ -723,15 +763,35 @@ key.</t>
             <t>CANCEL is idempotent without a key: cancelling a booking already
 cancelled by the guest returns it again, with status 200.</t>
           </li>
+          <li>
+            <t>For TALK, the key is scoped to the merchant and to the session's
+<tt>agent.id</tt>. A node that receives a TALK with a key it already answered
+with status 200, for that merchant and that <tt>agent.id</tt>, <bcp14>MUST</bcp14> return the
+result it returned then, with status 200, without calling its model again
+and without carrying out any write. A TALK answered with another status
+does not use up its key.</t>
+          </li>
+          <li>
+            <t>TALK is not read-only: it can carry out a write (<xref target="talk"/>). A client
+library <bcp14>MUST NOT</bcp14> send a TALK again by itself after a lost session, as it
+may for DISCOVER, AVAILABILITY, RECALL and PING; the caller decides, and
+retries with the same key.</t>
+          </li>
         </ul>
       </section>
-      <section anchor="confirmation-before-writes">
+      <section anchor="confirmation">
         <name>Confirmation before writes</name>
         <t>BOOK, AMEND and CANCEL change a guest's plans. A caller acting for a guest
 <bcp14>MUST</bcp14> obtain the guest's explicit confirmation of the merchant, time, party
 size and name before sending any of them. A node cannot verify this; it is
 a requirement on callers, and a bridge enforces it through what it tells
 the assistant (<xref target="mcp-bridge"/>).</t>
+        <t>In a TALK conversation, the same requirement applies to <tt>confirm</tt>: a caller
+acting for a guest <bcp14>MUST NOT</bcp14> send <tt>confirm</tt> before the guest explicitly
+accepted the proposal's <tt>summary</tt>, after the caller showed it to them. A
+"yes" given before the proposal was shown does not count. Here the node
+enforces the other half: it carries out a proposed write only on a
+<tt>confirm</tt> that names it (<xref target="talk-confirm"/>).</t>
       </section>
     </section>
     <section anchor="intents">
@@ -742,7 +802,7 @@ both in the merchant's local time zone. The params and result of each
 intent are defined by the JSON Schemas of <xref target="json-schemas"/>; this section
 states their meaning and errors.</t>
       <table>
-        <name>BATP 0.1 intents</name>
+        <name>BATP 0.2 intents</name>
         <thead>
           <tr>
             <th align="left">Intent</th>
@@ -775,6 +835,11 @@ states their meaning and errors.</t>
             <td align="left">CANCEL</td>
             <td align="left">required</td>
             <td align="left">Cancel a booking as the guest</td>
+          </tr>
+          <tr>
+            <td align="left">TALK</td>
+            <td align="left">required</td>
+            <td align="left">Talk with the merchant's agent in natural language (since 0.2)</td>
           </tr>
           <tr>
             <td align="left">RECALL</td>
@@ -819,8 +884,9 @@ free that day for that party.</t>
         <t>Result: <tt>reservation</tt>, with <tt>id</tt> (the merchant's reference, for example
 "R-001"), <tt>merchant</tt>, <tt>starts_at</tt>, <tt>party_size</tt>, <tt>table_label</tt>, <tt>status</tt>
 ("confirmed"), <tt>guest_name</tt> and <tt>via</tt>.</t>
-        <t><tt>via</tt> is the booking channel, as the merchant sees it. Version 0.1 defines
-"claude", "merchant" and "website"; "website" is never set by BATP. A node
+        <t><tt>via</tt> is the booking channel, as the merchant sees it. Versions 0.1 and 0.2
+define "claude", "merchant" and "website"; "website" is never set by BATP.
+The same rule applies to a booking made through TALK (<xref target="talk"/>). A node
 <bcp14>MUST</bcp14> record "merchant" when the caller's <tt>agent.kind</tt> is <tt>merchant-agent</tt>,
 and "claude" when it is <tt>user-agent</tt>, whatever assistant the caller is. So
 in this version, <tt>via</tt> is only accurate for callers behind the reference
@@ -844,6 +910,197 @@ the node answers 404, without saying which check failed. Result:
 applies. Result: <tt>reservation</tt>, with <tt>status</tt> "cancelled".</t>
         <t>Errors: 400, 404, 503.</t>
       </section>
+      <section anchor="talk">
+        <name>TALK</name>
+        <t>TALK is defined since version 0.2. A node <bcp14>MUST NOT</bcp14> offer or serve it in a
+session of version 0.1 (<xref target="versioning"/>).</t>
+        <t>With TALK, a guest's agent talks with the merchant's agent in natural
+language: it passes on what the guest wants, with the guest's preferences,
+and the merchant's agent answers. To answer, the merchant's agent can check
+availability, look up the guest's bookings at this merchant, and propose a
+booking, a change or a cancellation. It carries out a proposal only when the
+caller confirms it in a later TALK (<xref target="talk-confirm"/>).</t>
+        <t>Params:</t>
+        <ul spacing="normal">
+          <li>
+            <t><tt>message</tt> (<bcp14>REQUIRED</bcp14>): what the caller says to the merchant's agent. Once
+leading and trailing white space is removed, it <bcp14>MUST</bcp14> be 1 to 2000
+characters long, and it <bcp14>MUST NOT</bcp14> contain a control character (Unicode
+general category Cc) other than LF (U+000A).</t>
+          </li>
+          <li>
+            <t><tt>idempotency_key</tt> (<bcp14>REQUIRED</bcp14>): as for BOOK, with the same bounds
+(<xref target="idempotency"/>).</t>
+          </li>
+          <li>
+            <t><tt>conversation</tt>: absent on the first message of a conversation. On every
+later message, the <tt>conversation</tt> that the node returned
+(<xref target="conversations"/>).</t>
+          </li>
+          <li>
+            <t><tt>confirm</tt>: the <tt>id</tt> of the conversation's <tt>pending</tt> proposal, sent to have
+it carried out. A caller <bcp14>MUST</bcp14> send it only after the guest's explicit
+confirmation (<xref target="confirmation"/>). A TALK with <tt>confirm</tt> <bcp14>MUST</bcp14> also carry
+<tt>conversation</tt>; a node answers one without it with status 400 and code
+<tt>invalid_input</tt>.</t>
+          </li>
+        </ul>
+        <t>Conversation and proposal identifiers are opaque to the caller, and follow
+this rule:</t>
+        <sourcecode type="abnf"><![CDATA[
+opaque-id = 1*64( ALPHA / DIGIT / "_" / "-" )
+]]></sourcecode>
+        <t>As for every intent, unknown params are invalid (<xref target="requests"/>).</t>
+        <t>Result:</t>
+        <ul spacing="normal">
+          <li>
+            <t><tt>conversation</tt>: the conversation's identifier, an <tt>opaque-id</tt>: a new one
+on the first message, the one the caller sent on later messages.</t>
+          </li>
+          <li>
+            <t><tt>reply</tt>: the merchant agent's answer, at most 2000 characters. It is the
+only member written by the agent's language model. A caller <bcp14>SHOULD</bcp14> relay
+it to the guest. A caller <bcp14>MUST NOT</bcp14> take <tt>reply</tt> as proof that anything was
+booked, changed or cancelled: only <tt>reservation</tt> says so.</t>
+          </li>
+        </ul>
+        <t>The other members are built by the node's code from the results of the
+tools that the merchant's agent called, never from the model's text, so
+that a caller can rely on them:</t>
+        <ul spacing="normal">
+          <li>
+            <t><tt>slots</tt>: the start times the agent found free while answering, each as in
+the result of AVAILABILITY; an empty array when it found none or did not
+look.</t>
+          </li>
+          <li>
+            <t><tt>pending</tt>: the write the agent proposes, or null. It has <tt>id</tt> (an
+<tt>opaque-id</tt>), <tt>action</tt> ("book", "change" or "cancel"), <tt>summary</tt> (1 to 500
+characters, built by code from the proposal's own arguments, for the
+caller to show the guest) and <tt>expires_at</tt> (an RFC 3339 <tt>date-time</tt> with
+an offset). A conversation has at most one pending proposal: a new one
+replaces the previous one.</t>
+          </li>
+          <li>
+            <t><tt>reservation</tt>: the booking that a write carried out by this TALK created,
+changed or cancelled, as in the result of BOOK; null when this TALK
+carried out no write.</t>
+          </li>
+          <li>
+            <t><tt>fallback_url</tt>: the merchant's own booking page, set when the agent
+cannot serve what the guest asked, for example after one of its tools
+refused it (<xref target="talk-status"/>); null otherwise.</t>
+          </li>
+          <li>
+            <t><tt>tools_called</tt>: the names of the tools the agent called while answering,
+in the order of the calls, without their arguments or results. Each name
+is 1 to 64 characters: a lowercase ASCII letter, then lowercase ASCII
+letters, digits and "_".</t>
+          </li>
+        </ul>
+        <t><tt>conversation</tt> and <tt>reply</tt> are always present. A caller handles an absent
+<tt>pending</tt>, <tt>reservation</tt> or <tt>fallback_url</tt> as null, and an absent <tt>slots</tt> or
+<tt>tools_called</tt> as an empty array.</t>
+        <section anchor="talk-confirm">
+          <name>Proposals and confirmation</name>
+          <t>The merchant's agent has no tool that writes: a booking, a change or a
+cancellation is first a proposal, returned in <tt>pending</tt>.</t>
+          <ul spacing="normal">
+            <li>
+              <t>A node <bcp14>MUST NOT</bcp14> carry out a write proposed in a conversation until a
+later TALK of the same conversation names the proposal's <tt>id</tt> in
+<tt>confirm</tt>, before its <tt>expires_at</tt>. The node's code <bcp14>MUST</bcp14> enforce this,
+whatever the model outputs and whatever the message says: a message that
+says "yes" without <tt>confirm</tt> carries out nothing.</t>
+            </li>
+            <li>
+              <t>On a TALK whose <tt>confirm</tt> names the conversation's pending proposal before
+it expires, the node carries out that proposal with the arguments stored
+with it, before it calls the model, so that neither the message nor the
+model's output can change what is written.</t>
+            </li>
+            <li>
+              <t>A node <bcp14>MUST</bcp14> carry out a proposal at most once, even when the TALK that
+confirms it is sent again under another key.</t>
+            </li>
+            <li>
+              <t>A <tt>confirm</tt> that names no pending proposal of the conversation (unknown,
+replaced or expired) carries out no write. The node answers it with
+status 200, and <tt>reply</tt> says that nothing was done.</t>
+            </li>
+            <li>
+              <t>If the write fails when it is carried out, for example because the time
+was taken in the meantime, nothing is written and the proposal is gone.
+The node answers with status 200; the agent <bcp14>MAY</bcp14> offer other times in a
+new proposal, which needs a new confirmation.</t>
+            </li>
+            <li>
+              <t>When this TALK carried out a write, the node <bcp14>MUST</bcp14> set <tt>reservation</tt>, even
+if its model fails afterwards.</t>
+            </li>
+          </ul>
+        </section>
+        <section anchor="conversations">
+          <name>Conversations</name>
+          <ul spacing="normal">
+            <li>
+              <t>A node <bcp14>MUST</bcp14> choose each <tt>conversation</tt> at random, with at least 128 bits
+of entropy, and <bcp14>SHOULD</bcp14> choose each <tt>pending.id</tt> in the same way.</t>
+            </li>
+            <li>
+              <t>A node binds a conversation, when it creates it, to the merchant and to
+the session's <tt>agent.id</tt>. It <bcp14>MUST</bcp14> answer status 404 to a TALK whose
+<tt>conversation</tt> is unknown, has expired, or was created for another
+merchant or another <tt>agent.id</tt>, without saying which.</t>
+            </li>
+            <li>
+              <t>A conversation is not tied to a BATP session: a caller <bcp14>MAY</bcp14> continue it in
+a later session under the same <tt>agent.id</tt>, for example after a lost
+session. A bridge carries the conversations of all its users on one
+session, under one <tt>agent.id</tt> (<xref target="mcp-bridge"/>), so only the unguessable
+identifier separates them.</t>
+            </li>
+            <li>
+              <t>A node <bcp14>MAY</bcp14> expire a conversation, for example after a period without
+messages, or lose it when it restarts. A caller that gets status 404 for
+a conversation <bcp14>MAY</bcp14> start a new one, without <tt>conversation</tt>.</t>
+            </li>
+          </ul>
+        </section>
+        <section anchor="talk-status">
+          <name>Status</name>
+          <t>Status 200 means that the merchant's agent answered, whatever the answer,
+including a refusal such as "we are full". When one of the agent's tools
+refuses, for example with <tt>party_too_large</tt> or <tt>slot_unavailable</tt>, the
+refusal goes to the model, which words it in <tt>reply</tt>, and the node's code
+sets <tt>fallback_url</tt>: the TALK still gets status 200. Any other status means
+that the agent could not answer:</t>
+          <ul spacing="normal">
+            <li>
+              <t>400 <tt>invalid_input</tt>: invalid params, <tt>confirm</tt> without <tt>conversation</tt>, or
+a TALK in a session of version 0.1.</t>
+            </li>
+            <li>
+              <t>404 <tt>not_found</tt>: the merchant is unknown or not yet live, or the
+conversation is unknown, has expired, or belongs to another merchant or
+another <tt>agent.id</tt>.</t>
+            </li>
+            <li>
+              <t>429 <tt>too_many_requests</tt>: too many requests in flight in the session
+(<xref target="concurrency"/>). A node <bcp14>MAY</bcp14> also answer 429, without calling its model,
+to a TALK beyond the limits it sets on model use, such as the model turns
+running at once or the TALK requests a merchant receives per minute. The
+caller <bcp14>MAY</bcp14> send it again later, with the same key.</t>
+            </li>
+            <li>
+              <t>503 <tt>agent_unavailable</tt>, with <tt>fallback_url</tt>: the merchant is marked as
+down, the agent failed, or it did not answer by its deadline
+(<xref target="deadlines"/>).</t>
+            </li>
+          </ul>
+          <t>Errors: 400, 404, 429, 503.</t>
+        </section>
+      </section>
       <section anchor="recall">
         <name>RECALL</name>
         <t>Params: <tt>guest_name</tt>.</t>
@@ -865,7 +1122,7 @@ those 24 hours, and a caller <bcp14>MAY</bcp14> send a RECALL again. A caller <b
     <section anchor="status-codes">
       <name>Status Codes</name>
       <table>
-        <name>BATP 0.1 status codes</name>
+        <name>BATP 0.2 status codes</name>
         <thead>
           <tr>
             <th align="left">Status</th>
@@ -885,7 +1142,7 @@ those 24 hours, and a caller <bcp14>MAY</bcp14> send a RECALL again. A caller <b
             <td align="left">400</td>
             <td align="left">
               <tt>invalid_input</tt></td>
-            <td align="left">Invalid params, unknown intent, missing or unexpected <tt>merchant</tt></td>
+            <td align="left">Invalid params, unknown intent or one the session's version does not define, missing or unexpected <tt>merchant</tt></td>
             <td align="left">no</td>
           </tr>
           <tr>
@@ -899,7 +1156,7 @@ those 24 hours, and a caller <bcp14>MAY</bcp14> send a RECALL again. A caller <b
             <td align="left">404</td>
             <td align="left">
               <tt>not_found</tt></td>
-            <td align="left">Unknown merchant, merchant not yet live, unknown booking, or a booking that is not the guest's</td>
+            <td align="left">Unknown merchant, merchant not yet live, unknown booking, a booking that is not the guest's, or an unknown or expired conversation</td>
             <td align="left">no</td>
           </tr>
           <tr>
@@ -926,14 +1183,14 @@ those 24 hours, and a caller <bcp14>MAY</bcp14> send a RECALL again. A caller <b
             <td align="left">429</td>
             <td align="left">
               <tt>too_many_requests</tt></td>
-            <td align="left">Too many requests in flight in the session; retry after an earlier response</td>
+            <td align="left">Too many requests in flight in the session, or a TALK beyond the node's limits; retry later</td>
             <td align="left">no</td>
           </tr>
           <tr>
             <td align="left">503</td>
             <td align="left">
               <tt>agent_unavailable</tt></td>
-            <td align="left">The merchant agent is down, failed, or timed out</td>
+            <td align="left">The merchant agent is down, failed, or did not answer by its deadline</td>
             <td align="left">yes</td>
           </tr>
         </tbody>
@@ -941,8 +1198,9 @@ those 24 hours, and a caller <bcp14>MAY</bcp14> send a RECALL again. A caller <b
       <t>The <tt>status</tt> values 400 and 413 also appear in <tt>error</tt> frames
 (<xref target="error-frames"/>), which carry no <tt>error.code</tt>; there, 413 means a frame
 above the size limit.</t>
-      <t>A node <bcp14>MUST</bcp14> answer 503 to AVAILABILITY, BOOK, AMEND and CANCEL when the
-merchant is marked as down, without consulting the merchant agent. A
+      <t>A node <bcp14>MUST</bcp14> answer 503 to AVAILABILITY, BOOK, AMEND, CANCEL and TALK when
+the merchant is marked as down, without consulting the merchant agent (for
+TALK, without calling its model). A
 caller that gets 413 or 503 <bcp14>MUST NOT</bcp14> retry the same request to the same
 merchant in a loop; it <bcp14>SHOULD</bcp14> offer the guest the <tt>fallback_url</tt>.</t>
       <t>A caller that receives a status it does not know <bcp14>MUST</bcp14> handle it as the
@@ -952,9 +1210,10 @@ error.</t>
     <section anchor="events">
       <name>Events</name>
       <t>Frames of type <tt>event</tt>, sent by the node without a request, are reserved
-for a later version. One intended use is to tell a guest's agent that a
-merchant cancelled a booking; in this version, that reaches the guest as a
-notice returned by RECALL. A 0.1 caller ignores them (<xref target="error-frames"/>).</t>
+for a later minor version: version 0.2 does not define them. One intended
+use is to tell a guest's agent that a merchant cancelled a booking; in this
+version, that reaches the guest as a notice returned by RECALL. A caller of
+version 0.1 or 0.2 ignores them (<xref target="error-frames"/>).</t>
     </section>
     <section anchor="versioning">
       <name>Versioning and Extensibility</name>
@@ -962,14 +1221,26 @@ notice returned by RECALL. A 0.1 caller ignores them (<xref target="error-frames
       <sourcecode type="abnf"><![CDATA[
 version = 1*DIGIT "." 1*DIGIT
 ]]></sourcecode>
-      <t>This document defines version 0.1. In <tt>hello</tt>, the caller sends the
-highest version it speaks. If the node speaks the same major version, it
-answers <tt>welcome</tt> with the highest minor version both speak, and both
-sides use that version for the session. Otherwise it answers <tt>reject</tt> with
-status 426.</t>
+      <t>This document defines version 0.2. Version 0.2 adds TALK to version 0.1,
+and changes nothing that version 0.1 defined.</t>
+      <t>In <tt>hello</tt>, the caller sends the highest version it speaks. If the node
+speaks the same major version, it answers <tt>welcome</tt> with the highest minor
+version both speak, which is the lower of the caller's minor version and
+its own, and both sides use that version for the session. Otherwise it
+answers <tt>reject</tt> with status 426. A node speaks every earlier minor version
+of its major version, since each one only adds to the previous one. For
+example, a node of version 0.2 answers a <tt>hello</tt> with <tt>"batp": "0.1"</tt> with
+a <tt>welcome</tt> with <tt>"batp": "0.1"</tt>, and the session is a session of version
+0.1.</t>
+      <t>A node <bcp14>MUST NOT</bcp14> list in <tt>welcome.intents</tt> an intent that the session's
+version does not define, and <bcp14>MUST</bcp14> answer a request for one with status 400
+and code <tt>invalid_input</tt> (<xref target="welcome"/>). In a session of version 0.1, a node
+of version 0.2 therefore neither offers nor serves TALK, and a caller of
+version 0.1 keeps working unchanged.</t>
       <t>Within a major version, a later minor version <bcp14>MAY</bcp14> add intents, optional
-frame members, optional params, result members and status codes. It <bcp14>MUST
-NOT</bcp14> change the meaning of what an earlier minor version defined. Because
+frame members, optional params, result members and status codes: adding an
+intent, as version 0.2 does with TALK, is a minor change. It <bcp14>MUST NOT</bcp14>
+change the meaning of what an earlier minor version defined. Because
 unknown <tt>params</tt> members are invalid (<xref target="requests"/>), a caller <bcp14>MUST NOT</bcp14> send
 params that the session's version does not define. A caller <bcp14>MUST</bcp14> ignore
 result members it does not know.</t>
@@ -999,12 +1270,16 @@ tokens.</t>
           <t>The frame size limit, the limit on requests in flight and the idle
 timeout bound what one session costs a node. A node <bcp14>SHOULD</bcp14> also limit
 sessions per peer and per agent. A node <bcp14>MUST</bcp14> stop reading a frame at the
-size limit instead of buffering it.</t>
+size limit instead of buffering it. A TALK costs a model turn, which is
+far more expensive than any other request: a node <bcp14>SHOULD</bcp14> bound the model
+turns it runs at once and the TALK requests each merchant receives per
+unit of time, and answer 429 beyond them without calling its model
+(<xref target="talk-status"/>).</t>
         </dd>
         <dt>Booking channel:</dt>
         <dd>
-          <t>In version 0.1, a node records every <tt>user-agent</tt> booking with <tt>via</tt>
-"claude" (<xref target="intents"/>), and the merchant is told the booking came
+          <t>In this version, as in version 0.1, a node records every <tt>user-agent</tt>
+booking with <tt>via</tt> "claude" (<xref target="intents"/>), and the merchant is told the booking came
 through Claude. With other assistants, that is wrong. A merchant <bcp14>SHOULD</bcp14>
 read <tt>via</tt> as "an assistant" until a later version names the calling
 agent in it.</t>
@@ -1013,7 +1288,65 @@ agent in it.</t>
         <dd>
           <t>A misbehaving caller can book, amend or cancel without asking the guest.
 The node cannot detect it. Idempotency keys prevent duplicate bookings
-on retries, not unwanted ones.</t>
+on retries, not unwanted ones. Through TALK, a node does enforce that a
+write follows a <tt>confirm</tt> naming a proposal it returned
+(<xref target="talk-confirm"/>), but it still cannot tell whether the caller asked the
+guest before sending <tt>confirm</tt>.</t>
+        </dd>
+        <dt>A language model reading untrusted text:</dt>
+        <dd>
+          <t>The merchant's agent that answers TALK is a language model, and
+<tt>message</tt> is text it cannot trust: the guest's agent may relay anything
+that a person or a web page told it, including instructions written to
+make the model book, cancel or reveal data (prompt injection). A node
+therefore relies on its code, not on the model's instructions, for
+everything below.</t>
+        </dd>
+        <dt>Confirmation of writes in code:</dt>
+        <dd>
+          <t>A write proposed through TALK runs only on a later <tt>confirm</tt> that names
+its proposal before it expires, with the arguments stored with the
+proposal (<xref target="talk-confirm"/>). This check <bcp14>MUST</bcp14> be made by the node's code,
+never left to the model: the model has no tool that writes, so no output
+of the model alone can create, change or cancel a booking.</t>
+        </dd>
+        <dt>Tools and merchant binding:</dt>
+        <dd>
+          <t>The merchant's agent <bcp14>MUST</bcp14> only be given the guest-side operations of its
+own merchant (checking availability, finding the guest's bookings at
+that merchant, and proposing a booking, a change or a cancellation),
+never merchant-side operations such as listing a day's bookings or
+blocking a slot. The
+merchant <bcp14>MUST</bcp14> be bound by the node's code, from the request's
+<tt>merchant</tt>, and <bcp14>MUST NOT</bcp14> be an argument of any tool the model fills in,
+so that one merchant's agent cannot read or change another merchant's
+data, whatever the model is told.</t>
+        </dd>
+        <dt>Website content:</dt>
+        <dd>
+          <t>The text crawled from the merchant's website <bcp14>MUST NOT</bcp14> enter the agent's
+prompt as such. Only data validated against a schema and reviewed by
+the merchant before publishing may, and the agent's prompt marks it as
+data, not instructions: it was still taken from a website, which anyone
+who can edit that website controls.</t>
+        </dd>
+        <dt>Conversation identifiers:</dt>
+        <dd>
+          <t>A conversation identifier is a capability: with it, and the token of the
+<tt>agent.id</tt> it is bound to, a caller can continue the conversation and
+confirm its proposal. A node <bcp14>MUST</bcp14> make it unguessable and bind it to the
+merchant and the <tt>agent.id</tt> (<xref target="conversations"/>). A node and a bridge
+<bcp14>MUST NOT</bcp14> log conversation identifiers together with guest names at a
+level enabled in production, and <bcp14>SHOULD</bcp14> log a digest of the identifier
+rather than the identifier itself.</t>
+        </dd>
+        <dt>Model output:</dt>
+        <dd>
+          <t><tt>reply</tt> is written by a model and can be wrong. A caller <bcp14>MUST NOT</bcp14> tell
+the guest that a booking was made, changed or cancelled unless
+<tt>reservation</tt> says so. Before asking the guest to confirm, a caller
+<bcp14>SHOULD</bcp14> show them <tt>pending.summary</tt>, which the node's code builds from the
+proposal itself.</t>
         </dd>
         <dt>Guest identity:</dt>
         <dd>
@@ -1051,6 +1384,19 @@ status and latency, and nothing that names the guest.</t>
           <t>DISCOVER filters can reveal diet or religion (<tt>vegan</tt>, <tt>halal</tt>,
 <tt>kosher</tt>). A node <bcp14>MUST NOT</bcp14> store them beyond the request or link them to
 a guest.</t>
+        </dd>
+        <dt>Conversations:</dt>
+        <dd>
+          <t>TALK messages and replies are free text, and may carry guest names,
+preferences such as diet or religion, and anything else the guest said.
+The same rule as for guest names applies: a node and a bridge <bcp14>SHOULD NOT</bcp14>
+write <tt>message</tt> or <tt>reply</tt> to logs at a level enabled in production.
+Unlike DISCOVER filters, which a node does not keep, a conversation keeps
+what was said in it for as long as the node keeps the conversation: a
+node <bcp14>SHOULD</bcp14> keep a conversation no longer than it accepts messages in it,
+and <bcp14>SHOULD NOT</bcp14> link it to a guest beyond it. A node that shows its
+merchant the requests it received shows the merchant what the guest's
+agent said.</t>
         </dd>
         <dt>Recall:</dt>
         <dd>
@@ -1367,12 +1713,12 @@ namespace (<xref target="RFC8141"/>).</t>
             <author>
               <organization>Sésame (BaselHack 2026)</organization>
             </author>
-            <date year="2026" month="October" day="31"/>
+            <date year="2026" month="November" day="01"/>
           </front>
         </reference>
       </references>
     </references>
-    <?line 718?>
+    <?line 1005?>
 
 <section anchor="mcp-bridge">
       <name>The MCP Bridge</name>
@@ -1422,29 +1768,57 @@ tools to intents:</t>
           </tr>
           <tr>
             <td align="left">
+              <tt>talk_to_merchant</tt></td>
+            <td align="left">TALK</td>
+            <td align="left">the tool's <tt>merchant</tt> becomes the request's <tt>merchant</tt></td>
+          </tr>
+          <tr>
+            <td align="left">
               <tt>get_my_reservations</tt></td>
             <td align="left">RECALL</td>
             <td align="left"> </td>
           </tr>
         </tbody>
       </table>
+      <t>For TALK, the bridge has one tool, <tt>talk_to_merchant(merchant, message,
+idempotency_key, conversation?, confirm?)</tt>, whose arguments other than
+<tt>merchant</tt> become the params of TALK, and whose result is the result of
+TALK. In this version, the four booking tools (<tt>get_availability</tt>,
+<tt>create_reservation</tt>, <tt>update_reservation</tt> and <tt>cancel_reservation</tt>) stay
+mapped to their intents as above, until a later version closes the direct
+intents to guests' agents in favor of TALK.</t>
       <ul spacing="normal">
         <li>
           <t>The tool descriptions tell the assistant to confirm with the guest before
 <tt>create_reservation</tt>, <tt>update_reservation</tt> and <tt>cancel_reservation</tt>,
 which is how the bridge meets the confirmation requirement of
-<xref target="requests"/>.</t>
+<xref target="confirmation"/>. The description of <tt>talk_to_merchant</tt> tells it to
+relay <tt>reply</tt>, to show <tt>pending.summary</tt> and ask the guest when <tt>pending</tt>
+is set, to send <tt>confirm</tt> only after the guest's explicit yes, and to
+give the guest any <tt>fallback_url</tt>.</t>
         </li>
         <li>
           <t>The bridge answers each tool call within 2 seconds, including the round
-trip to the node. A timeout, a lost session or a 503 becomes an
-<tt>agent_unavailable</tt> tool error with the merchant's <tt>fallback_url</tt>.</t>
+trip to the node, except <tt>talk_to_merchant</tt>, which it gives 30 seconds:
+longer than the node's deadline for TALK (<xref target="deadlines"/>), so that the
+node's 503 and its <tt>fallback_url</tt> arrive before the bridge gives up. A
+timeout, a lost session or a 503 becomes an <tt>agent_unavailable</tt> tool
+error with the merchant's <tt>fallback_url</tt>.</t>
+        </li>
+        <li>
+          <t>The bridge carries the conversations of all its users on its one
+session, under one <tt>agent.id</tt>: only the conversation identifier, which
+the node makes unguessable (<xref target="conversations"/>), keeps one user from
+continuing another's conversation. A 404 for an unknown or expired
+conversation is a <tt>not_found</tt> tool error, not an outage: the assistant
+starts a new conversation.</t>
         </li>
         <li>
           <t>A status and its <tt>error</tt> object become the tool error <tt>{"error": code,
 "message": ..., "fallback_url": ...}</tt>.
 <tt>too_many_requests</tt> is not a tool error code: the bridge stays under the
-limit, and would report a 429 as <tt>agent_unavailable</tt>.</t>
+limit on requests in flight, and reports any 429, including one for a
+TALK beyond the node's limits on model use, as <tt>agent_unavailable</tt>.</t>
         </li>
       </ul>
     </section>
@@ -1458,16 +1832,16 @@ line.</t>
       <figure>
         <name>Opening the session, discovery and availability</name>
         <artwork><![CDATA[
-C: {"type": "hello", "batp": "0.1",
+C: {"type": "hello", "batp": "0.2",
     "agent": {"id": "urn:batp:agent:claude-gateway",
               "name": "Claude via the S\u00e9same gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
-N: {"type": "welcome", "batp": "0.1",
+N: {"type": "welcome", "batp": "0.2",
     "node": {"id": "urn:batp:node:merchant-agents",
              "name": "S\u00e9same"},
     "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
-                "RECALL", "PING"],
+                "TALK", "RECALL", "PING"],
     "session": "s-2f6c"}
 C: {"type": "request", "id": "r-1", "intent": "DISCOVER",
     "params": {"query": "bistro", "filters": {"tags": ["vegetarian"],
@@ -1518,13 +1892,75 @@ N: {"type": "response", "id": "r-5", "status": 200,
                "server_time": "2026-10-31T18:02:11+01:00"}}
 ]]></artwork>
       </figure>
+      <t>Another guest asks, in the same session, for a table on another day. The
+caller talks with the merchant's agent: a first message, which opens a
+conversation, then the guest's choice, which the agent turns into a
+proposal.</t>
+      <figure>
+        <name>A conversation with the merchant's agent, up to a proposal</name>
+        <artwork><![CDATA[
+C: {"type": "request", "id": "r-6", "intent": "TALK",
+    "merchant": "le-petit-zinc",
+    "params": {"message":
+      "Table for 2 on Tuesday around 19:30? Any vegetarian dishes?",
+      "idempotency_key": "6f3a9c1e-01"}}
+N: {"type": "response", "id": "r-6", "status": 200,
+    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply":
+        "Yes, two vegetarian mains. I can do 19:00, 19:30 or 20:00.",
+      "slots": [
+      {"starts_at": "2026-11-03T19:00:00+01:00", "table_label": "T2"},
+      {"starts_at": "2026-11-03T19:30:00+01:00", "table_label": "T2"},
+      {"starts_at": "2026-11-03T20:00:00+01:00", "table_label": "T2"}],
+      "pending": null, "reservation": null, "fallback_url": null,
+      "tools_called": ["get_availability"]}}
+C: {"type": "request", "id": "r-7", "intent": "TALK",
+    "merchant": "le-petit-zinc",
+    "params": {"message": "19:30 please, for Noah Weber.",
+               "conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
+               "idempotency_key": "6f3a9c1e-02"}}
+N: {"type": "response", "id": "r-7", "status": 200,
+    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply": "Shall I book a table for 2 at 19:30 for Noah Weber?",
+      "slots": [],
+      "pending": {"id": "pKq81sVd0LmZr6TfXe2NbA", "action": "book",
+        "summary":
+          "Table for 2 on Tuesday 3 November 2026 at 19:30, Noah Weber",
+        "expires_at": "2026-10-31T18:14:05+01:00"},
+      "reservation": null, "fallback_url": null,
+      "tools_called": ["propose_booking"]}}
+]]></artwork>
+      </figure>
+      <t>The caller shows the guest the proposal's <tt>summary</tt>. Once the guest has
+said yes, the caller confirms the proposal, and the node books the table
+with the proposal's own arguments, before its model words the answer.</t>
+      <figure>
+        <name>Confirming the proposal</name>
+        <artwork><![CDATA[
+C: {"type": "request", "id": "r-8", "intent": "TALK",
+    "merchant": "le-petit-zinc",
+    "params": {"message": "Yes, please book it.",
+               "conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
+               "confirm": "pKq81sVd0LmZr6TfXe2NbA",
+               "idempotency_key": "6f3a9c1e-03"}}
+N: {"type": "response", "id": "r-8", "status": 200,
+    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply": "Booked for Tuesday at 19:30. Your reference is R-002.",
+      "slots": [], "pending": null,
+      "reservation": {"id": "R-002", "merchant": "le-petit-zinc",
+        "starts_at": "2026-11-03T19:30:00+01:00", "party_size": 2,
+        "table_label": "T2", "status": "confirmed",
+        "guest_name": "Noah Weber", "via": "claude"},
+      "fallback_url": null, "tools_called": []}}
+]]></artwork>
+      </figure>
     </section>
     <section anchor="json-schemas">
       <name>JSON Schemas</name>
       <t>These schemas use JSON Schema 2020-12 <xref target="I-D.bhutton-json-schema"/>. They are
 generated from the reference implementation's contract models, so this
 appendix and the implementation cannot drift <xref target="BATP-SCHEMAS"/>. In the
-params of AVAILABILITY, BOOK, AMEND and CANCEL, the merchant is not a
+params of AVAILABILITY, BOOK, AMEND, CANCEL and TALK, the merchant is not a
 member: it is the request's <tt>merchant</tt>.</t>
       <section anchor="discover-params">
         <name>DISCOVER params</name>
@@ -2054,6 +2490,268 @@ member: it is the request's <tt>merchant</tt>.</t>
 }
 ]]></sourcecode>
       </section>
+      <section anchor="talk-params">
+        <name>TALK params</name>
+        <t>The schema does not express two rules of <xref target="talk"/>: <tt>message</tt> is measured
+once leading and trailing white space is removed, and <tt>confirm</tt> requires
+<tt>conversation</tt>.</t>
+        <sourcecode type="json"><![CDATA[
+{
+  "$comment": "Generated from core.models.TalkInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "confirm": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confirm"
+    },
+    "conversation": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Conversation"
+    },
+    "idempotency_key": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "message": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "idempotency_key"
+  ],
+  "title": "BATP TALK params",
+  "type": "object"
+}
+]]></sourcecode>
+      </section>
+      <section anchor="talk-result">
+        <name>TALK result</name>
+        <sourcecode type="json"><![CDATA[
+{
+  "$comment": "Generated from core.models.TalkOutput",
+  "$defs": {
+    "PendingAction": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "book",
+            "change",
+            "cancel"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "summary",
+        "expires_at"
+      ],
+      "title": "PendingAction",
+      "type": "object"
+    },
+    "Reservation": {
+      "additionalProperties": false,
+      "properties": {
+        "guest_name": {
+          "title": "Guest Name",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "merchant": {
+          "pattern": "^[a-z0-9-]{3,61}$",
+          "title": "Merchant",
+          "type": "string"
+        },
+        "party_size": {
+          "exclusiveMinimum": 0,
+          "title": "Party Size",
+          "type": "integer"
+        },
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "confirmed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "table_label": {
+          "title": "Table Label",
+          "type": "string"
+        },
+        "via": {
+          "enum": [
+            "claude",
+            "merchant",
+            "website"
+          ],
+          "title": "Via",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "merchant",
+        "starts_at",
+        "party_size",
+        "table_label",
+        "status",
+        "guest_name",
+        "via"
+      ],
+      "title": "Reservation",
+      "type": "object"
+    },
+    "Slot": {
+      "additionalProperties": false,
+      "properties": {
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "table_label": {
+          "title": "Table Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "starts_at",
+        "table_label"
+      ],
+      "title": "Slot",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "conversation": {
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Conversation",
+      "type": "string"
+    },
+    "fallback_url": {
+      "anyOf": [
+        {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fallback Url"
+    },
+    "pending": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PendingAction"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reply": {
+      "maxLength": 2000,
+      "title": "Reply",
+      "type": "string"
+    },
+    "reservation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reservation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "slots": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Slot"
+      },
+      "title": "Slots",
+      "type": "array"
+    },
+    "tools_called": {
+      "default": [],
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$",
+        "type": "string"
+      },
+      "title": "Tools Called",
+      "type": "array"
+    }
+  },
+  "required": [
+    "conversation",
+    "reply"
+  ],
+  "title": "BATP TALK result",
+  "type": "object"
+}
+]]></sourcecode>
+      </section>
       <section anchor="recall-params">
         <name>RECALL params</name>
         <sourcecode type="json"><![CDATA[
@@ -2210,6 +2908,39 @@ member: it is the request's <tt>merchant</tt>.</t>
 ]]></sourcecode>
       </section>
     </section>
+    <section anchor="changes">
+      <name>Changes from Version 0.1</name>
+      <ul spacing="normal">
+        <li>
+          <t>Added the TALK intent (<xref target="talk"/>), with its conversations and its
+proposals, which the node carries out only on <tt>confirm</tt>; TALK is
+addressed, so <tt>merchant</tt> is required for it.</t>
+        </li>
+        <li>
+          <t>Stated how the session's version is chosen, and that a session of
+version 0.1 is neither offered nor served TALK (<xref target="versioning"/>).</t>
+        </li>
+        <li>
+          <t>Added deadlines for answering requests: 25 seconds for TALK, 10 seconds
+for the other intents (<xref target="deadlines"/>).</t>
+        </li>
+        <li>
+          <t>Added TALK to the idempotency rules, and said that a client library does
+not send a TALK again by itself (<xref target="idempotency"/>).</t>
+        </li>
+        <li>
+          <t>Moved the reservation of <tt>event</tt> frames to a later minor version
+(<xref target="events"/>).</t>
+        </li>
+        <li>
+          <t>Added the bridge's <tt>talk_to_merchant</tt> tool (<xref target="mcp-bridge"/>).</t>
+        </li>
+        <li>
+          <t>Added the security and privacy considerations of a merchant agent built
+on a language model (<xref target="security"/>, <xref target="privacy"/>).</t>
+        </li>
+      </ul>
+    </section>
     <section numbered="false" anchor="acknowledgments">
       <name>Acknowledgments</name>
       <t>The agent-only protocol idea comes from the AGTP Internet-Draft
@@ -2217,299 +2948,444 @@ member: it is the request's <tt>merchant</tt>.</t>
     </section>
   </back>
   <!-- ##markdown-source:
-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
-Zhbmp1DoLfKsPycl33Tg0PVoJJIfgnYSeVwUOQTwwOsXxX1uyrMY4Sz0zygt
-iCVBVFdp8Qeeq+fQpWTrhPxcujfhFFGSXBb3tTm0U71s6AUZidywYk3TtQkQ
-SMLDbIQ5OBTZ74W0+vZTNbkwhWHSb+Ajq5g8VV3VUHIGJVcDcgzS9kIL3Qhl
-lS/4uCVmqcXrlc3pcbtBy4cK/QtQmriEfiWpkmiiHTpjAQ+Sc57c61rsFEep
-ZQtBFWbQP5rdlTS9c4cGtSx1oo6vkla5hH5q37Ckldi4u3Rc7jPq29ZwzjnZ
-dVbeRZGjhYHXE0ZAzFklsbqjwYQ6yAizA3TIhkQtekO1Wq/edWnGaSbA+4s0
-p/EUaJfNIE1SyXjG5wHOZUtS8hJnfjN9juBKTNapf+V7q4NPJbRkav6saQ3j
-pJImAP0gV+19suKI1jkrMUvp4lw3CwcHy1hDT8EVOD0lQ5ooV9xy34zvJGNW
-pYSiQ6gP1ta1+D5L6X6es2dbGmKC3moGpDW4zjMt7ar9BkrjQJ2HXCtFp+HU
-vRBOnDklaKQuIz9S5TgdJwyupOmD1ETDtObkZTabtR6Zc4+QWEE0Ubej46/A
-uFVxlovXsc5F/2x9C42jOnG9JwaVNppvIJZEOlXqq9/IeRoBcrUZXZaoVb6l
-1f9aZNIsllWQw97VahrOYRc0RhV9XHGDb6GfqWNojMrPvA8mlIK8eiSLuOQS
-rdAFxZ1KpZXqurOOZT7bcdygFh8gGfLAfqeG4GH2AeKJDU3aTf3JBu6syo1W
-19Ud24HV4jHvHbvx/rStRjVTQpQ72QmilgSkJoMGiDk7yp2zsoZcuhGwBOcQ
-ukkyIBd3TFm4DznYqKUNzJhGUzUeRSN0XpWHtlFVta1be+SsS4zVCFaIpaiK
-eUD4QYDGZ0SUn0Sv66A3oONSY2ywXzWRhMO4SSVZ1CT32G00PE+mMbz8w7N4
-Fs8kw/J9XhJWDbfXkfPasDlGJtb6Xu5XOVisW+Ub/oIAIyMdrhfF4q84dG9L
-/q5sViPcgA9g7fzpYplJDkuV54Pas7zeIaurdTZ+HiS4HYL6fe1SWa6jNk+h
-ecwinZ1zw33Jo9/U0ZkV1IqvK0Yp3fdpulpJu4kQlTnQdAGCO6q/Z44OXh6s
-0xE372saxZp1z2/E0mRKMFvdZlJkBmpaljbzi+De4K2QcNJKQqYDNqpiG1DJ
-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
+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
+eSKpJllGj6Wrn1qW9MB5XS+q0f37Z1l9vjwZTor5/RfJu6d5/bf79h28EkV5
+Uc5pQxcpVvLm2f7O9vZj/fWr7S8f6K+7u7vm091HO/bXx1890l8f7uyaZ7/a
+eWgeePzVA/PA453Hu6MoyvLTxoSPdncf6q9fPnz80M79YBu/Hgy+GZ4XxXTg
+nQ4da70wX56cL+u6yAd/reg/1eQ8nSf4igA/YnAoTr0opuks3qezTt/VDpkO
+F+kkO9UjleeT8iytHQTneHEi7y30tWFW3K9ab7oDxb+BHGj3vPyM4MVpMqtS
++ht4PDjc/+7pi73DYOX4Iv7Ph69exoe8uyreIFxLS3p7Gp+WxTyuz9O4TOmS
+pPkkjbP5YpbOCUy8ss3OTd2FFvfrMk3vz5Msv09Xa2lHu1+eTu4LkKvVe74V
+iddH5Na9iQYDumgnVV0mkzqKjs6zKjbLi/U80orBsQ4J6cdJHiXuRsfmeAmY
+VVpeALxFGVfFaX1J11+vOA2f1HzH40uCYmxoTRXRCCfpeTI7jYvTeJEWdAy0
+0/hkWWV5WlVpNYz35DTpd5CduFzmVVxc0NKO9l/344qOiSbAsFES06DT6jx5
+m8qMoG+yt0kymxF9kfVgE1P6qCyx9Ty9pK/SAeFcNs+AIECc6LTEy8P4aTI5
+p8396zKtasxW0ytJToSvBpw2plk14dXYPfVjOuvJ2yi5SLJZcpLNsvqqz5un
+eQnsU3ogIaSb9QnFZgoRrNGM8EUly6Q5aAf1skxm0SzJz5b0aZ+Wgr0Ygkmz
+LejHJu/IHyTO6jiZTksF4pu0WhD9TasI276Kc0KAMpvwhpZVPKEbh23R2i7P
+07y5nOIy1yXRyvOC4ICjjuQOMWRoa7iVsxOg4/dvnsd10RzkMj2pCLw40MuS
+fgHqLIqK4E37TCIiFwTGSrCKkFSOZxoXyzou8tkV/WeS2rMkgNMLp1k5r2in
+Q0GRrIpoG9lZTq/R/DQbkIuIIC1uBS3bIJq3KdspsfeMDpsuCsGiInQ6KbPp
+WcoYnRD2EbAsMvOS6P4kb0E2h3LP5tl0Okuj6F58kNdlMV1OmNBFh43rkOUT
+Yo2E4mc0CE3HMwj2j7BFGjlNCHAyM65WnRAaEOZGjFv0WZ2c0FXBqfO1Agz+
+JCdHi6PLfkpkNl7SgcffHR29xvFYzJAzjOqU0AhYsqAbJEQROy4uK4CiKvCd
+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
+jdQLtPr8vx2dWQsbHQEA
 
 -->
 
