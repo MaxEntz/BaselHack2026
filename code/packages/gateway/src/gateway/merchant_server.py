@@ -60,7 +60,8 @@ description.
 
 # What the merchant's tool says after its own sentence (`talk_sentence`).
 TALK_TO_MERCHANT = f"""\
-Ask it about the restaurant and its free tables, or to book, change or cancel a booking. \
+Ask this restaurant's agent about the restaurant and its free tables, or ask it to book, \
+change or cancel a booking. \
 {tooling.TALK_RULES}"""
 
 

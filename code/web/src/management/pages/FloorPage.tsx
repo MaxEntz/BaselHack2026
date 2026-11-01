@@ -94,7 +94,12 @@ function Room({ slug, version, today, clock, tables }: FloorBase & { slug: strin
   if (!data || data.services.length === 0) return null;
 
   const isToday = data.date === today;
-  const service = chosen.service ?? defaultService(data.services, isToday, clock);
+  // A service picked earlier may be gone (the assistant kept a single one): fall back to the default.
+  const kept = chosen.service;
+  const service =
+    kept !== undefined && kept < data.services.length
+      ? kept
+      : defaultService(data.services, isToday, clock);
   const { start, end } = data.services[service];
   const starts = data.starts.filter((time) => start <= time && time < end);
   const at =

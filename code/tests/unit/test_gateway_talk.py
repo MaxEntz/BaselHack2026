@@ -249,6 +249,7 @@ async def test_an_unknown_merchant_never_reaches_the_agent() -> None:
         {"message": "Yes", "idempotency_key": KEY, "conversation": "c 1"},
         {"message": "Yes", "idempotency_key": "m-1"},
         {"message": "Yes", "idempotency_key": "00000000-0000-0000-0000-000000000000"},
+        {"message": "Yes", "idempotency_key": "123e4567-e89b-12d3-a456-426614174000"},
     ],
     ids=[
         "blank message",
@@ -256,6 +257,7 @@ async def test_an_unknown_merchant_never_reaches_the_agent() -> None:
         "conversation outside its shape",
         "a key that isn't a UUID",
         "the nil UUID",
+        "RFC 4122's example, a version 1 UUID",
     ],
 )
 async def test_a_message_outside_the_contract_is_invalid_input(arguments: dict[str, Any]) -> None:

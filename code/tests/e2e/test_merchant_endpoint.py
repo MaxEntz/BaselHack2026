@@ -58,7 +58,9 @@ async def test_lists_the_talk_with_the_merchant_s_sentence(gateway_base_url: str
     assert tool.name == "talk_to_merchant"
     assert "merchant" not in tool.input_schema["properties"]
     description = tool.description or ""
-    assert description.startswith("Talk to the agent of Le Petit Zinc (Mulhouse). Ask it about")
+    assert description.startswith(
+        "Talk to the agent of Le Petit Zinc (Mulhouse). Ask this restaurant"
+    )
     assert "explicit yes" in description
 
 

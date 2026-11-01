@@ -222,7 +222,7 @@ function Ping({ event, today }: { event: LiveEvent; today: string | null }) {
   return (
     <div className={agent ? "ping" : "ping you"}>
       <small>
-        {what} {agent ? "through your agent" : "by you"}
+        {what} {agent ? "through your agent" : event.via === "website" ? "through your website" : "by you"}
       </small>
       <b className="num">
         {r.guest_name}, {guests(r.party_size)}, {day} {r.time}, {r.table_label}

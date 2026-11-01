@@ -132,7 +132,8 @@ export type BuildFlag = { title: string; detail: string };
 export type SitePage = { path: string; width: number; height: number; image: string };
 // GET /merchants/<slug>/site
 export type PublicSite = { pages: SitePage[] };
-// POST /merchants/<slug>/agent/try: both frames, and the node's answer (404 until published).
+// POST /merchants/<slug>/agent/try: both frames, and the node's answer (a TALK gets 404 until
+// published; the Send buttons' intents address no merchant).
 // The Send buttons: the intents that address no merchant; booking is a TALK (#254).
 export type AgentIntent = "DISCOVER" | "RECALL" | "PING";
 export type AgentTryOutput = {

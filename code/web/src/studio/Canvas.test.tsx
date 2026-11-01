@@ -153,7 +153,7 @@ describe("Studio's canvas", () => {
 
   it("shows, unpublished, what an agent will get, and says it gets a 404 for now", async () => {
     const { container } = canvas({ view: "agent", addresses: { agent: "batp://h/la-graine-verte", mcp: "https://h/m/x/mcp", management: "https://h/manage/x" } });
-    expect(screen.getByText(/Right now every agent gets a 404/)).toBeTruthy();
+    expect(screen.getByText(/Until you publish, your agent answers every message with a 404/)).toBeTruthy();
     expect(screen.getByText("Not live")).toBeTruthy();
     await waitFor(() => expect(container.querySelector(".st-w-log")?.textContent).toContain('"intent":"TALK"'));
     expect(container.querySelector(".st-w-log")?.textContent).toContain('"table_label":"T8"');

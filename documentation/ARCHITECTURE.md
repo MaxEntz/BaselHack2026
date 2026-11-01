@@ -111,7 +111,7 @@ sequenceDiagram
   A->>DB: INSERT reservation, then COMMIT
   DB-->>P: NOTIFY reservations (schema, op, id, status, via)
   A-->>M: reservation R-001
-  M->>L: words the result
+  M->>M: code words the result, no model call (#255)
   M-->>N: reply, reservation R-001
   N-->>G: TalkOutput
   G-->>C: booking details
@@ -126,7 +126,7 @@ sequenceDiagram
 3. **Discovery (2–6).** `search_merchants` becomes `DISCOVER`, which reads the registry `public.merchants`. Only merchants with status `live` are returned, filtered by tags and price. If nothing matches, the response suggests which filter to drop and how many merchants that would add (`suggestions`), so Claude can offer it to the user ([ADR-0008](adr/0008-deviations-from-the-original-tool-contracts.md)).
 4. **Conversation (7–17).** `talk_to_merchant` becomes `TALK`. The node runs one turn of the merchant's AI agent (`agent/talk.py`): a tool-use loop on the model, with the validated profile and the knowledge the owner reviewed, never crawled text (invariant 6). Its tools are guest tools bound to that merchant. `get_availability` reads the merchant's schema through `merchant_conn(engine, slug)`, and the pure functions in `core/availability.py` compute up to 3 start times closest to the request: every 30 minutes, the last seating 60 minutes before the end of the service, blocked starts excluded, each with the smallest free table that fits. `propose_booking` checks the request and stores one proposal in the conversation, with a summary code writes. Only `reply` is the model's text; code builds `slots`, `pending` and the rest from tool results.
 5. **Confirmation (18–20).** Claude shows the proposal's summary and asks the user. Only a later `TALK` whose `confirm` names the proposal runs it (invariant 2): a "yes" in the message alone writes nothing.
-6. **Booking (21–24, 26–27).** On that confirm, code runs the write before any model call, with the proposal's own arguments and its id as the idempotency key, so a retried confirm does not book twice. The insert either succeeds or is rejected by the database's exclusion constraint if the table is already taken at that time (invariant 1). The reference `R-NNN` comes from the merchant's own sequence. The model then only words the result.
+6. **Booking (21–24, 26–27).** On that confirm, code runs the write before any model call, with the proposal's own arguments and its id as the idempotency key, so a retried confirm does not book twice. The insert either succeeds or is rejected by the database's exclusion constraint if the table is already taken at that time (invariant 1). The reference `R-NNN` comes from the merchant's own sequence. Code then words the result itself, with no model call (#255).
 7. **Live event (25, 32).** Inside the booking's transaction, an `AFTER INSERT` trigger on the merchant's `reservations` table calls `public.notify_reservation()`, which queues `NOTIFY reservations`. Postgres delivers it when the transaction commits. The platform listens on that channel and pushes a `LiveEvent` over SSE to the merchant's open chat: "New booking via Claude". The target is under 2 s.
 8. **Answer (28–31).** Claude shows the booking to the user.
 
@@ -237,7 +237,7 @@ Breaking one of these is a bug.
 - One city, with no ranking beyond name order.
 - Guest identity is the `guest_name` Claude passes, compared everywhere by `same_guest` (case-folded, accents dropped, whitespace collapsed).
 - One owner per merchant, identified by a secret link ([ADR-0018](adr/0018-open-a-merchants-site-with-a-secret-link.md)).
-- Deployed, the gateway reaches the agents through the BATP node on the same host (`BATP_URL`); without it (development, tests), they run in the same process.
+- Deployed, the gateway reaches the agents through the BATP node on the same host (`BATP_URL`). Without it (development, tests), the search and the guest's bookings run in the gateway's process, and `talk_to_merchant` answers with the fallback URL: the merchant's agent is an LLM that only the node runs (`make node`).
 
 **Demo topology** ([#25](https://github.com/MaxEntz/BaselHack2026/issues/25), #142, [ADR-0016](adr/0016-serve-the-web-app-and-the-platform-from-the-team-server.md)): everything runs on the team server, next to its Postgres, so live events work (the platform `LISTEN`s on the database the gateway and the node write to). Caddy serves each part on its own `sslip.io` host: the gateway (a token for every caller, added by Caddy for Anthropic's range, ADR-0019), the web app and its platform API (`sesame.…`), and each demo website. All of it is deployed (#142).
 

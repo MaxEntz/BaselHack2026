@@ -181,7 +181,7 @@ Before 0.3, `409 slot_unavailable` and `413 party_too_large` answered `BOOK` and
 ## 9. Events (reserved)
 
 `{"type": "event", …}` frames, pushed by the node without a request, are reserved for a later
-minor version: 0.2 doesn't define them. One use would be to tell a guest's agent that the
+minor version: 0.3 doesn't define them. One use would be to tell a guest's agent that the
 merchant cancelled their booking. Today that goes through the guest notice returned by `RECALL`.
 
 ## 10. Security
@@ -253,8 +253,8 @@ code sets `fallback_url` when the guest should book on the website.
 
 `BatpClient` keeps at most 32 of the requests it waits on in flight, the minimum every node
 accepts; the others wait for a slot within the gateway's budget. A request the gateway gave up
-on may still run on the node for up to 10 s, so a slow node can still answer `429` to a later
-one. That `429`, a status or `error.code` the bridge doesn't know, or an answer it can't read
+on may still run on the node for up to 10 s (25 s for a `TALK`), so a slow node can still answer
+`429` to a later one. That `429`, a status or `error.code` the bridge doesn't know, or an answer it can't read
 fails that request only, as `agent_unavailable` with the fallback URL; the session and the
 other requests go on. An unreadable answer without an `id` drops the session, since nobody can
 tell whose it was. Any `2xx` is a success. The draft would treat an unknown `4xx` as a caller
