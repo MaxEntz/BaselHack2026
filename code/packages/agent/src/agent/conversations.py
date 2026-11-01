@@ -4,6 +4,10 @@ chat sessions: a restart loses them, and the caller gets `not_found` and starts 
 A conversation belongs to one merchant and one caller (the BATP session's `agent.id`). It can't
 be tied to the session itself: the gateway carries all its users on one session, under one
 `agent.id`, so its random id is what keeps them apart (#245).
+
+A replay is a message sent again with its key, and the node can't tell it from another guest
+sending the same message with the same key. A caller that carries several guests must send keys
+they can't guess, so that one guest never gets another's answer.
 """
 
 import asyncio
