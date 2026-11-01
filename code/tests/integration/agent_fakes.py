@@ -1,11 +1,36 @@
-"""A scripted model for the merchant's AI agent (#246): its tests, and the node's (#249)."""
+"""A scripted model for the merchants' AI agent (#246), and a real BATP node serving it: the
+agent's tests, the node's (#249) and the guest agent's (#252)."""
 
 import json
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from agent.service import PgAgentService
+from agent.talk import MerchantAgent, registry_merchants
+from batp.client import BatpClient
+from batp.messages import AgentIdentity
+from batp.server import NodeServer
 from core.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
+from merchant_node.__main__ import NODE
+from merchant_node.agents import MerchantAgents
+from merchant_node.limits import TalkLimits
+from merchant_node.requests_log import RequestLog
+
+TZ = ZoneInfo("Europe/Zurich")
+NOW = datetime(2026, 10, 31, 9, tzinfo=TZ)
+FALLBACK = "http://localhost:8080/reservation.html"
+TOKEN = "gw-token-for-the-talk-tests"
+GATEWAY = AgentIdentity(
+    id="urn:batp:agent:claude-gateway",
+    name="Claude via the Sésame gateway",
+    kind="user-agent",
+    operator="merchant-agents",
+)
 
 
 def call(name: str, **arguments: Any) -> ToolCall:
@@ -48,3 +73,35 @@ class ScriptedLLM:
         if isinstance(reply, Exception):
             raise reply
         return reply
+
+
+class Node:
+    """A node serving `MerchantAgents` with the agent on `llm` (none: no OPENAI_API_KEY)."""
+
+    def __init__(
+        self, engine: AsyncEngine, llm: ScriptedLLM | None, limits: TalkLimits | None = None
+    ) -> None:
+        service = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
+        talker = None
+        if llm is not None:
+            talker = MerchantAgent(llm, service, registry_merchants(engine), TZ, clock=lambda: NOW)
+        agents = MerchantAgents(engine, service, talker, limits)
+        self.server = NodeServer(
+            node=NODE,
+            handle=agents,
+            authenticate=lambda hello: hello.token == TOKEN,
+            fallback_url=agents.fallback_url,
+            record=RequestLog(engine),
+        )
+
+    def client(self, agent: AgentIdentity = GATEWAY) -> BatpClient:
+        return BatpClient("127.0.0.1", self.server.port, agent, token=TOKEN)
+
+    async def __aenter__(self) -> BatpClient:
+        await self.server.start("127.0.0.1", 0)
+        self._client = self.client()
+        return await self._client.__aenter__()
+
+    async def __aexit__(self, *exc: Any) -> None:
+        await self._client.__aexit__(*exc)
+        await self.server.stop()

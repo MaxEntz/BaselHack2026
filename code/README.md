@@ -26,6 +26,7 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 |---|---|---|
 | `make gateway` | MCP server (protocol), `uv run python -m gateway`: the 6 user tools (`talk_to_merchant` instead of the 4 booking ones with `GATEWAY_TALK`), JSON logs, `GET /health` | http://localhost:8001/mcp |
 | `make node` | BATP node (our agent protocol, `documentation/PROTOCOL.md`), `uv run python -m merchant_node` | batp://127.0.0.1:4710 |
+| `make guest MESSAGE="…"` | A guest's own AI agent talking to the merchants' agents over BATP, every frame printed; you confirm at the terminal (#252, `scripts/batp_guest.py`) | the node |
 | `make platform` | Platform API, `uv run uvicorn merchant_platform.api:app --port 8002` | http://localhost:8002 |
 | `make web` | Studio and the management site (Vite) | http://localhost:5173 |
 | `make site` | Demo restaurant website "Le Petit Zinc" (static, in French) | http://localhost:8080 |
@@ -99,7 +100,7 @@ packages/
 web/                    Studio and the management site (Vite + React + TS)
 sites/                  demo restaurant websites: le-petit-zinc (crawl target), 2 one-page sites
 migrations/             Alembic (public schema only; merchant schemas come from provisioning)
-scripts/                seed.py, demo_reset.py, demo_booking.py (make demo-booking), demo_management.py
+scripts/                seed.py, demo_reset.py, demo_booking.py (make demo-booking), batp_guest.py (make guest), demo_management.py
                         (La Graine Verte's management data), export_management_fixture.py, owner_link.py
                         (make owner-link), set_status.py (outage switch), caddy_env.py and platform_env.py
                         (make deploy), crawl_site.py, bench_extract.py (+ bench_sites/), batp_schemas.py
