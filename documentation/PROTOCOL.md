@@ -226,7 +226,7 @@ The agent's tools only propose a write (#246). On `confirm`, code runs it before
 
 ## 12. The MCP bridge
 
-The gateway keeps its 6 MCP tools and their descriptions. Behind them, an `AgentClient`
+The gateway keeps its MCP tools and their descriptions. Behind them, an `AgentClient`
 implementation speaks BATP to the node instead of calling `PgAgentService` in-process:
 
 | MCP tool | BATP intent |
@@ -237,11 +237,24 @@ implementation speaks BATP to the node instead of calling `PgAgentService` in-pr
 | `update_reservation` | `AMEND` |
 | `cancel_reservation` | `CANCEL` |
 | `get_my_reservations` | `RECALL` |
+| `talk_to_merchant` | `TALK` |
 
-The gateway's fallback layer (`fallback.py`) serves both modes. Its 2 s budget includes the hop
-to the node, and a BATP `503` or a dropped session becomes `agent_unavailable` with the
-fallback URL. A refusal from the node (`400`, `404`, `409`, `413`) keeps its own §8.4 code, also
-on `search_merchants`: the node answered, so it is never reported as an outage (#90).
+`GATEWAY_TALK` chooses how Claude books, on `/mcp` and on every `/m/<slug>/mcp` (#251). Off (the
+default), it gets the four booking tools. On, it gets `talk_to_merchant` instead: it writes to
+the merchant's agent in natural language, relays its `reply`, and sends `confirm` only after the
+user's explicit yes to the agent's `pending` summary. Never both at once, or Claude would pick.
+`search_merchants` and `get_my_reservations` stay either way: they address no merchant. Without
+`BATP_URL`, `talk_to_merchant` answers `agent_unavailable` with the fallback URL: the merchant's
+agent is an LLM that only the node runs (`make node`).
+
+The gateway's fallback layer (`fallback.py`) serves both modes. Its 2 s budget
+(`AGENT_TIMEOUT_MS`) includes the hop to the node; `talk_to_merchant` has its own,
+`AGENT_TALK_TIMEOUT_MS` (30 s), above the node's 25 s for `TALK`, since a model turn doesn't fit
+in 2 s. A BATP `503` or a dropped session becomes `agent_unavailable` with the fallback URL; a
+`talk_to_merchant` that sent a `confirm` adds that the change may have gone through, as the
+booking tools do. A refusal from the node (`400`, `404`, `409`, `413`) keeps its own §8.4 code, also
+on `search_merchants`: the node answered, so it is never reported as an outage (#90). A `404`
+for an unknown or expired conversation stays `not_found` too.
 
 `BatpClient` keeps at most 32 of the requests it waits on in flight, the minimum every node
 accepts; the others wait for a slot within the gateway's budget. A request the gateway gave up

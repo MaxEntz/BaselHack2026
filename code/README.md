@@ -24,7 +24,7 @@ Port 5432 already taken on your machine? Set `DB_PORT` and the port in `DATABASE
 
 | Command | What | URL |
 |---|---|---|
-| `make gateway` | MCP server (protocol), `uv run python -m gateway`: the 6 user tools, JSON logs, `GET /health` | http://localhost:8001/mcp |
+| `make gateway` | MCP server (protocol), `uv run python -m gateway`: the 6 user tools (`talk_to_merchant` instead of the 4 booking ones with `GATEWAY_TALK`), JSON logs, `GET /health` | http://localhost:8001/mcp |
 | `make node` | BATP node (our agent protocol, `documentation/PROTOCOL.md`), `uv run python -m merchant_node` | batp://127.0.0.1:4710 |
 | `make platform` | Platform API, `uv run uvicorn merchant_platform.api:app --port 8002` | http://localhost:8002 |
 | `make web` | Studio and the management site (Vite) | http://localhost:5173 |
