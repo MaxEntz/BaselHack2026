@@ -29,6 +29,7 @@ from merchant_platform.accounts import Accounts, MemoryOwnerStore, PgOwnerStore
 from merchant_platform.assistant import default_assistant, run_turn
 from merchant_platform.errors import add_error_handlers
 from merchant_platform.events import LiveBus, LiveListener
+from merchant_platform.limits import rate_limiters
 from merchant_platform.logs import configure_logging
 from merchant_platform.registry import (
     ProfileLookup,
@@ -82,6 +83,8 @@ def create_app(
     app.state.engine = engine
     app.state.registry = registry
     app.state.bookings = bookings
+    # Per-address counts of the routes anyone may call (#232), one set per app.
+    app.state.rate_limits = rate_limiters()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.public_cors_origins),

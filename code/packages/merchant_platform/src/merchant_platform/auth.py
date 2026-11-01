@@ -8,7 +8,7 @@ The errors they raise are `accounts.py`'s, answered by `errors.py`.
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, Request, Response
+from fastapi import APIRouter, Depends, Path, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,7 @@ from merchant_platform.accounts import (
     OtherMerchant,
     Owner,
 )
+from merchant_platform.limits import limited
 
 
 def accounts_of(request: Request) -> Accounts:
@@ -92,7 +93,7 @@ def _set_cookie(request: Request, response: Response, name: str, value: str) -> 
     )
 
 
-@router.get("/login")
+@router.get("/login", dependencies=[Depends(limited("login"))])
 async def login(request: Request, token: Annotated[str, Query(max_length=200)]) -> RedirectResponse:
     """The secret link: opens the merchant's management site in this browser."""
     owner = await accounts_of(request).owner_for_token(token)
@@ -111,7 +112,7 @@ async def logout() -> Response:
     return response
 
 
-@router.post("/invite", status_code=204)
+@router.post("/invite", status_code=204, dependencies=[Depends(limited("invite"))])
 async def invite(request: Request, body: InviteRequest) -> Response:
     """Lets this browser start a build when PLATFORM_INVITE_CODE is set."""
     accounts = accounts_of(request)
