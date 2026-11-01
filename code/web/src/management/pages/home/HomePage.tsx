@@ -131,34 +131,14 @@ export function HomePage({ slug, version = 0, onAsk }: HomeProps) {
 
   return (
     <div className="home">
-      <div className="ttl">
-        <h1>
-          {hello}
-          {name && (
-            <>
-              , <Under>{name}</Under>
-            </>
-          )}
-        </h1>
-        {data && <p>{subtitle(data.dashboard.date, data.dashboard.room.service)}</p>}
-        <div className="pills">
-          <Pill primary onClick={ask}>
-            Ask the assistant
-          </Pill>
-          <Pill disabled={!data} onClick={() => data && block(data.dashboard.date)}>
-            Block a time
-          </Pill>
-          <Link className="pill" to={pagePath(slug, "reservations")}>
-            Reservations
-          </Link>
-          <Link className="pill" to={pagePath(slug, "hours")}>
-            Opening hours
-          </Link>
-          <Link className="pill" to={pagePath(slug, "floor")}>
-            Floor plan
-          </Link>
-        </div>
-      </div>
+      <HomeTitle
+        slug={slug}
+        hello={hello}
+        name={name}
+        line={data ? subtitle(data.dashboard.date, data.dashboard.room.service) : null}
+        onAsk={ask}
+        onBlock={data ? () => block(data.dashboard.date) : null}
+      />
       {error && !data && (
         <p className="none" role="alert">
           {error}
@@ -194,6 +174,51 @@ export function HomePage({ slug, version = 0, onAsk }: HomeProps) {
           <ActivityCard items={data.dashboard.activity} fresh={freshActivity} />
         </div>
       )}
+    </div>
+  );
+}
+
+type HomeTitleProps = {
+  slug: string;
+  hello: string;
+  name: string | null;
+  // The day and its service, once the dashboard is there.
+  line: string | null;
+  onAsk: () => void;
+  // Null until the dashboard is there.
+  onBlock: (() => void) | null;
+};
+
+// The greeting, the day, and the shortcuts to what the merchant does most.
+function HomeTitle({ slug, hello, name, line, onAsk, onBlock }: HomeTitleProps) {
+  return (
+    <div className="ttl">
+      <h1>
+        {hello}
+        {name && (
+          <>
+            , <Under>{name}</Under>
+          </>
+        )}
+      </h1>
+      {line !== null && <p>{line}</p>}
+      <div className="pills">
+        <Pill primary onClick={onAsk}>
+          Ask the assistant
+        </Pill>
+        <Pill disabled={!onBlock} onClick={() => onBlock?.()}>
+          Block a time
+        </Pill>
+        <Link className="pill" to={pagePath(slug, "reservations")}>
+          Reservations
+        </Link>
+        <Link className="pill" to={pagePath(slug, "hours")}>
+          Opening hours
+        </Link>
+        <Link className="pill" to={pagePath(slug, "floor")}>
+          Floor plan
+        </Link>
+      </div>
     </div>
   );
 }

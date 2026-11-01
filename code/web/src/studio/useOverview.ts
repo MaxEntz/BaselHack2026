@@ -16,7 +16,7 @@ type OverviewInput = {
 };
 
 export type Overview = {
-  overview: MerchantOverview | null;
+  merchant: MerchantOverview | null;
   // What a restored merchant's build stored: the pages it read and its hours.
   pages: readonly SitePage[];
   services: readonly Service[];
@@ -77,7 +77,7 @@ export function useOverview({ slug, claimed, restored, status, setStatus }: Over
     setServices([]);
   }, []);
 
-  return { overview, pages, services, forget };
+  return { merchant: overview, pages, services, forget };
 }
 
 /** From the platform once the owner cookie is set; until then, what the build said. */

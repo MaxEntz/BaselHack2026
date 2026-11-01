@@ -115,10 +115,29 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "attached":
       return attach(state, action.merchant, action.welcome);
     case "restore":
-      return action.items.reduce<ChatState>(
-        (next, item) => append(next, { ...item, turn: 0 } as NewItem),
-        { ...state, items: [], turn: 0 },
-      );
+      return action.items.reduce<ChatState>((next, item) => {
+        const kept = keptItem(item);
+        return kept ? append(next, kept) : next;
+      }, { ...state, items: [], turn: 0 });
+    default:
+      return state;
+  }
+}
+
+// An item of the conversation the platform kept; null for a type this build doesn't know (#220).
+function keptItem(item: ConversationItem): NewItem | null {
+  switch (item.type) {
+    case "user":
+    case "assistant":
+      return { type: item.type, turn: 0, text: item.text };
+    case "card":
+      return { type: "card", turn: 0, card: item.card };
+    case "notification":
+      return { type: "notification", turn: 0, event: item.event };
+    case "error":
+      return { type: "error", turn: 0, message: item.message };
+    default:
+      return null;
   }
 }
 
@@ -164,6 +183,9 @@ function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       );
     case "done":
       return { ...interruptBuild(state), busy: false, activity: null };
+    // A newer platform's event: the client skips them, and this keeps the state if one gets here.
+    default:
+      return state;
   }
 }
 

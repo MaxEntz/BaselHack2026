@@ -1,7 +1,8 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { AgentTryOutput, BuildFact, DaySlots, Look, SitePage } from "../types.ts";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { MOMENT_READY } from "../moments.ts";
+import type { AgentTryOutput, BuildFact, DaySlots, Look, Moment, SitePage } from "../types.ts";
 import { Canvas } from "./Canvas.tsx";
 
 const HOME: SitePage = { path: "/", width: 1000, height: 2000, image: "data:image/jpeg;base64,AA==" };
@@ -60,8 +61,8 @@ function client(frames?: AgentTryOutput) {
   };
 }
 
-function canvas(props: Partial<Parameters<typeof Canvas>[0]> = {}) {
-  return render(
+function CanvasWith(props: Partial<Parameters<typeof Canvas>[0]>) {
+  return (
     <Canvas
       client={client()}
       slug="la-graine-verte"
@@ -81,9 +82,11 @@ function canvas(props: Partial<Parameters<typeof Canvas>[0]> = {}) {
       onMoment={() => {}}
       onColour={() => {}}
       {...props}
-    />,
+    />
   );
 }
+
+const canvas = (props: Partial<Parameters<typeof Canvas>[0]> = {}) => render(<CanvasWith {...props} />);
 
 const tab = (name: string | RegExp) => screen.getByRole("button", { name });
 
@@ -101,6 +104,15 @@ describe("Studio's canvas", () => {
     expect(tab(/Management/).hasAttribute("disabled")).toBe(true);
     expect(tab("Both").hasAttribute("disabled")).toBe(true);
     expect(tab(/Your public site/).hasAttribute("disabled")).toBe(false);
+  });
+
+  // "Ag Agent site" read "AgAgent site" (#220): the letters are the tile's picture.
+  it("names its tabs without their tiles' letters", () => {
+    canvas();
+    const group = within(screen.getByRole("group", { name: "Which site to show" }));
+    for (const name of ["Agent site", "Management", "Both", "Your public site"]) {
+      expect(group.getByRole("button", { name })).toBeTruthy();
+    }
   });
 
   it("keeps the public tab disabled until a page was read, and opens the others once built", () => {
@@ -305,5 +317,102 @@ describe("Studio's canvas", () => {
     canvas({ view: "agent", client: fake });
     await userEvent.click(screen.getByRole("button", { name: "PING" }));
     expect((await screen.findByRole("alert")).textContent).toContain("needs the BATP node");
+  });
+});
+
+// The management site loads on its first visit (#220), after the frame's `load`: it says when it
+// listens, and the moment goes then.
+describe("Studio's canvas, the moment in its frame", () => {
+  function framed(moment: Moment | null) {
+    const view = canvas({ moment });
+    const frame = view.container.querySelector("iframe")!;
+    const posted = vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
+    const post = (init: MessageEventInit) =>
+      act(() => {
+        window.dispatchEvent(new MessageEvent("message", { data: MOMENT_READY, ...init }));
+      });
+    const ready = () => post({ origin: window.location.origin, source: frame.contentWindow });
+    const shown = (next: Moment | null) => view.rerender(<CanvasWith moment={next} />);
+    return { posted, post, ready, shown };
+  }
+
+  it("holds a moment asked for before the page listens, and sends it once it does", () => {
+    const { posted, ready, shown } = framed(null);
+    shown("after");
+    expect(posted).not.toHaveBeenCalled();
+
+    ready();
+    expect(posted).toHaveBeenCalledExactlyOnceWith({ type: "sesame:moment", moment: "after" }, window.location.origin);
+
+    shown("during");
+    expect(posted).toHaveBeenLastCalledWith({ type: "sesame:moment", moment: "during" }, window.location.origin);
+  });
+
+  it("sends nothing to a page on the clock, nor twice the same moment to one document", () => {
+    const { posted, ready, shown } = framed(null);
+    ready();
+    expect(posted).not.toHaveBeenCalled();
+    shown("morning");
+    shown("morning");
+    expect(posted).toHaveBeenCalledOnce();
+  });
+
+  // "Reload the page" after an error: the new document starts on the clock again.
+  it("sends the moment again to each document that says it listens", () => {
+    const { posted, ready } = framed("after");
+    ready();
+    ready();
+    expect(posted).toHaveBeenCalledTimes(2);
+    expect(posted).toHaveBeenLastCalledWith({ type: "sesame:moment", moment: "after" }, window.location.origin);
+  });
+
+  it("takes READY from no other window", () => {
+    const { posted, post } = framed("after");
+    post({ origin: window.location.origin, source: window });
+    expect(posted).not.toHaveBeenCalled();
+  });
+
+  it("takes READY from its frame on no other origin", () => {
+    const view = canvas({ moment: "after" });
+    const frame = view.container.querySelector("iframe")!;
+    const posted = vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", { data: MOMENT_READY, origin: "https://elsewhere.example", source: frame.contentWindow }),
+      );
+    });
+    expect(posted).not.toHaveBeenCalled();
+  });
+});
+
+// The scroll to a lit fact's words (#220): once per fact, not on every render of Studio.
+describe("Studio's canvas, the public page's scroll", () => {
+  const frames = { request: window.requestAnimationFrame, cancel: window.cancelAnimationFrame };
+  const scrolls = vi.fn();
+  beforeEach(() => {
+    scrolls.mockClear();
+    window.requestAnimationFrame = (callback) => {
+      callback(0);
+      return 1;
+    };
+    window.cancelAnimationFrame = () => {};
+    HTMLElement.prototype.scrollTo = scrolls as unknown as HTMLElement["scrollTo"];
+  });
+  afterEach(() => {
+    window.requestAnimationFrame = frames.request;
+    window.cancelAnimationFrame = frames.cancel;
+  });
+
+  const smooth = () => scrolls.mock.calls.filter(([options]) => options?.behavior === "smooth");
+
+  it("scrolls to a lit fact once, and not again when Studio draws again", () => {
+    const view = canvas({ view: "public", pages: [HOME, HOURS], fact: FACT });
+    expect(smooth()).toHaveLength(1);
+    // Studio draws again (a keystroke used to): new callbacks, the same fact.
+    view.rerender(<CanvasWith view="public" pages={[HOME, HOURS]} fact={FACT} onView={() => {}} onMoment={() => {}} />);
+    expect(smooth()).toHaveLength(1);
+
+    view.rerender(<CanvasWith view="public" pages={[HOME, HOURS]} fact={{ ...FACT, key: "hours", label: "Hours" }} />);
+    expect(smooth()).toHaveLength(2);
   });
 });

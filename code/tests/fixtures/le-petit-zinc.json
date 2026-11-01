@@ -29,5 +29,36 @@
   "cancellation_policy": null,
   "fallback_url": "http://localhost:8080/reservation.html",
   "look": {"bg": "#f7f2e8", "surface": "#fffaf0", "line": "#ddcfb8", "ink": "#2a2320", "muted": "#675c54", "accent": "#8f2d2a", "accent_2": "#7e2825", "on_accent": "#eeddd7", "display_font": "serif", "body_font": "sans", "corners": "rounded", "radius_px": 10, "texture": "none"},
-  "knowledge": null
+  "knowledge": {
+    "items": [
+      {"topic": "menu", "text": "Formule du midi : entrée + plat ou plat + dessert, 19,50 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Formule du midi : entrée + plat ou plat + dessert, 19,50 €"},
+      {"topic": "menu", "text": "Tarte à l'oignon, salade verte, végétarienne, 9 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Tarte à l'oignon, salade verte"},
+      {"topic": "menu", "text": "Velouté de potimarron, végétarien et sans gluten, 8 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Velouté de potimarron"},
+      {"topic": "menu", "text": "Tarte flambée traditionnelle : crème, oignons, lardons, 12 €.", "source_url": "http://localhost:8080/index.html", "quote": "Tarte flambée traditionnelle"},
+      {"topic": "menu", "text": "Choucroute garnie : saucisses de Strasbourg et de Montbéliard, lard fumé, kassler, pommes vapeur, 24 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Saucisses de Strasbourg et de Montbéliard, lard fumé, kassler, pommes vapeur."},
+      {"topic": "menu", "text": "Joue de bœuf au pinot noir, sans gluten, 23 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Joue de bœuf au pinot noir"},
+      {"topic": "menu", "text": "Truite au riesling, sans gluten, 22 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Truite au riesling"},
+      {"topic": "menu", "text": "Spaetzle aux champignons des Vosges, végétariens, 17 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Spaetzle aux champignons des Vosges"},
+      {"topic": "menu", "text": "Galettes de pommes de terre, végétariennes et sans gluten, 16 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Galettes de pommes de terre"},
+      {"topic": "menu", "text": "Menu enfant jusqu'à 10 ans : knack et frites maison ou spaetzle, un sirop, une boule de glace, 10 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Knack et frites maison ou spaetzle, un sirop, une boule de glace."},
+      {"topic": "menu", "text": "Kougelhopf glacé au kirsch, 8 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Kougelhopf glacé au kirsch"},
+      {"topic": "drinks", "text": "Riesling au verre de 12 cl, 5,50 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Riesling, le verre de 12 cl"},
+      {"topic": "drinks", "text": "Crémant d'Alsace à la coupe, 7 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Crémant d'Alsace, la coupe"},
+      {"topic": "drinks", "text": "Bière pression d'une brasserie de la région, 25 cl, 4 €.", "source_url": "http://localhost:8080/carte.html", "quote": "Bière pression d'une brasserie de la région, 25 cl"},
+      {"topic": "dietary", "text": "Chaque jour, des plats végétariens et plusieurs plats sans gluten, signalés sur la carte.", "source_url": "http://localhost:8080/index.html", "quote": "Chaque jour, des plats végétariens et plusieurs plats sans gluten, signalés sur la carte."},
+      {"topic": "dietary", "text": "Signalez vos allergies : le restaurant adapte ce qui peut l'être.", "source_url": "http://localhost:8080/carte.html", "quote": "signalez-nous vos allergies, nous adapterons ce qui peut l'être."},
+      {"topic": "access", "text": "14 rue des Ferblantiers, 68100 Mulhouse.", "source_url": "http://localhost:8080/horaires.html", "quote": "14 rue des Ferblantiers"},
+      {"topic": "access", "text": "En tram : lignes 1 et 2, à cinq minutes à pied.", "source_url": "http://localhost:8080/horaires.html", "quote": "Lignes 1 et 2, à cinq minutes à pied"},
+      {"topic": "access", "text": "En voiture : parkings du centre-ville à proximité.", "source_url": "http://localhost:8080/horaires.html", "quote": "Parkings du centre-ville à proximité"},
+      {"topic": "access", "text": "À vélo : arceaux devant le restaurant.", "source_url": "http://localhost:8080/horaires.html", "quote": "Arceaux devant le restaurant"},
+      {"topic": "access", "text": "Salle de plain-pied, accessible en fauteuil roulant.", "source_url": "http://localhost:8080/horaires.html", "quote": "Salle de plain-pied, accessible en fauteuil roulant."},
+      {"topic": "practical", "text": "Chaises hautes et crayons de couleur sur demande.", "source_url": "http://localhost:8080/carte.html", "quote": "Chaises hautes et crayons de couleur sur demande."},
+      {"topic": "practical", "text": "Terrasse aux beaux jours, à l'ombre des tilleuls de la place.", "source_url": "http://localhost:8080/index.html", "quote": "à l'ombre des tilleuls de la place"},
+      {"topic": "practical", "text": "Téléphone : 03 89 00 00 00.", "source_url": "http://localhost:8080/contact.html", "quote": "03 89 00 00 00"},
+      {"topic": "about", "text": "Un bistrot de quartier depuis 2009, avec un comptoir en zinc et une cuisine ouverte sur la salle.", "source_url": "http://localhost:8080/index.html", "quote": "Un bistrot de quartier, depuis 2009"},
+      {"topic": "about", "text": "Le restaurant travaille avec des producteurs du Sundgau et des Vosges, et la carte suit les saisons.", "source_url": "http://localhost:8080/index.html", "quote": "Nous travaillons avec des producteurs du Sundgau et des Vosges, et la carte suit les saisons."},
+      {"topic": "about", "text": "Du pain aux desserts, tout est préparé sur place.", "source_url": "http://localhost:8080/index.html", "quote": "Du pain aux desserts, tout est préparé sur place."},
+      {"topic": "events", "text": "Groupes, fêtes de famille et repas d'entreprise : appeler le restaurant pour trouver la bonne formule.", "source_url": "http://localhost:8080/contact.html", "quote": "Pour les groupes, les fêtes de famille et les repas d'entreprise, appelez-nous"}
+    ]
+  }
 }

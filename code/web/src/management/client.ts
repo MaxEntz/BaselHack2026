@@ -1,4 +1,5 @@
 import { httpClient, type LiveHandlers } from "../chat/client.ts";
+import { isRecord } from "../json.ts";
 import type {
   AgentIntent,
   AgentTalkInput,
@@ -17,11 +18,13 @@ import type {
   HoursInput,
   ManagedReservation,
   ManagementError,
+  ManagementErrorCode,
   MerchantBookingInput,
   MerchantCancelOutput,
   MerchantOverview,
   MerchantSettings,
   MoveBookingInput,
+  Problem,
   ReservationDay,
   Rules,
   RulesInput,
@@ -113,21 +116,28 @@ async function call<T>(
   if (!response.ok) {
     throw new ManagementRequestError(response.status, errorBody(payload));
   }
+  // Every route answers an object (src/types.ts); its fields are the platform's contract.
+  if (!isRecord(payload)) {
+    throw new ManagementRequestError(response.status, { error: "agent_unavailable", message: NO_ANSWER });
+  }
   return payload as T;
 }
 
+// The fields of a `ManagementError` that have their type; the platform's own words otherwise.
 function errorBody(payload: unknown): ManagementError {
-  if (
-    typeof payload === "object" &&
-    payload !== null &&
-    "error" in payload &&
-    "message" in payload &&
-    typeof payload.message === "string"
-  ) {
-    return payload as ManagementError;
+  if (!isRecord(payload) || typeof payload.error !== "string" || typeof payload.message !== "string") {
+    return { error: "agent_unavailable", message: NO_ANSWER };
   }
-  return { error: "agent_unavailable", message: NO_ANSWER };
+  const { error, message, fallback_url: fallback, problem } = payload;
+  return {
+    error: error as ManagementErrorCode,
+    message,
+    ...(typeof fallback === "string" || fallback === null ? { fallback_url: fallback } : {}),
+    ...(isProblem(problem) || problem === null ? { problem } : {}),
+  };
 }
+
+const isProblem = (value: unknown): value is Problem => isRecord(value) && typeof value.code === "string";
 
 function query(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();

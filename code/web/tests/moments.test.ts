@@ -2,7 +2,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { askedMoment, isMoment, momentAt, momentSentence, previewTime, shownMoment } from "../src/moments.ts";
+import {
+  MOMENT_READY,
+  askedMoment,
+  isMoment,
+  isMomentReady,
+  momentAt,
+  momentSentence,
+  previewTime,
+  shownMoment,
+} from "../src/moments.ts";
 
 const LUNCH = { start: "11:30", end: "14:30" };
 const DINNER = { start: "18:30", end: "21:30" };
@@ -67,4 +76,12 @@ test("the management site reads a moment only from Studio's message (#220)", () 
   assert.equal(askedMoment({ type: "other", moment: "after" }), undefined);
   assert.equal(askedMoment("sesame:moment"), undefined);
   assert.equal(askedMoment(null), undefined);
+});
+
+test("Studio reads the frame's page as listening only from its own message (#220)", () => {
+  assert.equal(isMomentReady(MOMENT_READY), true);
+  assert.equal(isMomentReady({ type: "sesame:moment-ready" }), true);
+  assert.equal(isMomentReady({ type: "sesame:moment", moment: null }), false);
+  assert.equal(isMomentReady("sesame:moment-ready"), false);
+  assert.equal(isMomentReady(null), false);
 });

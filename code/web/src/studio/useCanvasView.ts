@@ -107,7 +107,8 @@ export function useCanvasView({ items, profile, pageCount, firstPage }: CanvasIn
 }
 
 // The assistant's `show_view` (#152): each view card switches the canvas, once, also when
-// StrictMode runs the effect twice.
+// StrictMode runs the effect twice. A new conversation counts its ids from 1 again
+// (`chat/state.ts`), so the card shown is forgotten once the conversation holds none.
 function useAssistantViews(items: readonly ChatItem[], open: CanvasState["open"]): void {
   const asked = items.findLast((item) => item.type === "card" && item.card.kind === "view");
   const card = asked?.type === "card" && asked.card.kind === "view" ? asked.card.data : null;
@@ -116,7 +117,11 @@ function useAssistantViews(items: readonly ChatItem[], open: CanvasState["open"]
   const askedMoment = card?.moment ?? null;
   const shown = useRef<string | null>(null);
   useEffect(() => {
-    if (askedId === null || askedView === null || shown.current === askedId) return;
+    if (askedId === null) {
+      shown.current = null;
+      return;
+    }
+    if (askedView === null || shown.current === askedId) return;
     shown.current = askedId;
     open(askedView, askedMoment);
   }, [askedId, askedView, askedMoment, open]);

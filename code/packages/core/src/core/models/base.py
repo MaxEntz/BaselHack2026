@@ -176,6 +176,11 @@ class KnowledgeItem(_Model):
     source_url: HttpUrl | None = None
     quote: Annotated[NonEmptyStr, StringConstraints(max_length=MAX_KNOWLEDGE_QUOTE)] | None = None
 
+    @property
+    def size(self) -> int:
+        """What it counts for in `MAX_KNOWLEDGE_BYTES`."""
+        return len(f"{self.text}{self.quote or ''}".encode())
+
 
 class SiteKnowledge(_Model):
     """What the merchant's site says beyond booking: the menu, parking, dogs, the chef (#248)."""
@@ -184,8 +189,7 @@ class SiteKnowledge(_Model):
 
     @model_validator(mode="after")
     def validate_size(self) -> Self:
-        size = sum(len(f"{item.text}{item.quote or ''}".encode()) for item in self.items)
-        if size > MAX_KNOWLEDGE_BYTES:
+        if sum(item.size for item in self.items) > MAX_KNOWLEDGE_BYTES:
             raise ValueError(f"Knowledge must fit in {MAX_KNOWLEDGE_BYTES} bytes")
         return self
 
