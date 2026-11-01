@@ -69,14 +69,13 @@ La Graine Verte's management data (`--with-management`, #131) is the management 
 
 ```bash
 make test                         # uv run pytest
-make lint                         # ruff check, ruff format --check, mypy (the `ruff`/`mypy` line below)
+make lint                         # ruff check, ruff format --check, mypy --strict on every package (as CI runs it)
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
 uv run pytest tests/e2e           # §9 user scenarios through a real MCP client
 uv run pytest tests/e2e/test_demo_scenario.py   # the demo's order over HTTP, before each rehearsal (#25)
 make test-stack                   # Chromium on the built web app, the platform and the gateway: build, publish, book, block, pause (#153)
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
 uv run scripts/bench_extract.py    # builder extraction, 5 runs on 6 sites (needs OPENAI_API_KEY; `--local` for the 4 local ones)
-uv run ruff check . && uv run ruff format --check . && uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node packages/builder packages/merchant_platform
 make fmt                          # autofix lint + format
 npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 cd web && npm test && npm run lint && npm run test:e2e   # the web app: unit, lint, browser (web/README.md)

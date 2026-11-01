@@ -152,7 +152,10 @@ async def test_the_caller_can_name_its_request(
 
 
 async def test_an_id_already_in_flight_is_refused(node: NodeServer, held: Held) -> None:
-    async with client_for(node) as client:
+    async with (
+        asyncio.timeout(5),  # a regression must fail, not hang
+        client_for(node) as client,
+    ):
         first = asyncio.create_task(
             client.request("PING", params={"hold": True}, request_id="r-same")
         )
@@ -279,7 +282,10 @@ async def test_a_429_is_agent_unavailable_for_the_caller(held: Held) -> None:
     server = NodeServer(node=NODE, handle=held, authenticate=accept_token, max_in_flight=1)
     await server.start("127.0.0.1", 0)
     try:
-        async with BatpClient("127.0.0.1", server.port, CALLER, token="s3cret") as client:
+        async with (
+            asyncio.timeout(5),  # a regression must fail, not hang
+            BatpClient("127.0.0.1", server.port, CALLER, token="s3cret") as client,
+        ):
             slow = asyncio.create_task(client.request("PING", params={"hold": True}))
             await held.started.wait()
             with pytest.raises(AgentUnavailable, match="in flight"):
@@ -517,16 +523,17 @@ async def test_a_read_survives_a_dropped_session_but_a_write_is_not_resent(
     held.expected = 2
     client = client_for(node)
     try:
-        read = asyncio.create_task(client.request("PING", params={"hold": True}))
-        write = asyncio.create_task(client.request("BOOK", "le-petit-zinc", {"hold": True}))
-        await held.started.wait()
-        for writer in list(node._writers):  # the session drops, the node keeps listening
-            writer.close()
-        held.release.set()  # their answers go nowhere; the read's second try is answered
+        async with asyncio.timeout(5):  # a regression must fail, not hang
+            read = asyncio.create_task(client.request("PING", params={"hold": True}))
+            write = asyncio.create_task(client.request("BOOK", "le-petit-zinc", {"hold": True}))
+            await held.started.wait()
+            for writer in list(node._writers):  # the session drops, the node keeps listening
+                writer.close()
+            held.release.set()  # their answers go nowhere; the read's second try is answered
 
-        assert (await read)["pong"] is True
-        with pytest.raises(AgentUnavailable, match="closed before the answer"):
-            await write
+            assert (await read)["pong"] is True
+            with pytest.raises(AgentUnavailable, match="closed before the answer"):
+                await write
     finally:
         await client.close()
 

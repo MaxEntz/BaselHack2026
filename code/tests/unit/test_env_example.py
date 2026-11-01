@@ -6,8 +6,9 @@ from pathlib import Path
 from core.config import Settings
 
 ENV_EXAMPLE = Path(__file__).parents[2] / ".env.example"
-# `KEY=…`, or commented out as `# KEY=…`.
-KEY = re.compile(r"^#?\s*([A-Z][A-Z0-9_]*)=", re.MULTILINE)
+# `KEY=…`, or commented out as `# KEY=…`; not the indented examples of a comment (`#   KEY=…`),
+# which would hide a real line gone missing.
+KEY = re.compile(r"^#? ?([A-Z][A-Z0-9_]*)=", re.MULTILINE)
 # Keys of `.env.example` that no `Settings` field reads, and who reads them.
 NOT_SETTINGS = {"DB_PORT": "docker-compose.yml, for the host port of Postgres"}
 

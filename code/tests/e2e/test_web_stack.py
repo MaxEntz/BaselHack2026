@@ -11,6 +11,7 @@ builds it and fails without it, a local run without it, or with an older one, is
 import json
 import os
 import re
+import subprocess
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -50,6 +51,8 @@ WEB = Path(__file__).parents[2] / "web"
 DIST = WEB / "dist"
 # What `npm run build` reads: a `dist` older than one of them was built from other code.
 WEB_SOURCES = ("src", "public", "index.html", "package.json", "vite.config.ts")
+# Files among them that the build doesn't read: the unit tests and their setup.
+WEB_TESTS = re.compile(r"\.test\.|^test-setup\.")
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())
 WEBSITE = "http://zinc-e2e.example/"
 NAME = "Zinc E2E"
@@ -123,15 +126,31 @@ def web_app(platform: FastAPI) -> Starlette:
     )
 
 
+def web_source_files() -> list[Path]:
+    """The files the build reads: tracked by git, so no `.DS_Store` or editor swap file, and
+    without the tests. Outside a git checkout, the files there minus dotfiles and tests."""
+    try:
+        listed = subprocess.run(
+            ["git", "ls-files", "-z", "--", *WEB_SOURCES],
+            cwd=WEB,
+            capture_output=True,
+            check=True,
+            text=True,
+        ).stdout
+        files = [WEB / name for name in listed.split("\0") if name]
+    except (OSError, subprocess.CalledProcessError):
+        files = [
+            file
+            for source in (WEB / name for name in WEB_SOURCES)
+            for file in (source.rglob("*") if source.is_dir() else [source])
+            if not any(part.startswith(".") for part in file.relative_to(WEB).parts)
+        ]
+    return [file for file in files if file.is_file() and not WEB_TESTS.search(file.name)]
+
+
 def newest_web_source() -> tuple[float, Path]:
     """The most recently changed file the build reads, with its modification time."""
-    files = (
-        file
-        for source in (WEB / name for name in WEB_SOURCES)
-        for file in (source.rglob("*") if source.is_dir() else [source])
-        if file.is_file()
-    )
-    return max((file.stat().st_mtime, file) for file in files)
+    return max((file.stat().st_mtime, file) for file in web_source_files())
 
 
 def stale_web_dist() -> str | None:

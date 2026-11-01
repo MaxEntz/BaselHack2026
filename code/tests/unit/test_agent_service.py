@@ -86,7 +86,7 @@ def test_pg_service_implements_the_contract() -> None:
     assert isinstance(service, PgAgentService)
 
 
-def test_a_guest_notice_is_returned_for_24_hours() -> None:
+def test_notice_window_is_pinned_to_24_hours() -> None:
     # AGENTS.md §6 and #91: the integration tests count from NOTICE_WINDOW, this pins its value.
     assert timedelta(hours=24) == NOTICE_WINDOW
 
