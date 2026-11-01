@@ -23,7 +23,7 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeout
 
 from builder import probes
-from builder.guard import Blocked, HostGuard, Unreadable, guard_context, landing
+from builder.guard import BROWSER_ARGS, Blocked, HostGuard, Unreadable, guard_context, landing
 from builder.urls import normalize_url, page_name, page_path, useful_links
 from core.config import get_settings
 from core.errors import InvalidInput
@@ -143,7 +143,10 @@ async def _crawl(
             )
         case "unreachable":
             raise InvalidInput(f"I couldn't open {website} — is the address right?")
-    async with async_playwright() as playwright, await playwright.chromium.launch() as browser:
+    async with (
+        async_playwright() as playwright,
+        await playwright.chromium.launch(args=BROWSER_ARGS) as browser,
+    ):
         # Requests from service workers would bypass the routes below.
         context = await browser.new_context(service_workers="block")
         await guard_context(context, guard, timeout_s)
