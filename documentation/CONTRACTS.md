@@ -77,7 +77,7 @@ Each tool takes flat arguments (the fields of its `*Input` model) and returns `<
 
 `reservation` is `{id, merchant, starts_at, party_size, table_label, status, guest_name, via}`.
 
-- **Booking path:** `GATEWAY_TALK` off (the default) lists the four booking tools and hides `talk_to_merchant`; on, the reverse, on `/mcp` and every `/m/<slug>/mcp`, with instructions to match (`tooling.hidden_tools`, #251). `search_merchants` and `get_my_reservations` stay either way.
+- **Booking path:** `GATEWAY_TALK` off (the default) lists the four booking tools and hides `talk_to_merchant`; on, the reverse, on `/mcp` and every `/m/<slug>/mcp`, with instructions to match: each server registers one path only (#251). `search_merchants` and `get_my_reservations` stay either way.
 - **Talk:** `talk_to_merchant` relays the merchant agent's `TALK` answer as it is (#245). Its description tells Claude to write as the user would, relay `reply`, show `pending.summary` and stop, and send `confirm` only after an explicit yes to that summary, never in the reply that got the `pending` (the rule for writes of #14 and #109, `tooling.TALK_CONFIRM_RULE`). Without `BATP_URL` it answers `agent_unavailable` with the fallback URL: only the node runs the merchant's agent.
 
 - Arguments outside a tool's schema are rejected before it runs, as `invalid_input` (`gateway.fallback.RejectedArguments`).
