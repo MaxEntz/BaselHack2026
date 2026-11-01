@@ -1,5 +1,7 @@
-"""LLM client of the builder and the platform assistant: a provider-neutral interface and its
-OpenAI implementation.
+"""LLM client of the builder, the platform assistant and the merchants' agents: a
+provider-neutral interface and its OpenAI implementation.
+
+In `core`, so the BATP node's agents use it without the builder and its browser (#246).
 
 The conversation is stored in a neutral format (`Message`), so the tool-use loop never
 touches a provider's types. Messages:
@@ -22,7 +24,7 @@ from typing import Any, Protocol
 import openai
 from openai import AsyncOpenAI
 
-log = logging.getLogger("builder.llm")
+log = logging.getLogger("core.llm")
 
 Message = dict[str, Any]
 OnText = Callable[[str], Awaitable[None]]
