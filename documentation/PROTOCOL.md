@@ -188,6 +188,7 @@ through the guest notice returned by `RECALL`.
   - 10 s per request on the node (`503` past that);
   - at least 32 requests in flight per session: beyond the node's limit, extra requests get `429 too_many_requests` and may be sent again once earlier ones are answered;
   - 64 sessions per node, the next one gets a `503` reject;
+  - `TALK`, a model turn on the shared OpenAI key, is bounded before any model call: 8 turns at once on the node, and 30 `TALK` per merchant per minute (`merchant_node.limits`). Past them, `429 too_many_requests`, and the request is not carried out (#249);
   - a session closes after 10 malformed frames in a row, or when its peer stops reading for 10 s.
 - **Bounded work:** a `DISCOVER` takes at most 32 tags and a 500-character query (`agent.discovery.MAX_TAGS`, `MAX_QUERY`, shared with the gateway's `search_merchants`).
 - **Logging:** refused sessions are logged at WARNING with the peer address and the agent they claimed, never the token. Database errors never carry query parameters (guest names).
@@ -243,12 +244,12 @@ node logs as `request`. Without `BATP_URL`, the gateway calls the agent in its o
 | Part | Where |
 |---|---|
 | Messages, framing, status codes, client, generic node | `code/packages/batp/` (`batp.messages`, `batp.codec`, `batp.status`, `batp.client`, `batp.server`) |
-| The node of this backend | `code/packages/merchant_node/` (`make node`, `uv run python -m merchant_node`), settings `BATP_HOST`, `BATP_PORT`, `BATP_TOKENS` |
+| The node of this backend | `code/packages/merchant_node/` (`make node`, `uv run python -m merchant_node`), settings `BATP_HOST`, `BATP_PORT`, `BATP_TOKENS`; for `TALK`, the merchants' AI agent (`agent.talk`) on `OPENAI_API_KEY`, `OPENAI_MODEL` and `AGENT_REASONING_EFFORT`, as the builder (#249). Without a key the node still starts, and `TALK` answers `503 agent_unavailable` with the fallback URL |
 | The MCP gateway as a bridge | `gateway/agent_client.py` (`BatpAgentClient`), settings `BATP_URL`, `BATP_TOKEN` |
 | The node on the team server (loopback) | `code/deploy/merchant-node.service`, `make deploy` |
 | RFC-style Internet-Draft of this spec | `documentation/rfc/` (`.md` source; `.xml`, `.txt` and `.html` built by `make rfc` from `code/`, which also regenerates the JSON schemas in `rfc/schemas/` and needs Docker and `npx`) |
 
-Without `BATP_TOKENS`, the node lets any agent in, and refuses to start unless it listens on loopback.
+Without `BATP_TOKENS`, the node lets any agent in, and refuses to start unless it listens on loopback. The node reads the OpenAI key from its own settings (`code/.env` on the team server, #250) and never logs it.
 
 ## 14. Versioning
 

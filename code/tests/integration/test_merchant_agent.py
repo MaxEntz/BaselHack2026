@@ -4,7 +4,7 @@ Postgres with a scripted model: what code reports, and that no path books on the
 import asyncio
 import json
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime, time, timedelta
 from typing import Any
 from uuid import uuid4
@@ -20,8 +20,9 @@ from agent.service import PgAgentService
 from agent.talk import NOT_PENDING, TOO_MANY_STEPS, MerchantAgent, registry_merchants
 from core.db import merchant_conn, reservations_t
 from core.errors import AgentUnavailable, InvalidInput, NotFound
-from core.llm import LLMReply, LLMUnavailable, Message, OnText, ToolCall, ToolSpec
+from core.llm import LLMReply, LLMUnavailable
 from core.models import TalkInput, TalkOutput
+from tests.integration.agent_fakes import ScriptedLLM, call, calls, says
 
 pytestmark = pytest.mark.integration
 
@@ -53,48 +54,6 @@ class Clock:
     def advance(self, delta: timedelta) -> None:
         self.now += delta
         self.seconds += delta.total_seconds()
-
-
-def call(name: str, **arguments: Any) -> ToolCall:
-    return ToolCall(f"call-{uuid4().hex[:6]}", name, json.dumps(arguments))
-
-
-def says(text: str) -> LLMReply:
-    return LLMReply(text=text)
-
-
-def calls(*tool_calls: ToolCall) -> LLMReply:
-    return LLMReply(text="", tool_calls=tool_calls)
-
-
-class ScriptedLLM:
-    """Replays its replies in order; records what each call was given."""
-
-    def __init__(self, *replies: LLMReply | Exception) -> None:
-        self.replies = list(replies)
-        self.calls: list[dict[str, Any]] = []
-
-    def then(self, *replies: LLMReply | Exception) -> None:
-        self.replies.extend(replies)
-
-    async def respond(
-        self,
-        *,
-        instructions: str,
-        tools: Sequence[ToolSpec],
-        history: Sequence[Message],
-        on_text: OnText,
-        tool_choice: str | None = None,
-    ) -> LLMReply:
-        self.calls.append(
-            {"instructions": instructions, "tools": list(tools), "history": list(history)}
-        )
-        if not self.replies:
-            raise AssertionError("unexpected model call")
-        reply = self.replies.pop(0)
-        if isinstance(reply, Exception):
-            raise reply
-        return reply
 
 
 class LoopingLLM(ScriptedLLM):

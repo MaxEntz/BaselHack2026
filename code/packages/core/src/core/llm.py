@@ -22,7 +22,9 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import openai
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, Timeout
+
+from core.config import Settings
 
 log = logging.getLogger("core.llm")
 
@@ -148,6 +150,16 @@ def to_openai_input(history: Sequence[Message]) -> list[dict[str, Any]]:
                 {"type": "function_call_output", "call_id": message["call_id"], "output": output}
             )
     return items
+
+
+def openai_connection(settings: Settings, timeout: Timeout) -> AsyncOpenAI | None:
+    """The OpenAI connection of `OPENAI_API_KEY`, for the platform and the BATP node alike; None
+    without a key. Retries are `OpenAIClient`'s (one, before any text), so the SDK makes none."""
+    if settings.openai_api_key is None:
+        return None
+    return AsyncOpenAI(
+        api_key=settings.openai_api_key.get_secret_value(), max_retries=0, timeout=timeout
+    )
 
 
 # Worth one retry: the provider is overloaded, rate-limiting or unreachable.

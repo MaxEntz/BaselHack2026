@@ -307,7 +307,8 @@ async def test_a_handler_timeout_gives_the_merchants_fallback_url(
     assert response["error"]["fallback_url"] == "http://localhost:8080/reservation.html"
 
 
-# `TALK` (#245): the frames are fixed; the merchant's agent behind them comes with #249.
+# `TALK` (#245) on a node without the merchants' AI agent (no OPENAI_API_KEY); with it: #249,
+# `test_node_talk.py`.
 
 TALK = {"message": "Table for 4 tonight? Do you have vegetarian dishes?", "idempotency_key": "m-1"}
 
@@ -335,7 +336,7 @@ async def test_talk_to_a_down_merchant_is_503_with_its_fallback_url(
     assert response.error.fallback_url == "http://localhost:8080/reservation.html"
 
 
-async def test_talk_to_a_live_merchant_gives_its_fallback_url_until_its_agent_is_served(
+async def test_talk_without_an_agent_gives_the_merchants_fallback_url(
     client: BatpClient, make_merchant: MerchantFactory
 ) -> None:
     slug = await make_merchant()
@@ -345,7 +346,7 @@ async def test_talk_to_a_live_merchant_gives_its_fallback_url_until_its_agent_is
     assert client.welcome is not None and "TALK" in client.welcome.intents
     assert response.status == 503 and response.error is not None
     assert response.error.code == "agent_unavailable"
-    assert "can't talk yet" in response.error.message
+    assert "can't talk right now" in response.error.message
     assert response.error.fallback_url == "http://localhost:8080/reservation.html"
 
 
