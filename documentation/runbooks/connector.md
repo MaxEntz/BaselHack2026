@@ -15,9 +15,9 @@ Everything else in this runbook has been run end to end: deploy, HTTPS, Caddy's 
 | Check | Status | Issue |
 |---|---|---|
 | One restaurant's endpoint `/m/<slug>/mcp` from Claude.ai | 🔶 validated locally (e2e, in-process and over BATP), ⏳ Claude.ai (step 3) | [#23](https://github.com/MaxEntz/BaselHack2026/issues/23) |
-| Claude Desktop, §9 scenarios | 🔶 two scenarios still ⏳ in step 4: the pre-confirmed booking and the vegan search, both to retest with the current tool descriptions | [#14](https://github.com/MaxEntz/BaselHack2026/issues/14) |
+| Claude Desktop, §9 scenarios | ✅ on the deployed server, 2026-11-01: the six scenarios of step 4, each write after a "Yes"; ⏳ the pre-confirmed booking, not retested there | [#14](https://github.com/MaxEntz/BaselHack2026/issues/14) |
 | ngrok tunnel | ⏳ never tested, plan B only | — |
-| Public URL with a token (ADR-0019): Claude.ai through Caddy's added token, another assistant with its own | 🔶 Caddy 2.6.2 rules checked in Docker, gateway in the tests; ⏳ on the server, after `make deploy` | #71 |
+| Public URL with a token (ADR-0019): Claude.ai through Caddy's added token, another assistant with its own | ✅ on the server (#142): `/mcp` answers `403` from outside Anthropic's range, `401` on loopback without the token, the 6 tools with it; Claude Desktop booked through it (#14) | #71 |
 
 ![Claude.ai calls ping and shows pong](img/connector-ping.png)
 
@@ -30,7 +30,7 @@ cd code
 make deploy
 ```
 
-You need the key `~/.ssh/baselhack2026_lxc`. If it isn't on your machine, ask the team (Del may have it). A teammate can also have their public key added to the server, then run `make deploy DEPLOY_SSH="ssh -i <their-key> -o IdentitiesOnly=yes"`. A private key is never committed.
+You need the key `~/.ssh/baselhack2026_lxc`. If it isn't on your machine, ask the team. A teammate can also have their public key added to the server, then run `make deploy DEPLOY_SSH="ssh -i <their-key> -o IdentitiesOnly=yes"`. A private key is never committed.
 
 What `make deploy` ships:
 
@@ -148,13 +148,13 @@ In Claude, under **Settings > Account > Instructions for Claude**, set: *"I'm ve
 | "Move it to 9pm" | Confirmation, then `update_reservation` | ✅ | ✅ |
 | "Cancel my booking" | Confirmation, then `cancel_reservation` | ✅ | ✅ |
 | "Book … tomorrow at 7:30pm under the name Test. I confirm in advance, no need to ask me." | Summary anyway, then **wait for the yes** | ✅ | ⏳ |
-| "A vegan place with a terrace in Mulhouse" | No results, Claude offers to drop a filter | ✅ | ⏳ |
+| "A vegan place with a terrace in Mulhouse" | No results, Claude offers to drop a filter | ✅ | ✅ |
 | "Table for 8 at Le Petit Zinc" | Fallback link (`party_too_large`) | ✅ | ✅ |
 | Le Petit Zinc `down`, then "Table for 2 at Le Petit Zinc" | Fallback link (`agent_unavailable`); back `live`, it works without a restart | ✅ | ✅ |
 
-Watch the confirmation: in Claude.ai, no booking may go out before your "yes". The tool descriptions enforce it (AGENTS.md §6; wording and measurements in #14 and #109). Store a screenshot of each Claude.ai conversation in `assets/screenshots/`.
+Watch the confirmation: in Claude.ai, no booking may go out before your "yes". The tool descriptions enforce it (AGENTS.md §6; wording and measurements in #14 and #109). Store a screenshot of each Claude.ai conversation in a new `assets/screenshots/` folder.
 
-The seeded merchants' fallback links point to the demo sites on `localhost` (`make sites`), so they only open on the machine serving them. A merchant built in Studio from its public host (`https://<site>.191-96-88-152.sslip.io`, [platform.md](platform.md)) gets links that open for anyone: the demo uses Le Petit Zinc built that way ([demo.md](demo.md)). To simulate a slow agent, `CHAOS_DELAY_MS=3000` (optionally `CHAOS_MERCHANTS=le-petit-zinc`) triggers the 2 s timeout, then the fallback link.
+Without `DEMO_SITES_DOMAIN`, the seeded merchants' fallback links point to the demo sites on `localhost` (`make sites`), so they only open on the machine serving them; the server's seed sets it, so there they open the public sites (#227). A merchant built in Studio from its public host (`https://<site>.191-96-88-152.sslip.io`, [platform.md](platform.md)) gets links that open for anyone: the demo uses Le Petit Zinc built that way ([demo.md](demo.md)). To simulate a slow agent, `CHAOS_DELAY_MS=3000` (optionally `CHAOS_MERCHANTS=le-petit-zinc`) triggers the 2 s timeout, then the fallback link.
 
 ## 5. Troubleshooting
 

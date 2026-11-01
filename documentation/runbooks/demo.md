@@ -141,7 +141,7 @@ From `code/`, on the commit you deploy (Docker running):
 | `make test-stack` | The same evening in Chromium: Studio, the private link, the management site's live booking, its **Block a time** dialog and its **Pause the agent** button | ~30 s |
 | `uv run pytest tests/e2e` | Every §9 user scenario through an MCP client, with the agent in the gateway's process and over BATP | ~2 min |
 
-The real Claude.ai checks stay manual: [connector.md](connector.md), step 4, with a screenshot of each conversation in `assets/screenshots/`.
+The real Claude.ai checks stay manual: [connector.md](connector.md), step 4, with a screenshot of each conversation in a new `assets/screenshots/` folder.
 
 ## The jury's likely questions
 

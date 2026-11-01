@@ -1,6 +1,6 @@
 # Sésame: POC v10
 
-Status: the mockups the Sésame site is built from (#127, [ADR-0015](../../adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). `code/web` and the backend are being built from them, and the code wins over the mockups on booking rules.
+Status: the mockups the Sésame site is built from (#127, [ADR-0015](../../adr/0015-give-merchants-a-management-site-next-to-the-chat.md)). `code/web` and the backend are built from them, and the code wins over the mockups on booking rules.
 
 ## Management site
 

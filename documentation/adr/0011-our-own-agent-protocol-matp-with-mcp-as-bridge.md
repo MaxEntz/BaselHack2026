@@ -1,6 +1,6 @@
 # ADR-0011 — Define our own agent protocol (MATP) on a dedicated port, with MCP as Claude's bridge
 
-- **Status**: Accepted
+- **Status**: Accepted (renamed BATP by [ADR-0014](0014-rename-matp-to-batp.md))
 - **Date**: 2026-10-31
 
 ## Context

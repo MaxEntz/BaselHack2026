@@ -15,7 +15,7 @@ A merchant (first vertical: **restaurants**) brings **their existing website** a
 Two experiences sit on top:
 
 1. **User side, in Claude.** A user asks Claude: *"Table for 4 tonight at 8pm."* Claude calls our **gateway** (one remote MCP server, added once as a connector). The gateway applies the user's **preferences** as filters, finds the merchant, and routes the call to the merchant's agent, which books. **If the agent fails, the gateway returns a fallback URL to the merchant's original website.**
-2. **Merchant side, on our platform.** The merchant onboards and asks for anything **by chatting with a platform assistant**: onboarding (give the URL, describe the business, the agent gets built), then day-to-day operations (*"What bookings do I have tonight?"*, *"Block 21:00 tonight"*, *"Set max party size to 6"*, *"Cancel R-001"*). A **management site** in the restaurant's own look offers the same operations as ordinary pages and forms ([ADR-0015](documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md), being built: #127). New bookings made through Claude show up **live** in the merchant's conversation.
+2. **Merchant side, on our platform.** The merchant onboards and asks for anything **by chatting with a platform assistant**: onboarding (give the URL, describe the business, the agent gets built), then day-to-day operations (*"What bookings do I have tonight?"*, *"Block 21:00 tonight"*, *"Set max party size to 6"*, *"Cancel R-001"*). A **management site** in the restaurant's own look offers the same operations as ordinary pages and forms ([ADR-0015](documentation/adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #127). New bookings made through Claude show up **live** on the management site and in the merchant's conversation.
 
 Guests have no page of ours: their agent reaches the merchant through the protocol, and the agent site has no interface. In the chat, structured results (booking card, reservations table, agent profile) are rendered as rich messages.
 
@@ -73,13 +73,15 @@ All code lives in `code/` (BaselHack template: `code/`, `documentation/`, `asset
 code/
 ├── Makefile, pyproject.toml (uv workspace), docker-compose.yml, alembic.ini, .env.example
 ├── packages/
-│   ├── core/src/core/             models.py, errors.py, db.py, availability.py, config.py, logs.py
-│   ├── agent/src/agent/           service.py (PgAgentService), admin.py, provisioning.py, templates/restaurant.json
+│   ├── core/src/core/             models.py, errors.py, forms.py, db.py, availability.py, config.py, logs.py
+│   ├── agent/src/agent/           service.py (PgAgentService), writes.py, admin.py, provisioning.py, management.py,
+│   │                              dashboard.py, activity.py, guests.py, requests.py, words.py, templates/restaurant.json
 │   ├── gateway/src/gateway/       server.py, merchant_server.py, discovery.py, fallback.py, agent_client.py
 │   ├── batp/src/batp/             messages.py, codec.py, status.py, client.py, server.py
-│   ├── merchant_node/src/merchant_node/   agents.py (the BATP node)
-│   ├── builder/src/builder/       crawl.py, extract.py, build.py, cache.py, llm.py
-│   └── merchant_platform/src/merchant_platform/   api.py, assistant.py, tools.py, events.py, sessions.py
+│   ├── merchant_node/src/merchant_node/   agents.py (the BATP node), requests_log.py
+│   ├── builder/src/builder/       crawl.py, extract.py, look.py, site.py, build.py, cache.py, llm.py
+│   └── merchant_platform/src/merchant_platform/   api.py, assistant.py, tools.py, agent_try.py, events.py,
+│                                  sessions.py, accounts.py, auth.py, management.py, overview.py, logs.py
 ├── web/                           merchant chat and management site (Vite + React + TS), types.ts, mocks/
 ├── sites/                         the 3 demo restaurant websites (in French)
 ├── migrations/versions/           Alembic, `public` schema only
@@ -103,7 +105,7 @@ code/
 | LLM (backend) | **OpenAI Python SDK** (Responses API), `OPENAI_API_KEY`, `OPENAI_MODEL` (default `gpt-6.1-terra`). Claude stays the **user-side** client | Anthropic SDK (the team's key is OpenAI's) |
 | Live events | Postgres **LISTEN/NOTIFY → SSE** | Redis pub/sub, WebSockets |
 | Front | **Vite + React + TypeScript** | Next.js |
-| Tests | **pytest**, **pytest-asyncio**, **testcontainers** (Postgres); web: Node's test runner | Mocked DB |
+| Tests | **pytest**, **pytest-asyncio**, **testcontainers** (Postgres); web: Node's test runner, **Vitest** + Testing Library, **Playwright** (e2e, **axe-core**, screenshots in Playwright's image) | Mocked DB |
 | Lint/format | **ruff**, **mypy --strict** on `core`, `agent`, `gateway`, `batp`, `merchant_node` | |
 
 Reasons for each choice: [ADR-0002](documentation/adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md), [ADR-0004](documentation/adr/0004-openai-for-backend-llm-calls.md), [ADR-0011](documentation/adr/0011-our-own-agent-protocol-matp-with-mcp-as-bridge.md).
@@ -220,7 +222,7 @@ make demo-reset # known demo state; make outage / make restore SLUG=…
 make deploy     # gateway, node, platform and web app to the team server
 ```
 
-Env (`code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `PLATFORM_MERCHANT`.
+Main settings (all of them, with their defaults, in `code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `GATEWAY_TOKEN`; the platform's `PLATFORM_COOKIE_SECRET`, `PLATFORM_INVITE_CODE`, `PLATFORM_WEB_URL`, and `PLATFORM_MERCHANT` (development only).
 
 ## 11. Milestones
 
@@ -253,7 +255,7 @@ All done; open work is tracked in [#26](https://github.com/MaxEntz/BaselHack2026
 - **Accounts** (`merchant_platform/accounts.py`, `auth.py`, #132, [ADR-0018](documentation/adr/0018-open-a-merchants-site-with-a-secret-link.md)): a build gives its merchant a secret link, shown once on the profile card; only its hash is stored in `public.merchant_owners` (migration `0004`). The link sets a signed owner cookie (`PLATFORM_COOKIE_SECRET`), which every `/merchants/{slug}` route and `/events` need. `PLATFORM_INVITE_CODE` gates new builds. `make owner-link SLUG=…` issues a new link. `PLATFORM_MERCHANT` is development only.
 - **Management bookings** (`agent/management.py`, #134): `ManagementService` serves the Reservations page: a day, its slots, add (`via="merchant"`), move, cancel, in the `core.models` shapes. A move takes the table lock like a guest's update and marks its transaction as the merchant's (`core.db.as_merchant`), so it sends no live event. It is separate from the frozen `AgentService` protocol.
 - **Activity** (`agent/activity.py`, #135): every write path records its change on its own transaction's connection (`activity.record`, `record_booking`, `record_times`), so the line and the change commit together; a new write path must record its line too. Lines are worded when read.
-- **Management site** (`merchant_platform/management.py`, #129): the `/merchants/{slug}/…` routes, shapes in `core/models.py` and `web/src/types.ts` ([CONTRACTS.md](documentation/CONTRACTS.md)), client `web/src/management/client.ts` and its mock on `code/tests/fixtures/demo/la-graine-verte-management.json`. Every route depends on `auth.owner_of_path` (fail-closed) and answers `501` until its issue (#132–#146) implements it. Form bodies are structural, checked by `core.forms` (`FormProblem`, answered with its `problem`).
+- **Management site** (`merchant_platform/management.py`, #129): the `/merchants/{slug}/…` routes, shapes in `core/models.py` and `web/src/types.ts` ([CONTRACTS.md](documentation/CONTRACTS.md)), client `web/src/management/client.ts` and its mock on `code/tests/fixtures/demo/la-graine-verte-management.json`. Every route is built and depends on `auth.owner_of_path` (fail-closed). Form bodies are structural, checked by `core.forms` (`FormProblem`, answered with its `problem`).
 - **BATP**: the library (`packages/batp/`) depends only on `core`, so the gateway can import its client. Change the protocol in `PROTOCOL.md`, the draft in `documentation/rfc/`, the library and its tests together.
 
 ## Team server (LXC)
@@ -267,7 +269,7 @@ We have a server: use it to test anything Claude.ai must reach, instead of openi
   ```
 - **Gateway:** `https://191-96-88-152.sslip.io/mcp`, deployed with `make deploy` from `code/`. Code in `/opt/merchant-agents/code`, service `merchant-gateway`, HTTPS by Caddy. The gateway always requires `GATEWAY_TOKEN` (in the server's `code/.env`); Caddy adds it for Anthropic's outbound range (`160.79.104.0/21`, Claude.ai) and answers `403` to any other request without `Authorization: Bearer …`. Any other assistant, `curl` or the SDK client uses the public URL with the token ([ADR-0019](documentation/adr/0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md)); SSH port forwarding is disabled on the server.
 - **BATP node:** service `merchant-node` (`code/deploy/merchant-node.service`), installed and restarted by `make deploy` with the gateway, bound to `127.0.0.1:4710` only; the gateway reaches it through `BATP_URL=batp://127.0.0.1:4710`. Port 4710 is never opened without asking (TLS + firewall rule on the shared server). Logs: `journalctl -u merchant-node`.
-- **Sésame (web app and platform, #142):** host `https://sesame.191-96-88-152.sslip.io` (web app; `/api/*` → service `merchant-platform` on `127.0.0.1:8002`), demo sites on `https://<site>.191-96-88-152.sslip.io`, all shipped by `make deploy` (it builds `web/dist` locally). The platform runs as its own user `sesame`, with its own settings in `/opt/merchant-agents/platform/.env` (it can't read `code/.env`); `make deploy` requires #132's account settings there. Not deployed yet: the `apt` step, the `sesame` user and the Caddy restart wait for the team's go-ahead. Runbook: [`documentation/runbooks/platform.md`](documentation/runbooks/platform.md).
+- **Sésame (web app and platform, #142):** host `https://sesame.191-96-88-152.sslip.io` (web app; `/api/*` → service `merchant-platform` on `127.0.0.1:8002`), demo sites on `https://<site>.191-96-88-152.sslip.io`, all shipped by `make deploy` (it builds `web/dist` locally). The platform runs as its own user `sesame`, with its own settings in `/opt/merchant-agents/platform/.env` (it can't read `code/.env`); `make deploy` requires #132's account settings there. Deployed since #142. Runbook: [`documentation/runbooks/platform.md`](documentation/runbooks/platform.md).
 - **The server is shared, it doesn't only run the gateway.** Ask the user before rebooting it, stopping a service or changing anything outside `/opt/merchant-agents`. When `code/deploy/Caddyfile` changed, `make deploy` validates it, overwrites `/etc/caddy/Caddyfile` and restarts Caddy, so any other site must also be declared there. It also installs a drop-in for Caddy's unit (`caddy.service.d/merchant-agents.conf`) that gives it `GATEWAY_TOKEN` from `/opt/merchant-agents/caddy.env`.
 - **Firewall (`/etc/nftables.conf`):** only ports 22, 80 and 443 are open inbound, and new outbound connections to private networks are refused. A new service needs a rule there. `fail2ban` bans IPs that repeatedly fail SSH logins.
 - **Postgres:** `postgresql-16` on the server, listening on localhost only, database `merchant_agents` (UTF-8), credentials in `/opt/merchant-agents/code/.env`. `make deploy` applies the migrations but doesn't seed. `make outage` and `make seed` act on your local database: for the server's, see the runbook.
@@ -304,7 +306,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | Contract models use tuples, reject blank identities, bad floor plans, overlapping or sub-hour services and no-op updates; SSE events are Pydantic models | #2 |
 | 2026-10-31 | `max_party_size` may exceed the largest table, `seats` may differ from the tables' total; no fitting table is `PartyTooLarge` | #7, #10 |
 | 2026-10-31 | One Postgres schema per merchant, tables declared once in Core; no merchant-schema migrations | [ADR-0001](documentation/adr/0001-one-postgres-schema-per-merchant.md) |
-| 2026-10-31 | Gateway on the team server behind Caddy (`sslip.io`), bound to `127.0.0.1`; `GATEWAY_TOKEN` optional; ngrok as alternative | [ADR-0009](documentation/adr/0009-serve-the-gateway-from-the-team-server-behind-caddy.md) |
+| 2026-10-31 | Gateway on the team server behind Caddy (`sslip.io`), bound to `127.0.0.1`; `GATEWAY_TOKEN` optional (required on the server since [ADR-0019](documentation/adr/0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md)); ngrok as alternative | [ADR-0009](documentation/adr/0009-serve-the-gateway-from-the-team-server-behind-caddy.md) |
 | 2026-10-31 | Platform assistant on the OpenAI Responses API behind `LLMClient`, provider-neutral history, `store=False`, effort `low` | #17 |
 | 2026-10-31 | `llm.py` lives in `builder`, shared with the assistant; `BUILDER_REASONING_EFFORT` defaults to `none` | #22 |
 | 2026-10-31 | Builder: the LLM fills `ProfileDraft`; the code sets slug, website, vertical, tags, `fallback_url` and the floor plan, each default announced as an assumption | #22 |

@@ -203,13 +203,13 @@ data: {"type":"done"}
 ## Management site (#129)
 
 The management site's routes sit under `/merchants/{slug}` (`merchant_platform/management.py`).
-Their shapes are frozen here and in `web/src/types.ts`, so that pages are built against the
-mock while the backend lands: a route not built yet answers `501` `not_built_yet` naming its
-issue, after checking its input. Every route of the table is built now (#133 was the last).
+Their shapes are frozen here and in `web/src/types.ts`, and every route of the table is built.
+`not_built_yet` (`501`) stays in the contract for a route frozen before it is built.
 
 Every route depends on `auth.owner_of_path`, so none can ship open: `401` `not_signed_in` without
-the merchant's owner, `403` `other_merchant` for another merchant, before the body is read. Until
-#132, only the development merchant (`PLATFORM_MERCHANT`) has one.
+the merchant's owner, `403` `other_merchant` for another merchant, before the body is read. The
+owner is whoever opened the merchant's secret link (#132, ADR-0018); `PLATFORM_MERCHANT` stands in
+for it in local development only.
 
 | Route | Body | Answer | Issue |
 |---|---|---|---|
