@@ -196,7 +196,7 @@ export type LiveEvent = {
 };
 
 // Management site (#129): the platform's /merchants/<slug> routes, mirrored from
-// core/models.py. Days are YYYY-MM-DD and times HH:MM, local to the merchant
+// core.models. Days are YYYY-MM-DD and times HH:MM, local to the merchant
 // (`MerchantOverview.timezone`); instants are ISO 8601 with an offset.
 export type MerchantStatus = "building" | "live" | "down";
 export type CancelledBy = "guest" | "merchant";

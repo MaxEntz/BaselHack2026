@@ -72,7 +72,9 @@ def schemas() -> dict[str, dict[str, Any]]:
 
 
 def _document(schema: dict[str, Any], title: str, model: type[BaseModel]) -> dict[str, Any]:
-    source = f"{model.__module__}.{model.__qualname__}".replace("__main__", "batp_schemas")
+    # `core.models` is a package whose modules re-export every name: name it as code imports it.
+    module = "core.models" if model.__module__.startswith("core.models.") else model.__module__
+    source = f"{module}.{model.__qualname__}".replace("__main__", "batp_schemas")
     return {"$schema": DIALECT, "$comment": f"Generated from {source}", **schema, "title": title}
 
 
