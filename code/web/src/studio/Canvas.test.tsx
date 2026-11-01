@@ -254,10 +254,44 @@ describe("Studio's canvas", () => {
       await userEvent.click(screen.getByRole("button", { name: "Ask" }));
       await waitFor(() => expect(container.querySelector(".st-w-s.bad")?.textContent).toBe("404"));
       expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+      await userEvent.clear(box);
       await userEvent.type(box, "Three");
       await userEvent.click(screen.getByRole("button", { name: "Ask" }));
       expect(fake.talkToAgent).toHaveBeenLastCalledWith("la-graine-verte", {
         message: "Three",
+        conversation: null,
+        confirm: null,
+      });
+    });
+
+    it("keeps the proposal and the message when the agent is out for a moment", async () => {
+      const fake = client();
+      fake.talkToAgent.mockResolvedValueOnce(proposed).mockResolvedValueOnce({
+        request: '{"type":"request","id":"r-2","intent":"TALK"}',
+        response: '{"type":"response","id":"r-2","status":503}',
+        status: 503,
+      });
+      canvas({ view: "agent", client: fake });
+      const box = screen.getByLabelText("Ask your agent") as HTMLInputElement;
+      await userEvent.type(box, "A table for 2?");
+      await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+      await screen.findByRole("button", { name: "Confirm" });
+      await userEvent.type(box, "And parking?");
+      await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+      await waitFor(() => expect(fake.talkToAgent).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(box.value).toBe("And parking?"));
+      expect(screen.getByRole("button", { name: "Confirm" })).toBeTruthy();
+    });
+
+    it("turns a pasted tab into a space", async () => {
+      const fake = client();
+      canvas({ view: "agent", client: fake });
+      const box = screen.getByLabelText("Ask your agent");
+      await userEvent.click(box);
+      await userEvent.paste("Vegetarian\tdishes?");
+      await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+      expect(fake.talkToAgent).toHaveBeenCalledWith("la-graine-verte", {
+        message: "Vegetarian dishes?",
         conversation: null,
         confirm: null,
       });

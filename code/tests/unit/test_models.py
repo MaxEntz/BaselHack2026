@@ -448,6 +448,12 @@ def test_a_knowledge_item_out_of_bounds_is_refused(change: dict[str, str]) -> No
         models.KnowledgeItem.model_validate(ITEM | change)
 
 
+@pytest.mark.parametrize("missing", ["source_url", "quote"])
+def test_a_knowledge_item_cant_be_half_sourced(missing: str) -> None:
+    with pytest.raises(ValidationError, match="go together"):
+        models.KnowledgeItem.model_validate(ITEM | {missing: None})
+
+
 def test_knowledge_holds_a_bounded_number_of_items() -> None:
     models.SiteKnowledge(items=(models.KnowledgeItem.model_validate(ITEM),) * 60)
 
