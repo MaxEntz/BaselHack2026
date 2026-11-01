@@ -9,7 +9,7 @@ import bench_extract
 import pytest
 from openai import AsyncOpenAI
 
-from builder.llm import OpenAIClient
+from core.llm import OpenAIClient
 
 pytestmark = [pytest.mark.browser, pytest.mark.llm]
 

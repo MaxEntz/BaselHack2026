@@ -20,9 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from agent.management import ManagementService
 from agent.service import AgentService, PgAgentService
 from builder.build import Crawl
-from builder.llm import LLMClient
 from core.config import Settings, get_settings
 from core.db import make_engine
+from core.llm import LLMClient
 from merchant_platform import auth, chat, live, management, public
 from merchant_platform.account_settings import check_account_settings, default_accounts
 from merchant_platform.accounts import Accounts, MemoryOwnerStore, PgOwnerStore

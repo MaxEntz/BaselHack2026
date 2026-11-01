@@ -8,7 +8,7 @@ import httpx
 import pytest
 from openai import AsyncOpenAI
 
-from builder.llm import (
+from core.llm import (
     LLMUnavailable,
     Message,
     OpenAIClient,

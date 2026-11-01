@@ -36,8 +36,8 @@ from builder.extract import (
     ExtractionResult,
     extract_profile,
 )
-from builder.llm import OpenAIClient
 from core.config import Settings
+from core.llm import OpenAIClient
 from core.models import MerchantProfile, StepEvent
 
 DEMO_SITES = Path(__file__).resolve().parents[1] / "sites"
