@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     chaos_delay_ms: int = 0
     chaos_merchants: str = ""
     gateway_public_url: str | None = None
+    # Where a server serves the demo sites, as `<slug>.<domain>`: the seeded merchants' links
+    # point there. Unset: the fixtures' local addresses (`make sites`).
+    demo_sites_domain: str | None = None
     gateway_token: SecretStr | None = None
     platform_public_url: str = "http://localhost:8002"
     # Origins allowed to call the platform's public booking API (the showcase site's form).
