@@ -76,10 +76,11 @@ async def test_live_how_busy() -> None:
 @pytest.mark.llm
 async def test_live_cancel_asks_for_confirmation_first() -> None:
     harness, session = await live_turns("Cancel R-001")
-    assert tools_called(session) == []
+    # No write before the yes. The model may link the page as it asks, which changes nothing.
+    assert "cancel_reservation" not in [name for name, _ in tools_called(session)]
     asked = len(session.messages)
     await harness.turn(session, "Yes, cancel it")
-    assert tools_called(session, asked) == [("cancel_reservation", {"reservation_id": "R-001"})]
+    assert ("cancel_reservation", {"reservation_id": "R-001"}) in tools_called(session, asked)
 
 
 @pytest.mark.llm
