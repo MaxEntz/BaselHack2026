@@ -1,9 +1,8 @@
 # ADR-0016 — Serve the web app, the platform and the demo sites from the team server, each on its own host
 
-- **Status**: Proposed
+- **Status**: Accepted (deployed by #142; the gateway's access: [ADR-0019](0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md))
 - **Date**: 2026-10-31
 
-ADR-0015 is taken by #128 (the management site decision).
 
 ## Context
 
