@@ -10,7 +10,9 @@ from core.text import strip_accents
 # AGENTS.md §8.3: the secondary pages worth reading, matched on a link's path or text, in
 # English, French and German (Speisekarte, Öffnungszeiten, Kontakt: most Basel sites).
 USEFUL_LINK = re.compile(
-    r"menu|carte|karte|hours|horaires|zeiten|contact|kontakt|book|reserv", re.IGNORECASE
+    r"menu|carte|karte|hours|horaires|zeiten|contact|kontakt|book|reserv"
+    r"|about|a[- ]propos|histoire|ueber|uber uns|acces|anfahrt|faq|event|evenement",
+    re.IGNORECASE,
 )
 # A port is the default one only for its own scheme: `http://x:443/` is not `http://x/`.
 DEFAULT_PORTS = {"http": 80, "https": 443}

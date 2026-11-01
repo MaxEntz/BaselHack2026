@@ -3,9 +3,13 @@ import { RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import fixture from "../../../../../tests/fixtures/demo/la-graine-verte-management.json" with { type: "json" };
 import { createMockManagementClient } from "../../../mocks/managementClient.ts";
-import { routes } from "../../../router.tsx";
+import { ManagePage } from "../../ManagePage.tsx";
+import { routesWith } from "../../../router.tsx";
 import type { ManagementFixture } from "../../../types.ts";
 import { ClientContext } from "../../data.ts";
+
+// The management site drawn at once: the app loads it on its first visit (router.tsx).
+const routes = routesWith(<ManagePage />);
 
 // The demo fixture: Saturday 31 October at 19:40, La Graine Verte (lunch 11:30-14:30, dinner
 // 18:30-21:30, groups up to 4). The live booking stays away unless a test waits for it.

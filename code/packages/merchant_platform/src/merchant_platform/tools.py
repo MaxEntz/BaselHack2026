@@ -158,6 +158,7 @@ class AdminTools:
             "build_agent": session_tool(self._build),
             "publish_agent": session_tool(self._publish_agent),
             "update_rules": merchant_tool(bookings.update_rules),
+            "update_knowledge": merchant_tool(bookings.update_knowledge),
             "try_request": merchant_tool(bookings.try_request),
             "send_test_booking": merchant_tool(bookings.send_test_booking),
             "update_look": session_tool(self._update_look),
@@ -236,10 +237,12 @@ class AdminTools:
         # nobody owns (`make owner-link` then gives it one).
         link = await self._issue_link(output.profile.slug) if self._issue_link else None
         session.built(output.profile.slug, link.fingerprint if link else None)
-        # Never the facts: their values and quotes are the crawled site's own words, which must
-        # not reach a model that holds write tools (ARCHITECTURE.md §4). It reads the flags,
-        # which code writes; the merchant sees the facts on the card.
-        data = output.model_dump(mode="json", exclude={"tools", "facts"})
+        # Never the facts or the knowledge: their values and quotes are the crawled site's own
+        # words, which must not reach a model that holds write tools (ARCHITECTURE.md §4). It
+        # reads the flags, which code writes; the merchant sees the rest on the card.
+        data = output.model_dump(
+            mode="json", exclude={"tools": True, "facts": True, "profile": {"knowledge"}}
+        )
         # On the card only: the secret link never goes to the model or the history.
         return Outcome(
             {"shown_to_merchant": "profile card", **data},

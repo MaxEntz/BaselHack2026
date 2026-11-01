@@ -151,10 +151,15 @@ def to_openai_input(history: Sequence[Message]) -> list[dict[str, Any]]:
 
 
 # Worth one retry: the provider is overloaded, rate-limiting or unreachable.
+class _NotCompleted(Exception):
+    """The stream ended without `response.completed`: it failed, was cut short, or just closed."""
+
+
 TRANSIENT = (
     openai.RateLimitError,
     openai.InternalServerError,
     openai.APIConnectionError,
+    _NotCompleted,
 )
 
 
@@ -230,13 +235,21 @@ class OpenAIClient:
         """One streamed call. `_Retry` after a transient error when `may_retry` and no text
         reached the merchant yet (a retry would repeat it); `LLMUnavailable` for any other."""
         streamed = False
+        ended = "closed"
         try:
             async with self._client.responses.stream(**request) as stream:
                 async for event in stream:
                     if event.type == "response.output_text.delta":
                         streamed = True
                         await on_text(event.delta)
-                response = await stream.get_final_response()
+                    elif event.type in ("response.failed", "response.incomplete"):
+                        ended = _why_not_completed(event.response)
+                try:
+                    response = await stream.get_final_response()
+                except RuntimeError:
+                    # What the SDK raises when no `response.completed` came.
+                    log.warning("llm_stream_not_completed", extra={"ended": ended})
+                    raise _NotCompleted(ended) from None
         except TRANSIENT as error:
             if may_retry and not streamed:
                 raise _Retry(type(error).__name__) from error
@@ -254,6 +267,12 @@ class OpenAIClient:
             if item.type == "reasoning"
         )
         return LLMReply(text=response.output_text, tool_calls=calls, provider_items=reasoning)
+
+
+def _why_not_completed(response: Any) -> str:
+    """The API's own code for it, which holds no content: safe to log."""
+    details, error = response.incomplete_details, response.error
+    return (details.reason if details else None) or (error.code if error else None) or "unknown"
 
 
 class _Retry(Exception):

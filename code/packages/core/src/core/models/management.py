@@ -101,7 +101,10 @@ ProblemCode = Literal[
 ]
 # `ErrorCode` stays the §8.4 list the tools answer; the management site adds its own.
 ManagementErrorCode = (
-    ErrorCode | Literal["not_signed_in", "other_merchant", "needs_invite", "not_built_yet"]
+    ErrorCode
+    | Literal[
+        "not_signed_in", "other_merchant", "needs_invite", "not_built_yet", "too_many_requests"
+    ]
 )
 
 

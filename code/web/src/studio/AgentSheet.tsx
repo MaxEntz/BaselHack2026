@@ -68,8 +68,10 @@ function previewFrames(slug: string, day: DaySlots): [string, string] {
   return [JSON.stringify(request), JSON.stringify(response)];
 }
 
+type Client = Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent">;
+
 type AgentSheetProps = {
-  client: Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent">;
+  client: Client;
   slug: string;
   live: boolean;
   // The merchant's today, from the platform's clock; null until it is known.
@@ -79,14 +81,10 @@ type AgentSheetProps = {
   fallback: string | null;
 };
 
-/** The agent site has no pages: this is what agents exchange with it (#151). */
-export function AgentSheet({ client, slug, live, today, addresses, tools, fallback }: AgentSheetProps) {
+// Live, today's requests from the node's log; not yet, today's times as an agent will get them.
+function useTodaysFrames(client: Client, slug: string, live: boolean, today: string | null) {
   const [logged, setLogged] = useState<readonly AgentRequest[]>([]);
   const [preview, setPreview] = useState<DaySlots | null>(null);
-  const [sent, setSent] = useState<readonly AgentTryOutput[]>([]);
-  const [sending, setSending] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-
   useEffect(() => {
     if (!today) return;
     const abort = new AbortController();
@@ -111,7 +109,14 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
     }
     return () => abort.abort();
   }, [client, slug, live, today]);
+  return { logged, previewed: !live && preview ? previewFrames(slug, preview) : null };
+}
 
+// The Send buttons: one real frame each, through the node (#151).
+function useTryAgent(client: Client, slug: string) {
+  const [sent, setSent] = useState<readonly AgentTryOutput[]>([]);
+  const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   async function send(intent: AgentIntent) {
     setSending(true);
     setProblem(null);
@@ -124,8 +129,13 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
       setSending(false);
     }
   }
+  return { sent, sending, problem, send };
+}
 
-  const previewed = !live && preview ? previewFrames(slug, preview) : null;
+/** The agent site has no pages: this is what agents exchange with it (#151). */
+export function AgentSheet({ client, slug, live, today, addresses, tools, fallback }: AgentSheetProps) {
+  const { logged, previewed } = useTodaysFrames(client, slug, live, today);
+  const { sent, sending, problem, send } = useTryAgent(client, slug);
 
   return (
     <div className="st-w">
@@ -180,25 +190,33 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
           </p>
         )}
       </section>
-      <section aria-label="MCP bridge">
-        <h3>What {ASSISTANT} reads through the MCP bridge</h3>
-        {addresses && <code className="st-w-bridge">{addresses.mcp}</code>}
-        {tools.length > 0 && (
-          <ul className="st-w-tools">
-            {tools.map((tool) => (
-              <li key={tool.name}>
-                <code>{tool.name}</code>
-                <span>{tool.description}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {fallback && (
-          <p className="st-w-fb">
-            When the agent can't answer, the guest gets your own page: <code>{fallback}</code>
-          </p>
-        )}
-      </section>
+      <Bridge addresses={addresses} tools={tools} fallback={fallback} />
     </div>
+  );
+}
+
+type BridgeProps = Pick<AgentSheetProps, "addresses" | "tools" | "fallback">;
+
+function Bridge({ addresses, tools, fallback }: BridgeProps) {
+  return (
+    <section aria-label="MCP bridge">
+      <h3>What {ASSISTANT} reads through the MCP bridge</h3>
+      {addresses && <code className="st-w-bridge">{addresses.mcp}</code>}
+      {tools.length > 0 && (
+        <ul className="st-w-tools">
+          {tools.map((tool) => (
+            <li key={tool.name}>
+              <code>{tool.name}</code>
+              <span>{tool.description}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {fallback && (
+        <p className="st-w-fb">
+          When the agent can't answer, the guest gets your own page: <code>{fallback}</code>
+        </p>
+      )}
+    </section>
   );
 }

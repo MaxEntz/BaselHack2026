@@ -36,7 +36,7 @@ You need the key `~/.ssh/baselhack2026_lxc`. If it isn't on your machine, ask th
 
 What `make deploy` ships:
 
-- **Checks:** refuses to go on, before copying anything, without the platform's own `/opt/merchant-agents/platform/.env`; after `uv sync`, before restarting anything, without the settings the platform must load from it (`scripts/platform_env.py`, [platform.md](platform.md), step 2) or the gateway's `GATEWAY_TOKEN`.
+- **Checks:** refuses to go on, before copying anything, without the platform's own `/opt/merchant-agents/platform/.env` or an `OPENAI_API_KEY` line in `code/.env`; after `uv sync`, before restarting anything, without the settings the platform must load from it (`scripts/platform_env.py`, [platform.md](platform.md), step 2), the key the node must load (`scripts/node_env.py`: an empty value, or one that is only a comment, counts as unset) or the gateway's `GATEWAY_TOKEN`.
 - **Code:** mirrors your local `code/` to `/opt/merchant-agents/code` with `rsync --delete` (except every `.env*` file, `.venv`, caches and test artifacts; of `web/`, only `web/dist`, built first by `make web-dist`, which needs Node). The server runs exactly your working tree, branch and uncommitted changes included. Nothing locks it: the last deploy wins, so tell the team which branch is live.
 - **Python:** `uv sync` of the `gateway`, `merchant_node`, `merchant-platform` and `builder` packages, Chromium for the crawler, then `alembic upgrade head` on the server's Postgres. It never seeds.
 - **Services:** installs, enables and restarts `merchant-node` (BATP, `127.0.0.1:4710`) and `merchant-gateway` (MCP, `127.0.0.1:8001`), both as an unprivileged user, and `merchant-platform` (`127.0.0.1:8002`, user `sesame`, see [platform.md](platform.md)). The gateway keeps a single uvicorn worker: sessions of clients on the older MCP protocol (before 2026-07-28) live in one process's memory.
@@ -56,9 +56,12 @@ GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io   # no /mcp; without it, every
 BATP_TOKENS='{"urn:batp:agent:claude-gateway":"…"}' # node: one token per known agent, 16+ characters
 BATP_URL=batp://127.0.0.1:4710                      # gateway: go through the node
 BATP_TOKEN=…                                        # gateway: its token, the one listed in BATP_TOKENS
+OPENAI_API_KEY=…                                    # node: the merchant's agent; the same key as platform/.env
 # every caller; Caddy adds it for Claude.ai (ADR-0019)
 GATEWAY_TOKEN=…
 ```
+
+Which process reads which key: the node reads `DATABASE_URL`, `BATP_TOKENS` and `OPENAI_API_KEY`; the gateway reads `DATABASE_URL`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN` and `GATEWAY_TOKEN`. Both run as `gateway` and read this one file, so the gateway could read the key too, though it never uses it: accepted for the POC. The platform has its own file and can't read this one (the builder and the assistant read the key from `platform/.env`). To change the key, change it in both files, then restart `merchant-node` and `merchant-platform`.
 
 Generate a token with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`, and restart both services after editing `.env`. On a new server, also create the database in UTF-8, or psycopg returns bytes and everything fails with `cannot use a string pattern on a bytes-like object`:
 

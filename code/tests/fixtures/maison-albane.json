@@ -24,5 +24,16 @@
   "cancellation_policy": "Free cancellation up to 24 hours before the booking.",
   "fallback_url": "http://localhost:8082/#reserver",
   "look": {"bg": "#151413", "surface": "#1e1c1a", "line": "#3a3530", "ink": "#efe9df", "muted": "#b3aa9c", "accent": "#c8a96a", "accent_2": "#b0955d", "on_accent": "#111111", "display_font": "serif", "body_font": "sans", "corners": "square", "radius_px": 0, "texture": "none"},
-  "knowledge": null
+  "knowledge": {
+    "items": [
+      {"topic": "menu", "text": "Menu en cinq temps, 95 €.", "source_url": "http://localhost:8082/", "quote": "Menu en cinq temps"},
+      {"topic": "menu", "text": "Menu en sept temps, 135 €.", "source_url": "http://localhost:8082/", "quote": "Menu en sept temps"},
+      {"topic": "drinks", "text": "Accords mets et vins, 65 €.", "source_url": "http://localhost:8082/", "quote": "Accords mets et vins"},
+      {"topic": "dietary", "text": "Menu végétarien sur demande, au prix des autres menus.", "source_url": "http://localhost:8082/", "quote": "Menu végétarien sur demande, au prix des autres menus."},
+      {"topic": "access", "text": "3 cour des Glycines, 68100 Mulhouse.", "source_url": "http://localhost:8082/", "quote": "3 cour des Glycines"},
+      {"topic": "practical", "text": "Terrasse sur jardin en été.", "source_url": "http://localhost:8082/", "quote": "Terrasse sur jardin en été."},
+      {"topic": "practical", "text": "Réservations par téléphone, tous les jours à partir de 15h : 03 89 00 00 22.", "source_url": "http://localhost:8082/", "quote": "Nous prenons les réservations par téléphone, tous les jours à partir de 15h"},
+      {"topic": "about", "text": "Une cuisine d'auteur autour des produits d'Alsace et de Franche-Comté, servie en menus dégustation dans une ancienne maison de maître.", "source_url": "http://localhost:8082/", "quote": "Une cuisine d'auteur autour des produits d'Alsace et de Franche-Comté"}
+    ]
+  }
 }

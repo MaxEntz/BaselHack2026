@@ -29,9 +29,11 @@ from core.db import (
 from core.db import reservations_t as reservations
 from core.errors import FormProblem, InvalidInput
 from core.models import (
+    MAX_KNOWLEDGE_ITEMS,
     BlockedTimes,
     FloorPlanOutput,
     Hours,
+    KnowledgeNote,
     ManagementError,
     MerchantSettings,
     Rules,
@@ -237,6 +239,77 @@ async def test_a_table_past_bookings_refer_to_names_their_guest(
 
 
 # Rules
+
+
+async def activity_lines(engine: AsyncEngine, slug: str) -> list[str]:
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            select(merchant_activity_t.c.details).where(merchant_activity_t.c.merchant_slug == slug)
+        )
+    return [str(row.details.get("what")) for row in rows]
+
+
+async def test_a_correction_changes_what_the_agents_next_prompt_reads(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant(knowledge=None)
+    tartare = KnowledgeNote(topic="menu", text="Le Tartare de bœuf, 28 CHF")
+    dogs = KnowledgeNote(topic="practical", text="Les chiens sont les bienvenus.")
+    await service.update_knowledge(slug, (), (tartare, dogs))
+
+    change = await service.update_knowledge(
+        slug, ("TARTARE", "parking"), (KnowledgeNote(topic="menu", text="Pas de tartare."),)
+    )
+
+    assert change.removed == ("Le Tartare de bœuf, 28 CHF",)
+    assert change.added == ("Pas de tartare.",)
+    profile = await load_profile(slug, engine=engine)  # as a new prompt would read it
+    assert profile is not None
+    assert profile.knowledge is not None
+    assert [item.text for item in profile.knowledge.items] == [
+        "Pas de tartare.",
+        "Les chiens sont les bienvenus.",
+    ]
+    assert (profile.knowledge.items[0].source_url, profile.knowledge.items[0].quote) == (None, None)
+    assert await activity_lines(engine, slug) == ["What your agent knows"] * 2
+
+
+async def test_a_correction_that_changes_nothing_writes_nothing(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant(knowledge=None)
+    dogs = KnowledgeNote(topic="practical", text="Les chiens sont les bienvenus.")
+    await service.update_knowledge(slug, (), (dogs,))
+
+    change = await service.update_knowledge(slug, ("parking",), (dogs,))
+
+    assert (change.removed, change.added) == ((), ())
+    assert await activity_lines(engine, slug) == ["What your agent knows"]
+
+
+async def test_removing_the_last_item_leaves_no_knowledge(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant(knowledge=None)
+    dogs = KnowledgeNote(topic="practical", text="Les chiens sont les bienvenus.")
+    await service.update_knowledge(slug, (), (dogs,))
+
+    await service.update_knowledge(slug, ("chiens",), ())
+
+    assert (await registry(engine, slug)).profile["knowledge"] is None
+
+
+async def test_a_correction_past_the_bounds_is_refused_and_changes_nothing(
+    service: PgAgentService, engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant(knowledge=None)
+    notes = [KnowledgeNote(topic="menu", text=f"Plat {n}") for n in range(MAX_KNOWLEDGE_ITEMS + 1)]
+
+    with pytest.raises(InvalidInput, match="remove something first"):
+        await service.update_knowledge(slug, (), notes)
+
+    assert (await registry(engine, slug)).profile.get("knowledge") is None
+    assert await activity_lines(engine, slug) == []
 
 
 async def test_saving_the_rules_updates_the_policy_the_registry_and_the_descriptions(
