@@ -73,6 +73,7 @@ from core.models import (
     ViewCardData,
 )
 from merchant_platform.accounts import IssuedLink
+from merchant_platform.logs import traceback_without
 from merchant_platform.overview import MerchantRecord
 from merchant_platform.sessions import Session
 
@@ -382,8 +383,12 @@ class AdminTools:
             return _error(error.code, f"{error.code}: {error}")
         except AgentError as error:
             return _error(error.code, f"{error.code}: {error}")
-        except Exception:
-            log.exception("tool_failed", extra={"tool": tool.name})
+        except Exception as error:
+            # As `chat_turn_failed`: the traceback without the session's id (#220).
+            log.error(
+                "tool_failed",
+                extra={"tool": tool.name, "exc": traceback_without(error, session.id)},
+            )
             return _error("agent_unavailable", TOOL_FAILED)
         if outcome.card is not None:
             await emit(outcome.card)

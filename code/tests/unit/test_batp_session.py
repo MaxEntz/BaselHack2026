@@ -504,6 +504,34 @@ async def test_a_503_that_replaces_a_large_answer_is_recorded_when_the_session_i
     assert (lost.__dict__["request"], lost.__dict__["status"]) == ("r-large", 503)
 
 
+async def test_an_answer_cancelled_mid_send_is_still_recorded_once() -> None:
+    # The session's end cancels its tasks (#220): the request was carried out all the same.
+    recorded: list[tuple[str, int]] = []
+    done = asyncio.Event()
+    sending = asyncio.Event()
+
+    async def record(agent: AgentIdentity, request: Request, response: Response) -> None:
+        recorded.append((request.id, response.status))
+        done.set()
+
+    async def send(frame: BaseModel) -> None:
+        sending.set()
+        await asyncio.Event().wait()  # a peer that stopped reading
+
+    server = NodeServer(node=NODE, handle=fake_backend, authenticate=accept_token, record=record)
+    answer = asyncio.create_task(
+        server._answer((CALLER, "s-1"), Request(id="r-cut", intent="PING"), send)
+    )
+    await asyncio.wait_for(sending.wait(), 2)
+    answer.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await answer
+    await asyncio.wait_for(done.wait(), 2)
+    await asyncio.sleep(0)
+    assert recorded == [("r-cut", 200)]
+
+
 async def test_an_unreadable_frame_from_the_node_is_logged_and_drops_the_session(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

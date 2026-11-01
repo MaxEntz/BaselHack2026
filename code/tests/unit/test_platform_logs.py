@@ -75,7 +75,8 @@ async def test_a_chat_turn_names_its_session_by_a_tag_never_by_its_id(
 ) -> None:
     async def assistant(session: Session, message: str, emit: Emit) -> None:
         if message == "fail":
-            raise RuntimeError("the model broke")
+            # As a `KeyError` on the id would: the exception itself holds it.
+            raise RuntimeError(f"no history for session {session.id}")
         await emit(TextEvent(delta="Noted."))
 
     async def profiles(slug: str) -> MerchantProfile | None:
@@ -100,6 +101,9 @@ async def test_a_chat_turn_names_its_session_by_a_tag_never_by_its_id(
     turns = [r for r in platform if r.getMessage() in ("chat_turn", "chat_turn_failed")]
     assert [r.getMessage() for r in turns] == ["chat_turn", "chat_turn_failed", "chat_turn"]
     assert {r.__dict__["session"] for r in turns} == {session_tag(SESSION_ID)}
+    # The traceback is still logged, where `log.exception` puts it, with the tag for the id.
+    failed = turns[1].__dict__["exc"]
+    assert "RuntimeError: no history for session " + session_tag(SESSION_ID) in failed
     assert all(SESSION_ID not in str(record.__dict__) for record in platform)
 
 

@@ -317,6 +317,8 @@ def _ms_since(started: float) -> int:
 
 
 PAUSED = "Your agent is paused: resume it rather than publish it again."
+# `deploy` found the agent neither live nor paused: built again meanwhile (#220).
+CHANGED = "Your agent changed while it was being published. Check it, then publish it again."
 
 
 async def publish(slug: str, on_event: StepEmitter, *, engine: AsyncEngine) -> None:
@@ -340,12 +342,13 @@ async def publish(slug: str, on_event: StepEmitter, *, engine: AsyncEngine) -> N
     try:
         await deploy(slug, engine=engine)
     except NotBuilding as moved:
-        # Published (another tab), then maybe paused, since the read above.
+        # Published (another tab), paused, or deleted and built again since the read above.
         if moved.status == "live":
             await on_event(_deployed("done", PUBLISHED, started))
             return
-        await on_event(_deployed("error", PAUSED, started))
-        raise InvalidInput(PAUSED) from None
+        refusal = PAUSED if moved.status == "down" else CHANGED
+        await on_event(_deployed("error", refusal, started))
+        raise InvalidInput(refusal) from None
     except Exception:
         await on_event(_deployed("error", STEP_FAILED, started))
         raise

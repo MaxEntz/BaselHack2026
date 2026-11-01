@@ -275,12 +275,15 @@ class NodeServer:
         started = time.monotonic()
         response = await self._respond(agent, request)
         try:
-            delivered = await _deliver(send, response)
-        except FrameTooLarge:
-            response = _unavailable(request.id, TOO_LARGE, await self._fallback(request))
-            delivered = await _deliver(send, response)
-        # Carried out whether or not the answer got through (a booking may exist): recorded.
-        self._record(agent, request, response)
+            try:
+                delivered = await _deliver(send, response)
+            except FrameTooLarge:
+                response = _unavailable(request.id, TOO_LARGE, await self._fallback(request))
+                delivered = await _deliver(send, response)
+        finally:
+            # Carried out whether or not the answer got through (a booking may exist): recorded
+            # once, even when the session's end cancels this task mid-send.
+            self._record(agent, request, response)
         line = {
             "agent": agent.id,
             "session": session,

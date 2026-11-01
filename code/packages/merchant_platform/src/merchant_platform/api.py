@@ -71,7 +71,7 @@ from merchant_platform.auth import (
 )
 from merchant_platform.auth import router as auth_router
 from merchant_platform.events import LiveBus, LiveListener
-from merchant_platform.logs import configure_logging, session_tag
+from merchant_platform.logs import configure_logging, session_tag, traceback_without
 from merchant_platform.management import NotBuiltYet
 from merchant_platform.management import router as management_router
 from merchant_platform.overview import RegistryLookup, registry_records
@@ -425,10 +425,17 @@ async def _run(
     except asyncio.CancelledError:
         outcome = "cancelled"
         raise
-    except Exception:
+    except Exception as error:
         outcome = "error"
-        # The traceback goes to the logs, never to the merchant.
-        log.exception("chat_turn_failed", extra={"session": session_tag(session.id)})
+        # The traceback goes to the logs, never to the merchant; the session's id, not even
+        # inside the exception's message (#220). `exc` is where `log.exception` puts it.
+        log.error(
+            "chat_turn_failed",
+            extra={
+                "session": session_tag(session.id),
+                "exc": traceback_without(error, session.id),
+            },
+        )
         await emit(ErrorEvent(message=TURN_FAILED))
     finally:
         session.lock.release()

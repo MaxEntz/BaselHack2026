@@ -3,13 +3,15 @@
 import hashlib
 import logging
 import re
+import traceback
 
 from core.logs import json_handler
 
 # The secret link's token (`GET /login?token=`) and a chat session's id (`GET /session?
 # session_id=`), which acts for its merchant, must never reach a log line (#132): a session
 # that just built its merchant claims the owner cookie with its id alone (`/session/claim`).
-# Lines name a session by `session_tag` instead.
+# Lines name a session by `session_tag` instead, and a turn's traceback goes through
+# `traceback_without`.
 TOKEN = re.compile(r"((?:token|session_id)=)[^&\s\"]+")
 SESSION_TAG_CHARS = 8
 
@@ -18,6 +20,13 @@ def session_tag(session_id: str) -> str:
     """A chat session's name in the logs: the start of its id's SHA-256, which tells one
     session's lines from another's but can't be turned back into the id (#220)."""
     return hashlib.sha256(session_id.encode()).hexdigest()[:SESSION_TAG_CHARS]
+
+
+def traceback_without(error: BaseException, session_id: str) -> str:
+    """`error`'s traceback as `log.exception` writes it, with the session's id replaced by its
+    tag: an exception's message may hold the id (a `KeyError` on it, for one)."""
+    text = "".join(traceback.format_exception(error)).rstrip("\n")
+    return text.replace(session_id, session_tag(session_id))
 
 
 class RedactTokens(logging.Filter):

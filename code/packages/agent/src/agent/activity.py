@@ -130,12 +130,12 @@ def word(
     """
     try:
         return _word(kind, reservation_id, details, today, tz)
-    except (KeyError, TypeError, ValueError):
-        # The kind and the reference only: the details may hold a guest's name (§12).
+    except (KeyError, TypeError, ValueError) as error:
+        # The kind, the reference and the error's type only: the details may hold a guest's
+        # name (§12), and Home reads the row again on every visit, so no traceback each time.
         log.warning(
             "activity line without its details",
-            extra={"kind": kind, "reservation": reservation_id},
-            exc_info=True,
+            extra={"kind": kind, "reservation": reservation_id, "error": type(error).__name__},
         )
         return reservation_id or ""
 
