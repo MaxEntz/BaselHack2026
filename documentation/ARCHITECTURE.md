@@ -282,4 +282,4 @@ In this order, to rebuild the project yourself:
 
 ---
 
-*Last updated: 2026-11-01, describing `main` at commit `c1ce0d0` with BATP 0.2 (#245).*
+*Last updated: 2026-11-01, describing `main` at commit `506ea44` with BATP 0.2 (#245).*
