@@ -2,7 +2,6 @@
   "$comment": "Generated from core.models.TalkInput",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "One message from the guest's agent to the merchant's agent.\n\n`confirm` names a `pending` proposal of this conversation, sent only after the guest's\nexplicit yes (#247): a proposal only exists in a conversation, so it needs `conversation`.",
   "properties": {
     "confirm": {
       "anyOf": [
