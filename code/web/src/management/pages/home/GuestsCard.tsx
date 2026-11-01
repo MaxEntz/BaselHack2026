@@ -1,8 +1,9 @@
 import { type PointerEvent, useEffect, useRef, useState } from "react";
 import type { DayHistory } from "../../../types.ts";
+import { dayMonth, dayShort } from "../../dates.ts";
 import { Box, Pill } from "../../ui/index.ts";
 import { MARGIN, chartGeometry, chartPaths } from "./chart.ts";
-import { count, dayMonth, dayShort, guests } from "./format.ts";
+import { count, guests } from "./format.ts";
 
 type View = "chart" | "table";
 

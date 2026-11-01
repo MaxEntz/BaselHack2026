@@ -1,24 +1,15 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
-import { flushSync } from "react-dom";
+
+// Changes crossfade through management/motion.ts's `crossfade`; this file holds Studio's layout.
 
 export const calm = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+
+/** Up to this window width, Studio shows one pane at a time (studio.css, `max-width: 900px`). */
+export const NARROW = 900;
 
 const CHAT_MIN = 380;
 const CHAT_SHARE = 0.4;
 const RAIL = 76;
-const NARROW = 900;
-
-// Nothing appears in one frame: the change crossfades, and named elements travel to their new
-// place. Without the API, or with reduced motion, it just happens.
-export function crossfade(change: () => void): void {
-  if (calm() || !document.startViewTransition) {
-    change();
-    return;
-  }
-  document.startViewTransition(() => {
-    flushSync(change);
-  });
-}
 
 // Opening the canvas: the chat column narrows from the full width to its share, and the canvas,
 // held at its final width, slides in from the right. Afterwards, the stylesheet's grid takes over.

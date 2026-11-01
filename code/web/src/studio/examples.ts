@@ -11,13 +11,13 @@ export type Example = {
   ink: string;
 };
 
-const env = import.meta.env;
-const MOCK = env.VITE_MOCK === "1";
-export const DEMO = MOCK || env.VITE_DEMO === "1";
+// `import.meta.env` is read whole at each use: Vite then replaces it at build time, and a
+// production build drops the examples (#220).
+export const DEMO = import.meta.env.VITE_MOCK === "1" || import.meta.env.VITE_DEMO === "1";
 
 function address(slug: string, host: string, port: number): string {
-  if (MOCK) return host;
-  const domain = env.VITE_DEMO_SITES_DOMAIN;
+  if (import.meta.env.VITE_MOCK === "1") return host;
+  const domain = import.meta.env.VITE_DEMO_SITES_DOMAIN;
   return domain ? `https://${slug}.${domain}` : `localhost:${port}`;
 }
 

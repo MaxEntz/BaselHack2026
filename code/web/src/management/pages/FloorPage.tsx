@@ -1,4 +1,5 @@
 import { type CSSProperties, useCallback, useState } from "react";
+import { plural } from "../../cards/format.ts";
 import type { ManagedReservation, ReservationDay, Service, TableSpec } from "../../types.ts";
 import { DayBar } from "../DayBar.tsx";
 import { useClient, useLoad } from "../data.ts";
@@ -18,7 +19,6 @@ const DAYS_AHEAD = 7;
 const OFFSETS = [0, 16, 4, 20, 2, 14, 6, 18, 0];
 const SOON_MIN = 60;
 
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 const surname = (name: string) => name.split(" ").at(-1);
 
 type FloorBase = { today: string; clock: string; tables: TableSpec[] };

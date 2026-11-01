@@ -2,13 +2,13 @@
 // tick and label positions are tested without a browser.
 
 export const CHART_HEIGHT = 216;
-export const CHART_MIN_WIDTH = 280;
+const CHART_MIN_WIDTH = 280;
 export const MARGIN = { left: 30, right: 6, top: 10, bottom: 26 } as const;
 // Days labelled under the chart; the last one is always the newest day.
 const LABELLED = [0, 7, 14, 21] as const;
 
-export type Tick = { value: number; y: number };
-export type XLabel = { index: number; x: number; anchor: "start" | "middle" | "end" };
+type Tick = { value: number; y: number };
+type XLabel = { index: number; x: number; anchor: "start" | "middle" | "end" };
 
 export type ChartGeometry = {
   width: number;

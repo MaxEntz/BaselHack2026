@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import onboarding from "../mocks/onboarding.json";
 import type { ChatEvent } from "../types.ts";
 import { CardView } from "./CardView.tsx";
+import { merchantMcpUrl } from "./format.ts";
 import { StepsCard } from "./StepsCard.tsx";
 
 const PROFILE = (onboarding as ChatEvent[]).find(
@@ -17,6 +18,41 @@ describe("profile card", () => {
 
     expect(screen.getByText(/shown only once/)).toBeTruthy();
     expect(screen.getByText(PROFILE.login_url ?? "missing")).toBeTruthy();
+  });
+
+  it("says Copied for a while, and leaves no timer behind once gone (#220)", async () => {
+    if (PROFILE?.type !== "card" || PROFILE.kind !== "profile") throw new Error("no profile card");
+    vi.useFakeTimers();
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+    try {
+      const { unmount } = render(<CardView card={PROFILE} />);
+      const [first] = screen.getAllByRole("button", { name: "Copy" });
+      await act(async () => fireEvent.click(first));
+      expect(screen.getByRole("button", { name: "Copied ✓" })).toBeTruthy();
+      act(() => vi.advanceTimersByTime(2000));
+      expect(screen.queryByRole("button", { name: "Copied ✓" })).toBeNull();
+
+      await act(async () => fireEvent.click(screen.getAllByRole("button", { name: "Copy" })[0]));
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  it("gives the restaurant's own MCP URL next to the gateway's, as the platform does", () => {
+    expect(merchantMcpUrl("http://localhost:8001/mcp", "la-graine-verte")).toBe(
+      "http://localhost:8001/m/la-graine-verte/mcp",
+    );
+    expect(merchantMcpUrl("https://example.org/gateway/mcp", "le-petit-zinc")).toBe(
+      "https://example.org/gateway/m/le-petit-zinc/mcp",
+    );
   });
 
   it("shows no link when the card has none", () => {

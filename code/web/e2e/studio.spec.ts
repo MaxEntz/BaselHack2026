@@ -20,6 +20,36 @@ async function buildSite(page: Page) {
   await expect(page.getByRole("button", { name: "Publish", exact: true }).first()).toBeEnabled();
 }
 
+test("an Enter that ends an IME composition doesn't send (#220)", async ({ page }) => {
+  await page.goto("/");
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill(HOST);
+  // What the browser fires when Enter picks a word in a Japanese or Chinese input method.
+  await box.dispatchEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true });
+  await expect(box).toHaveValue(HOST);
+  await expect(page.getByRole("heading", { name: "What's your website's address?" })).toBeVisible();
+  await box.press("Enter");
+  await expect(box).toHaveValue("");
+});
+
+test("a cut turn keeps the chat's error bubble, with Try again as a chip (#220)", async ({ page }) => {
+  await giveAddress(page);
+  // The question about the room is on screen: the address's turn is over, so the box is ours.
+  await expect(page.getByRole("button", { name: "Skip this, use the defaults" })).toBeVisible();
+  // The mock drops the stream of a description that says "cut" (#86).
+  await page.getByRole("textbox", { name: "Message" }).fill("24 seats, cut short");
+  await page.keyboard.press("Enter");
+  const bubble = page.locator(".st-msg.st-error");
+  await expect(bubble).toBeVisible({ timeout: 20_000 });
+  const retry = bubble.getByRole("button", { name: "Try again" });
+  await expect(retry).toBeVisible();
+  const [chip, box] = await Promise.all([retry.boundingBox(), bubble.boundingBox()]);
+  // A bubble of the feed, not the crash page's grid (`st-crash`), whose rules once had its name.
+  expect(await bubble.evaluate((element) => getComputedStyle(element).display)).toBe("block");
+  expect(chip!.width).toBeLessThan(box!.width / 2);
+  expect(box!.height).toBeLessThan(120);
+});
+
 test.describe("at 1440 px", () => {
   test("builds, reviews and publishes a site", async ({ page }) => {
     await page.goto("/");

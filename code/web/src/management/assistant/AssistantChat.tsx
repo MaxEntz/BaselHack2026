@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router";
 import type { ChatClient } from "../../chat/client.ts";
 import type { ChatItem } from "../../chat/state.ts";
 import { useChat } from "../../chat/useChat.ts";
+import { composing } from "../../ime.ts";
 import type { ConversationItem, LiveEvent, ManagePage } from "../../types.ts";
 import { useClient, useLoad } from "../data.ts";
 import { dayLong, dayShort } from "../dates.ts";
@@ -128,7 +129,7 @@ function Conversation({
     submit(text);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter" || event.shiftKey || composing(event)) return;
     event.preventDefault();
     submit(text);
   };

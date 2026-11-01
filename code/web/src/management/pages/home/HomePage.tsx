@@ -13,7 +13,9 @@ import type {
 import type { ManagementClient } from "../../client.ts";
 import { useClient } from "../../data.ts";
 import { useFresh } from "../../fresh.ts";
+import { dayShort, weekday } from "../../dates.ts";
 import { crossfade } from "../../motion.ts";
+import { bookingPath, dayPath, pagePath } from "../../pages.ts";
 import { sampleBookings } from "../../samples.ts";
 import { Blob, Box, Pill, Source, Tag, Under } from "../../ui/index.ts";
 import { GuestsCard } from "./GuestsCard.tsx";
@@ -24,7 +26,6 @@ import {
   bookings,
   clockOf,
   count,
-  dayShort,
   firstName,
   greeting,
   guests,
@@ -32,14 +33,13 @@ import {
   minutes,
   subtitle,
   timeIn,
-  weekday,
 } from "./format.ts";
 import "../../pages.css";
 import "./home.css";
 
 export const NOTHING_TONIGHT = "Nothing booked for tonight yet.";
 export const NO_ACTIVITY = "Nothing has happened yet.";
-export const SAMPLES_NOTE = "Sample bookings: your agent is hidden from guests until you publish it.";
+const SAMPLES_NOTE = "Sample bookings: your agent is hidden from guests until you publish it.";
 const TONIGHT_ROWS = 9;
 const ACTIVITY_ROWS = 6;
 
@@ -47,11 +47,8 @@ export type HomeProps = {
   slug: string;
   // Bump to read everything again: the shell does on every change (#137).
   version?: number;
-  // The shell's actions; without them Home navigates to the page that has them.
+  // The shell opens its assistant column; without it, Home goes to the Assistant page.
   onAsk?: () => void;
-  onBlock?: (date: string) => void;
-  onOpenBooking?: (id: string, date: string) => void;
-  onOpenDay?: (date: string) => void;
 };
 
 // `samples`: the merchant isn't published yet, so `day` holds the web's samples (#136).
@@ -103,25 +100,16 @@ function useHomeData(slug: string, client: ManagementClient, version: number) {
   return { data, error };
 }
 
-export function HomePage({
-  slug,
-  version = 0,
-  onAsk,
-  onBlock,
-  onOpenBooking,
-  onOpenDay,
-}: HomeProps) {
+export function HomePage({ slug, version = 0, onAsk }: HomeProps) {
   const navigate = useNavigate();
   const client = useClient();
-  const base = `/manage/${encodeURIComponent(slug)}`;
   const { data, error } = useHomeData(slug, client, version);
   const clock = useNow();
 
-  const ask = onAsk ?? (() => navigate(`${base}/assistant`));
-  const block = onBlock ?? ((date: string) => navigate(`${base}/reservations?date=${date}&block=1`));
-  const openBooking =
-    onOpenBooking ?? ((id: string, date: string) => navigate(`${base}/reservations?date=${date}&booking=${encodeURIComponent(id)}`));
-  const openDay = onOpenDay ?? ((date: string) => navigate(`${base}/reservations?date=${date}`));
+  const ask = onAsk ?? (() => navigate(pagePath(slug, "assistant")));
+  const block = (date: string) => navigate(dayPath(slug, date, { block: true }));
+  const openBooking = (id: string, date: string) => navigate(bookingPath(slug, date, id));
+  const openDay = (date: string) => navigate(dayPath(slug, date));
 
   // Asked for from Studio's dock, or the clock's (#154).
   const [params] = useSearchParams();
@@ -160,13 +148,13 @@ export function HomePage({
           <Pill disabled={!data} onClick={() => data && block(data.dashboard.date)}>
             Block a time
           </Pill>
-          <Link className="pill" to={`${base}/reservations`}>
+          <Link className="pill" to={pagePath(slug, "reservations")}>
             Reservations
           </Link>
-          <Link className="pill" to={`${base}/hours`}>
+          <Link className="pill" to={pagePath(slug, "hours")}>
             Opening hours
           </Link>
-          <Link className="pill" to={`${base}/floor`}>
+          <Link className="pill" to={pagePath(slug, "floor")}>
             Floor plan
           </Link>
         </div>
@@ -196,14 +184,13 @@ export function HomePage({
           <TonightCard
             bookings={tonight}
             fresh={freshBookings}
-            date={data.dashboard.date}
-            base={base}
+            day={dayPath(slug, data.dashboard.date)}
             onOpen={openBooking}
             samples={data.samples}
           />
           <NextDaysCard days={data.dashboard.next_days} onOpen={openDay} />
           <SourcesCard dashboard={data.dashboard} />
-          <RoomCard dashboard={data.dashboard} base={base} />
+          <RoomCard dashboard={data.dashboard} floor={pagePath(slug, "floor")} />
           <ActivityCard items={data.dashboard.activity} fresh={freshActivity} />
         </div>
       )}
@@ -224,15 +211,14 @@ function tonightOf({ dashboard, day }: HomeData): ManagedReservation[] {
 function TonightCard({
   bookings: list,
   fresh,
-  date,
-  base,
+  day,
   onOpen,
   samples,
 }: {
   bookings: ManagedReservation[];
   fresh: Set<string>;
-  date: string;
-  base: string;
+  // Today on the Reservations page.
+  day: string;
   onOpen: (id: string, date: string) => void;
   samples: boolean;
 }) {
@@ -278,7 +264,7 @@ function TonightCard({
       </div>
       {list.length > 0 && !samples && (
         <div>
-          <Link className="link" to={`${base}/reservations?date=${date}`}>
+          <Link className="link" to={day}>
             See all {bookings(live.length)}
           </Link>
         </div>
@@ -361,7 +347,7 @@ function SourcesCard({ dashboard }: { dashboard: Dashboard }) {
   );
 }
 
-function RoomCard({ dashboard, base }: { dashboard: Dashboard; base: string }) {
+function RoomCard({ dashboard, floor }: { dashboard: Dashboard; floor: string }) {
   const { room } = dashboard;
   return (
     <section className="m s4" aria-labelledby="home-room">
@@ -373,7 +359,7 @@ function RoomCard({ dashboard, base }: { dashboard: Dashboard; base: string }) {
         <span>of {room.seats} seats booked</span>
       </div>
       {/* A picture of the room, named by where it goes: its labels are part of the picture. */}
-      <Link className="minis" to={`${base}/floor`}>
+      <Link className="minis" to={floor}>
         <span className="sr">See the floor plan</span>
         {room.tables.map((table, index) => (
           <span

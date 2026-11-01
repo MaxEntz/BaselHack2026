@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { copyText } from "../../clipboard.ts";
 import type { AgentRequest, MerchantStatus } from "../../types.ts";
 import { useClient, useLoad } from "../data.ts";
 import { useHoldRefresh } from "../live.ts";
@@ -61,12 +62,7 @@ export function AgentPage({ slug, version }: { slug: string; version: number }) 
   }
 
   async function copy(value: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      toast("Copied");
-    } catch {
-      toast(`Copy this: ${value}`);
-    }
+    toast((await copyText(value)).message);
   }
 
   const data = merchant.data;

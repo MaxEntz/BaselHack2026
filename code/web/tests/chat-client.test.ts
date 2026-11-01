@@ -124,6 +124,24 @@ test("an invitation code is sent once, as JSON, with the cookie", async () => {
   assert.equal(await acceptInvite("wrong"), false);
 });
 
+test("an invitation is dropped once its signal aborts, as Studio's effect cleanup does (#220)", async () => {
+  const signals: (AbortSignal | null | undefined)[] = [];
+  globalThis.fetch = async (_url, init) => {
+    signals.push(init?.signal);
+    await Promise.resolve();
+    if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    return new Response(null, { status: 204 });
+  };
+  const { acceptInvite } = await import("../src/chat/client.ts");
+
+  const first = new AbortController();
+  const cancelled = acceptInvite("olive-2026", first.signal);
+  first.abort();
+  assert.equal(await cancelled, false);
+  assert.equal(await acceptInvite("olive-2026", new AbortController().signal), true);
+  assert.deepEqual(signals.map((signal) => signal?.aborted), [true, false]);
+});
+
 test("after a build the session claims its owner cookie", async () => {
   const sent: [string, RequestInit][] = [];
   globalThis.fetch = async (url, init) => {
