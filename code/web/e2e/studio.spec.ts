@@ -156,7 +156,7 @@ test.describe("at 1440 px", () => {
     await expect(moment.getByText(/^As at/)).toHaveCount(0);
 
     // A dot asks for a colour in words, without sending.
-    await page.locator(".st-dots button").first().click();
+    await page.getByRole("button", { name: "Change the colours" }).click();
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue("Change the main colour to ");
     await expect(page.getByRole("textbox", { name: "Message" })).toBeFocused();
 

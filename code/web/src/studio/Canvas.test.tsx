@@ -171,7 +171,8 @@ describe("Studio's canvas", () => {
       ["After service", "22:30"],
     ]);
     expect(container.querySelector(".st-dock-font")?.textContent).toBe("Fraunces");
-    expect(container.querySelectorAll(".st-dots button")).toHaveLength(4);
+    expect(container.querySelectorAll(".st-dots i")).toHaveLength(4);
+    expect(screen.getAllByRole("button", { name: "Change the colours" })).toHaveLength(1);
     unmount();
     canvas({ view: "both" });
     expect(screen.getByRole("group", { name: "Time of day" })).toBeTruthy();
@@ -191,12 +192,12 @@ describe("Studio's canvas", () => {
   it("asks for a moment, and for a colour in words", async () => {
     const onMoment = vi.fn();
     const onColour = vi.fn();
-    const { container } = canvas({ view: "manage", moment: "during", onMoment, onColour });
-    const during = screen.getByRole("button", { name: "During service" });
+    canvas({ view: "manage", moment: "during", onMoment, onColour });
+    const during = screen.getByRole("button", { name: "19:30, During service" });
     expect(during.getAttribute("aria-pressed")).toBe("true");
-    await userEvent.click(screen.getByRole("button", { name: "After service" }));
+    await userEvent.click(screen.getByRole("button", { name: "22:30, After service" }));
     expect(onMoment).toHaveBeenCalledWith("after");
-    await userEvent.click(container.querySelector<HTMLElement>(".st-dots button")!);
+    await userEvent.click(screen.getByRole("button", { name: "Change the colours" }));
     expect(onColour).toHaveBeenCalledOnce();
   });
 
