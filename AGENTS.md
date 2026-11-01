@@ -201,7 +201,7 @@ Every tool error is `{ "error": <code>, "message": str, "fallback_url"?: str }`.
 - "Cancel R-001" → `cancel_reservation(by="merchant")` → guest notice created (for a booking a guest made).
 - A booking made through Claude appears in the merchant chat as a **"New booking via Claude"** notification within 2 s (SSE).
 
-How to run them against the deployed gateway: [connector runbook](documentation/runbooks/connector.md), step 4.
+How to run them against the deployed gateway: [connector runbook](documentation/runbooks/connector.md), step 4. The 5-minute demo, its checklist and plan B: [demo runbook](documentation/runbooks/demo.md), replayed by `tests/e2e/test_demo_scenario.py`.
 
 ## 10. Commands
 
