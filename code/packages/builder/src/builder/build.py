@@ -38,7 +38,8 @@ Crawl = Callable[[str, StepEmitter], Awaitable[CrawlResult]]
 GENERATED_DIR = CACHE_ROOT / "generated"
 LLM_DOWN = "The AI service is unavailable right now. Please try again in a moment."
 WAITING = "Waiting for you."
-PUBLISHED = "Your agent is live."
+# The `deploy` step's detail once the agent is live.
+LIVE_DETAIL = "Your agent is live."
 # A build nobody published blocks its website this long; then another account may replace it.
 ABANDONED_AFTER = timedelta(hours=24)
 STEP_FAILED = "Something went wrong while creating your agent."
@@ -80,6 +81,10 @@ def gateway_mcp_url(public_url: str | None) -> str:
 
 
 class Builder:
+    """Turns a website and the merchant's description into a provisioned agent (AGENTS.md
+    §8.3): crawl, extract, validate and provision, streamed as step events. The agent stays
+    `building`, hidden from guests, until its owner publishes it (`publish`)."""
+
     def __init__(
         self,
         llm: LLMClient,
@@ -279,6 +284,8 @@ class Builder:
                 if normalize_url(website) == site:
                     found.append((str(slug), str(status), created_at))
             except InvalidInput:
+                # A stored website the normalizer refuses names no site this build could claim.
+                log.debug("registry website skipped", extra={"slug": slug})
                 continue
         # A published agent wins over a leftover, whatever their order.
         return sorted(found, key=lambda row: row[1] == "building")
@@ -331,7 +338,7 @@ async def publish(slug: str, on_event: StepEmitter, *, engine: AsyncEngine) -> N
     if status == "down":
         raise InvalidInput(PAUSED)
     if status == "live":
-        await on_event(StepEvent(step="deploy", status="done", detail=PUBLISHED))
+        await on_event(StepEvent(step="deploy", status="done", detail=LIVE_DETAIL))
         return
     started = time.monotonic()
     await on_event(StepEvent(step="deploy", status="running"))
@@ -340,7 +347,7 @@ async def publish(slug: str, on_event: StepEmitter, *, engine: AsyncEngine) -> N
     except NotBuilding as moved:
         # Published (another tab), paused, or deleted and built again since the read above.
         if moved.status == "live":
-            await on_event(_deployed("done", PUBLISHED, started))
+            await on_event(_deployed("done", LIVE_DETAIL, started))
             return
         refusal = PAUSED if moved.status == "down" else CHANGED
         await on_event(_deployed("error", refusal, started))
@@ -349,7 +356,7 @@ async def publish(slug: str, on_event: StepEmitter, *, engine: AsyncEngine) -> N
         await on_event(_deployed("error", STEP_FAILED, started))
         raise
     log.info("publish_agent", extra={"merchant": slug})
-    await on_event(_deployed("done", PUBLISHED, started))
+    await on_event(_deployed("done", LIVE_DETAIL, started))
 
 
 def _deployed(status: Literal["done", "error"], detail: str, started: float) -> StepEvent:

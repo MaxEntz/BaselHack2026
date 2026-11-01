@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from string import Formatter
-from typing import Any, Literal, Self, get_args
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, PositiveInt, ValidationError, model_validator
@@ -33,10 +33,16 @@ from core.db import (
     tables_t,
 )
 from core.errors import InvalidInput, NotFound
-from core.models import GeneratedTool, MerchantProfile, PriceLevel, Services, TableSpec
-
-RegistryStatus = Literal["building", "live", "down"]
-SwitchableStatus = Literal["live", "down"]
+from core.models import (
+    PUBLISHED_STATUSES,
+    AgentStatus,
+    GeneratedTool,
+    MerchantProfile,
+    MerchantStatus,
+    PriceLevel,
+    Services,
+    TableSpec,
+)
 
 # Values a tool description may use, with sample values to render it once at import.
 PLACEHOLDER_SAMPLES: dict[str, Any] = {
@@ -72,7 +78,7 @@ class NotBuilding(InvalidInput):
 
     Nothing changed: `status` is what the registry holds."""
 
-    def __init__(self, slug: str, status: RegistryStatus) -> None:
+    def __init__(self, slug: str, status: MerchantStatus) -> None:
         super().__init__(f"Merchant {slug!r} isn't waiting to be published: it is {status}")
         self.status = status
 
@@ -139,7 +145,7 @@ class MerchantRecord:
     id: UUID
     slug: str
     schema: str
-    status: RegistryStatus
+    status: MerchantStatus
 
 
 def default_tables(seats: int) -> list[TableSpec]:
@@ -280,9 +286,7 @@ async def provision(
     return MerchantRecord(id=merchant_id, slug=profile.slug, schema=schema, status="building")
 
 
-async def set_status(
-    slug: str, status: SwitchableStatus, *, engine: AsyncEngine | None = None
-) -> None:
+async def set_status(slug: str, status: AgentStatus, *, engine: AsyncEngine | None = None) -> None:
     """Switch a provisioned merchant on (`live`) or off (`down`: the demo's outage switch).
 
     For scripts and tests (`make outage`, `make restore`, the seed): any provisioned merchant,
@@ -290,8 +294,8 @@ async def set_status(
     `agent.admin.pause_or_resume` (`AgentService.set_status`): only a published agent, recorded
     on Home.
     """
-    if status not in get_args(SwitchableStatus):
-        raise InvalidInput(f"Status must be one of {get_args(SwitchableStatus)}, got {status!r}")
+    if status not in PUBLISHED_STATUSES:
+        raise InvalidInput(f"Status must be one of {PUBLISHED_STATUSES}, got {status!r}")
     async with _engine(engine) as db, db.begin() as conn:
         result = await conn.execute(
             update(merchants_t).where(merchants_t.c.slug == slug).values(status=status)
@@ -315,7 +319,7 @@ async def deploy(slug: str, *, engine: AsyncEngine | None = None) -> None:
         )
         if result.rowcount == 1:
             return
-        status: RegistryStatus | None = await conn.scalar(
+        status: MerchantStatus | None = await conn.scalar(
             select(merchants_t.c.status).where(merchants_t.c.slug == slug)
         )
     if status is None:

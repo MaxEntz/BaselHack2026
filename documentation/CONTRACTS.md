@@ -67,7 +67,7 @@ Each tool takes flat arguments (the fields of its `*Input` model) and returns `<
 | Tool | Input (`core.models`) | Output | Errors (besides `invalid_input`, `agent_unavailable`) |
 |---|---|---|---|
 | `search_merchants` | `query`, `near?`, `date?`, `filters?: {tags?, max_price?}` | `merchants: [{slug, name, city, tags, price_level, website}]`, `suggestions: [{drop, matches}]`, `ignored_filters` | — |
-| `get_availability` | `merchant`, `date`, `time?` (`HH:MM`), `party_size` | `slots: [{starts_at, table_label}]` (≤ 3) | `not_found`, `party_too_large` |
+| `get_availability` | `merchant`, `date`, `time?` (`HH:MM`), `party_size` | `slots: [{starts_at, table_label}]` (≤ 3, `core.models.MAX_SLOTS`) | `not_found`, `party_too_large` |
 | `create_reservation` | `merchant`, `starts_at`, `party_size`, `guest_name`, `idempotency_key` | `reservation` | `not_found`, `party_too_large`, `slot_unavailable` |
 | `update_reservation` | `merchant`, `reservation_id`, `guest_name`, `starts_at?`, `party_size?`, `idempotency_key` | `reservation` | `not_found`, `party_too_large`, `slot_unavailable` |
 | `cancel_reservation` | `merchant`, `reservation_id`, `guest_name` | `status: "cancelled"` | `not_found`, `slot_unavailable` |
@@ -218,21 +218,21 @@ for it in local development only.
 | `POST /agent/try` | `AgentTryInput` (`intent`) | `AgentTryOutput`: both frames as text and the node's `status`. One real frame through the BATP node as `urn:batp:agent:sesame-studio`, with the platform choosing its params; the node's refusals are answers (`404` until published). `agent_unavailable` without `BATP_URL`. BOOK makes a real booking under the test guest | #151 |
 | `POST /publish` | | `MerchantOverview`, now `live`: publishes the agent a build left `building`. A paused (`down`) agent is refused with `invalid_input` | #136 |
 | `GET /assistant` | | `AssistantConversation`: `{session_id, items}`, the owner's conversation with the assistant. One platform-made session per owner link (`o-` + 24 random bytes), shared by every device signed in with it; `/chat` on it still needs the owner's cookie. `items` are the web chat's shapes (`user`, `assistant`, `card`, `notification`, `error`; never the steps), the last 200, kept in memory until the platform restarts | #140 |
-| `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6) | #135 |
+| `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6, `ACTIVITY_LINES`) | #135 |
 | `GET /reservations?date=` | | `ReservationDay`: the day's services, every start of its grid, slot length, largest group, blocked times and bookings, cancelled ones included | #134 |
 | `POST /reservations` | `MerchantBookingInput` | `201` + `ManagedReservation`, `via="merchant"` | #134 |
 | `PATCH /reservations/{id}` | `MoveBookingInput` | `ManagedReservation` | #134 |
 | `POST /reservations/{id}/cancel` | | `MerchantCancelOutput`: the booking and `outcome` | #134 |
 | `GET /slots?date=&party_size=&ignore=` | | `DaySlots`: every start of the day that hasn't passed, with the table it would get (or none) and whether it is blocked; `ignore` leaves a booking out, for a move | #134 |
 | `GET /guests?q=` | | `GuestsOutput`: one row per guest (`same_guest`) whose name holds `q` and who has a live booking ahead in the next 7 days: the earliest and how many, sorted by name | #144 |
-| `GET /search?q=` | | `SearchOutput`: up to 8 bookings of the next 7 days by guest name or reference | #135 |
+| `GET /search?q=` | | `SearchOutput`: up to 8 bookings (`SEARCH_LIMIT`) of the next 7 days by guest name or reference | #135 |
 | `GET`/`PUT /hours` | `HoursInput` | `Hours` | #133 |
 | `GET`/`PUT /tables` | `FloorPlanInput` | `FloorPlanOutput` | #133 |
 | `GET`/`PUT /rules` | `RulesInput` | `Rules`, with the sentence each tool's description starts with on `/m/<slug>/mcp` | #133 |
 | `GET`/`PUT /settings` | `SettingsInput` | `MerchantSettings` | #133 |
 | `GET /blocked`, `PUT /blocked?date=` | `BlockedDayInput` (`PUT` only) | `BlockedTimes`: the blocked times to come | #133 |
 | `POST /agent/pause`, `POST /agent/resume` | | `AgentStatusOutput` (`down`, `live`); resuming a `building` merchant is `invalid_input` (it is published, #136) | #146 |
-| `GET /agent/requests?date=&refused=` | | `AgentRequests`: newest first, at most 10 | #146 |
+| `GET /agent/requests?date=&refused=` | | `AgentRequests`: newest first, at most 10 (`MAX_AGENT_REQUESTS`) | #146 |
 
 **Days, times and text**
 - Days are `YYYY-MM-DD` and times `HH:MM`, local to the merchant (`MerchantOverview.timezone`).

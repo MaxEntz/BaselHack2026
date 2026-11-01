@@ -40,7 +40,7 @@ from merchant_platform.assistant import (
 )
 from merchant_platform.logs import session_tag
 from merchant_platform.sessions import Session
-from merchant_platform.specs import (
+from merchant_platform.tool_specs import (
     CANCELLED,
     NOT_AVAILABLE,
     NOT_ONBOARDED,

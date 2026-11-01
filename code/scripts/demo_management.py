@@ -12,6 +12,7 @@ refuses past times, so these are Core inserts; the exclusion constraint still ap
 
 import json
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from math import ceil
 from pathlib import Path
@@ -19,9 +20,9 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, insert, select
-from sqlalchemy.dialects.postgresql import Range
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from agent.times import during
 from core.availability import BusyInterval, TableRow, bookable_starts, pick_table
 from core.db import (
     agent_requests_t,
@@ -74,6 +75,32 @@ def moved(text: str, shift: timedelta, tz: ZoneInfo) -> str:
         return datetime.combine(local.date() + shift, local.time(), tz).isoformat()
 
     return STAMP.sub(move, text)
+
+
+@dataclass(frozen=True)
+class Shift:
+    """How the fixture's dates move to the seed's today, local times kept (`moved`)."""
+
+    days: timedelta
+    tz: ZoneInfo
+
+    def at(self, stamp: str) -> datetime:
+        return datetime.fromisoformat(moved(stamp, self.days, self.tz))
+
+    def day(self, value: str) -> date:
+        return date.fromisoformat(value) + self.days
+
+    def text(self, value: str) -> str:
+        return moved(value, self.days, self.tz)
+
+
+@dataclass(frozen=True)
+class Floor:
+    """Where and when the merchant's bookings go: its tables, services and slot length."""
+
+    tables: list[TableRow]
+    services: list[Service]
+    slot_length: timedelta
 
 
 def parties(count: int, guests: int) -> list[int]:
@@ -168,7 +195,7 @@ def history_bookings(
                     "table_id": table.id,
                     "guest_name": guest_name(len(rows)),
                     "party_size": size,
-                    "during": Range(start, start + slot_length, bounds="[)"),
+                    "during": during(start, slot_length),
                     "via": via,
                     "status": "cancelled" if cancelled else "confirmed",
                     "cancelled_by": ("guest" if via == "claude" else "merchant")
@@ -185,7 +212,7 @@ def activity_lines(
     feed: list[dict[str, Any]],
     bookings: list[dict[str, Any]],
     blocked: list[dict[str, Any]],
-    at: Any,
+    shift: Shift,
 ) -> list[dict[str, Any]]:
     """Home's feed (#135): the fixture's lines, oldest first, with the details the server words
     them from (the booking's guest, party and start; the blocked times) instead of their text."""
@@ -198,14 +225,15 @@ def activity_lines(
             details = {
                 "guest": booking["guest_name"],
                 "party": booking["party_size"],
-                "starts_at": booking["during"].lower.isoformat(),
+                # Local, as a booking's own line records it (`agent.activity.record_booking`).
+                "starts_at": booking["during"].lower.astimezone(shift.tz).isoformat(),
             }
         elif item["kind"] in ("blocked", "reopened"):
             details = {"times": [b["starts_at"].isoformat() for b in blocked]}
         lines.append(
             {
                 "merchant_slug": MERCHANT,
-                "at": at(item["at"]),
+                "at": shift.at(item["at"]),
                 "kind": item["kind"],
                 "source": item["source"],
                 "reservation_id": item["reservation_id"],
@@ -219,84 +247,111 @@ async def seed_management(engine: AsyncEngine, today: date) -> str:
     """Load the fixture into La Graine Verte, moved to `today`; a second run changes nothing."""
     data = load()
     tz = ZoneInfo(data["merchant"]["timezone"])
-    shift = today - datetime.fromisoformat(data["now"]).date()
-
-    def at(stamp: str) -> datetime:
-        return datetime.fromisoformat(moved(stamp, shift, tz))
-
-    async with engine.connect() as conn:
-        if not await conn.scalar(select(merchants_t.c.slug).where(merchants_t.c.slug == MERCHANT)):
-            raise NotFound(f"{MERCHANT} isn't in the registry: seed it too (`--all`)")
+    shift = Shift(today - datetime.fromisoformat(data["now"]).date(), tz)
+    await _check_registered(engine)
     async with merchant_conn(engine, MERCHANT) as conn:
-        first = KEY + data["reservations"][0]["id"]
-        if await conn.scalar(
-            select(reservations_t.c.id).where(reservations_t.c.idempotency_key == first)
-        ):
+        if await _already_seeded(conn, data):
             return "management data kept"
-        if await conn.scalar(select(func.count()).select_from(reservations_t)):
-            raise InvalidInput(
-                f"{MERCHANT} already has bookings, so the fixture's references would clash: "
-                "`make demo-reset` first"
-            )
-        tables = [
-            TableRow(row.id, row.label, row.seats)
-            for row in await conn.execute(select(tables_t.c.id, tables_t.c.label, tables_t.c.seats))
-        ]
-        policy = (await conn.execute(select(policy_t.c.slot_length_min, policy_t.c.services))).one()
-        slot_length = timedelta(minutes=policy.slot_length_min)
-        services = [Service.model_validate(s) for s in policy.services]
-        by_label = {t.label: t for t in tables}
-
-        rows = []
-        for booking in data["reservations"]:
-            # The sequence hands out the fixture's references, so it goes on from there.
-            if await next_reservation_id(conn) != booking["id"]:
-                raise InvalidInput(f"{MERCHANT}'s booking references don't start at R-001")
-            day = date.fromisoformat(booking["date"]) + shift
-            start = datetime.combine(day, time.fromisoformat(booking["time"]), tz)
-            rows.append(
-                {
-                    "id": booking["id"],
-                    "table_id": by_label[booking["table_label"]].id,
-                    "guest_name": booking["guest_name"],
-                    "party_size": booking["party_size"],
-                    "during": Range(start, start + slot_length, bounds="[)"),
-                    "via": booking["via"],
-                    "status": booking["status"],
-                    "cancelled_by": booking["cancelled_by"],
-                    "idempotency_key": KEY + booking["id"],
-                    "created_at": at(booking["created_at"]),
-                }
-            )
+        floor = await _floor(conn)
+        rows = await _week_rows(conn, data["reservations"], floor, shift)
         past = [
-            {**entry, "date": (date.fromisoformat(entry["date"]) + shift).isoformat()}
+            {**entry, "date": shift.day(entry["date"]).isoformat()}
             for entry in data["history"][:-1]
         ]
-        rows += history_bookings(past, tables, services, tz, slot_length)
-        await conn.execute(insert(reservations_t), rows)
-        blocked = [{"starts_at": at(b["starts_at"])} for b in data["blocked"]]
-        if blocked:
-            await conn.execute(insert(blocked_slots_t), blocked)
-        requests = [
-            {
-                "merchant_slug": MERCHANT,
-                "at": at(r["at"]),
-                "agent_name": r["agent_name"],
-                "intent": r["intent"],
-                "status": r["status"],
-                "request": moved(r["request"], shift, tz),
-                "response": moved(r["response"], shift, tz),
-            }
-            for r in reversed(data["agent_requests"])  # oldest first, so ids follow time
-        ]
-        if requests:
-            await conn.execute(insert(agent_requests_t), requests)
-        lines = activity_lines(data["activity"], rows, blocked, at)
-        if lines:
-            await conn.execute(insert(merchant_activity_t), lines)
+        rows += history_bookings(past, floor.tables, floor.services, tz, floor.slot_length)
+        blocked = [{"starts_at": shift.at(b["starts_at"])} for b in data["blocked"]]
+        requests = _agent_requests(data["agent_requests"], shift)
+        lines = activity_lines(data["activity"], rows, blocked, shift)
+        for table, values in (
+            (reservations_t, rows),
+            (blocked_slots_t, blocked),
+            (agent_requests_t, requests),
+            (merchant_activity_t, lines),
+        ):
+            if values:
+                await conn.execute(insert(table), values)
     week = len(data["reservations"])
     return (
         f"management data: {week} bookings over the 7 days from {today}, "
         f"{len(rows) - week} over the 29 days before, {len(blocked)} blocked time(s), "
         f"{len(requests)} agent requests"
     )
+
+
+async def _check_registered(engine: AsyncEngine) -> None:
+    async with engine.connect() as conn:
+        if not await conn.scalar(select(merchants_t.c.slug).where(merchants_t.c.slug == MERCHANT)):
+            raise NotFound(f"{MERCHANT} isn't in the registry: seed it too (`--all`)")
+
+
+async def _already_seeded(conn: AsyncConnection, data: dict[str, Any]) -> bool:
+    """True when the fixture is already in; refused when other bookings would clash with it."""
+    first = KEY + data["reservations"][0]["id"]
+    if await conn.scalar(
+        select(reservations_t.c.id).where(reservations_t.c.idempotency_key == first)
+    ):
+        return True
+    if await conn.scalar(select(func.count()).select_from(reservations_t)):
+        raise InvalidInput(
+            f"{MERCHANT} already has bookings, so the fixture's references would clash: "
+            "`make demo-reset` first"
+        )
+    return False
+
+
+async def _floor(conn: AsyncConnection) -> Floor:
+    tables = [
+        TableRow(row.id, row.label, row.seats)
+        for row in await conn.execute(select(tables_t.c.id, tables_t.c.label, tables_t.c.seats))
+    ]
+    policy = (await conn.execute(select(policy_t.c.slot_length_min, policy_t.c.services))).one()
+    return Floor(
+        tables=tables,
+        services=[Service.model_validate(s) for s in policy.services],
+        slot_length=timedelta(minutes=policy.slot_length_min),
+    )
+
+
+async def _week_rows(
+    conn: AsyncConnection, bookings: list[dict[str, Any]], floor: Floor, shift: Shift
+) -> list[dict[str, Any]]:
+    """Rows for `reservations_t` of the fixture's 7 days, under the fixture's references."""
+    by_label = {t.label: t for t in floor.tables}
+    rows = []
+    for booking in bookings:
+        # The sequence hands out the fixture's references, so it goes on from there.
+        if await next_reservation_id(conn) != booking["id"]:
+            raise InvalidInput(f"{MERCHANT}'s booking references don't start at R-001")
+        day = shift.day(booking["date"])
+        start = datetime.combine(day, time.fromisoformat(booking["time"]), shift.tz)
+        rows.append(
+            {
+                "id": booking["id"],
+                "table_id": by_label[booking["table_label"]].id,
+                "guest_name": booking["guest_name"],
+                "party_size": booking["party_size"],
+                "during": during(start, floor.slot_length),
+                "via": booking["via"],
+                "status": booking["status"],
+                "cancelled_by": booking["cancelled_by"],
+                "idempotency_key": KEY + booking["id"],
+                "created_at": shift.at(booking["created_at"]),
+            }
+        )
+    return rows
+
+
+def _agent_requests(requests: list[dict[str, Any]], shift: Shift) -> list[dict[str, Any]]:
+    """Rows for `agent_requests_t`, oldest first so that ids follow time, frames moved too."""
+    return [
+        {
+            "merchant_slug": MERCHANT,
+            "at": shift.at(r["at"]),
+            "agent_name": r["agent_name"],
+            "intent": r["intent"],
+            "status": r["status"],
+            "request": shift.text(r["request"]),
+            "response": shift.text(r["response"]),
+        }
+        for r in reversed(requests)
+    ]

@@ -62,8 +62,16 @@ TableLabel = Annotated[NonEmptyStr, StringConstraints(max_length=MAX_TABLE_LABEL
 MAX_SERVICES = 8
 MAX_TABLES = 100
 MAX_DAY_STARTS = 48
+# What Home, the search box and the Agent page show at most.
+ACTIVITY_LINES = 6
+SEARCH_LIMIT = 8
+MAX_AGENT_REQUESTS = 10
 
-MerchantStatus = Literal["building", "live", "down"]
+# A published agent: `live`, or paused by its merchant (`down`, #146).
+AgentStatus = Literal["live", "down"]
+PUBLISHED_STATUSES: tuple[AgentStatus, ...] = get_args(AgentStatus)
+# A merchant is `building` until its agent is published.
+MerchantStatus = Literal["building", AgentStatus]
 CancelledBy = Literal["guest", "merchant"]
 # What a merchant's cancellation did (#82): cancelled with a notice for the guest; cancelled
 # without one, since the booking is over or the merchant made it itself (#134); or nothing,
@@ -189,7 +197,7 @@ class Dashboard(_Model):
     next_days: tuple[DayGuests, ...]  # the 7 days starting `date`
     channels: tuple[ChannelCount, ...]  # bookings over `history`
     room: Room
-    activity: tuple[ActivityItem, ...] = Field(max_length=6)  # newest first
+    activity: tuple[ActivityItem, ...] = Field(max_length=ACTIVITY_LINES)  # newest first
 
 
 class ReservationDay(_Model):
@@ -264,7 +272,7 @@ class GuestsOutput(_Model):
 class SearchOutput(_Model):
     """`GET /search?q=`: bookings of the next 7 days by guest name or reference."""
 
-    reservations: tuple[ManagedReservation, ...] = Field(max_length=8)
+    reservations: tuple[ManagedReservation, ...] = Field(max_length=SEARCH_LIMIT)
 
 
 class Hours(_Model):
@@ -404,7 +412,7 @@ class AgentRequest(_Model):
 class AgentRequests(_Model):
     """`GET /agent/requests?date=&refused=`: newest first, 10 at most."""
 
-    requests: tuple[AgentRequest, ...] = Field(max_length=10)
+    requests: tuple[AgentRequest, ...] = Field(max_length=MAX_AGENT_REQUESTS)
 
 
 class Problem(_Model):

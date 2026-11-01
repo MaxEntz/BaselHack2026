@@ -55,6 +55,10 @@ DARK = 0.18
 # The management site also sets text on each accent made this much darker (--olive-band,
 # --brick-deep, #150).
 SHADE = 0.08
+# The mockup's contrast guard moves a colour this share of the way to black or white per step, at
+# most this many steps (`readable`, `titled`, `under`).
+STEP = 0.08
+MAX_STEPS = 40
 # Button text when the site's own doesn't read: white or near-black.
 TEXT_ON: tuple[RGB, RGB] = ((255, 255, 255), (17, 17, 17))
 MAX_RADIUS = 32
@@ -148,10 +152,10 @@ def readable(colour: RGB, bg: RGB, minimum: float) -> RGB:
     step, at most 40 steps, until `minimum` contrast."""
     towards = 0 if luminance(bg) > 0.4 else 255
     c = colour
-    for _ in range(40):
+    for _ in range(MAX_STEPS):
         if contrast(c, bg) >= minimum:
             break
-        c = tuple(round(v + (towards - v) * 0.08) for v in c)  # type: ignore[assignment]
+        c = mix(c, (towards,) * 3, STEP)
     return c
 
 
@@ -173,10 +177,10 @@ def titled(accent: RGB, bg: RGB, surface: RGB) -> RGB:
     page = (bg, surface)
     towards = 255 if luminance(bg) < DARK else 0
     c = accent
-    for _ in range(40):
+    for _ in range(MAX_STEPS):
         if all(contrast(c, b) >= TEXT_CONTRAST for b in page):
             return c
-        c = tuple(round(v + (towards - v) * 0.08) for v in c)  # type: ignore[assignment]
+        c = mix(c, (towards,) * 3, STEP)
     black, white = (0, 0, 0), (255, 255, 255)
     return max((white, black), key=lambda t: min(contrast(t, b) for b in page))
 
@@ -187,14 +191,14 @@ def under(accent: RGB, text: RGB, margin: Callable[[RGB], float]) -> RGB:
     towards = 0 if luminance(text) > luminance(accent) else 255
 
     def step(c: RGB) -> RGB:
-        return tuple(round(v + (towards - v) * 0.08) for v in c)  # type: ignore[return-value]
+        return mix(c, (towards,) * 3, STEP)
 
     c = accent
-    for _ in range(40):
+    for _ in range(MAX_STEPS):
         if reads_on(text, [c]):
             break
         c = step(c)
-    for _ in range(40):
+    for _ in range(MAX_STEPS):
         after = step(c)
         if margin(c) >= 1 or margin(after) <= margin(c) or after == c:
             break
@@ -321,7 +325,8 @@ def adjust_accents(current: Look, wanted: Mapping[str, str]) -> AccentFit:
 
 def mix(colour: RGB, other: RGB, share: float) -> RGB:
     """`colour` moved `share` of the way to `other`."""
-    return tuple(round(c + (o - c) * share) for c, o in zip(colour, other, strict=True))  # type: ignore[return-value]
+    r, g, b = (round(c + (o - c) * share) for c, o in zip(colour, other, strict=True))
+    return r, g, b
 
 
 def spread(rgb: RGB) -> int:

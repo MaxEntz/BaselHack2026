@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import generated_tools
 from agent.service import AgentService
+from agent.times import hhmm
 from builder.build import BuildEmitter, Builder, Crawl, gateway_mcp_url, publish
 from builder.cache import BuildCache
 from builder.crawl import crawl
@@ -35,7 +36,7 @@ from merchant_platform.accounts import Accounts, IssuedLink, issued
 from merchant_platform.logs import session_tag
 from merchant_platform.registry import RegistryLookup, look_store, registry_records
 from merchant_platform.sessions import Emit, RunTurn, Session
-from merchant_platform.specs import SPECS
+from merchant_platform.tool_specs import SPECS
 from merchant_platform.tools import AdminTools
 
 log = logging.getLogger("merchant_platform.assistant")
@@ -158,7 +159,7 @@ def clock_line(now: datetime) -> str:
     offset after the switch, and `block_slot` would block another hour without failing.
     """
     tz = str(now.tzinfo)
-    line = f"Today is {now:%A %Y-%m-%d}, it is {now:%H:%M} ({tz}, UTC{now:%:z})."
+    line = f"Today is {now:%A %Y-%m-%d}, it is {hhmm(now)} ({tz}, UTC{now:%:z})."
     change = next_offset_change(now)
     if change is not None:
         line += (

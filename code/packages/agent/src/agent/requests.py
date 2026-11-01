@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, tzinfo
 from typing import Any
 
+from agent.times import hhmm
 from agent.words import short_day
 from core.errors import STARTED
 
@@ -136,7 +137,7 @@ def _conflict(read: _Request, intent: str) -> tuple[str, str]:
 def _booking(starts: datetime | None, party: int | None, booking: dict[str, Any]) -> str:
     parts = []
     if starts:
-        parts += [short_day(starts.date()), f"{starts:%H:%M}"]
+        parts += [short_day(starts.date()), hhmm(starts)]
     if party:
         parts.append(_guests(party))
     table = _text(booking.get("table_label"))

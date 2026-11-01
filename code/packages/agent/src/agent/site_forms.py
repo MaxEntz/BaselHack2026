@@ -20,6 +20,7 @@ from agent import activity
 from agent.admin import update_profile
 from agent.provisioning import described_tools, one_line
 from agent.times import day_bounds, hhmm
+from agent.writes import not_a_start
 from core.availability import bookable_starts
 from core.db import AnyRow, blocked_slots_t, merchants_t, policy_t, tables_t
 from core.errors import FormProblem, InvalidInput, NotFound
@@ -189,8 +190,7 @@ async def list_blocked(conn: AsyncConnection, now: datetime, tz: ZoneInfo) -> li
     )
     local = [moment.astimezone(tz) for moment in rows]
     return [
-        BlockedTime(starts_at=moment, date=moment.date(), time=f"{moment:%H:%M}")
-        for moment in local
+        BlockedTime(starts_at=moment, date=moment.date(), time=hhmm(moment)) for moment in local
     ]
 
 
@@ -216,10 +216,7 @@ async def set_blocked(
     starts = {hhmm(moment, tz): moment for moment in bookable_starts(services, day, tz)}
     unknown = sorted(set(times) - starts.keys())
     if unknown:
-        raise InvalidInput(
-            f"{', '.join(unknown)} is not a start time on {day:%Y-%m-%d}; valid times: "
-            f"{', '.join(starts) or 'none'}"
-        )
+        raise InvalidInput(not_a_start(", ".join(unknown), day, list(starts)))
     wanted = [starts[time] for time in sorted(set(times)) if starts[time] > now]
     start, end = day_bounds(day, tz)
     in_day = (

@@ -1,11 +1,15 @@
 """`uv run python -m merchant_node`: the BATP node on BATP_HOST:BATP_PORT (127.0.0.1:4710)."""
 
 import asyncio
+import logging
 import secrets
+import signal
 import ssl
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from zoneinfo import ZoneInfo
+
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import PgAgentService
 from batp.messages import Hello, NodeIdentity
@@ -16,7 +20,11 @@ from core.logs import use_json_logs
 from merchant_node.agents import MerchantAgents
 from merchant_node.requests_log import RequestLog, log_engine
 
+log = logging.getLogger("merchant_node")
+
 NODE = NodeIdentity(id="urn:batp:node:merchant-agents", name="Sésame")
+# What systemd sends to stop the service, and Ctrl+C in a terminal.
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 MIN_TOKEN = 16
 
@@ -65,12 +73,40 @@ def token_check(settings: Settings) -> Callable[[Hello], bool]:
     return authenticate
 
 
-def main() -> None:
-    use_json_logs()
-    settings = get_settings()
-    if problems := exposure_problems(settings):
-        sys.exit("; ".join(problems))
+async def run(
+    server: NodeServer,
+    host: str,
+    port: int,
+    *,
+    tls: ssl.SSLContext | None = None,
+    engines: Sequence[AsyncEngine] = (),
+) -> None:
+    """Serve until SIGTERM or SIGINT, then stop: the sessions close, the recorders still
+    running get up to `RECORD_TIMEOUT` to write their rows, and the engines are disposed.
+
+    So a redeploy (`systemctl restart` sends SIGTERM) loses no request log row.
+    """
+    loop = asyncio.get_running_loop()
+    stopping = asyncio.Event()
+    for signum in STOP_SIGNALS:
+        loop.add_signal_handler(signum, stopping.set)
+    try:
+        await server.start(host, port, tls=tls)
+        await stopping.wait()
+        log.info("node stopping")
+    finally:
+        for signum in STOP_SIGNALS:
+            loop.remove_signal_handler(signum)
+        await server.stop()
+        for engine in engines:
+            await engine.dispose()
+
+
+async def serve(settings: Settings) -> None:
+    """The node these settings describe, until it is told to stop (`run`)."""
+    tls = tls_context(settings)
     engine = make_engine(settings.database_url)
+    records = log_engine(settings.database_url)
     service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
     agents = MerchantAgents(engine, service)
     server = NodeServer(
@@ -78,9 +114,17 @@ def main() -> None:
         handle=agents,
         authenticate=token_check(settings),
         fallback_url=agents.fallback_url,
-        record=RequestLog(log_engine(settings.database_url)),
+        record=RequestLog(records),
     )
-    asyncio.run(server.serve(settings.batp_host, settings.batp_port, tls=tls_context(settings)))
+    await run(server, settings.batp_host, settings.batp_port, tls=tls, engines=(engine, records))
+
+
+def main() -> None:
+    use_json_logs()
+    settings = get_settings()
+    if problems := exposure_problems(settings):
+        sys.exit("; ".join(problems))
+    asyncio.run(serve(settings))
 
 
 if __name__ == "__main__":

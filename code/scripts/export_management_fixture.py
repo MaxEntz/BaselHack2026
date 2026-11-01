@@ -124,16 +124,13 @@ def conversation(feed: list[tuple[str, str]], data: dict[str, Any]) -> dict[str,
     return {"merchant": data["merchant"]["slug"], "opening": items}
 
 
-def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -> dict[str, Any]:
-    now = datetime.fromisoformat(kept["now"])
-    tz = ZoneInfo(kept["merchant"]["timezone"])
-    today = now.date()
+def at(day: str | date, hhmm: str, tz: ZoneInfo) -> str:
+    """The merchant's local `day` at `hhmm`, as an ISO 8601 instant."""
+    return datetime.combine(date.fromisoformat(str(day)), time.fromisoformat(hhmm), tz).isoformat()
 
-    def at(day: str | date, hhmm: str) -> str:
-        return datetime.combine(
-            date.fromisoformat(str(day)), time.fromisoformat(hhmm), tz
-        ).isoformat()
 
+def bookings(state: dict[str, Any], tz: ZoneInfo) -> list[dict[str, Any]]:
+    """The mockup's bookings as the fixture's `reservations`, R-001 onwards in order."""
     reservations = [
         {
             "id": b["id"],
@@ -145,18 +142,21 @@ def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -
             "via": b["via"],
             "status": b["status"],
             "cancelled_by": b.get("by"),
-            "created_at": at(b["created"]["d"], b["created"]["t"]),
+            "created_at": at(b["created"]["d"], b["created"]["t"], tz),
         }
         for b in state["bookings"]
     ]
     numbers = [int(b["id"].removeprefix("R-")) for b in reservations]
     if numbers != list(range(1, len(numbers) + 1)):
         raise SystemExit("The mockup's bookings are no longer R-001, R-002, … in order")
+    return reservations
 
-    live_today = [
-        b for b in reservations if b["date"] == today.isoformat() and b["status"] == "confirmed"
-    ]
-    history = [
+
+def history(
+    state: dict[str, Any], reservations: list[dict[str, Any]], today: date
+) -> list[dict[str, Any]]:
+    """The mockup's 29 days of totals, then today's, counted from the bookings."""
+    days = [
         {
             "date": row["day"],
             "bookings": row["bookings"],
@@ -166,31 +166,43 @@ def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -
         }
         for row in state["history"]
     ]
-    history.append(
+    on_today = [b for b in reservations if b["date"] == today.isoformat()]
+    live_today = [b for b in on_today if b["status"] == "confirmed"]
+    days.append(
         {
             "date": today.isoformat(),
             "bookings": len(live_today),
             "guests": sum(b["party_size"] for b in live_today),
             "agent_guests": sum(b["party_size"] for b in live_today if b["via"] == "claude"),
-            "cancelled": sum(
-                1
-                for b in reservations
-                if b["date"] == today.isoformat() and b["status"] == "cancelled"
-            ),
+            "cancelled": sum(1 for b in on_today if b["status"] == "cancelled"),
         }
     )
-    channels = Counter(b["via"] for b in live_today)
-    for row in history[:-1]:
+    return days
+
+
+def channels(
+    days: list[dict[str, Any]], reservations: list[dict[str, Any]], today: date
+) -> list[dict[str, Any]]:
+    """Live bookings per channel: today's as booked, the days before as the seed makes them."""
+    counts = Counter(
+        b["via"]
+        for b in reservations
+        if b["date"] == today.isoformat() and b["status"] == "confirmed"
+    )
+    for row in days[:-1]:
         for _, via in demo_management.split_day(
             row["bookings"], row["guests"], row["agent_guests"]
         ):
-            channels[via] += 1
+            counts[via] += 1
+    return [{"via": via, "bookings": n} for via, n in sorted(counts.items())]
 
-    events = state["events"]  # newest first
-    activity = [
+
+def activity(events: list[dict[str, Any]], tz: ZoneInfo) -> list[dict[str, Any]]:
+    """Home's feed, newest first as the mockup keeps it."""
+    return [
         {
             "id": len(events) - n,
-            "at": at(event["day"], event["t"]),
+            "at": at(event["day"], event["t"], tz),
             "kind": KINDS[event["kind"]],
             "text": event["text"],
             "source": event["src"],
@@ -199,9 +211,14 @@ def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -
         for n, event in enumerate(events)
     ]
 
+
+def agent_requests(
+    logs: list[dict[str, Any]], kept: dict[str, Any], today: date, tz: ZoneInfo
+) -> list[dict[str, Any]]:
+    """The Agent page's requests, newest first, worded by the server."""
     fallback = kept["rules"]["fallback_url"]  # the mockup's own is an invented address
-    agent_requests = []
-    for log in state["logs"]:  # newest first
+    found = []
+    for log in logs:
         response = log["res"]
         if response.get("error", {}).get("fallback_url"):
             response = {**response, "error": {**response["error"], "fallback_url": fallback}}
@@ -217,10 +234,10 @@ def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -
             max_party_size=kept["rules"]["max_party_size"],
             tz=tz,
         )
-        agent_requests.append(
+        found.append(
             {
                 "id": int(log["key"].removeprefix("r-")),
-                "at": at(today, log["t"]),
+                "at": at(today, log["t"], tz),
                 "agent_name": "Claude",
                 "intent": log["intent"],
                 "status": log["status"],
@@ -231,12 +248,40 @@ def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -
                 "response": answer,
             }
         )
+    return found
 
-    blocked = []
-    for key in state["blocked"]:
+
+def blocked(keys: list[str], tz: ZoneInfo) -> list[dict[str, Any]]:
+    """The blocked starts (`"YYYY-MM-DD HH:MM"` in the mockup)."""
+    found = []
+    for key in keys:
         day, hhmm = key.split(" ")
-        blocked.append({"starts_at": at(day, hhmm), "date": day, "time": hhmm})
+        found.append({"starts_at": at(day, hhmm, tz), "date": day, "time": hhmm})
+    return found
 
+
+def live_booking(live: dict[str, Any]) -> dict[str, Any]:
+    """The live event of the booking the mockup makes 6 s after opening."""
+    return notification(
+        {
+            "id": live["id"],
+            "date": live["day"],
+            "time": live["time"],
+            "guest_name": live["guest"],
+            "party_size": live["party"],
+            "table_label": live["table"],
+            "via": live["via"],
+            "status": live["status"],
+        }
+    )
+
+
+def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -> dict[str, Any]:
+    """The `ManagementFixture`: the mockup's data, and what it doesn't generate from `kept`."""
+    today = datetime.fromisoformat(kept["now"]).date()
+    tz = ZoneInfo(kept["merchant"]["timezone"])
+    reservations = bookings(state, tz)
+    days = history(state, reservations, today)
     return {
         "now": kept["now"],
         "merchant": {**kept["merchant"], "owner_name": OWNER},
@@ -244,24 +289,13 @@ def fixture(state: dict[str, Any], live: dict[str, Any], kept: dict[str, Any]) -
         "tables": kept["tables"],
         "rules": kept["rules"],
         "settings": kept["settings"],
-        "history": history,
-        "channels": [{"via": via, "bookings": n} for via, n in sorted(channels.items())],
+        "history": days,
+        "channels": channels(days, reservations, today),
         "reservations": reservations,
-        "blocked": blocked,
-        "activity": activity,
-        "agent_requests": agent_requests,
-        "live_booking": notification(
-            {
-                "id": live["id"],
-                "date": live["day"],
-                "time": live["time"],
-                "guest_name": live["guest"],
-                "party_size": live["party"],
-                "table_label": live["table"],
-                "via": live["via"],
-                "status": live["status"],
-            }
-        ),
+        "blocked": blocked(state["blocked"], tz),
+        "activity": activity(state["events"], tz),
+        "agent_requests": agent_requests(state["logs"], kept, today, tz),
+        "live_booking": live_booking(live),
     }
 
 

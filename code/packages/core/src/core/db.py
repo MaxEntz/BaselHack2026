@@ -5,8 +5,11 @@ maps it to the merchant's real schema (`m_<slug>`) with `schema_translate_map`, 
 only rewrites Core constructs: never write a merchant query with `text()`.
 """
 
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, get_args
 
 from pydantic import TypeAdapter, ValidationError
@@ -29,12 +32,21 @@ from sqlalchemy import (
     select,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSTZRANGE, UUID, ExcludeConstraint
+from sqlalchemy.dialects.postgresql import (
+    ARRAY,
+    JSONB,
+    TSTZRANGE,
+    UUID,
+    ExcludeConstraint,
+    Range,
+)
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from core.availability import BusyInterval
 from core.config import get_settings
 from core.errors import InvalidInput
 from core.models import ActivityKind, ReservationStatus, Slug, Via
+from core.models.base import SLUG_MAX, SLUG_MIN
 
 MERCHANT = "merchant"
 
@@ -43,6 +55,8 @@ MERCHANT = "merchant"
 AnyRow = Row[*tuple[Any, ...]]
 
 _SLUG = TypeAdapter(Slug)
+# `schema_for` in reverse: `m_` + slug with `-` replaced by `_` (slugs have no `_`).
+_MERCHANT_SCHEMA = re.compile(rf"^m_([a-z0-9_]{{{SLUG_MIN},{SLUG_MAX}}})$")
 
 
 def make_engine(url: str | None = None, **pool: int) -> AsyncEngine:
@@ -62,6 +76,12 @@ def schema_for(slug: str) -> str:
     except ValidationError:
         raise InvalidInput(f"Invalid merchant slug: {repr(slug)[:80]}") from None
     return "m_" + slug.replace("-", "_")
+
+
+def slug_for_schema(schema: str) -> str | None:
+    """The slug whose schema is `schema` (`schema_for` in reverse); None for another schema."""
+    match = _MERCHANT_SCHEMA.match(schema)
+    return match.group(1).replace("_", "-") if match else None
 
 
 @asynccontextmanager
@@ -265,6 +285,46 @@ reservations_t = Table(
 
 # A booking's start, the lower bound of `during`, as every query selects, filters and sorts it.
 reservation_start = func.lower(reservations_t.c.during)
+# A booking that holds its table: the bookings the exclusion constraint keeps apart.
+reservation_confirmed = reservations_t.c.status == "confirmed"
+
+
+@dataclass(frozen=True)
+class BookedInterval(BusyInterval):
+    """A confirmed booking's hold on its table, with its reference and party: what Home's room
+    and a merchant's move need besides the interval."""
+
+    reservation_id: str
+    party_size: int
+
+
+async def busy_between(
+    conn: AsyncConnection, start: datetime, end: datetime
+) -> list[BookedInterval]:
+    """The confirmed bookings whose range overlaps [start, end), for the availability rules."""
+    rows = await conn.execute(
+        select(
+            reservations_t.c.id,
+            reservations_t.c.table_id,
+            reservations_t.c.during,
+            reservations_t.c.party_size,
+        ).where(reservation_confirmed, reservations_t.c.during.overlaps(Range(start, end)))
+    )
+    return [
+        BookedInterval(row.table_id, row.during.lower, row.during.upper, row.id, row.party_size)
+        for row in rows
+    ]
+
+
+async def blocked_between(conn: AsyncConnection, start: datetime, end: datetime) -> list[datetime]:
+    """The blocked start times in [start, end), by time."""
+    starts_at = blocked_slots_t.c.starts_at
+    return list(
+        await conn.scalars(
+            select(starts_at).where(starts_at >= start, starts_at < end).order_by(starts_at)
+        )
+    )
+
 
 # Live events: every write on a merchant's reservations notifies the `reservations` channel
 # (function from migration 0001). `%(fullname)s` goes through the schema translation.

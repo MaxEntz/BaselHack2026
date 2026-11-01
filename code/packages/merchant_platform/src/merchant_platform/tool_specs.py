@@ -39,7 +39,7 @@ from merchant_platform.trial import TEST_PARTY
 NOT_ONBOARDED = "No agent yet: onboard the merchant first with build_agent."
 ALREADY_ONBOARDED = "This merchant already has an agent: use the other tools to change it."
 # Studio's answers (#152), as in the mockup (documentation/design/poc-v10/sesame-studio.html).
-PUBLISHED = (
+PUBLISHED_REPLY = (
     "You're live. Agents get real answers now. The sample bookings are gone, so your list stays "
     "empty until the first guest books."
 )

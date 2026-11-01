@@ -3,10 +3,9 @@
 import asyncio
 import logging
 import secrets
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import date as Date
-from functools import partial
 from typing import Annotated
 from urllib.parse import urlsplit
 
@@ -27,6 +26,7 @@ from agent import discovery
 from core.config import Settings
 from core.db import make_engine
 from core.models import (
+    MAX_SLOTS,
     CancelOutput,
     GetAvailabilityOutput,
     GetMyReservationsOutput,
@@ -38,7 +38,7 @@ from core.models import (
 )
 from gateway import tooling
 from gateway.agent_client import AgentClient, make_agent_client
-from gateway.fallback import RejectedArguments, call_merchant, call_service, unavailable
+from gateway.fallback import RejectedArguments
 from gateway.merchant_server import MERCHANT_PATH, MerchantEndpoint, create_merchant_server
 from gateway.tooling import (
     DESTRUCTIVE,
@@ -93,11 +93,12 @@ would find. If `ignored_filters` is not empty, tell the user those preferences c
 applied. If the result contains `fallback_url`, the restaurant is not bookable here right now: \
 give that link to the user."""
 
-GET_AVAILABILITY = """\
-Get up to 3 available start times close to the requested time. Times are in Europe/Zurich. Never \
-invent availability: only propose slots returned here. If `slots` is empty, say so and offer \
-another date or time. `table_label` is indicative: don't promise a table, it is assigned at \
-booking. If the result contains `fallback_url`, give that link to the user."""
+GET_AVAILABILITY = f"""\
+Get up to {MAX_SLOTS} available start times close to the requested time. Times are in \
+Europe/Zurich. Never invent availability: only propose slots returned here. If `slots` is \
+empty, say so and offer another date or time. `table_label` is indicative: don't promise a \
+table, it is assigned at booking. If the result contains `fallback_url`, give that link to the \
+user."""
 
 CREATE_RESERVATION = f"""\
 Book a table. This takes two messages. First show the user a summary (restaurant, date, time, \
@@ -117,54 +118,57 @@ restaurant). Always relay notices to the user. A notice keeps coming back for 24
 is first returned: don't repeat one whose text you already gave the user in this conversation."""
 
 Merchant = Annotated[Slug, Field(description="Restaurant slug returned by search_merchants.")]
+Query = Annotated[
+    str,
+    Field(
+        max_length=discovery.MAX_QUERY, description="What the user asked for, in their own words."
+    ),
+]
+Near = Annotated[str | None, Field(description="City, if the user named one.")]
+SearchDay = Annotated[Date | None, Field(description="Requested day. Not used to filter yet.")]
+Filters = Annotated[
+    SearchFilters | None,
+    Field(
+        description=(
+            "The user's preferences: `tags` (vegetarian, vegan, gluten-free, halal, "
+            "kosher, terrace, kid-friendly) and `max_price`."
+        )
+    ),
+]
 
 
 def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -> MCPServer:
-    """The 6 user tools. Each one answers with its result or a `ToolError`, and never raises."""
-    mcp = MCPServer("merchant-agents", instructions=INSTRUCTIONS, middleware=[RejectedArguments()])
+    """The 6 user tools. Each one answers with its result or a `ToolError`, and never raises.
 
-    async def routed[T](tool: str, slug: str, op: Callable[[], Awaitable[T]]) -> T | ToolError:
-        find = partial(discovery.find_merchant, slug, engine=engine)
-        return await call_merchant(slug, tool, find, op, settings=settings)
+    Their bodies are `tooling.Tools`'; registered in this order, which `tools/list` keeps.
+    """
+    mcp = MCPServer("merchant-agents", instructions=INSTRUCTIONS, middleware=[RejectedArguments()])
+    tools = tooling.Tools(agent, engine, settings)
 
     @mcp.tool(title="Search restaurants", description=SEARCH_MERCHANTS, annotations=READ_ONLY)
     async def search_merchants(
-        query: Annotated[
-            str,
-            Field(
-                max_length=discovery.MAX_QUERY,
-                description="What the user asked for, in their own words.",
-            ),
-        ],
-        near: Annotated[str | None, Field(description="City, if the user named one.")] = None,
-        date: Annotated[
-            Date | None, Field(description="Requested day. Not used to filter yet.")
-        ] = None,
-        filters: Annotated[
-            SearchFilters | None,
-            Field(
-                description=(
-                    "The user's preferences: `tags` (vegetarian, vegan, gluten-free, halal, "
-                    "kosher, terrace, kid-friendly) and `max_price`."
-                )
-            ),
-        ] = None,
+        query: Query, near: Near = None, date: SearchDay = None, filters: Filters = None
     ) -> SearchMerchantsOutput | ToolError:
-        async def op() -> SearchMerchantsOutput | ToolError:
-            discovery.check_search_bounds(query, filters)
-            if down := await discovery.find_named_down_merchant(query, engine=engine):
-                return unavailable(down)
-            return await agent.search_merchants(query, near, date, filters)
+        return await tools.search_merchants(query, near, date, filters)
 
-        named = partial(discovery.find_named_merchant, query, engine=engine)
-        return await call_service("search_merchants", op, settings=settings, named=named)
+    _add_booking_tools(mcp, tools)
+
+    @mcp.tool(title="My bookings", description=GET_MY_RESERVATIONS, annotations=READ_ONLY)
+    async def get_my_reservations(guest_name: GuestName) -> GetMyReservationsOutput | ToolError:
+        return await tools.get_my_reservations(guest_name)
+
+    _add_health(mcp, engine, settings)
+    return mcp
+
+
+def _add_booking_tools(mcp: MCPServer, tools: tooling.Tools) -> None:
+    """The 4 booking tools, routed by their `merchant` argument."""
 
     @mcp.tool(title="Check availability", description=GET_AVAILABILITY, annotations=READ_ONLY)
     async def get_availability(
         merchant: Merchant, date: Day, party_size: PartySize, time: Time = None
     ) -> GetAvailabilityOutput | ToolError:
-        op = partial(tooling.availability, agent, merchant, date, party_size, time)
-        return await routed("get_availability", merchant, op)
+        return await tools.get_availability(merchant, date, party_size, time)
 
     @mcp.tool(title="Book a table", description=CREATE_RESERVATION, annotations=IDEMPOTENT_WRITE)
     async def create_reservation(
@@ -174,16 +178,13 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         guest_name: GuestName,
         idempotency_key: IdempotencyKey,
     ) -> ReservationOutput | ToolError:
-        op = partial(
-            tooling.book,
-            agent,
-            merchant=merchant,
+        return await tools.create_reservation(
+            merchant,
             starts_at=starts_at,
             party_size=party_size,
             guest_name=guest_name,
             idempotency_key=idempotency_key,
         )
-        return await routed("create_reservation", merchant, op)
 
     @mcp.tool(
         title="Change a booking", description=UPDATE_RESERVATION, annotations=IDEMPOTENT_WRITE
@@ -196,39 +197,25 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         starts_at: NewStartsAt = None,
         party_size: NewPartySize = None,
     ) -> ReservationOutput | ToolError:
-        op = partial(
-            tooling.update,
-            agent,
-            merchant=merchant,
+        return await tools.update_reservation(
+            merchant,
             reservation_id=reservation_id,
             guest_name=guest_name,
             idempotency_key=idempotency_key,
             starts_at=starts_at,
             party_size=party_size,
         )
-        return await routed("update_reservation", merchant, op)
 
     @mcp.tool(title="Cancel a booking", description=CANCEL_RESERVATION, annotations=DESTRUCTIVE)
     async def cancel_reservation(
         merchant: Merchant, reservation_id: ReservationId, guest_name: GuestName
     ) -> CancelOutput | ToolError:
-        op = partial(
-            tooling.cancel,
-            agent,
-            merchant=merchant,
-            reservation_id=reservation_id,
-            guest_name=guest_name,
+        return await tools.cancel_reservation(
+            merchant, reservation_id=reservation_id, guest_name=guest_name
         )
-        return await routed("cancel_reservation", merchant, op)
 
-    @mcp.tool(title="My bookings", description=GET_MY_RESERVATIONS, annotations=READ_ONLY)
-    async def get_my_reservations(guest_name: GuestName) -> GetMyReservationsOutput | ToolError:
-        async def op() -> GetMyReservationsOutput:
-            reservations, notices = await agent.get_my_reservations(guest_name)
-            return GetMyReservationsOutput(reservations=tuple(reservations), notices=tuple(notices))
 
-        return await call_service("get_my_reservations", op, settings=settings)
-
+def _add_health(mcp: MCPServer, engine: AsyncEngine, settings: Settings) -> None:
     @mcp.custom_route(HEALTH_PATH, methods=["GET"])  # type: ignore[untyped-decorator]
     async def health(_: Request) -> JSONResponse:
         """Demo monitoring: is the gateway up, and can it reach Postgres?"""
@@ -239,8 +226,6 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
             log.warning("database unreachable", exc_info=True)
             return JSONResponse({"status": "degraded", "database": "unreachable"}, 503)
         return JSONResponse({"status": "ok", "database": "ok"})
-
-    return mcp
 
 
 def allowed_hosts(public_url: str | None) -> list[str]:

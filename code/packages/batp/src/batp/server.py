@@ -11,7 +11,8 @@ import secrets
 import ssl
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError
 
@@ -77,6 +78,12 @@ MAX_MALFORMED = 10  # malformed frames in a row before the session is closed
 
 
 class NodeServer:
+    """A BATP node listening for agents: it opens their sessions, screens each request frame and
+    hands each request to `handle`, many in flight per session, within the limits of §10.
+
+    `stop()` closes the sessions and waits up to `RECORD_TIMEOUT` for the recorders still running.
+    """
+
     def __init__(
         self,
         *,
@@ -254,48 +261,50 @@ class NodeServer:
                 continue
             if frame is None:
                 return
-            raw_id = frame.get("id")
-            known_id = (
-                raw_id if isinstance(raw_id, str) and 0 < len(raw_id) <= MAX_REQUEST_ID else None
-            )
-            if frame.get("type") != "request" or known_id is None:
-                # No request id to answer: a session-level error frame (§6).
-                malformed += 1
-                await send(ErrorFrame(status=BAD_REQUEST, message="Not a request with a valid id"))
-                continue
-            if known_id in in_flight:
-                # Not carried out: two answers with one id couldn't be told apart (§6).
-                await send(
-                    ErrorFrame(status=BAD_REQUEST, message=f"Request {known_id} is in flight")
-                )
-                continue
-            try:
-                request = Request.model_validate(frame)
-            except ValidationError:
-                malformed += 1
-                await send(_invalid(known_id, "Invalid request: check intent, merchant and params"))
+            screened = self._screen(frame, in_flight)
+            if isinstance(screened, _Refusal):
+                malformed = _counted(malformed, screened.effect)
+                await send(screened.answer)
                 continue
             malformed = 0
-            if request.intent not in self.intents:
-                await send(_invalid(request.id, f"{request.intent} is not served by this node"))
-                continue
-            if (request.intent in ADDRESSED) != (request.merchant is not None):
-                needs = "needs a merchant" if request.intent in ADDRESSED else "takes no merchant"
-                await send(_invalid(request.id, f"{request.intent} {needs}"))
-                continue
             if len(tasks) >= self.max_in_flight:
                 # Not carried out; the caller may send it again after an earlier answer (§6).
                 log.warning(
                     "request refused: too many in flight",
-                    extra={"agent": caller[0].id, "request": request.id},
+                    extra={"agent": caller[0].id, "request": screened.id},
                 )
-                await send(_too_many(request.id))
+                await send(_too_many(screened.id))
                 continue
-            task = asyncio.create_task(self._answer(caller, request, send))
+            task = asyncio.create_task(self._answer(caller, screened, send))
             tasks.add(task)
-            in_flight.add(request.id)
+            in_flight.add(screened.id)
             task.add_done_callback(tasks.discard)
-            task.add_done_callback(_forget(in_flight, request.id))
+            task.add_done_callback(_forget(in_flight, screened.id))
+
+    def _screen(self, frame: dict[str, Any], in_flight: set[str]) -> "Request | _Refusal":
+        """The request `frame` holds, if this node carries it out; else what to answer."""
+        raw_id = frame.get("id")
+        known_id = raw_id if isinstance(raw_id, str) and 0 < len(raw_id) <= MAX_REQUEST_ID else None
+        if frame.get("type") != "request" or known_id is None:
+            # No request id to answer: a session-level error frame (§6).
+            message = "Not a request with a valid id"
+            return _Refusal(ErrorFrame(status=BAD_REQUEST, message=message), "malformed")
+        if known_id in in_flight:
+            # Not carried out: two answers with one id couldn't be told apart (§6).
+            message = f"Request {known_id} is in flight"
+            return _Refusal(ErrorFrame(status=BAD_REQUEST, message=message), "duplicate")
+        try:
+            request = Request.model_validate(frame)
+        except ValidationError:
+            message = "Invalid request: check intent, merchant and params"
+            return _Refusal(_invalid(known_id, message), "malformed")
+        if request.intent not in self.intents:
+            message = f"{request.intent} is not served by this node"
+            return _Refusal(_invalid(request.id, message), "readable")
+        if (request.intent in ADDRESSED) != (request.merchant is not None):
+            needs = "needs a merchant" if request.intent in ADDRESSED else "takes no merchant"
+            return _Refusal(_invalid(request.id, f"{request.intent} {needs}"), "readable")
+        return request
 
     async def _answer(
         self, caller: tuple[AgentIdentity, str], request: Request, send: Send
@@ -387,6 +396,27 @@ async def _deliver(send: Send, frame: BaseModel) -> bool:
     except ConnectionError:
         return False
     return True
+
+
+# What a refused frame does to the count of malformed frames in a row (§6): one more
+# (`malformed`), back to none since it was a readable request (`readable`), or no change (a
+# `duplicate` id, still in flight).
+Effect = Literal["malformed", "readable", "duplicate"]
+
+
+@dataclass(frozen=True)
+class _Refusal:
+    """A frame the node answers without carrying it out."""
+
+    answer: ErrorFrame | Response
+    effect: Effect
+
+
+def _counted(malformed: int, effect: Effect) -> int:
+    """The count of malformed frames in a row after a refusal with this `effect`."""
+    if effect == "malformed":
+        return malformed + 1
+    return 0 if effect == "readable" else malformed
 
 
 def _forget(ids: set[str], request_id: str) -> Callable[[asyncio.Task[None]], None]:
