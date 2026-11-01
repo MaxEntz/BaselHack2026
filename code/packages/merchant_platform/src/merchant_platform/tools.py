@@ -613,6 +613,8 @@ class AdminTools:
             for f, hex_ in wanted.items()
         }
         accents = {f: on_page.get(f, rgb_of(getattr(current, f))) for f in ACCENT_LABELS}
+        # A main colour stored before #209 may not read as titles yet: as the site draws it.
+        accents["accent"] = on_page.get("accent", titled(accents["accent"], bg, surface))
         on, moved = fit_text(accents, bg, surface, rgb_of(current.on_accent), movable=wanted)
         for field, asked in wanted.items():
             used = hex_of(moved.get(field, on_page[field]))
@@ -630,17 +632,19 @@ class AdminTools:
                     f"so I adjusted it to {used}."
                 )
             cards.append(_diff(ACCENT_LABELS[field], getattr(current, field), used, view="manage"))
-        for field, after in moved.items():
-            if field in wanted:
+        for field in ACCENT_LABELS:
+            after = hex_of(moved.get(field, accents[field]))
+            if field in wanted or after == getattr(current, field):
                 continue
-            changes[field] = hex_of(after)
+            changes[field] = after
             role = "main" if field == "accent" else "second"
-            texts.append(
-                f"Your {role} colour is {hex_of(after)} now, so your buttons' text reads on it too."
+            why = (
+                "your buttons' text reads on it too"
+                if field in moved
+                else "your titles read on your background"
             )
-            cards.append(
-                _diff(ACCENT_LABELS[field], getattr(current, field), hex_of(after), view="manage")
-            )
+            texts.append(f"Your {role} colour is {after} now, so {why}.")
+            cards.append(_diff(ACCENT_LABELS[field], getattr(current, field), after, view="manage"))
         if hex_of(on) != current.on_accent:
             changes["on_accent"] = hex_of(on)
             colour = "white" if on == TEXT_ON[0] else "near-black"

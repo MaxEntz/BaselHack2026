@@ -156,6 +156,20 @@ def test_fit_text_moves_the_colour_the_merchant_changed() -> None:
     assert contrast(moved["accent_2"], bg) >= 3
 
 
+def test_fit_text_tries_the_colour_just_picked_before_every_colour() -> None:
+    grey, blue, white = rgb_of("#797366"), rgb_of("#579bbd"), (255, 255, 255)
+    accents = {"accent": grey, "accent_2": blue}
+    # With the blue just picked: white text, on the blue made darker; the grey stays.
+    assert fit_text(accents, white, white, rgb_of("#f4f2ea"), movable=["accent_2"]) == (
+        white,
+        {"accent_2": rgb_of("#447993")},
+    )
+    # With nothing picked, the cream text stays and both colours move.
+    text, moved = fit_text(accents, white, white, rgb_of("#f4f2ea"), movable=[])
+    assert text == rgb_of("#f4f2ea")
+    assert set(moved) == {"accent", "accent_2"}
+
+
 def test_fit_text_moves_the_other_colour_when_that_alone_cant_do_it() -> None:
     green, navy, bg = (79, 154, 74), (31, 58, 95), (247, 242, 232)
     near_black, white = (17, 17, 17), (255, 255, 255)
