@@ -30,6 +30,7 @@ from builder.look import (
     hex_of,
     readable,
     rgb_of,
+    titled,
 )
 from builder.look import describe as describe_look
 from core.errors import AgentError, AgentUnavailable, InvalidInput, PartyTooLarge
@@ -599,14 +600,20 @@ class AdminTools:
         texts: list[str],
         cards: list[DiffCard],
     ) -> None:
-        """The accents the merchant asked for: each reads on the page at 3:1, and the buttons'
-        text at 4.5:1 on both accents and their darker shades (#209). The text changes, or a
+        """The accents the merchant asked for: the main one reads as the titles' colour (4.5:1 on
+        the page and the cards), the second at 3:1, and the buttons' text at 4.5:1 on both
+        accents and their darker shades (#209). The text changes, or a
         colour moves away from it, only when it doesn't read: the colour just picked first, the
         other one when that alone can't do it. Each change is said."""
-        bg = rgb_of(current.bg)
-        on_page = {f: readable(rgb_of(hex_), bg, ACCENT_CONTRAST) for f, hex_ in wanted.items()}
+        bg, surface = rgb_of(current.bg), rgb_of(current.surface)
+        on_page = {
+            f: titled(rgb_of(hex_), bg, surface)
+            if f == "accent"
+            else readable(rgb_of(hex_), bg, ACCENT_CONTRAST)
+            for f, hex_ in wanted.items()
+        }
         accents = {f: on_page.get(f, rgb_of(getattr(current, f))) for f in ACCENT_LABELS}
-        on, moved = fit_text(accents, bg, rgb_of(current.on_accent), movable=wanted)
+        on, moved = fit_text(accents, bg, surface, rgb_of(current.on_accent), movable=wanted)
         for field, asked in wanted.items():
             used = hex_of(moved.get(field, on_page[field]))
             changes[field] = used

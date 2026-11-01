@@ -95,8 +95,9 @@ function stroke(color: string): string {
 /**
  * The accent, its band and the text on them, at 4.5:1 whatever the merchant picked (#153): the
  * accent moves away from the page (darker, or lighter on a dark page) until titles in it read on
- * the page and the cards, then further if no text colour reads on both it and its band. The
- * second accent is the platform's to check (#209).
+ * the page and the cards, then further if no text colour reads on both it and its band. A look
+ * the builder stored since #209 already reads this way, so nothing moves and the text stays
+ * the one checked on the second accent too.
  */
 function accent(look: Look): { olive: string; band: string; on: string } {
   const away = isDark(look.bg) ? lighter : darker;

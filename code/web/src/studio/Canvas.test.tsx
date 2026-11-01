@@ -21,7 +21,7 @@ const LOOK: Look = {
   line: "#d5d2c3",
   ink: "#47522f",
   muted: "#5f6a45",
-  accent: "#727f55",
+  accent: "#616c48",
   accent_2: "#935046",
   on_accent: "#f4f2ea",
   display_font: "Fraunces Soft",
