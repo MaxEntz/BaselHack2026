@@ -133,7 +133,35 @@ export type SitePage = { path: string; width: number; height: number; image: str
 export type PublicSite = { pages: SitePage[] };
 // POST /merchants/<slug>/agent/try: both frames, and the node's answer (404 until published).
 export type AgentIntent = "DISCOVER" | "AVAILABILITY" | "BOOK" | "AMEND" | "CANCEL" | "RECALL" | "PING";
-export type AgentTryOutput = { request: string; response: string; status: number };
+export type AgentTryOutput = {
+  request: string;
+  response: string;
+  status: number;
+  // A TALK's 200 answer, read from its frame (#253).
+  talk?: TalkOutput | null;
+};
+
+// One message to the merchant's agent. `confirm` names a `pending` proposal of the conversation.
+export type AgentTalkInput = { message: string; conversation?: string | null; confirm?: string | null };
+
+// A write the agent proposes and won't run before a `confirm` that names it (#247).
+export type PendingAction = {
+  id: string;
+  action: "book" | "change" | "cancel";
+  summary: string;
+  expires_at: string;
+};
+
+// Only `reply` is the model's text; code builds every other field from tool results.
+export type TalkOutput = {
+  conversation: string;
+  reply: string;
+  slots: { starts_at: string; table_label: string }[];
+  pending: PendingAction | null;
+  reservation: { id: string; starts_at: string; party_size: number; table_label: string; status: string; guest_name: string } | null;
+  fallback_url: string | null;
+  tools_called: string[];
+};
 
 export type BuildAgentOutput = {
   profile: MerchantProfile;
