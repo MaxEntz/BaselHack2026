@@ -7,7 +7,6 @@ dependencies = [
     "core",
     "agent",
     "playwright>=1.64",
-    "openai>=3.42",
 ]
 
 [build-system]

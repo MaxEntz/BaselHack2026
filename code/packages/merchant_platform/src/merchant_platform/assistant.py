@@ -6,7 +6,7 @@ crawled website text.
 
 import logging
 from collections.abc import Callable, Sequence
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from functools import partial
 from zoneinfo import ZoneInfo
 
@@ -15,12 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import generated_tools
 from agent.service import AgentService
+from agent.times import clock_line
 from builder.build import BuildEmitter, Builder, Crawl, gateway_mcp_url, publish
 from builder.cache import BuildCache
 from builder.crawl import crawl
-from builder.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
 from builder.look import read_look
 from core.config import Settings
+from core.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
 from core.models import (
     BuildAgentInput,
     BuildAgentOutput,
@@ -133,39 +134,6 @@ STATUS_RULE = (
     "The status can change outside this conversation (the Publish button, the Agent page's "
     "pause switch): this line is current and wins over anything said earlier."
 )
-
-# How far ahead the prompt looks for the next clock change.
-OFFSET_HORIZON_DAYS = 400
-
-
-def next_offset_change(now: datetime) -> datetime | None:
-    """Noon of the first local day, from today, whose UTC offset differs from `now`'s.
-
-    Today counts: before 03:00 on the night of a switch, tonight's services are already in
-    the new offset. None when the time zone keeps one offset over the horizon.
-    """
-    for days in range(OFFSET_HORIZON_DAYS + 1):
-        day = datetime.combine(now.date() + timedelta(days=days), time(12), now.tzinfo)
-        if day.utcoffset() != now.utcoffset():
-            return day
-    return None
-
-
-def clock_line(now: datetime) -> str:
-    """Today's date, time and UTC offset, and the next offset change (#83).
-
-    The admin tools take times with their offset; a model guessing it would send a summer
-    offset after the switch, and `block_slot` would block another hour without failing.
-    """
-    tz = str(now.tzinfo)
-    line = f"Today is {now:%A %Y-%m-%d}, it is {now:%H:%M} ({tz}, UTC{now:%:z})."
-    change = next_offset_change(now)
-    if change is not None:
-        line += (
-            f" The offset becomes UTC{change:%:z} on {change:%A %Y-%m-%d}: use it for times"
-            " from that date on."
-        )
-    return line + "\n"
 
 
 def system_prompt(

@@ -9,7 +9,8 @@ from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from agent.service import AgentService, MerchantCancellation
-from builder.llm import (
+from core.errors import NotFound
+from core.llm import (
     LLMClient,
     LLMReply,
     LLMUnavailable,
@@ -18,7 +19,6 @@ from builder.llm import (
     ToolCall,
     ToolSpec,
 )
-from core.errors import NotFound
 from core.models import (
     AdminReservationRow,
     BuildAgentInput,

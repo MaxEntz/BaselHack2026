@@ -18,8 +18,8 @@ from pydantic import BaseModel, ValidationError
 
 from agent.service import AgentService
 from builder.build import AlreadyProvisioned
-from builder.llm import ToolCall
 from core.errors import AgentError, AgentUnavailable, InvalidInput
+from core.llm import ToolCall
 from core.models import (
     BuildAgentInput,
     BuildAgentOutput,

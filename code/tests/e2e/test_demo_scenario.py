@@ -35,9 +35,9 @@ from agent import provisioning
 from builder.crawl import CrawlResult, StepEmitter
 from builder.crawl import Page as CrawledPage
 from builder.extract import TOOL_NAME
-from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
 from core.config import Settings
 from core.db import make_engine
+from core.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
 from core.models import StepEvent
 from merchant_platform.api import default_app
 from tests.e2e.conftest import (

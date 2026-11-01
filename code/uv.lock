@@ -145,7 +145,6 @@ source = { editable = "packages/builder" }
 dependencies = [
     { name = "agent" },
     { name = "core" },
-    { name = "openai" },
     { name = "playwright" },
 ]
 
@@ -153,7 +152,6 @@ dependencies = [
 requires-dist = [
     { name = "agent", editable = "packages/agent" },
     { name = "core", editable = "packages/core" },
-    { name = "openai", specifier = ">=3.42" },
     { name = "playwright", specifier = ">=1.64" },
 ]
 
@@ -254,6 +252,7 @@ version = "0.1.0"
 source = { editable = "packages/core" }
 dependencies = [
     { name = "alembic" },
+    { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -263,6 +262,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.20" },
+    { name = "openai", specifier = ">=3.42" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.14" },
     { name = "pydantic-settings", specifier = ">=2.16" },

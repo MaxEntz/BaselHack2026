@@ -9,6 +9,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2",
     "psycopg[binary]>=3.2",
     "alembic>=1.20",
+    "openai>=3.42",
 ]
 
 [build-system]

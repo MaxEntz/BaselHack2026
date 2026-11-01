@@ -18,13 +18,13 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PositiveInt, Validat
 
 from agent.provisioning import MAX_DEFAULT_SEATS, TEMPLATE, default_tables
 from builder.crawl import CrawlResult
-from builder.llm import LLMClient, Message, ToolSpec
 from builder.look import describe as describe_look
 from builder.look import read_look
 from builder.slugs import slugify
 from builder.urls import PageKey, page_key, page_path, same_site
 from builder.words import joined
 from core.errors import InvalidInput
+from core.llm import LLMClient, Message, ToolSpec
 from core.models import (
     MAX_KNOWLEDGE_BYTES,
     MAX_KNOWLEDGE_ITEMS,
