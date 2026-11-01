@@ -221,6 +221,7 @@ make test                               # uv run pytest (testcontainers starts P
 make lint                               # ruff check, ruff format --check, mypy
 make gateway    # MCP server        -> http://localhost:8001/mcp
 make node       # BATP node         -> batp://127.0.0.1:4710
+make guest MESSAGE="…"  # a guest's own AI agent talking to the merchants' agents over BATP
 make platform   # Platform API      -> http://localhost:8002
 make web        # merchant chat and management site -> http://localhost:5173
 make sites      # demo websites     -> http://localhost:8080, :8081, :8082
