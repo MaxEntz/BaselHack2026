@@ -14,9 +14,9 @@ from openai import Timeout
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import AgentService, PgAgentService
-from agent.talk import TURN_SECONDS, MerchantAgent, registry_merchants
+from agent.talk import MerchantAgent, registry_merchants
 from batp.messages import Hello, NodeIdentity
-from batp.server import STOP_GRACE, NodeServer
+from batp.server import INTENT_TIMEOUTS, STOP_GRACE, NodeServer
 from core.config import Settings, get_settings
 from core.db import make_engine
 from core.llm import OpenAIClient, openai_connection
@@ -31,7 +31,8 @@ NODE = NodeIdentity(id="urn:batp:node:merchant-agents", name="Sésame")
 STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 MIN_TOKEN = 16
-# A model call that stops sending gives up after 20 s, within the node's deadline for `TALK`.
+# A model call that stops sending gives up after 20 s, like the agent's whole turn
+# (`agent.talk.TURN_SECONDS`): both stay under the node's 25 s for `TALK` (`TALK_TIMEOUT`).
 LLM_TIMEOUT = Timeout(20, connect=5)
 
 
@@ -132,17 +133,24 @@ async def serve(settings: Settings) -> None:
     records = log_engine(settings.database_url)
     service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
     agents = MerchantAgents(engine, service, merchant_agent(settings, engine, service))
-    server = NodeServer(
+    server = node_server(settings, agents, RequestLog(records))
+    await run(server, settings.batp_host, settings.batp_port, tls=tls, engines=(engine, records))
+
+
+def node_server(settings: Settings, agents: MerchantAgents, record: RequestLog) -> NodeServer:
+    """The BATP server around the merchants' agents, with the deadlines of `batp.server`."""
+    return NodeServer(
         node=NODE,
         handle=agents,
         authenticate=token_check(settings),
         fallback_url=agents.fallback_url,
-        record=RequestLog(records),
-        # Never shorter than what a caller waits for: the gateway's whole tool call, and a
-        # `TALK` turn, whose answer may report a write already made.
-        stop_grace=max(STOP_GRACE, settings.agent_timeout_ms / 1000, TURN_SECONDS),
+        record=record,
+        intent_timeouts=INTENT_TIMEOUTS,
+        # Never shorter than an answer in flight may take: the gateway's whole tool call, and
+        # each intent's own deadline, `TALK`'s among them, whose answer may report a write
+        # already made.
+        stop_grace=max(STOP_GRACE, settings.agent_timeout_ms / 1000, *INTENT_TIMEOUTS.values()),
     )
-    await run(server, settings.batp_host, settings.batp_port, tls=tls, engines=(engine, records))
 
 
 def main() -> None:

@@ -11,13 +11,19 @@ Then answer the agent's questions at `you>`; an empty line ends. Without `BATP_U
 to `batp://127.0.0.1:4710` (`make node`). On the team server, port 4710 stays on loopback and
 SSH forwarding is off, so it runs there (documentation/runbooks/demo.md). When the node has
 `BATP_TOKENS`, this agent needs its own entry, `urn:batp:agent:sesame-guest`: the script reads
-its token there.
+its token there, and sends it to a node on this machine only, since `batp://` has no TLS.
+
+A node that can't be reached, a lost session or a model outage are printed, never a traceback;
+a `TALK` lost under its answer is sent once more with the same key, and the node replays it.
 """
 
 import argparse
 import asyncio
+import contextlib
 import json
 import sys
+import threading
+import unicodedata
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime
 from typing import Any
@@ -28,12 +34,21 @@ from openai import Timeout
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent.times import clock_line
-from batp.client import BatpClient, parse_batp_url
+from batp.client import BatpClient, BatpRejected, parse_batp_url
 from batp.codec import encode
 from batp.messages import PROTOCOL_VERSION, AgentIdentity, Hello, Intent
 from core.config import Settings
-from core.llm import LLMClient, Message, OpenAIClient, ToolCall, ToolSpec, openai_connection
-from core.models import Slug, TalkMessage
+from core.errors import AgentUnavailable
+from core.llm import (
+    LLMClient,
+    LLMUnavailable,
+    Message,
+    OpenAIClient,
+    ToolCall,
+    ToolSpec,
+    openai_connection,
+)
+from core.models import Slug, TalkMessage, TalkOutput
 
 GUEST = AgentIdentity(
     id="urn:batp:agent:sesame-guest",
@@ -42,7 +57,11 @@ GUEST = AgentIdentity(
     operator="merchant-agents",
 )
 NODE_URL = "batp://127.0.0.1:4710"
+# `batp://` has no TLS: the token goes only to a node on this machine.
+LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 MAX_STEPS = 8
+# One request with its answer: above the node's 25 s for `TALK`, whose 503 then arrives first.
+EXCHANGE_SECONDS = 30.0
 LLM_TIMEOUT = Timeout(60, connect=5)
 YES = frozenset({"yes", "y", "oui", "ja"})
 # What the script, not the model, sends with `confirm` once the person said yes.
@@ -123,12 +142,17 @@ class GuestAgent:
         """The person's message, then the model's calls until it answers them in words."""
         self._history.append({"role": "user", "content": text})
         for _ in range(MAX_STEPS):
-            reply = await self._llm.respond(
-                instructions=PROMPT.format(clock=clock_line(datetime.now(self._tz))),
-                tools=SPECS,
-                history=self._history,
-                on_text=_ignore,
-            )
+            try:
+                reply = await self._llm.respond(
+                    instructions=PROMPT.format(clock=clock_line(datetime.now(self._tz))),
+                    tools=SPECS,
+                    history=self._history,
+                    on_text=_ignore,
+                )
+            except LLMUnavailable as error:
+                # What the merchant's agent did is already printed, by code (`_talk`).
+                self._show(f"\nagent> (the model is unavailable: {error}; try again)\n")
+                return ""
             self._history.append(reply.as_message())
             if not reply.tool_calls:
                 self._show(f"\nagent> {reply.text}\n")
@@ -154,41 +178,72 @@ class GuestAgent:
         return _json({"error": "invalid_input", "message": f"No tool named {call.name!r}"})
 
     async def _talk(self, args: TalkArgs) -> dict[str, Any]:
-        answer = await self._send(args.merchant, args.message)
-        pending = answer.get("pending")
-        if not pending:
+        answer, output = await self._send(args.merchant, args.message)
+        if output is None or output.pending is None:
             return answer
-        said = (await self._ask(f"\n{pending['summary']}\nConfirm? [yes/no] ")).strip().lower()
-        if said not in YES:
+        pending = output.pending
+        said = await self._ask(f"\n{_printable(pending.summary)}\nConfirm? [yes/no] ")
+        if said.strip().lower() not in YES:
             return answer | {"guest_answer": "no: nothing was confirmed"}
-        confirmed = await self._send(args.merchant, CONFIRMING, confirm=pending["id"])
+        confirmed, done = await self._send(args.merchant, CONFIRMING, confirm=pending.id)
+        if done is not None and done.reservation is not None:
+            booking = done.reservation
+            self._show(f"✓ {booking.id}: {booking.status}, {booking.party_size} people")
         return answer | {"guest_answer": "yes", "after_confirm": confirmed}
 
     async def _send(
         self, merchant: str, message: str, confirm: str | None = None
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], TalkOutput | None]:
+        """One `TALK`, sent again once with the same key if the session is lost under it: the
+        node then replays its answer (PROTOCOL.md §7), so a lost `confirm` can't book twice."""
         params: dict[str, Any] = {"message": message, "idempotency_key": str(uuid4())}
         if merchant in self._conversations:
             params["conversation"] = self._conversations[merchant]
         if confirm is not None:
             params["confirm"] = confirm
-        answer = await self._exchange("TALK", merchant, params)
-        if "conversation" in answer:
-            self._conversations[merchant] = answer["conversation"]
-        elif answer.get("error") == "not_found":
-            # Expired or forgotten (a restart): the next message starts a new one.
-            self._conversations.pop(merchant, None)
-        return answer
+        answer = await self._exchange("TALK", merchant, params, attempts=2)
+        if "error" in answer:
+            if answer["error"] == "not_found":
+                # Expired or forgotten (a restart): the next message starts a new one.
+                self._conversations.pop(merchant, None)
+            return answer, None
+        try:
+            output = TalkOutput.model_validate(answer)
+        except ValidationError:
+            self._show("✗ The merchant's agent sent an answer outside the contract")
+            return {"error": "agent_unavailable", "message": "Unreadable answer"}, None
+        self._conversations[merchant] = output.conversation
+        return answer, output
 
     async def _exchange(
+        self, intent: Intent, merchant: str | None, params: dict[str, Any], attempts: int = 1
+    ) -> dict[str, Any]:
+        """One request, its frames printed: its result, or its error as the model reads it. A
+        lost session or no answer in time is `agent_unavailable` too, after `attempts` sends."""
+        for attempt in range(1, attempts + 1):
+            try:
+                answer = await self._frames(intent, merchant, params)
+            except (AgentUnavailable, TimeoutError) as error:
+                # `SessionLost` and `BatpRejected` (a wrong token: the node's reason) included.
+                problem = str(error) or f"No answer within {EXCHANGE_SECONDS:.0f} s"
+                self._show(f"✗ {intent}: {problem}")
+                if isinstance(error, BatpRejected) or attempt == attempts:
+                    return {"error": "agent_unavailable", "message": problem}
+                continue
+            if fallback := answer.get("fallback_url"):
+                self._show(f"  Book on the restaurant's own page: {fallback}")
+            return answer
+        raise AssertionError("attempts must be at least 1")
+
+    async def _frames(
         self, intent: Intent, merchant: str | None, params: dict[str, Any]
     ) -> dict[str, Any]:
-        """One request, both frames printed: its result, or its error as the model reads it."""
         if not self._said_hello:
             token = "•••" if self._token_set else None
             hello = Hello(batp=PROTOCOL_VERSION, agent=GUEST, token=token)
             self._show(f"→ {_line(hello)}")
-        request, response = await self._client.exchange(intent, merchant, params)
+        async with asyncio.timeout(EXCHANGE_SECONDS):
+            request, response = await self._client.exchange(intent, merchant, params)
         if not self._said_hello and self._client.welcome is not None:
             self._show(f"← {_line(self._client.welcome)}")
             self._said_hello = True
@@ -202,6 +257,11 @@ class GuestAgent:
                 else error
             )
         return response.result or {}
+
+
+def _printable(text: str) -> str:
+    """What the node sent, without the control characters a terminal would act on."""
+    return "".join(c for c in text if c == "\n" or not unicodedata.category(c).startswith("C"))
 
 
 def _line(frame: BaseModel) -> str:
@@ -231,13 +291,29 @@ async def chat(agent: GuestAgent, first: str, ask: Ask) -> None:
 
 
 async def _input(prompt: str) -> str:
-    try:
-        return await asyncio.to_thread(input, prompt)
-    except EOFError:
-        return ""
+    """A line from the terminal, read on a daemon thread: Ctrl-C ends the script while it waits,
+    where `asyncio.to_thread` would wait for the line first."""
+    loop = asyncio.get_running_loop()
+    line: asyncio.Future[str] = loop.create_future()
+
+    def settle(text: str) -> None:
+        if not line.done():
+            line.set_result(text)
+
+    def read() -> None:
+        try:
+            text = input(prompt)
+        except EOFError:
+            text = ""
+        # The loop may have ended meanwhile.
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(settle, text)
+
+    threading.Thread(target=read, daemon=True).start()
+    return await line
 
 
-def parser() -> argparse.ArgumentParser:
+def cli() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="A guest's own AI agent, speaking BATP.")
     parser.add_argument("message", help='what the guest wants, e.g. "Table for 2 tonight at 8pm"')
     parser.add_argument("--url", help=f"the node, batp://host[:port] (BATP_URL, else {NODE_URL})")
@@ -245,7 +321,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 async def run(argv: Sequence[str] | None = None) -> int:
-    args = parser().parse_args(argv)
+    args = cli().parse_args(argv)
     settings = GuestSettings()
     connection = openai_connection(settings, LLM_TIMEOUT)
     if connection is None:
@@ -257,6 +333,13 @@ async def run(argv: Sequence[str] | None = None) -> int:
     host, port = parse_batp_url(args.url or settings.batp_url or NODE_URL)
     secret = settings.batp_tokens.get(GUEST.id)
     token = secret.get_secret_value() if secret else None
+    if token is not None and host not in LOOPBACK:
+        print(
+            f"Not sending the token to {host}: batp:// has no TLS. Run this on the node's "
+            "machine (documentation/runbooks/demo.md).",
+            file=sys.stderr,
+        )
+        return 2
     async with BatpClient(host, port, GUEST, token=token, connect_timeout=5) as client:
         agent = GuestAgent(
             llm, client, _input, print, ZoneInfo(settings.merchant_tz), token_set=token is not None
@@ -266,7 +349,10 @@ async def run(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    return asyncio.run(run(argv))
+    try:
+        return asyncio.run(run(argv))
+    except KeyboardInterrupt:
+        return 130
 
 
 if __name__ == "__main__":

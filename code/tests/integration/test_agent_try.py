@@ -4,6 +4,7 @@ platform's route. The buttons send the intents that address no merchant; booking
 
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -104,9 +105,9 @@ ANSWER = {
 }
 
 
-@pytest.fixture
-async def talking_node(
-    engine: AsyncEngine, service: PgAgentService
+@asynccontextmanager
+async def scripted_node(
+    engine: AsyncEngine, service: PgAgentService, answer: dict[str, Any]
 ) -> AsyncIterator[tuple[NodeServer, list[Request]]]:
     """A real node on the wire: the merchant's rules are real, the agent's answer is scripted."""
     agents = MerchantAgents(engine, service)
@@ -117,14 +118,24 @@ async def talking_node(
             return await agents(agent, request)
         seen.append(request)
         await agents._merchant(request)
-        return ANSWER
+        return answer
 
     server = NodeServer(
         node=NODE, handle=handle, authenticate=lambda _: True, fallback_url=agents.fallback_url
     )
     await server.start("127.0.0.1", 0)
-    yield server, seen
-    await server.stop()
+    try:
+        yield server, seen
+    finally:
+        await server.stop()
+
+
+@pytest.fixture
+async def talking_node(
+    engine: AsyncEngine, service: PgAgentService
+) -> AsyncIterator[tuple[NodeServer, list[Request]]]:
+    async with scripted_node(engine, service, ANSWER) as scripted:
+        yield scripted
 
 
 async def test_a_message_gets_404_before_publishing_and_the_agents_answer_after(
@@ -158,6 +169,42 @@ async def test_a_message_gets_404_before_publishing_and_the_agents_answer_after(
     assert (sent["params"]["conversation"], sent["params"]["confirm"]) == ("c-1", "p-1")
     assert sent["params"]["idempotency_key"].startswith("studio-try-")
     assert len(seen) == 2
+
+
+# A confirm's answer outside `TalkOutput`: an `expires_at` with no time zone, and a booking made.
+OFF_SHAPE = {
+    **ANSWER,
+    "reply": "Booked: R-042.",
+    "pending": {
+        "id": "p-1",
+        "action": "book",
+        "summary": "Book a table for 2.",
+        "expires_at": "2026-11-01T20:00:00",
+    },
+    "reservation": {"id": "R-042", "status": "confirmed"},
+}
+
+
+async def test_an_answer_outside_the_contract_keeps_its_frames(
+    engine: AsyncEngine, service: PgAgentService, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    async with (
+        scripted_node(engine, service, OFF_SHAPE) as (server, _),
+        page(service, slug, f"batp://127.0.0.1:{server.port}") as http,
+    ):
+        response = await http.post(
+            f"/merchants/{slug}/agent/try",
+            json={"message": "Yes", "conversation": "c-1", "confirm": "p-1"},
+        )
+
+    # The owner still sees what their agent sent, the booking included: no bare 500.
+    assert response.status_code == 200, response.text
+    frames = AgentTryOutput.model_validate(response.json())
+    assert frames.status == 200
+    assert frames.talk is None
+    assert json.loads(frames.response)["result"] == OFF_SHAPE
+    assert json.loads(frames.request)["params"]["confirm"] == "p-1"
 
 
 async def test_a_message_needs_its_bounds_and_a_confirm_its_conversation(

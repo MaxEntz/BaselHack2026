@@ -1,21 +1,24 @@
 """A scripted model for the merchants' AI agent (#246), and a real BATP node serving it: the
 agent's tests, the node's (#249) and the guest agent's (#252)."""
 
+import asyncio
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.service import PgAgentService
 from agent.talk import MerchantAgent, registry_merchants
 from batp.client import BatpClient
 from batp.messages import AgentIdentity
-from batp.server import NodeServer
+from batp.server import TALK_TIMEOUT, NodeServer
 from core.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
+from core.models import TalkOutput
 from merchant_node.__main__ import NODE
 from merchant_node.agents import MerchantAgents
 from merchant_node.limits import TalkLimits
@@ -75,6 +78,37 @@ class ScriptedLLM:
         return reply
 
 
+class HangingLLM(ScriptedLLM):
+    """After `hang()`, its next call never answers: the caller cuts the turn short."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.hanging = asyncio.Event()
+        self._hang = False
+
+    def hang(self) -> None:
+        self._hang = True
+
+    async def respond(self, **kwargs: Any) -> LLMReply:
+        if not self._hang:
+            return await super().respond(**kwargs)
+        self._hang = False
+        self.calls.append(kwargs)
+        self.hanging.set()
+        await asyncio.Event().wait()
+        raise AssertionError("never answers")
+
+
+async def cut_short(llm: HangingLLM, talking: Awaitable[TalkOutput]) -> None:
+    """Cancels the turn while the model is called, as the node does past its deadline, on a
+    closed session or a stop."""
+    task = asyncio.ensure_future(talking)
+    await llm.hanging.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
 class Node:
     """A node serving `MerchantAgents` with the agent on `llm` (none: no OPENAI_API_KEY), on
     `clock` (by default `NOW`; the e2e tests pass the real one)."""
@@ -84,6 +118,7 @@ class Node:
         engine: AsyncEngine,
         llm: ScriptedLLM | None,
         limits: TalkLimits | None = None,
+        talk_seconds: float = TALK_TIMEOUT,
         *,
         clock: Callable[[], datetime] = lambda: NOW,
     ) -> None:
@@ -98,6 +133,7 @@ class Node:
             authenticate=lambda hello: hello.token == TOKEN,
             fallback_url=agents.fallback_url,
             record=RequestLog(engine),
+            intent_timeouts={"TALK": talk_seconds},
         )
 
     def client(self, agent: AgentIdentity = GATEWAY) -> BatpClient:

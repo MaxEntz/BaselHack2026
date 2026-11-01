@@ -139,6 +139,15 @@ def test_demo_mode_seeds_every_merchant_but_le_petit_zinc(registry: FakeRegistry
     assert registry.engine.disposed
 
 
+def test_what_the_agent_knows_points_to_the_public_sites_with_a_sites_domain() -> None:
+    profile = seed.load_profile("le-petit-zinc", "sites.example")
+
+    assert profile.knowledge is not None
+    urls = {str(item.source_url) for item in profile.knowledge.items}
+    assert "https://le-petit-zinc.sites.example/carte.html" in urls
+    assert not [url for url in urls if "localhost" in url]
+
+
 def test_seeded_links_stay_local_without_a_sites_domain(registry: FakeRegistry) -> None:
     assert seed.main(["--except", "le-petit-zinc"]) == 0
 

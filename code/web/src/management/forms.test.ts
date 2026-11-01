@@ -21,6 +21,14 @@ describe("services", () => {
     expect(lastSeating({ start: "18:30", end: "" })).toBeNull();
     expect(startsOf({ start: "18:30", end: "19:00" })).toEqual([]);
   });
+
+  // The server's rule (AGENTS.md §6): the last seating is on the 30-minute grid (#220).
+  it("puts the last table on the grid, as the starts", () => {
+    const service = { start: "19:00", end: "21:45" };
+    expect(startsOf(service).at(-1)).toBe("20:30");
+    expect(lastSeating(service)).toBe("20:30");
+    expect(lastSeating({ start: "19:00", end: "20:00" })).toBe("19:00");
+  });
 });
 
 describe("form problems", () => {

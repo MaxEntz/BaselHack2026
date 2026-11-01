@@ -9,8 +9,11 @@ anyone, and a yes the owner confirms makes a real booking under that name.
 """
 
 import asyncio
+import logging
 from typing import Any
 from uuid import uuid4
+
+from pydantic import ValidationError
 
 from batp.client import BatpClient, parse_batp_url
 from batp.codec import encode
@@ -31,6 +34,8 @@ NO_NODE = "Sending frames needs the BATP node, and this platform has no BATP_URL
 NO_ANSWER = "Your agent took too long to answer. Try again."
 # The node gives a model turn 25 s (PROTOCOL.md): this only covers a node that never answers.
 TALK_WAIT_S = 30
+
+log = logging.getLogger("merchant_platform.agent_try")
 
 
 async def try_intent(settings: Settings, slug: str, intent: AgentTryIntent) -> AgentTryOutput:
@@ -74,15 +79,24 @@ async def _exchange(
         request, response = await client.exchange(
             intent, merchant, params, request_id=f"r-{uuid4().hex[:6]}"
         )
-    talk = None
-    if intent == "TALK" and response.status == 200:
-        talk = TalkOutput.model_validate(response.result)
+    talk = _talk(response.result) if intent == "TALK" and response.status == 200 else None
     return AgentTryOutput(
         request=encode(request).decode().removesuffix("\n"),
         response=encode(response).decode().removesuffix("\n"),
         status=response.status,
         talk=talk,
     )
+
+
+def _talk(result: dict[str, Any] | None) -> TalkOutput | None:
+    """The answer for the page, or `None` when it isn't a `TalkOutput`: the frames still show
+    what the agent sent, a booking it made included, rather than the route failing."""
+    try:
+        return TalkOutput.model_validate(result)
+    except ValidationError as error:
+        fields = sorted({".".join(map(str, e["loc"]))[:60] for e in error.errors()})
+        log.warning("talk_answer_off_contract", extra={"fields": fields[:5]})
+        return None
 
 
 def _params_for(slug: str, intent: AgentTryIntent) -> dict[str, Any]:

@@ -12,6 +12,16 @@ async function giveAddress(page: Page) {
   await expect(page.getByText(`${HOST}`, { exact: true }).first()).toBeVisible();
 }
 
+// An element's scrollTop once it has held still for 300 ms (a smooth scroll is over).
+async function settledScrollTop(element: Element): Promise<number> {
+  let last = -1;
+  while (element.scrollTop !== last) {
+    last = element.scrollTop;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  return last;
+}
+
 async function buildSite(page: Page) {
   await giveAddress(page);
   await page.getByRole("button", { name: "Skip this, use the defaults" }).click();
@@ -30,6 +40,26 @@ test("an Enter that ends an IME composition doesn't send (#220)", async ({ page 
   await expect(page.getByRole("heading", { name: "What's your website's address?" })).toBeVisible();
   await box.press("Enter");
   await expect(box).toHaveValue("");
+});
+
+test("keeps one conversation log, its main and a heading once the first message is sent (#220)", async ({ page }) => {
+  await page.goto("/");
+  const log = page.getByRole("log", { name: "Conversation" });
+  await expect(log).toHaveCount(1);
+  await expect(page.getByRole("main")).toHaveCount(1);
+  await expect(page.getByRole("banner")).toHaveCount(1);
+  // The same node before and after: a log that appears with its content is not announced.
+  await log.evaluate((element) => element.setAttribute("data-probe", "first"));
+
+  await page.getByRole("textbox", { name: "Message" }).fill(HOST);
+  await page.keyboard.press("Enter");
+
+  await expect(log).toContainText(HOST);
+  await expect(log).toHaveAttribute("data-probe", "first");
+  await expect(page.getByRole("main")).toHaveCount(1);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sésame Studio");
+  // The rail's tiles are pictures: the buttons read as the restaurants' names.
+  await expect(page.getByRole("navigation", { name: "Restaurants" }).getByRole("button", { name: "New", exact: true })).toBeVisible();
 });
 
 test("a cut turn keeps the chat's error bubble, with Try again as a chip (#220)", async ({ page }) => {
@@ -147,6 +177,22 @@ test.describe("at 1440 px", () => {
     await expect(selection).toHaveCSS("outline-color", "rgb(63, 105, 255)");
     await page.getByRole("button", { name: /Management$/ }).click();
     await expect(selection).toHaveCount(0);
+  });
+
+  test("typing leaves the pasteboard where the merchant scrolled it, a fact lit (#220)", async ({ page }) => {
+    await buildSite(page);
+    await expect(page.getByRole("button", { name: "Both" })).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+    await page.getByRole("button", { name: /Largest group/ }).click();
+    await expect(page.locator(".st-sel")).toBeInViewport();
+    const paste = page.locator(".st-paste");
+    // The smooth scroll to the fact is over once its position holds.
+    await expect.poll(() => paste.evaluate(settledScrollTop)).toBeGreaterThan(0);
+
+    await paste.evaluate((element) => element.scrollTo({ top: 0, behavior: "instant" }));
+    await page.getByRole("textbox", { name: "Message" }).press("a");
+
+    expect(await paste.evaluate(settledScrollTop)).toBe(0);
+    await expect(page.locator(".st-sel")).toHaveAttribute("data-tag", "Largest group");
   });
 
   test("the agent tab shows its session, and a button sends a frame", async ({ page }) => {

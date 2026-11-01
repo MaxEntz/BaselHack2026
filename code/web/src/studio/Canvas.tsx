@@ -1,7 +1,7 @@
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ReactNode, RefObject } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode, Ref, RefObject } from "react";
 import type { ManagementClient } from "../management/client.ts";
-import { MOMENTS, type MomentMessage, previewTime } from "../moments.ts";
+import { MOMENTS, type MomentMessage, isMomentReady, previewTime } from "../moments.ts";
 import type { BuildFact, GeneratedTool, Look, Moment, Service, SitePage } from "../types.ts";
 import { AgentSheet } from "./AgentSheet.tsx";
 import type { Addresses, View } from "./feed.tsx";
@@ -100,9 +100,15 @@ function PublicSheet({ pages, fact, width, onReveal }: PublicSheetProps) {
   const ratio = page ? width / page.width : 1;
   const box = fact?.box && fact.box.page === page?.path ? fact.box : null;
   const top = box ? box.y * ratio : null;
+  // Once per fact, never on a render of the page around it (a keystroke in the chat, #220). In
+  // the next frame: on the first click, the frame gets its height only after this commit.
+  const reveal = useEffectEvent((at: number) => onReveal(at));
   useEffect(() => {
-    if (top !== null) onReveal(top);
-  }, [top, onReveal]);
+    if (top === null) return;
+    const frame = requestAnimationFrame(() => reveal(top));
+    return () => cancelAnimationFrame(frame);
+    // `fact`, not read here: another fact whose words sit at the same height scrolls there too.
+  }, [top, fact]);
   if (!page) return null;
   return (
     <div className="st-public">
@@ -186,7 +192,73 @@ function Dock({ moment, services, look, onMoment, onColour }: DockProps) {
   );
 }
 
+type TabsProps = { view: View; built: boolean; hasPages: boolean; onView: (view: View) => void };
+
+// Which site the pasteboard shows. The tiles' letters are hidden from screen readers.
+function Tabs({ view, built, hasPages, onView }: TabsProps) {
+  const tab = (id: View, tile: string, label: string, disabled: boolean) => (
+    <button type="button" disabled={disabled} aria-pressed={view === id} onClick={() => onView(id)}>
+      <span className="st-tile" aria-hidden="true">
+        {tile}
+      </span>
+      {label}
+    </button>
+  );
+  return (
+    <div className="st-seg" role="group" aria-label="Which site to show">
+      {tab("agent", "Ag", "Agent site", !built)}
+      {tab("manage", "Mg", "Management", !built)}
+      <button
+        type="button"
+        className="plain st-both"
+        disabled={!built}
+        aria-pressed={view === "both"}
+        onClick={() => onView("both")}
+      >
+        Both
+      </button>
+      {tab("public", "Ws", "Your public site", !hasPages)}
+    </div>
+  );
+}
+
+function postMoment(frame: HTMLIFrameElement | null, moment: Moment | null): void {
+  const message: MomentMessage = { type: "sesame:moment", moment };
+  frame?.contentWindow?.postMessage(message, window.location.origin);
+}
+
+// The management frame follows the moment. Its page loads on its first visit, after the frame's
+// `load` (#220): a moment asked for until the page says it listens (`MOMENT_READY`) waits for it.
+// Each `MOMENT_READY` is a new document on the clock (a first load, or "Reload the page" after an
+// error), never the frame's `load`, which can come before or after it.
+function useMomentInFrame(moment: Moment | null) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const listening = useRef(false);
+  // What the frame's document shows.
+  const told = useRef<Moment | null>(null);
+  const tell = useEffectEvent(() => {
+    if (!listening.current || told.current === moment) return;
+    told.current = moment;
+    postMoment(frame.current, moment);
+  });
+  // A moment from the dock or the chat: told now if the document listens, else on its READY.
+  useEffect(() => tell(), [moment]);
+  useEffect(() => {
+    const ready = (event: MessageEvent<unknown>) => {
+      const own = event.origin === window.location.origin && event.source === frame.current?.contentWindow;
+      if (!own || !isMomentReady(event.data)) return;
+      listening.current = true;
+      told.current = null;
+      tell();
+    };
+    window.addEventListener("message", ready);
+    return () => window.removeEventListener("message", ready);
+  }, []);
+  return frame;
+}
+
 type CanvasProps = {
+  ref?: Ref<HTMLDivElement>;
   client: Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent" | "talkToAgent">;
   // Null until the site is built: only the public tab has something to show.
   slug: string | null;
@@ -210,10 +282,9 @@ type CanvasProps = {
 };
 
 // The gray pasteboard next to the chat.
-export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
-  { client, slug, live, today, ready, view, addresses, pages, fact, tools, fallback, onView, moment, services, look, onMoment, onColour },
-  ref,
-) {
+export function Canvas(props: CanvasProps) {
+  const { ref, client, slug, live, today, ready, view, addresses, pages, fact, tools, fallback, onView } = props;
+  const { moment, services, look, onMoment, onColour } = props;
   const paste = useRef<HTMLDivElement>(null);
   const space = useSpace(paste);
   const narrow = window.innerWidth <= NARROW;
@@ -223,19 +294,7 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
   const manageHeight = fit.stacked || fit.across
     ? STACKED_MANAGE_HEIGHT
     : Math.max(MIN_MANAGE_HEIGHT, (space.height - NAME_ROW) / fit.scale);
-  // The frame's page follows the moment; an earlier one reached no page while it loaded.
-  const frame = useRef<HTMLIFrameElement>(null);
-  const tellMoment = () => {
-    const message: MomentMessage = { type: "sesame:moment", moment };
-    frame.current?.contentWindow?.postMessage(message, window.location.origin);
-  };
-  const moments = useRef(moment);
-  useEffect(() => {
-    if (moments.current === moment) return;
-    moments.current = moment;
-    const message: MomentMessage = { type: "sesame:moment", moment };
-    frame.current?.contentWindow?.postMessage(message, window.location.origin);
-  }, [moment]);
+  const frame = useMomentInFrame(moment);
 
   // Each tab starts at its top; a fact then scrolls to its words.
   const lastView = useRef(view);
@@ -254,31 +313,7 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
   return (
     <div ref={ref} className="st-canvas">
       <div className="st-cv-top">
-        <div className="st-seg" role="group" aria-label="Which site to show">
-          <button type="button" disabled={!built} aria-pressed={view === "agent"} onClick={() => onView("agent")}>
-            <span className="st-tile">Ag</span>Agent site
-          </button>
-          <button type="button" disabled={!built} aria-pressed={view === "manage"} onClick={() => onView("manage")}>
-            <span className="st-tile">Mg</span>Management
-          </button>
-          <button
-            type="button"
-            className="plain st-both"
-            disabled={!built}
-            aria-pressed={view === "both"}
-            onClick={() => onView("both")}
-          >
-            Both
-          </button>
-          <button
-            type="button"
-            disabled={pages.length === 0}
-            aria-pressed={view === "public"}
-            onClick={() => onView("public")}
-          >
-            <span className="st-tile">Ws</span>Your public site
-          </button>
-        </div>
+        <Tabs view={view} built={built} hasPages={pages.length > 0} onView={onView} />
         <span className="st-zoom">{Math.round(fit.scale * 100)}%</span>
       </div>
       <div
@@ -305,12 +340,7 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
         {slug && (
           <Frame name={NAMES.manage} fit={fit} hidden={!shows("manage")} height={manageHeight}>
             {ready && (
-              <iframe
-                ref={frame}
-                title="Management site"
-                src={`/manage/${encodeURIComponent(slug)}`}
-                onLoad={tellMoment}
-              />
+              <iframe ref={frame} title="Management site" src={`/manage/${encodeURIComponent(slug)}`} />
             )}
           </Frame>
         )}
@@ -325,4 +355,4 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
       )}
     </div>
   );
-});
+}

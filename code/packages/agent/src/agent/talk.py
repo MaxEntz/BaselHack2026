@@ -257,10 +257,20 @@ class MerchantAgent:
             if (stored := conversation.answered(inp)) is not None:
                 self._log(conversation, Turn(outcome="replayed"), started)
                 return stored
-            conversation.take_turn()
-            merchant = await self._merchant(slug)
-            turn = Turn()
-            output = await self._answer(conversation, merchant, inp, turn)
+            before = (len(conversation.messages), conversation.pending, conversation.turns)
+            try:
+                conversation.take_turn()
+                merchant = await self._merchant(slug)
+                turn = Turn()
+                output = await self._answer(conversation, merchant, inp, turn)
+            except BaseException:
+                # Cancellation too (the node's deadline, a closed session, a stop). With no
+                # answer kept, nothing was done: a retry with the same key starts from the same
+                # point. A `confirm`'s answer is kept as soon as code has run it (`_answer`).
+                if inp.idempotency_key not in conversation.answers:
+                    del conversation.messages[before[0] :]
+                    conversation.pending, conversation.turns = before[1], before[2]
+                raise
             conversation.keep(inp, output)
         self._log(conversation, turn, started)
         return output
@@ -268,23 +278,25 @@ class MerchantAgent:
     async def _answer(
         self, conversation: Conversation, merchant: AgentMerchant, inp: TalkInput, turn: Turn
     ) -> TalkOutput:
-        before = (len(conversation.messages), conversation.pending)
+        """The turn's answer. If it fails before a `confirm` ran, `talk` rolls the turn back;
+        once one ran, its answer is kept, whatever happens next."""
         confirmed = None
         if inp.confirm is not None:
             confirmed = await self._confirm(conversation, merchant, inp.confirm, turn)
             if confirmed is None:
                 turn.outcome = "not_pending"
                 return self._output(conversation, merchant, turn, NOT_PENDING)
+            # Kept before the model words it: a turn cut short after the write still replays
+            # what code did, and a retry can't book again (#247).
+            conversation.keep(inp, self._output(conversation, merchant, turn, confirmed.reply))
+        start = len(conversation.messages)
         conversation.messages.append({"role": "user", "content": inp.message})
         try:
             async with asyncio.timeout(self._turn_seconds):
                 event = confirmed.event if confirmed else None
                 reply = await self._loop(conversation, turn, event)
-        except Exception as error:
+        except BaseException as error:
             if confirmed is None:
-                # Nothing was done: the caller retries with the same key, from the same point.
-                del conversation.messages[before[0] :]
-                conversation.pending = before[1]
                 if not isinstance(error, LLMUnavailable | TimeoutError):
                     raise
                 log.warning(
@@ -297,12 +309,19 @@ class MerchantAgent:
                 "talk_confirmed_without_model",
                 extra={"merchant": merchant.slug, "error": type(error).__name__},
             )
-            turn.outcome += "_without_model"
-            del conversation.messages[before[0] + 1 :]
-            reply = confirmed.reply
+            del conversation.messages[start + 1 :]
             conversation.messages.append(
-                {"role": "assistant", "content": reply, "tool_calls": [], "provider_items": []}
+                {
+                    "role": "assistant",
+                    "content": confirmed.reply,
+                    "tool_calls": [],
+                    "provider_items": [],
+                }
             )
+            if not isinstance(error, Exception):
+                raise
+            turn.outcome += "_without_model"
+            reply = confirmed.reply
         return self._output(conversation, merchant, turn, reply)
 
     async def _loop(self, conversation: Conversation, turn: Turn, event: str | None) -> str:

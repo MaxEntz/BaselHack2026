@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import type { ManagementClient } from "../management/client.ts";
 import { ASSISTANT } from "../strings.ts";
-import type { AgentIntent, AgentRequest, AgentTryOutput, DaySlots, GeneratedTool, PendingAction } from "../types.ts";
+import type { AgentIntent, AgentRequest, AgentTryOutput, DaySlots, GeneratedTool, PendingAction, TalkOutput } from "../types.ts";
 import type { Addresses } from "./feed.tsx";
 
 // The intents that address no merchant: booking is a conversation with the agent (#254).
@@ -81,8 +81,10 @@ function previewFrames(slug: string, day: DaySlots): [string, string] {
   return [JSON.stringify(request), JSON.stringify(response)];
 }
 
+type Client = Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent" | "talkToAgent">;
+
 type AgentSheetProps = {
-  client: Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent" | "talkToAgent">;
+  client: Client;
   slug: string;
   live: boolean;
   // The merchant's today, from the platform's clock; null until it is known.
@@ -92,17 +94,10 @@ type AgentSheetProps = {
   fallback: string | null;
 };
 
-/** The agent site has no pages: this is what agents exchange with it (#151). */
-export function AgentSheet({ client, slug, live, today, addresses, tools, fallback }: AgentSheetProps) {
+// Live, today's requests from the node's log; not yet, today's times as an agent will get them.
+function useTodaysFrames(client: Client, slug: string, live: boolean, today: string | null) {
   const [logged, setLogged] = useState<readonly AgentRequest[]>([]);
   const [preview, setPreview] = useState<DaySlots | null>(null);
-  const [sent, setSent] = useState<readonly AgentTryOutput[]>([]);
-  const [sending, setSending] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [conversation, setConversation] = useState<string | null>(null);
-  const [pending, setPending] = useState<PendingAction | null>(null);
-
   useEffect(() => {
     if (!today) return;
     const abort = new AbortController();
@@ -127,7 +122,16 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
     }
     return () => abort.abort();
   }, [client, slug, live, today]);
+  return { logged, previewed: !live && preview ? previewFrames(slug, preview) : null };
+}
 
+// The Send buttons and the message box: one real frame each, through the node (#151, #253).
+function useTryAgent(client: Client, slug: string) {
+  const [sent, setSent] = useState<readonly AgentTryOutput[]>([]);
+  const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [conversation, setConversation] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
   async function send(intent: AgentIntent) {
     setSending(true);
     setProblem(null);
@@ -140,8 +144,7 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
       setSending(false);
     }
   }
-
-  async function talk(message: string, confirm: string | null) {
+  async function talk(message: string, confirm: string | null): Promise<boolean> {
     setSending(true);
     setProblem(null);
     try {
@@ -150,21 +153,64 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
       // A refusal has no conversation: the next message starts a new one.
       setConversation(frames.talk?.conversation ?? null);
       setPending(frames.talk?.pending ?? null);
-      if (!confirm) setDraft("");
+      return true;
     } catch (error) {
       setProblem(error instanceof Error ? error.message : "That message couldn't be sent.");
+      return false;
     } finally {
       setSending(false);
     }
   }
+  return { sent, sending, problem, pending, send, talk };
+}
 
-  function ask(event: FormEvent) {
+function TalkReply({ talk }: { talk: TalkOutput }) {
+  return (
+    <div className="st-w-reply">
+      <p>{talk.reply}</p>
+      {talk.tools_called.length > 0 && (
+        <small>
+          Tools it called:{" "}
+          {talk.tools_called.map((tool) => (
+            <code key={tool}>{tool}</code>
+          ))}
+        </small>
+      )}
+    </div>
+  );
+}
+
+// `ask` answers whether the message went: if not, the owner keeps what they typed.
+function AskBox({ sending, ask }: { sending: boolean; ask: (message: string) => Promise<boolean> }) {
+  const [draft, setDraft] = useState("");
+
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const message = draft.trim();
-    if (message) void talk(message, null);
+    if (message && (await ask(message))) setDraft("");
   }
 
-  const previewed = !live && preview ? previewFrames(slug, preview) : null;
+  return (
+    <form className="st-w-talk" onSubmit={(event) => void submit(event)}>
+      <label htmlFor="st-w-message">Ask your agent</label>
+      <input
+        id="st-w-message"
+        value={draft}
+        maxLength={MAX_MESSAGE}
+        placeholder="Do you have vegetarian dishes?"
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <button type="submit" disabled={sending || !draft.trim()}>
+        Ask
+      </button>
+    </form>
+  );
+}
+
+/** The agent site has no pages: this is what agents exchange with it (#151). */
+export function AgentSheet({ client, slug, live, today, addresses, tools, fallback }: AgentSheetProps) {
+  const { logged, previewed } = useTodaysFrames(client, slug, live, today);
+  const { sent, sending, problem, pending, send, talk } = useTryAgent(client, slug);
 
   return (
     <div className="st-w">
@@ -203,19 +249,7 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
             <div key={index} className="st-w-pair">
               <FrameLine out text={frames.request} />
               <FrameLine out={false} text={frames.response} />
-              {frames.talk && (
-                <div className="st-w-reply">
-                  <p>{frames.talk.reply}</p>
-                  {frames.talk.tools_called.length > 0 && (
-                    <small>
-                      Tools it called:{" "}
-                      {frames.talk.tools_called.map((tool) => (
-                        <code key={tool}>{tool}</code>
-                      ))}
-                    </small>
-                  )}
-                </div>
-              )}
+              {frames.talk && <TalkReply talk={frames.talk} />}
             </div>
           ))}
         </div>
@@ -227,19 +261,7 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
             </button>
           </div>
         )}
-        <form className="st-w-talk" onSubmit={ask}>
-          <label htmlFor="st-w-message">Ask your agent</label>
-          <input
-            id="st-w-message"
-            value={draft}
-            maxLength={MAX_MESSAGE}
-            placeholder="Do you have vegetarian dishes?"
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <button type="submit" disabled={sending || !draft.trim()}>
-            Ask
-          </button>
-        </form>
+        <AskBox sending={sending} ask={(message) => talk(message, null)} />
         <div className="st-w-send" role="group" aria-label="Send a request">
           <span>Send</span>
           {INTENTS.map((intent) => (
@@ -254,25 +276,33 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
           </p>
         )}
       </section>
-      <section aria-label="MCP bridge">
-        <h3>What {ASSISTANT} reads through the MCP bridge</h3>
-        {addresses && <code className="st-w-bridge">{addresses.mcp}</code>}
-        {tools.length > 0 && (
-          <ul className="st-w-tools">
-            {tools.map((tool) => (
-              <li key={tool.name}>
-                <code>{tool.name}</code>
-                <span>{tool.description}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {fallback && (
-          <p className="st-w-fb">
-            When the agent can't answer, the guest gets your own page: <code>{fallback}</code>
-          </p>
-        )}
-      </section>
+      <Bridge addresses={addresses} tools={tools} fallback={fallback} />
     </div>
+  );
+}
+
+type BridgeProps = Pick<AgentSheetProps, "addresses" | "tools" | "fallback">;
+
+function Bridge({ addresses, tools, fallback }: BridgeProps) {
+  return (
+    <section aria-label="MCP bridge">
+      <h3>What {ASSISTANT} reads through the MCP bridge</h3>
+      {addresses && <code className="st-w-bridge">{addresses.mcp}</code>}
+      {tools.length > 0 && (
+        <ul className="st-w-tools">
+          {tools.map((tool) => (
+            <li key={tool.name}>
+              <code>{tool.name}</code>
+              <span>{tool.description}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {fallback && (
+        <p className="st-w-fb">
+          When the agent can't answer, the guest gets your own page: <code>{fallback}</code>
+        </p>
+      )}
+    </section>
   );
 }

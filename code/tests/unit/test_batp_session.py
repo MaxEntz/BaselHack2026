@@ -15,6 +15,7 @@ from batp.codec import MAX_FRAME, encode, read_frame
 from batp.messages import IN_FLIGHT_LIMIT, AgentIdentity, Hello, NodeIdentity, Request, Response
 from batp.messages import PROTOCOL_VERSION as VERSION
 from batp.server import Caller, NodeServer
+from batp.status import TooManyRequests
 from core.errors import AgentUnavailable, InvalidInput, SlotUnavailable
 
 CALLER = AgentIdentity(
@@ -278,6 +279,29 @@ async def test_requests_beyond_the_in_flight_limit_get_429_without_being_run() -
         writer.close()
     finally:
         await server.stop()
+
+
+async def test_a_backend_answers_429_by_raising_too_many_requests() -> None:
+    # The node's own limits on `TALK` (#249): the request isn't carried out, the session goes on.
+    async def busy(agent: AgentIdentity, request: Request) -> dict[str, Any]:
+        if request.params.get("busy"):
+            raise TooManyRequests("The merchants' agents are busy; try again in a moment")
+        return await fake_backend(agent, request)
+
+    server = NodeServer(node=NODE, handle=busy, authenticate=accept_token)
+    await server.start("127.0.0.1", 0)
+    try:
+        async with BatpClient("127.0.0.1", server.port, CALLER, token="s3cret") as client:
+            _, refused = await client.exchange("PING", params={"busy": True})
+            _, answered = await client.exchange("PING")
+    finally:
+        await server.stop()
+
+    assert refused.status == 429 and refused.error is not None
+    assert refused.error.code == "too_many_requests"
+    assert refused.error.message == "The merchants' agents are busy; try again in a moment"
+    assert refused.error.fallback_url is None
+    assert answered.status == 200
 
 
 async def test_a_429_is_agent_unavailable_for_the_caller(held: Held) -> None:

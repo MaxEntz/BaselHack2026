@@ -234,7 +234,7 @@ Small businesses already lost control once to the platforms. We do not want them
 
 Pour ça, on a pensé un nouveau protocole de communication à double sens, multi-agents.
 
-So we rethink network protocols, to optimize communication between agents. With ours, an AI agent reaches a site’s own agent directly and gets its answer, with no page to read and no form to fill. And the website does not disappear: if an agent fails or takes more than two seconds, the guest gets a link to the site’s own booking page. One presence serves agents and humans.</aside>
+So we rethink network protocols, to optimize communication between agents. With ours, an AI agent talks directly to a site’s own AI agent, in natural language inside the protocol’s frames, with no page to read and no form to fill. And the website does not disappear: if an agent fails or takes too long, the guest gets a link to the site’s own booking page. One presence serves agents and humans.</aside>
 </section>
 
 <section class="slide white" aria-label="Generate your agent with Sésame." hidden>
@@ -291,7 +291,7 @@ These agents can be built in two ways. A developer can write one by hand. Or you
 
 Ce que ça permet concrètement, c’est d’avoir un client qui recherche un restaurant avec une IA. Celle-ci va communiquer avec l’agent du restaurant cible et se chargera de la prise de RDV, etc. Le pro pourra ensuite, via son site de contrôle, parler à son agent pour tenir un état de ses réservations, affluences, etc.
 
-Why do this? So that a guest can search with their own AI agent, and a business can get an agent for its site. Sésame makes both possible. The guest just talks to an AI agent. It finds the restaurant, checks availability, asks for confirmation and books. The owner gives Sésame the website they already have and a few sentences about how they work. We read the site, build a profile, and generate a dedicated agent: its own tables, time slots, policies and booking tools. Day to day, the owner runs it by chatting: block a slot, change the max party size, see tonight’s bookings. No form anywhere, and the owner does not need a developer.</aside>
+Why do this? So that a guest can search with their own AI agent, and a business can get an agent for its site. Sésame makes both possible. The guest just talks to an AI agent. It finds the restaurant and talks to the restaurant’s own agent, which answers from what the site says, offers times and prepares the booking. Nothing is booked until the guest says yes. The owner gives Sésame the website they already have and a few sentences about how they work. We read the site, build a profile, and generate a dedicated AI agent: it knows the menu and the practical details, and it calls its own booking tools, with its own tables, time slots and policies. Its model can’t write anything by itself: code runs a booking only on a confirmation. Day to day, the owner runs it by chatting: block a slot, change the max party size, see tonight’s bookings. No form anywhere, and the owner does not need a developer.</aside>
 </section>
 
 <section class="slide orange" aria-label="Live demo" hidden>
@@ -307,7 +307,7 @@ Why do this? So that a guest can search with their own AI agent, and a business 
 Démo.
 
 1. On our platform, paste the Le Petit Zinc URL and a short description. Show the five steps and the profile card.
-2. In the guest’s AI agent: ’Table for 4 tonight at 8pm’. It proposes slots, asks to confirm, books.
+2. In the guest’s AI agent: ’Table for 4 tonight at 8pm, do you have vegetarian dishes?’. The restaurant’s agent answers from its site and offers times. The guest confirms, and it books.
 3. Switch to the owner chat: the new booking appears within 2 seconds.
 4. Take the agent down, ask again: the guest’s AI agent gives the restaurant’s booking link instead of failing.</aside>
 </section>

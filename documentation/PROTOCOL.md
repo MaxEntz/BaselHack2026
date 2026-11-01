@@ -2,6 +2,8 @@
 
 > This page is a readable summary of BATP 0.3 (§13). 0.2 added the `TALK` intent: guests' agents
 > talk to the merchant's AI agent ([ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md)).
+> The node serves it with the merchant's AI agent (#249); without `OPENAI_API_KEY`, `TALK` answers
+> `503` with the fallback URL.
 > 0.3 closed the direct booking intents (#254): only that agent calls the booking tools, so no
 > client can book, move or cancel except through a conversation with it.
 > The **normative** spec is the Internet-Draft
@@ -171,8 +173,8 @@ offered nor served `TALK` (§14).
 | 404 | `not_found` | Unknown or not live merchant, unknown or expired `TALK` conversation | no |
 | 413 | — | A frame above 64 KiB, as an `error` frame; the session is closed | no |
 | 426 | — | Unsupported `batp` version | no |
-| 429 | `too_many_requests` | Too many requests in flight; retry after an earlier response | no |
-| 503 | `agent_unavailable` | Merchant `down`, agent error or timeout (25 s for `TALK`, 10 s for the others) | yes |
+| 429 | `too_many_requests` | Too many requests in flight, or a `TALK` beyond the node's limits (§10); retry after an earlier response, or later | no |
+| 503 | `agent_unavailable` | Merchant `down`, agent error or timeout (10 s, 25 s for `TALK`) | yes |
 
 Before 0.3, `409 slot_unavailable` and `413 party_too_large` answered `BOOK` and `AVAILABILITY`. A tool's refusal is now the agent's to word, in a `200` with `fallback_url`.
 
@@ -194,7 +196,7 @@ merchant cancelled their booking. Today that goes through the guest notice retur
   - 10 s per request on the node, 25 s for a `TALK` (`503` past that): a model turn with its tool calls doesn't fit in 10 s;
   - at least 32 requests in flight per session: beyond the node's limit, extra requests get `429 too_many_requests` and may be sent again once earlier ones are answered;
   - 64 sessions per node, the next one gets a `503` reject;
-  - `TALK`, a model turn on the shared OpenAI key, is bounded before any model call: 8 turns at once on the node, and 30 `TALK` per merchant per minute (`merchant_node.limits`). Past them, `429 too_many_requests`, and the request is not carried out (#249);
+  - `TALK`, a model turn on the shared OpenAI key, is bounded before any model call: 8 turns at once on the node and 3 per merchant, and 30 `TALK` per merchant per minute (`merchant_node.limits`). Past them, `429 too_many_requests`, and the request is not carried out (#249);
   - a session closes after 10 malformed frames in a row, or when its peer stops reading for 10 s.
 - **Bounded work:** a `DISCOVER` takes at most 32 tags and a 500-character query (`agent.discovery.MAX_TAGS`, `MAX_QUERY`, shared with the gateway's `search_merchants`).
 - **Logging:** refused sessions are logged at WARNING with the peer address and the agent they claimed, never the token. Database errors never carry query parameters (guest names).
@@ -273,6 +275,7 @@ in its own process.
 | The node of this backend | `code/packages/merchant_node/` (`make node`, `uv run python -m merchant_node`), settings `BATP_HOST`, `BATP_PORT`, `BATP_TOKENS`; for `TALK`, the merchants' AI agent (`agent.talk`) on `OPENAI_API_KEY`, `OPENAI_MODEL` and `AGENT_REASONING_EFFORT`, as the builder (#249). Without a key the node still starts, and `TALK` answers `503 agent_unavailable` with the fallback URL |
 | The MCP gateway as a bridge | `gateway/agent_client.py` (`BatpAgentClient`), settings `BATP_URL`, `BATP_TOKEN` |
 | The node on the team server (loopback) | `code/deploy/merchant-node.service`, `make deploy` |
+| A guest's own AI agent, as a second caller (demo) | `code/scripts/batp_guest.py` (`make guest MESSAGE="…"`, #252): `urn:batp:agent:sesame-guest`, its token from its own `BATP_TOKENS` entry, sent only to a node on loopback. It sends `confirm` only after the person's yes at the terminal, and resends a `TALK` once with the same key after a lost session |
 | RFC-style Internet-Draft of this spec | `documentation/rfc/` (`.md` source; `.xml`, `.txt` and `.html` built by `make rfc` from `code/`, which also regenerates the JSON schemas in `rfc/schemas/` and needs Docker and `npx`) |
 
 Without `BATP_TOKENS`, the node lets any agent in, and refuses to start unless it listens on loopback. The node reads the OpenAI key from its own settings (`code/.env` on the team server, #250) and never logs it.
