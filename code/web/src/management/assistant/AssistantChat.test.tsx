@@ -118,9 +118,7 @@ describe("assistant panel", () => {
     expect((box() as HTMLTextAreaElement).value).toBe("");
     await within(panel()).findByText("Noted.");
   });
-});
 
-describe("assistant panel, links and changes", () => {
   it("links a reply to its page", async () => {
     const user = userEvent.setup();
     const { client } = scripted(() => [

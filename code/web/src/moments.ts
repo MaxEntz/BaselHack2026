@@ -40,7 +40,6 @@ export function askedMoment(data: unknown): Moment | null | undefined {
   return moment === null || isMoment(moment) ? moment : undefined;
 }
 
-
 const inOrder = (services: readonly Service[]) =>
   services.toSorted((a, b) => toMinutes(a.start) - toMinutes(b.start));
 

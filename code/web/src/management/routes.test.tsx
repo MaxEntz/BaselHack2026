@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { DEMO_NOW, now, setClock } from "../clock.ts";
+import { MOMENT_READY } from "../moments.ts";
 import { ROUTE_ERROR, ROUTE_ERROR_TITLE } from "../RouteError.tsx";
 import { ManagePage } from "./ManagePage.tsx";
 import { routes as appRoutes, routesWith } from "../router.tsx";
@@ -84,6 +85,8 @@ describe("management routes", () => {
     expect(screen.getByRole("button", { name: "Reload the page" })).toBeTruthy();
     expect(screen.queryByText(/Unexpected Application Error/)).toBeNull();
     expect(document.title).toBe(ROUTE_ERROR_TITLE);
+    expect(screen.getByRole("main").textContent).toContain(ROUTE_ERROR);
+    expect(screen.getByRole("banner")).toBeTruthy();
     // React and React Router say why in the console: the page doesn't log it again.
     expect(logged.mock.calls.flat()).toContainEqual(expect.objectContaining({ message: "a page that can't draw" }));
     logged.mockRestore();
@@ -120,6 +123,24 @@ describe("management routes", () => {
 
   it("names the merchant from its slug until the API gives the name", () => {
     expect(nameFromSlug("le-petit-zinc")).toBe("Le Petit Zinc");
+  });
+});
+
+// Studio sends the moment it shows once the page in its frame listens (#220).
+describe("management site in Studio's frame", () => {
+  it("tells its parent it listens for moments, only when framed", async () => {
+    const parent = { postMessage: vi.fn() };
+    const framed = vi.spyOn(window, "parent", "get").mockReturnValue(parent as unknown as Window);
+    at("/manage/la-graine-verte");
+    await vi.waitFor(() => expect(parent.postMessage).toHaveBeenCalledWith(MOMENT_READY, window.location.origin));
+    framed.mockRestore();
+    cleanup();
+
+    const own = vi.spyOn(window, "postMessage");
+    at("/manage/la-graine-verte");
+    expect(await screen.findByRole("heading", { level: 1 })).toBeTruthy();
+    expect(own).not.toHaveBeenCalled();
+    own.mockRestore();
   });
 });
 

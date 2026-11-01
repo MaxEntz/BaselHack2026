@@ -111,12 +111,12 @@ function Conversation({ slug, name, now, chat, live, sessionId, restore }: Conve
         ))}
         {state.activity && <p className="msg bot asst-busy">{state.activity}</p>}
       </div>
-      <Composer busy={state.busy} offered={now ? chips(now, asked) : []} onSend={(message) => void send(message)} />
+      <AssistantComposer busy={state.busy} offered={now ? chips(now, asked) : []} onSend={(message) => void send(message)} />
     </>
   );
 }
 
-type ComposerProps = {
+type AssistantComposerProps = {
   busy: boolean;
   // The chips: each one is sent as it reads.
   offered: readonly string[];
@@ -124,7 +124,7 @@ type ComposerProps = {
 };
 
 // The chips and the message box: Enter sends, Shift+Enter and an IME's Enter don't.
-function Composer({ busy, offered, onSend }: ComposerProps) {
+function AssistantComposer({ busy, offered, onSend }: AssistantComposerProps) {
   const [text, setText] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
 

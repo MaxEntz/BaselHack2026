@@ -114,7 +114,7 @@ function NewBookingForm({ slug, day, limit, service, preset, onCancel, onAdded }
   }
 
   // Any change clears a failed save or a missing name.
-  const edit = (set: (value: string) => void) => (value: string) => {
+  const edit = (set: (value: string) => void, value: string) => {
     set(value);
     setFailure(null);
   };
@@ -132,10 +132,16 @@ function NewBookingForm({ slug, day, limit, service, preset, onCancel, onAdded }
           autoComplete="off"
           maxLength={200}
           value={guest}
-          onChange={(event) => edit(setGuest)(event.target.value)}
+          onChange={(event) => edit(setGuest, event.target.value)}
         />
       </label>
-      <PartyAndTime party={party} time={time} slots={slots} onParty={edit(setParty)} onTime={edit(setTime)} />
+      <PartyAndTime
+        party={party}
+        time={time}
+        slots={slots}
+        onParty={(value) => edit(setParty, value)}
+        onTime={(value) => edit(setTime, value)}
+      />
       <p className={bad ? "note bad" : "note"} role="status">
         {shown}
       </p>

@@ -79,18 +79,21 @@ export function Feed({ empty, entries, activity, busy, addresses, onOpen, onFact
 
   return (
     <div ref={feed} className="st-feed" role="log" aria-live="polite" aria-label="Conversation">
-      {empty && <Hello />}
-      {!empty && entries.map((entry) => (
-        <Entry
-          key={entry.key}
-          entry={entry}
-          addresses={addresses}
-          onOpen={onOpen}
-          onFact={onFact}
-          onCopy={onCopy}
-          onRetry={entry.key === lastError && !busy ? onRetry : undefined}
-        />
-      ))}
+      {empty ? (
+        <Hello />
+      ) : (
+        entries.map((entry) => (
+          <Entry
+            key={entry.key}
+            entry={entry}
+            addresses={addresses}
+            onOpen={onOpen}
+            onFact={onFact}
+            onCopy={onCopy}
+            onRetry={entry.key === lastError && !busy ? onRetry : undefined}
+          />
+        ))
+      )}
       {busy && !CARRIES_ON.has(last?.kind ?? "") && (
         <p className="st-thinking">{activity ?? "Thinking…"}</p>
       )}

@@ -1,4 +1,5 @@
 import { httpClient, type LiveHandlers } from "../chat/client.ts";
+import { isRecord } from "../json.ts";
 import type {
   AgentIntent,
   AgentTryOutput,
@@ -119,9 +120,6 @@ async function call<T>(
   }
   return payload as T;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 // The fields of a `ManagementError` that have their type; the platform's own words otherwise.
 function errorBody(payload: unknown): ManagementError {

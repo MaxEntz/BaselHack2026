@@ -164,11 +164,10 @@ describe("Guests", () => {
   });
 });
 
-// The floor plan's table buttons, and its heading once the room is drawn.
-const table = (label: string) => screen.getByRole("button", { name: new RegExp(`^Table ${label},`) });
-const at = () => screen.findByRole("heading", { name: /^The room at/ });
-
 describe("Floor plan", () => {
+  const table = (label: string) => screen.getByRole("button", { name: new RegExp(`^Table ${label},`) });
+  const at = () => screen.findByRole("heading", { name: /^The room at/ });
+
   it("shows the room at the latest start of the service under way", async () => {
     open("floor");
     expect((await at()).textContent).toBe("The room at 19:30");
@@ -244,9 +243,7 @@ describe("Floor plan", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await screen.findByRole("button", { name: /^Table T\d+, Roth, 2 guests$/ })).toBeTruthy();
   });
-});
 
-describe("Floor plan, refusals and tables", () => {
   it("says when the time has passed", async () => {
     const { router } = open("floor");
     await at();

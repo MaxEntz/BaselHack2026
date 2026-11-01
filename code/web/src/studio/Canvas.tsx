@@ -107,6 +107,7 @@ function PublicSheet({ pages, fact, width, onReveal }: PublicSheetProps) {
     if (top === null) return;
     const frame = requestAnimationFrame(() => reveal(top));
     return () => cancelAnimationFrame(frame);
+    // `fact`, not read here: another fact whose words sit at the same height scrolls there too.
   }, [top, fact]);
   if (!page) return null;
   return (
@@ -191,10 +192,10 @@ function Dock({ moment, services, look, onMoment, onColour }: DockProps) {
   );
 }
 
-type TabsProps = { view: View; built: boolean; read: boolean; onView: (view: View) => void };
+type TabsProps = { view: View; built: boolean; hasPages: boolean; onView: (view: View) => void };
 
 // Which site the pasteboard shows. The tiles' letters are hidden from screen readers.
-function Tabs({ view, built, read, onView }: TabsProps) {
+function Tabs({ view, built, hasPages, onView }: TabsProps) {
   const tab = (id: View, tile: string, label: string, disabled: boolean) => (
     <button type="button" disabled={disabled} aria-pressed={view === id} onClick={() => onView(id)}>
       <span className="st-tile" aria-hidden="true">
@@ -216,7 +217,7 @@ function Tabs({ view, built, read, onView }: TabsProps) {
       >
         Both
       </button>
-      {tab("public", "Ws", "Your public site", !read)}
+      {tab("public", "Ws", "Your public site", !hasPages)}
     </div>
   );
 }
@@ -228,22 +229,26 @@ function postMoment(frame: HTMLIFrameElement | null, moment: Moment | null): voi
 
 // The management frame follows the moment. Its page loads on its first visit, after the frame's
 // `load` (#220): a moment asked for until the page says it listens (`MOMENT_READY`) waits for it.
+// Each `MOMENT_READY` is a new document on the clock (a first load, or "Reload the page" after an
+// error), never the frame's `load`, which can come before or after it.
 function useMomentInFrame(moment: Moment | null) {
   const frame = useRef<HTMLIFrameElement>(null);
   const listening = useRef(false);
-  // What the page shows: it starts on the clock.
+  // What the frame's document shows.
   const told = useRef<Moment | null>(null);
   const tell = useEffectEvent(() => {
     if (!listening.current || told.current === moment) return;
     told.current = moment;
     postMoment(frame.current, moment);
   });
+  // A moment from the dock or the chat: told now if the document listens, else on its READY.
   useEffect(() => tell(), [moment]);
   useEffect(() => {
     const ready = (event: MessageEvent<unknown>) => {
       const own = event.origin === window.location.origin && event.source === frame.current?.contentWindow;
       if (!own || !isMomentReady(event.data)) return;
       listening.current = true;
+      told.current = null;
       tell();
     };
     window.addEventListener("message", ready);
@@ -277,7 +282,9 @@ type CanvasProps = {
 };
 
 // The gray pasteboard next to the chat.
-export function Canvas({ ref, client, slug, live, today, ready, view, addresses, pages, fact, tools, fallback, onView, ...dock }: CanvasProps) {
+export function Canvas(props: CanvasProps) {
+  const { ref, client, slug, live, today, ready, view, addresses, pages, fact, tools, fallback, onView } = props;
+  const { moment, services, look, onMoment, onColour } = props;
   const paste = useRef<HTMLDivElement>(null);
   const space = useSpace(paste);
   const narrow = window.innerWidth <= NARROW;
@@ -287,7 +294,7 @@ export function Canvas({ ref, client, slug, live, today, ready, view, addresses,
   const manageHeight = fit.stacked || fit.across
     ? STACKED_MANAGE_HEIGHT
     : Math.max(MIN_MANAGE_HEIGHT, (space.height - NAME_ROW) / fit.scale);
-  const frame = useMomentInFrame(dock.moment);
+  const frame = useMomentInFrame(moment);
 
   // Each tab starts at its top; a fact then scrolls to its words.
   const lastView = useRef(view);
@@ -306,7 +313,7 @@ export function Canvas({ ref, client, slug, live, today, ready, view, addresses,
   return (
     <div ref={ref} className="st-canvas">
       <div className="st-cv-top">
-        <Tabs view={view} built={built} read={pages.length > 0} onView={onView} />
+        <Tabs view={view} built={built} hasPages={pages.length > 0} onView={onView} />
         <span className="st-zoom">{Math.round(fit.scale * 100)}%</span>
       </div>
       <div
@@ -343,7 +350,9 @@ export function Canvas({ ref, client, slug, live, today, ready, view, addresses,
           </Frame>
         )}
       </div>
-      {built && (view === "manage" || view === "both") && <Dock {...dock} />}
+      {built && (view === "manage" || view === "both") && (
+        <Dock moment={moment} services={services} look={look} onMoment={onMoment} onColour={onColour} />
+      )}
     </div>
   );
 }

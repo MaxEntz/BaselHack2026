@@ -1,4 +1,5 @@
 import type { ChatEvent, LiveEvent, SessionMerchant, SessionOutput } from "../types.ts";
+import { type TypesOf, isRecord, typesOf } from "../json.ts";
 import { readSse } from "./sse.ts";
 
 export type LiveHandlers = {
@@ -32,28 +33,32 @@ export const NEEDS_INVITE =
 const IDLE_TIMEOUT_MS = 90_000;
 const LIVE_RETRY_MS = 2000;
 
-// The events and cards this build can draw (`ChatEvent` in ../types.ts): a newer platform's
-// other ones are skipped, never handed to the reducer (#220).
-const CHAT_EVENTS: ReadonlySet<string> = new Set<ChatEvent["type"]>([
-  "text",
-  "tool_start",
-  "site_page",
-  "step",
-  "card",
-  "error",
-  "done",
-]);
-const CARD_KINDS: ReadonlySet<string> = new Set<Extract<ChatEvent, { type: "card" }>["kind"]>([
-  "profile",
-  "reservations",
-  "stats",
-  "policy",
-  "confirmation",
-  "diff",
-  "view",
-  "page",
-]);
-const LIVE_EVENTS: ReadonlySet<string> = new Set<LiveEvent["type"]>(["notification"]);
+// The events and cards this build can draw, every one of `ChatEvent` (../types.ts): `tsc` fails
+// until a new one is listed. A newer platform's other ones are skipped, never handed to the
+// reducer (#220). Only `type` and `kind` are checked: the rest of a frame is the contract's.
+const CHAT_EVENTS = typesOf<ChatEvent>({
+  text: true,
+  tool_start: true,
+  site_page: true,
+  step: true,
+  card: true,
+  error: true,
+  done: true,
+});
+type CardKind = Extract<ChatEvent, { type: "card" }>["kind"];
+const CARD_KINDS: ReadonlySet<string> = new Set(
+  Object.keys({
+    profile: true,
+    reservations: true,
+    stats: true,
+    policy: true,
+    confirmation: true,
+    diff: true,
+    view: true,
+    page: true,
+  } satisfies Record<CardKind, true>),
+);
+const LIVE_EVENTS = typesOf<LiveEvent>({ notification: true });
 
 export const httpClient: ChatClient = {
   async *send(message, sessionId, signal) {
@@ -95,7 +100,7 @@ export const httpClient: ChatClient = {
 
       try {
         for await (const frame of readSse(response.body, touch)) {
-          const event = parseEvent<ChatEvent>(frame.data, CHAT_EVENTS);
+          const event = parseEvent(frame.data, CHAT_EVENTS);
           if (!event) continue;
           yield event;
           if (event.type === "done") return;
@@ -113,7 +118,7 @@ export const httpClient: ChatClient = {
 
   subscribe(slug, { onEvent, onConnection }) {
     const handle = (message: MessageEvent<string>) => {
-      const event = parseEvent<LiveEvent>(message.data, LIVE_EVENTS);
+      const event = parseEvent(message.data, LIVE_EVENTS);
       if (event) onEvent(event);
     };
     let source: EventSource;
@@ -172,16 +177,13 @@ export const httpClient: ChatClient = {
   },
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 function isMerchant(value: unknown): value is SessionMerchant {
   return isRecord(value) && typeof value.slug === "string" && typeof value.name === "string";
 }
 
 // A frame whose `type`, and a card's `kind`, this build knows. Their other fields are the
 // platform's contract (../types.ts), which `npm run check:contracts` holds the mocks to.
-function parseEvent<T extends { type: string }>(data: string, types: ReadonlySet<string>): T | null {
+function parseEvent<T extends { type: string }>(data: string, { types }: TypesOf<T>): T | null {
   try {
     const value: unknown = JSON.parse(data);
     if (!isRecord(value) || typeof value.type !== "string" || !types.has(value.type)) return null;

@@ -12,7 +12,7 @@
       "rules": { "max-lines-per-function": ["error", { "max": 100 }] }
     },
     {
-      "files": ["src/management/PrimitivesGallery.tsx"],
+      "files": ["src/management/PrimitivesGallery.tsx", "src/**/*.test.ts", "src/**/*.test.tsx"],
       "rules": { "max-lines-per-function": "off" }
     }
   ]

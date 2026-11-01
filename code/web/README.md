@@ -9,7 +9,7 @@ npm ci
 npm run dev                # http://localhost:5173, /api → http://localhost:8002
 VITE_MOCK=1 npm run dev    # no backend: replays src/mocks/*.json
 npm run build              # tsc (strict) + vite build
-npm run lint               # oxlint: hooks' dependencies, no function over 100 lines in src/ (#220)
+npm run lint               # oxlint: hooks' dependencies, no function over 100 lines in src/, tests apart (#220)
 npm run knip               # no unused file, export or dependency (#220)
 npm run check:contracts    # mocks vs src/types.ts
 npm run check:bundle       # after npm run build: no mock, fixture or gallery in dist/ (#220)
@@ -89,7 +89,9 @@ the code once and removes it from the address bar.
   `useOverview.ts`, what the platform knows of the merchant; `useTurns.ts`, what the messages,
   chips and buttons start; `useCopy.ts`, the copy buttons' toast.
   `src/moments.ts` works out the moment of the day for Home's top and for Studio's dock; add
-  `?moment=morning|before|during|after` to `/manage/<slug>` to preview one. Its classes start with `st-`, because `cards.css` is global.
+  `?moment=morning|before|during|after` to `/manage/<slug>` to preview one. In Studio's frame, the page
+  posts `sesame:moment-ready` once it listens, and the dock's moment goes to it then (`sesame:moment`).
+  Its classes start with `st-`, because `cards.css` is global.
 - `src/chat/state.ts`: `ChatItem` union and the pure reducer that turns `ChatEvent`
   and `LiveEvent` into chat items (steps of one build grouped, text deltas merged).
 - `src/chat/client.ts`: `POST /api/chat` SSE client and `EventSource` on
@@ -111,6 +113,7 @@ the code once and removes it from the address bar.
   draw shows instead.
 - `src/clipboard.ts`: the copy buttons' clipboard, and the text to copy by hand without one.
 - `src/ime.ts`: `composing`, true while an input method composes, so that its Enter doesn't send.
+- `src/json.ts`: `isRecord` and `typesOf`, to narrow the platform's JSON before reading it.
 - `src/management/`: the management site. `tokens.css` (scoped to `.mg`, light only),
   `fonts.css` and `fonts/` (Fraunces Soft, Karla, self-hosted with their OFL licences),
   `ui/` (Pill, Tag, Box, Blob, Under, Doodle, Seed, Icon, Field, Dialog, Toast, SaveBar, Source),
