@@ -161,8 +161,9 @@ Gateway, `/mcp` (the descriptions tell Claude to confirm writes, pass preference
 - `create_reservation` / `update_reservation`: book or change, with `idempotency_key`.
 - `cancel_reservation`: cancel as the guest.
 - `get_my_reservations`: a guest's bookings and notices.
+- `talk_to_merchant`: a conversation with the merchant's agent over BATP `TALK`; it books only after a `confirm` sent once the user said yes to its `pending` summary (#251).
 
-Each merchant also has `/m/<slug>/mcp` with the 4 booking tools, without `merchant` ([ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md)).
+`GATEWAY_TALK` picks the booking path: off (default), the 4 booking tools; on, `talk_to_merchant` instead, never both. Each merchant also has `/m/<slug>/mcp` with the same booking path, without `merchant` ([ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md)).
 
 ### 8.2 Admin tools
 
@@ -227,7 +228,7 @@ make demo-reset # known demo state; make outage / make restore SLUG=…
 make deploy     # gateway, node, platform and web app to the team server
 ```
 
-Main settings (with their defaults in `code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `GATEWAY_TOKEN`; the platform's `PLATFORM_COOKIE_SECRET`, `PLATFORM_INVITE_CODE`, `PLATFORM_WEB_URL`, and `PLATFORM_MERCHANT` (development only).
+Main settings (with their defaults in `code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `AGENT_TALK_TIMEOUT_MS=30000`, `GATEWAY_TALK=false`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `GATEWAY_TOKEN`; the platform's `PLATFORM_COOKIE_SECRET`, `PLATFORM_INVITE_CODE`, `PLATFORM_WEB_URL`, and `PLATFORM_MERCHANT` (development only).
 
 ## 11. Milestones
 
@@ -387,6 +388,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-11-01 | The provider-neutral LLM client moves from `builder/llm.py` to `core/llm.py` (`core` gains `openai`), and the prompt's clock line (`clock_line`, `next_offset_change`) from the assistant to `agent/times.py` | The BATP node's merchant agents use both, and the node can't import the builder (Playwright, and `builder` depends on `agent`) or the platform (#246) |
 | 2026-11-01 | The merchant's AI agent (#246, #247): `agent.talk.MerchantAgent`, a tool-use loop of at most 5 model calls on `core.llm`, with guest tools only (`agent.guest_tools`), bound by code to one merchant; `propose_*` store one proposal per conversation (10 minutes) whose summary code writes, and the write runs only on a `confirm` naming it, before any model call, with the proposal's id as its idempotency key; a write that succeeded is reported by a fixed sentence when the model fails after it. Conversations in memory (`agent.conversations`: 30 minutes idle, 20 messages, 1000 kept), bound to the merchant and the caller; a key replays its answer only with the message it came with, else `invalid_input`; the profile's `knowledge` goes in the prompt between markers its text can't close; `AGENT_REASONING_EFFORT` (default `low`) | Prompt injection must not be able to book, move or cancel: a tool description is not enough once a model reads guests' text and the website's. Behind the gateway, every guest has one `agent.id` and picks its own keys: a key alone would let one guest land in another's conversation. `find_my_bookings` gives no notices, since `find_guest_reservations` returns every merchant's, as text; the lookup still starts their 24-hour window |
 | 2026-11-01 | The BATP node serves `TALK` with the merchants' AI agent (#249): it reads `OPENAI_API_KEY`, `OPENAI_MODEL` and `AGENT_REASONING_EFFORT` (one connection through `core.llm.openai_connection`, shared with the platform's wiring, 20 s read timeout, no SDK retries); before any model call, 8 turns at once on the node and 30 `TALK` per merchant per minute, else `429 too_many_requests` (`batp.status.TooManyRequests`, which a backend raises); without a key the node starts and `TALK` answers `503` with the fallback URL; a stop waits for the `TALK` turns in flight (`stop_grace` at least `agent.talk.TURN_SECONDS`) | Each conversation spends the shared key, and a guest's agent could loop; a backend had no way to answer `429` itself, only the session's in-flight limit did; a turn's answer may report a write already made, and its conversation doesn't survive the restart |
+| 2026-11-01 | `talk_to_merchant` (#251): `GATEWAY_TALK` (default off) shows it and hides the 4 booking tools on both MCP endpoints, or the reverse; its deadline is `AGENT_TALK_TIMEOUT_MS` (30 s), the other tools keep `AGENT_TIMEOUT_MS`; without `BATP_URL` it answers `agent_unavailable` with the fallback URL; it counts as a write, for the timeout message, only with a `confirm`; `/m/<slug>/mcp` counts each tool's budget from the request's start | Both paths at once would let Claude pick, and the 10:30 checkpoint of #244 needs a switch back; a model turn doesn't fit in 2 s, and the node gives `TALK` 25 s; the gateway has no LLM; a question that timed out changed nothing |
 
 ## 15. Out of scope (POC)
 
