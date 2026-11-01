@@ -92,8 +92,8 @@ class ScriptedAgent:
             "conversation": "c-1",
             "reply": "Booked: R-042.",
             "reservation": reservation,
-            # A `confirm` is written by code before any model call (#247): no tool is called.
-            "tools_called": [],
+            # Code writes a `confirm` before any model call (#247), and reports that write.
+            "tools_called": ["create_reservation"],
         }
 
 
@@ -115,7 +115,6 @@ def talking_gateway(database_url: str, port: int) -> Settings:
         _env_file=None,
         database_url=database_url,
         batp_url=f"batp://{LOOPBACK}:{port}",
-        gateway_talk=True,
         agent_talk_timeout_ms=TALK_TIMEOUT_MS,
     )
 
