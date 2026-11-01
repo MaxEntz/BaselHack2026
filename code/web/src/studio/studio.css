@@ -173,6 +173,15 @@
 .st-paste.stack { flex-direction: column; align-items: center; justify-content: flex-start; }
 .st-paste[hidden] { display: none; }
 .st-frame { flex: none; display: grid; gap: 6px; }
+.st-dock { position: absolute; left: 50%; bottom: 16px; z-index: 3; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 6px 8px 6px 14px; border-radius: 999px; background: var(--bg); box-shadow: var(--lift); font-size: .9375rem; }
+.st-dots { display: inline-flex; gap: 3px; }
+.studio .st-dots button { display: block; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .18); }
+.st-dock-font { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-dock-sep { width: 1px; height: 20px; background: var(--line-2); flex: none; }
+.st-moments { display: flex; gap: 2px; }
+.studio .st-moments button { min-height: 32px; padding: 0 10px; border-radius: 999px; font-size: .875rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.studio .st-moments button:hover { background: var(--bg-2); }
+.studio .st-moments button[aria-pressed="true"] { background: var(--pri); color: var(--on-pri); }
 .st-frame[hidden] { display: none; }
 .st-frame-name { font-size: .875rem; font-weight: 600; color: var(--ink-2); }
 .st-bw { position: relative; overflow: hidden; box-shadow: var(--lift); background: #fff; }
@@ -246,6 +255,9 @@
   .st-w-addr { font-size: 18px; }
   .st-w-note { font-size: 16px; }
   .st-w-tools li { grid-template-columns: minmax(0, 1fr); }
+  .st-dock { left: 8px; right: 8px; transform: none; border-radius: 16px; flex-wrap: wrap; justify-content: center; max-width: none; padding: 6px; gap: 6px 10px; }
+  .st-dock-font { display: none; }
+  .studio .st-moments button { padding: 0 8px; font-size: .8125rem; }
   .st-sep { display: none; }
   .st-top { gap: 8px; }
   .st-logo { height: 21px; }

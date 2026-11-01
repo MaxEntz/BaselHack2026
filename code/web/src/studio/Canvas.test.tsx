@@ -1,7 +1,7 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { AgentTryOutput, BuildFact, DaySlots, SitePage } from "../types.ts";
+import type { AgentTryOutput, BuildFact, DaySlots, Look, SitePage } from "../types.ts";
 import { Canvas } from "./Canvas.tsx";
 
 const HOME: SitePage = { path: "/", width: 1000, height: 2000, image: "data:image/jpeg;base64,AA==" };
@@ -13,6 +13,22 @@ const FACT: BuildFact = {
   source: "/horaires.html",
   quote: "Tables de 1 à 4",
   box: { page: "/horaires.html", x: 100, y: 200, width: 300, height: 40 },
+};
+
+const LOOK: Look = {
+  bg: "#edebe2",
+  surface: "#f8f6ef",
+  line: "#d5d2c3",
+  ink: "#47522f",
+  muted: "#5f6a45",
+  accent: "#727f55",
+  accent_2: "#935046",
+  on_accent: "#f4f2ea",
+  display_font: "Fraunces Soft",
+  body_font: "Karla",
+  corners: "organic",
+  radius_px: 30,
+  texture: "leather",
 };
 
 class FakeObserver {
@@ -58,6 +74,11 @@ function canvas(props: Partial<Parameters<typeof Canvas>[0]> = {}) {
       tools={[]}
       fallback={null}
       onView={() => {}}
+      moment={null}
+      services={[{ start: "11:30", end: "14:30" }, { start: "18:30", end: "21:30" }]}
+      look={LOOK}
+      onMoment={() => {}}
+      onColour={() => {}}
       {...props}
     />,
   );
@@ -138,6 +159,45 @@ describe("Studio's canvas", () => {
     await waitFor(() => expect(container.querySelector(".st-w-log")?.textContent).toContain('"intent":"BOOK"'));
     const statuses = [...container.querySelectorAll(".st-w-s.bad")].map((item) => item.textContent);
     expect(statuses).toEqual(["404"]);
+  });
+
+  it("shows the dock on the management site and on both, with each moment's time", () => {
+    const { container, unmount } = canvas({ view: "manage" });
+    const moments = within(screen.getByRole("group", { name: "Time of day" })).getAllByRole("button");
+    expect(moments.map((button) => [button.getAttribute("title"), button.textContent])).toEqual([
+      ["Morning", "10:00"],
+      ["Before service", "17:30"],
+      ["During service", "19:30"],
+      ["After service", "22:30"],
+    ]);
+    expect(container.querySelector(".st-dock-font")?.textContent).toBe("Fraunces");
+    expect(container.querySelectorAll(".st-dots button")).toHaveLength(4);
+    unmount();
+    canvas({ view: "both" });
+    expect(screen.getByRole("group", { name: "Time of day" })).toBeTruthy();
+  });
+
+  it("has no dock on the agent site or the public site, nor before the build", () => {
+    const first = canvas({ view: "agent" });
+    expect(screen.queryByRole("group", { name: "Time of day" })).toBeNull();
+    first.unmount();
+    const second = canvas({ view: "public" });
+    expect(screen.queryByRole("group", { name: "Time of day" })).toBeNull();
+    second.unmount();
+    canvas({ view: "manage", slug: null });
+    expect(screen.queryByRole("group", { name: "Time of day" })).toBeNull();
+  });
+
+  it("asks for a moment, and for a colour in words", async () => {
+    const onMoment = vi.fn();
+    const onColour = vi.fn();
+    const { container } = canvas({ view: "manage", moment: "during", onMoment, onColour });
+    const during = screen.getByRole("button", { name: "During service" });
+    expect(during.getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(screen.getByRole("button", { name: "After service" }));
+    expect(onMoment).toHaveBeenCalledWith("after");
+    await userEvent.click(container.querySelector<HTMLElement>(".st-dots button")!);
+    expect(onColour).toHaveBeenCalledOnce();
   });
 
   it("says why a frame couldn't be sent", async () => {

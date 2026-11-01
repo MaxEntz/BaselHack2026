@@ -56,6 +56,8 @@ export type Look = {
 export type GeneratedTool = { name: string; description: string };
 
 export type StudioView = "agent" | "manage";
+// A moment of the restaurant's day: Home shows what the merchant needs then (#154).
+export type Moment = "morning" | "before" | "during" | "after";
 // The management site's pages a reply can link to (#140): Home and the Assistant aside.
 export type ManagePage = "reservations" | "guests" | "hours" | "floor" | "rules" | "agent" | "settings";
 
@@ -176,7 +178,7 @@ export type ChatEvent =
   // A change, worded by code (#152): the old value struck through, the new one bold.
   | { type: "card"; kind: "diff"; data: DiffCardData }
   // Studio shows that pane of its canvas; the plain chat shows nothing (#152).
-  | { type: "card"; kind: "view"; data: { view: StudioView } }
+  | { type: "card"; kind: "view"; data: { view: StudioView; moment?: Moment | null } }
   // A link from a reply to a management page, worded by code (#140).
   | { type: "card"; kind: "page"; data: { page: ManagePage } }
   | { type: "error"; message: string }

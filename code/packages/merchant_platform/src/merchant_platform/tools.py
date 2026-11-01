@@ -220,7 +220,8 @@ TOOLS = (
     _Tool(
         "show_view",
         "Show the merchant a pane of Studio: `agent` (what an AI agent reads and gets) or "
-        "`manage` (the management site).",
+        "`manage` (the management site). With `moment`, the management site as it looks at "
+        "that time of day: morning, before, during or after service.",
         "Opening the view…",
         ShowViewInput,
     ),
@@ -408,8 +409,12 @@ class AdminTools:
             )
         if isinstance(arguments, ShowViewInput):
             return Outcome(
-                {"shown_to_merchant": arguments.view, "text": VIEWS[arguments.view]},
-                ViewCard(data=ViewCardData(view=arguments.view)),
+                {
+                    "shown_to_merchant": arguments.view,
+                    "moment": arguments.moment,
+                    "text": VIEWS[arguments.view],
+                },
+                ViewCard(data=ViewCardData(view=arguments.view, moment=arguments.moment)),
             )
         agent = self._require_agent()
         match name, arguments:

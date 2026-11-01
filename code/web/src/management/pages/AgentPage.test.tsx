@@ -7,7 +7,7 @@ import type { ManagementClient } from "../client.ts";
 import { ClientContext } from "../data.ts";
 import { RefreshContext, createRefreshStore } from "../live.ts";
 import { ToastProvider } from "../ui/index.ts";
-import { AgentPage, PAUSED_TOAST, RESUMED_TOAST } from "./AgentPage.tsx";
+import { AgentPage, NOT_YET, PAUSED_TOAST, PUBLISHED_TOAST, RESUMED_TOAST } from "./AgentPage.tsx";
 
 const SLUG = "la-graine-verte";
 const demo = fixture as ManagementFixture;
@@ -113,11 +113,19 @@ describe("Agent", () => {
     expect(screen.getByText("Live, and taking bookings.")).toBeTruthy();
   });
 
-  it("has no switch before the agent is published", async () => {
-    render(page(mock({ merchant: { ...demo.merchant, status: "building" } })));
+  it("publishes an agent that isn't published yet, instead of pausing it", async () => {
+    const client = mock({ merchant: { ...demo.merchant, status: "building" } });
+    render(page(client));
 
-    expect(await screen.findByText("Not published yet. Ask the assistant to publish it.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /the agent$/ })).toBeNull();
+    expect(await screen.findByText("Not published yet. Only you can see it.")).toBeTruthy();
+    expect(screen.getByText(NOT_YET)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Pause the agent" })).toBeNull();
+
+    click("Publish the agent");
+    expect(await screen.findByText(PUBLISHED_TOAST)).toBeTruthy();
+    expect(screen.getByText("Live, and taking bookings.")).toBeTruthy();
+    expect(screen.queryByText(NOT_YET)).toBeNull();
+    expect((await client.merchant(SLUG)).status).toBe("live");
   });
 
   it("copies an address, or shows it when the clipboard is refused", async () => {

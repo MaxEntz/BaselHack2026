@@ -34,6 +34,99 @@ function show({ client, ...props }: Partial<HomeProps> & { client: ManagementCli
 
 const card = (name: string) => screen.getByRole("region", { name });
 
+describe("Home by the hour (#154)", () => {
+  // The platform's clock, as the top bar reads it.
+  const at = (time: string) =>
+    createMockManagementClient(
+      { ...fixture, now: `${fixture.now.slice(0, 10)}T${time}:00+01:00` },
+      { latencyMs: 0, liveBookingDelayMs: 60_000 },
+    );
+
+  const panel = async () => {
+    const region = await screen.findByRole("region", { name: "Right now" });
+    return region;
+  };
+
+  it("shows the day ahead in the morning", async () => {
+    show({ client: at("10:00") });
+    const moment = await panel();
+    expect(within(moment).getByRole("heading", { level: 2 }).textContent).toBe("Today");
+    expect(within(moment).getByText("2 services, 24 seats.")).toBeTruthy();
+    expect(within(moment).getByText("Lunch")).toBeTruthy();
+    expect(within(moment).getByText("18:30–21:30")).toBeTruthy();
+    expect(within(moment).getByText("6 bookings, 17 guests")).toBeTruthy();
+  });
+
+  it("names what to check before the day starts", async () => {
+    const today = fixture.now.slice(0, 10);
+    const custom = {
+      ...fixture,
+      now: `${today}T10:00:00+01:00`,
+      rules: { ...fixture.rules, cancellation_policy: null, max_party_size: 8 },
+      blocked: [{ starts_at: `${today}T20:30:00+01:00`, date: today, time: "20:30" }],
+    };
+    show({ client: createMockManagementClient(custom, { latencyMs: 0, liveBookingDelayMs: 60_000 }) });
+    const moment = await panel();
+    expect(within(moment).getByText("No cancellation policy yet. Guests see none.")).toBeTruthy();
+    expect(within(moment).getByText("20:30 blocked tonight.")).toBeTruthy();
+    expect(within(moment).getByText("Groups up to 8, but your largest table seats 4.")).toBeTruthy();
+  });
+
+  it("shows tonight's list before service", async () => {
+    show({ client: at("17:40") });
+    const moment = await panel();
+    expect(within(moment).getByRole("heading", { level: 2 }).textContent).toBe("Tonight");
+    expect(within(moment).getByText("6 bookings, 17 guests of 24 seats.")).toBeTruthy();
+    const rows = within(moment).getAllByRole("row");
+    expect(rows).toHaveLength(6);
+    expect(rows[0].textContent).toContain("18:30");
+    expect(rows[0].textContent).toContain("Sara Muller");
+  });
+
+  it("shows the next arrival during service, and who is seated", async () => {
+    show({ client: at("19:40") });
+    const moment = await panel();
+    expect(moment.dataset.moment).toBe("during");
+    expect(within(moment).getByText("Next")).toBeTruthy();
+    expect(moment.querySelector(".moment-time")?.textContent).toBe("20:00");
+    expect(moment.querySelector(".moment-who")?.textContent).toBeTruthy();
+    expect(within(moment).getByText(/^Then 20:00, /)).toBeTruthy();
+    expect(within(moment).getByText(/^Seated now: .*T1 Sara Muller/)).toBeTruthy();
+  });
+
+  it("says when no one else is coming", async () => {
+    show({ client: at("21:20") });
+    const moment = await panel();
+    expect(within(moment).getByText("No more arrivals tonight.")).toBeTruthy();
+  });
+
+  it("sums the service up afterwards", async () => {
+    show({ client: at("22:30") });
+    const moment = await panel();
+    expect(within(moment).getByRole("heading", { level: 2 }).textContent).toBe("Tonight, done");
+    expect(within(moment).getByText("Dinner service, 18:30–21:30.")).toBeTruthy();
+    expect(within(moment).getByText("through the agent")).toBeTruthy();
+    expect(moment.querySelector(".moment-stats")?.textContent).toContain("17guests");
+    expect(moment.querySelector(".moment-stats")?.textContent).toContain("6bookings");
+  });
+
+  it("previews another moment when Studio asks, and says at what time", async () => {
+    render(
+      <ClientContext.Provider value={at("10:00")}>
+        <MemoryRouter initialEntries={["/?moment=after"]}>
+          <div className="mg">
+            <HomePage slug={SLUG} />
+          </div>
+        </MemoryRouter>
+      </ClientContext.Provider>,
+    );
+    const moment = await panel();
+    expect(within(moment).getByRole("heading", { level: 2 }).textContent).toBe("Tonight, done");
+    expect(within(moment).getByText("As at 22:30")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Good evening, Camille");
+  });
+});
+
 describe("Home with the demo fixture", () => {
   it("greets the owner by the evening clock and names tonight's service", async () => {
     setClock(DEMO_NOW);

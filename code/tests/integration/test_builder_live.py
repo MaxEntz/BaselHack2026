@@ -21,7 +21,7 @@ from builder.build import Builder
 from builder.cache import BuildCache
 from builder.crawl import crawl
 from builder.llm import OpenAIClient
-from core.models import StepEvent
+from core.models import SitePageEvent, StepEvent
 
 pytestmark = [pytest.mark.integration, pytest.mark.browser, pytest.mark.llm]
 
@@ -62,8 +62,9 @@ async def test_builds_le_petit_zinc_from_its_website(
     )
     steps: list[StepEvent] = []
 
-    async def emit(step: StepEvent) -> None:
-        steps.append(step)
+    async def emit(event: StepEvent | SitePageEvent) -> None:
+        if isinstance(event, StepEvent):
+            steps.append(event)
 
     # No description: the tables come from defaults, as an assumption; the site states the
     # group size ("en ligne jusqu'à 6 personnes", although its form offers up to 12, #74).

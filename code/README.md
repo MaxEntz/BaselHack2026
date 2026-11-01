@@ -37,7 +37,7 @@ Claude.ai needs a public HTTPS URL: `make deploy` ships the gateway to the team 
 
 ## Demo data
 
-Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_profiles` pytest fixture):
+The demo's script, checklist and plan B: [`documentation/runbooks/demo.md`](../documentation/runbooks/demo.md). Three fictional restaurants in Mulhouse, in `tests/fixtures/` (also the `demo_profiles` pytest fixture):
 
 | Slug | Tags | Price | Services | Tables | Max party |
 |---|---|---|---|---|---|
@@ -70,6 +70,7 @@ make test                         # uv run pytest
 make lint                         # ruff check, ruff format --check, mypy (the `ruff`/`mypy` line below)
 uv run pytest                     # all tests; `-m "not integration"` skips the ones needing Docker
 uv run pytest tests/e2e           # §9 user scenarios through a real MCP client
+uv run pytest tests/e2e/test_demo_scenario.py   # the demo's order over HTTP, before each rehearsal (#25)
 make test-stack                   # Chromium on the built web app, the platform and the gateway: build, publish, book, block, pause (#153)
 uv run scripts/crawl_site.py URL  # what the builder's crawl reads from a website (nothing stored)
 uv run scripts/bench_extract.py    # builder extraction, 5 runs on 6 sites (needs OPENAI_API_KEY; `--local` for the 4 local ones)

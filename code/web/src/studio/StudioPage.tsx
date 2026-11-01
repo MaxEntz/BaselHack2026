@@ -5,7 +5,7 @@ import type { Merchant } from "../chat/state.ts";
 import { useChat, type Welcome } from "../chat/useChat.ts";
 import { managementClient } from "../management/index.ts";
 import { createMockClient } from "../mocks/mockClient.ts";
-import type { BuildAgentOutput, BuildFact, MerchantOverview, SitePage } from "../types.ts";
+import type { BuildAgentOutput, BuildFact, MerchantOverview, Moment, Service, SitePage } from "../types.ts";
 import { Canvas } from "./Canvas.tsx";
 import { DEMO, EXAMPLES } from "./examples.ts";
 import { type Addresses, Feed, type View } from "./feed.tsx";
@@ -82,6 +82,8 @@ export function StudioPage() {
   const [view, setView] = useState<View>("manage");
   const [fact, setFact] = useState<BuildFact | null>(null);
   const [storedPages, setStoredPages] = useState<readonly SitePage[]>([]);
+  const [moment, setMoment] = useState<Moment | null>(null);
+  const [storedServices, setStoredServices] = useState<readonly Service[]>([]);
   const [pane, setPane] = useState<"chat" | "canvas">("chat");
   const [overview, setOverview] = useState<MerchantOverview | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -138,6 +140,14 @@ export function StudioPage() {
       .catch(() => {
         // The public tab stays disabled.
       });
+    managementClient
+      .hours(slug, abort.signal)
+      .then((hours) => {
+        if (!abort.signal.aborted) setStoredServices(hours.services);
+      })
+      .catch(() => {
+        // The dock then names its moments instead of their times.
+      });
     return () => abort.abort();
   }, [restored, slug, claimed]);
 
@@ -186,6 +196,20 @@ export function StudioPage() {
     }, 0);
     return stopPlayback;
   }, [profile, pages.length]);
+
+  // The dock's moment, or the chat's: on the management site, and again to go back to the clock.
+  function showMoment(next: Moment) {
+    stopPlayback();
+    setMoment((current) => (current === next ? null : next));
+    if (view !== "manage" && view !== "both") crossfade(() => setView("manage"));
+  }
+
+  // A dot asks for a colour in words: the assistant checks its contrast.
+  function askForColour() {
+    setInput("Change the main colour to ");
+    setPane("chat");
+    textarea.current?.focus();
+  }
 
   function showView(next: View) {
     stopPlayback();
@@ -284,6 +308,8 @@ export function StudioPage() {
       setInput("");
       setOverview(null);
       setStoredPages([]);
+      setStoredServices([]);
+      setMoment(null);
       setFact(null);
       stopPlayback();
       setPane("chat");
@@ -307,8 +333,9 @@ export function StudioPage() {
     }
   }
 
-  function open(next: View) {
+  function open(next: View, nextMoment?: Moment | null) {
     stopPlayback();
+    if (nextMoment) setMoment(nextMoment);
     crossfade(() => {
       setFact(null);
       setView(next);
@@ -319,12 +346,13 @@ export function StudioPage() {
   // The assistant's `show_view` (#152): each view card switches the canvas, once.
   const asked = state.items.findLast((item) => item.type === "card" && item.card.kind === "view");
   const askedView = asked?.type === "card" && asked.card.kind === "view" ? asked.card.data.view : null;
+  const askedMoment = asked?.type === "card" && asked.card.kind === "view" ? asked.card.data.moment : null;
   const askedId = asked?.id ?? null;
   const shown = useRef<string | null>(null);
   useEffect(() => {
     if (askedId === null || askedView === null || shown.current === askedId) return;
     shown.current = askedId;
-    open(askedView);
+    open(askedView, askedMoment);
   });
 
   const onSubmit = (event: FormEvent) => {
@@ -496,6 +524,11 @@ export function StudioPage() {
             view={view}
             addresses={addresses}
             onView={showView}
+            moment={moment}
+            services={profile?.profile.services ?? storedServices}
+            look={overview?.look ?? profile?.profile.look ?? null}
+            onMoment={showMoment}
+            onColour={askForColour}
           />
         )}
       </div>

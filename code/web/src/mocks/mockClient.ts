@@ -28,6 +28,14 @@ const PUBLISH: ChatEvent[] = [
   { type: "done" },
 ];
 
+// "Show during service": the assistant's `show_view` with a moment (#154).
+const SHOW_DURING: ChatEvent[] = [
+  { type: "tool_start", tool: "show_view", label: "Opening the view…" },
+  { type: "card", kind: "view", data: { view: "manage", moment: "during" } },
+  { type: "text", delta: "Here it is." },
+  { type: "done" },
+];
+
 const NOTIFICATION_DELAY_MS = 6000;
 // A description containing "cut" drops the stream while `extract` runs (#86).
 const CUT = /\bcut\b/i;
@@ -43,6 +51,7 @@ export function createMockClient(onboarded: boolean): ChatClient {
   function script(message: string): ChatEvent[] {
     if (onboarded) {
       if (/publi/i.test(message)) return PUBLISH;
+      if (/during service/i.test(message)) return SHOW_DURING;
       return /block|busy|stat|polic|party|max/i.test(message) ? CARDS : TONIGHT;
     }
     if (website) {

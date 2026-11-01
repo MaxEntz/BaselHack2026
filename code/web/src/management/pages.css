@@ -82,6 +82,7 @@
 .mg .ag { display: grid; gap: 18px; padding: 24px clamp(18px, 2.6vw, 30px); }
 .mg .ag h2 { font-size: 34px; line-height: 1.05; }
 .mg .ag-hd { margin-top: 8px; }
+.mg .ag-note { margin-top: -10px; font-size: 15px; }
 .mg .ag-none { padding: 13px 0; border-top: 1px solid rgb(244 242 234 / .32); font-size: 17px; }
 .mg .addr { display: grid; gap: 3px; }
 .mg .addr span { font-size: 15px; }

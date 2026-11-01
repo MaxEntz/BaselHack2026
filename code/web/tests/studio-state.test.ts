@@ -152,6 +152,7 @@ test("review: chips are computed from the profile, and only the ones not asked y
   assert.deepEqual(chips, [
     "Block 20:30 tonight",
     "Set max party size to 6",
+    "Show during service",
     "What bookings do I have tonight?",
     "Publish",
   ]);
@@ -175,6 +176,7 @@ test("live: publishing updates the build's card and adds the addresses", () => {
   const steps = entries[3];
   assert.equal(steps.kind === "steps" && steps.steps.deploy?.status, "done");
   assert.deepEqual(chipsOf(state, "live", []), [
+    "Show during service",
     "What bookings do I have tonight?",
     "How busy are we tonight?",
   ]);
@@ -192,6 +194,33 @@ test("live, by chat: the model's words and the confirmation give way too", () =>
   );
   assert.equal(phaseOf(state), "live");
   assert.deepEqual(feedOf(state).slice(-2).map((entry) => entry.kind), ["user", "live"]);
+});
+
+test("a preview of a moment says what it shows, and the model's words give way", () => {
+  const state = run(
+    reviewing(),
+    { type: "send", text: "Show during service" },
+    chat({ type: "card", kind: "view", data: { view: "manage", moment: "during" } }),
+    chat({ type: "text", delta: "Here it is." }),
+    chat({ type: "done" }),
+  );
+  const last = feedOf(state).at(-1);
+  assert.equal(last?.kind, "moment");
+  assert.equal(
+    last?.kind === "moment" && last.text,
+    "At 19:30 it shows the next arrival in type you can read from across the room.",
+  );
+});
+
+test("a plain view card adds nothing to the feed, and the model's words stay", () => {
+  const state = run(
+    reviewing(),
+    { type: "send", text: "Show me the agent site" },
+    chat({ type: "card", kind: "view", data: { view: "agent" } }),
+    chat({ type: "text", delta: "There." }),
+    chat({ type: "done" }),
+  );
+  assert.deepEqual(feedOf(state).slice(-2).map((entry) => entry.kind), ["user", "bot"]);
 });
 
 test("a failed publish stays hidden, and says so", () => {

@@ -253,12 +253,20 @@ async def test_headings_corners_and_back_to_the_sites_look() -> None:
     assert "Back to the look from your site." in said(llm)
 
 
+async def test_show_view_can_ask_for_a_moment_of_the_day() -> None:
+    llm = ScriptedLLM(([], [call("show_view", view="manage", moment="during")]), (["There."], []))
+
+    events = await Studio(llm).turn("Show during service")
+
+    assert cards(events, "view") == [{"view": "manage", "moment": "during"}]
+
+
 async def test_show_view_switches_studios_canvas() -> None:
     llm = ScriptedLLM(([], [call("show_view", view="agent")]), (["There."], []))
 
     events = await Studio(llm).turn("Show me the agent site")
 
-    assert cards(events, "view") == [{"view": "agent"}]
+    assert cards(events, "view") == [{"view": "agent", "moment": None}]
 
 
 def test_the_prompt_answers_what_agents_read_and_refuses_to_touch_the_site() -> None:
