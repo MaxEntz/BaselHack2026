@@ -384,7 +384,9 @@ class PublicSite(_Model):
     pages: tuple[SitePage, ...]
 
 
-AgentTryIntent = Literal["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"]
+# The Send buttons: the intents that address no merchant. Booking goes through `AgentTalkInput`,
+# since only the merchant's agent calls the booking tools (#254).
+AgentTryIntent = Literal["DISCOVER", "RECALL", "PING"]
 
 
 class AgentTryInput(_Model):

@@ -43,7 +43,7 @@ A contract change needs a dedicated PR and a message to the team, with Python an
 - A guest can't move, resize or cancel a booking once it has started (`slot_unavailable`); only the merchant can.
 
 ### Idempotency
-- `create_reservation` and `update_reservation` carry an `idempotency_key`, one namespace per merchant and per operation.
+- `AgentService.create_reservation` and `update_reservation` carry an `idempotency_key`, one namespace per merchant and per operation. Guests reach them only through the merchant's agent, which uses a confirmed proposal's id as the key (#247, #254).
 - A creation replay with the same key and parameters returns the first booking; other parameters are `invalid_input`.
 - `update_reservation` needs `starts_at` or `party_size`. Its key is stored with the change it applied (`public.reservation_changes`): the same key, booking and parameters return the booking as it is now, unchanged; anything else is `invalid_input`. A failed update doesn't use up its key ([#78](https://github.com/MaxEntz/BaselHack2026/issues/78)).
 - A replay returns the booking even if it was cancelled since.
@@ -68,16 +68,12 @@ Each tool takes flat arguments (the fields of its `*Input` model) and returns `<
 | Tool | Input (`core.models`) | Output | Errors (besides `invalid_input`, `agent_unavailable`) |
 |---|---|---|---|
 | `search_merchants` | `query`, `near?`, `date?`, `filters?: {tags?, max_price?}` | `merchants: [{slug, name, city, tags, price_level, website}]`, `suggestions: [{drop, matches}]`, `ignored_filters` | — |
-| `get_availability` | `merchant`, `date`, `time?` (`HH:MM`), `party_size` | `slots: [{starts_at, table_label}]` (≤ 3, `core.models.MAX_SLOTS`) | `not_found`, `party_too_large` |
-| `create_reservation` | `merchant`, `starts_at`, `party_size`, `guest_name`, `idempotency_key` | `reservation` | `not_found`, `party_too_large`, `slot_unavailable` |
-| `update_reservation` | `merchant`, `reservation_id`, `guest_name`, `starts_at?`, `party_size?`, `idempotency_key` | `reservation` | `not_found`, `party_too_large`, `slot_unavailable` |
-| `cancel_reservation` | `merchant`, `reservation_id`, `guest_name` | `status: "cancelled"` | `not_found`, `slot_unavailable` |
 | `get_my_reservations` | `guest_name` | `reservations`, `notices: [str]` | — |
 | `talk_to_merchant` | `merchant`, `message`, `idempotency_key` (a UUID), `conversation?`, `confirm?` (`TalkInput`) | `TalkOutput`: `conversation`, `reply`, `slots`, `pending?`, `reservation?`, `fallback_url?`, `tools_called` | `not_found` (unknown merchant, or unknown or expired conversation) |
 
 `reservation` is `{id, merchant, starts_at, party_size, table_label, status, guest_name, via}`.
 
-- **Booking path:** `GATEWAY_TALK` off (the default) lists the four booking tools and hides `talk_to_merchant`; on, the reverse, on `/mcp` and every `/m/<slug>/mcp`, with instructions to match: each server registers one path only (#251). `search_merchants` and `get_my_reservations` stay either way.
+- **Booking path:** `talk_to_merchant` is the only way to book, move or cancel (#254): the agent proposes (`pending`), and only a `confirm` after the user's yes lets it write. `/m/<slug>/mcp` has it alone.
 - **Talk:** `talk_to_merchant` relays the merchant agent's `TALK` answer as it is (#245). Its description tells Claude to write as the user would, relay `reply`, show `pending.summary` and stop, and send `confirm` only after an explicit yes to that summary, never in the reply that got the `pending` (the rule for writes of #14 and #109, `tooling.TALK_CONFIRM_RULE`). Without `BATP_URL` it answers `agent_unavailable` with the fallback URL: only the node runs the merchant's agent. Its `idempotency_key` must be a UUID, sent to the node in its canonical form: every Claude user reaches the node under the gateway's one agent id, and the node replays a key's stored answer, so two guests with the same naive key and first message would share a conversation.
 
 - Arguments outside a tool's schema are rejected before it runs, as `invalid_input` (`gateway.fallback.RejectedArguments`).
@@ -86,7 +82,7 @@ Each tool takes flat arguments (the fields of its `*Input` model) and returns `<
 - **Deadline:** `AGENT_TIMEOUT_MS` (2 s) bounds the whole call, registry lookup included (`gateway.fallback.deadline_in`). After a `search_merchants` timeout, the named merchant's link lookup gets 10 % more (`LINK_LOOKUP_SHARE`): the call answers within 2.2 s ([#92](https://github.com/MaxEntz/BaselHack2026/issues/92)). `talk_to_merchant` has its own budget, `AGENT_TALK_TIMEOUT_MS` (30 s, above the node's 25 s for `TALK`, #251).
 - A timeout on a write may hit after the COMMIT: its message tells Claude to check `get_my_reservations` before retrying. A `talk_to_merchant` counts as a write when it carries a `confirm`.
 - **Notices:** `get_my_reservations` returns a notice on every call for 24 real hours after the first call that returned it (`agent.notices.NOTICE_WINDOW`), then never again ([#91](https://github.com/MaxEntz/BaselHack2026/issues/91)).
-- **Bridge:** with `BATP_URL`, each tool is a BATP request to the node ([PROTOCOL.md §12](PROTOCOL.md#12-the-mcp-bridge)), inside the same 2 s. A lost or overloaded node or an unreadable answer is `agent_unavailable`; a refusal from the node keeps its own code. The gateway still reads the registry for the `down` status and the fallback URL.
+- **Bridge:** with `BATP_URL`, each tool is a BATP request to the node ([PROTOCOL.md §12](PROTOCOL.md#12-the-mcp-bridge)), inside its budget. A lost or overloaded node or an unreadable answer is `agent_unavailable`; a refusal from the node keeps its own code. The gateway still reads the registry for the `down` status and the fallback URL.
 - **Log:** one JSON line per call, `{"event": "tool_call", "tool", "merchant", "latency_ms", "outcome"}` (`outcome` = `ok` or the error code), plus `batp_request` as a bridge. Guest names never appear at INFO.
 - `GET /health` (no MCP, no token): `200` or `503`, `{"status", "database"}`. It doesn't check the node.
 
@@ -96,10 +92,9 @@ Same gateway, one restaurant (`gateway/merchant_server.py`, [ADR-0012](adr/0012-
 
 | Tool | Input | Output and errors |
 |---|---|---|
-| `get_availability`, `create_reservation`, `update_reservation`, `cancel_reservation` | As on `/mcp`, without `merchant` (taken from the path) | As on `/mcp`, same log line (`fallback.call_merchant`) |
-| `talk_to_merchant` (with `GATEWAY_TALK`, instead of the four) | As on `/mcp`, without `merchant` | As on `/mcp` |
+| `talk_to_merchant` | As on `/mcp`, without `merchant` (taken from the path) | As on `/mcp`, same log line (`fallback.call_merchant`) |
 
-- Each description starts with the merchant's sentence from `templates/restaurant.json` (`generated_tools(profile)`), re-read from the registry at each `tools/list`; generic descriptions if the profile can't be read. `talk_to_merchant` starts with "Talk to the agent of <name> (<city>)." (`merchant_server.talk_sentence`).
+- Its description starts with "Talk to the agent of <name> (<city>)." (`merchant_server.talk_sentence`), re-read from the registry at each `tools/list`; the generic description if the profile can't be read.
 - No free text from the website in a description: the cancellation policy never goes in, and name and city are cut to one line of at most 80 characters without control characters.
 - Unknown slug, invalid slug or `building` merchant: HTTP `404` before MCP. A `down` merchant keeps its endpoint and answers `agent_unavailable` with its fallback URL. A merchant deployed after startup has its endpoint at once.
 - The request's clock starts with the slug check and reaches the tool (and `tools/list`) through the ASGI scope's `state`; each counts its own budget from there.
@@ -114,8 +109,8 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 | `build_agent` | `BuildAgentInput`: `website`, `description` | `BuildAgentOutput`: `profile`, `status: "building"`, `assumptions`, `facts` (`BuildFact`: `key`, `label`, `value`, `source` = a crawled page's path, `"you"` or null, `quote`), `flags` (`BuildFlag`: `title`, `detail`), `tools`, `mcp_url`; streams 4 steps, then `deploy` `waiting` ("Waiting for you.") (#136) |
 | `publish_agent` | `PublishAgentInput` (empty) | Confirmation "Your agent is live: Claude users can now book you."; streams `deploy` `running` then `done`. A live agent stays live, a paused (`down`) one is refused (#136) |
 | `update_rules` | `cancellation_policy` (empty removes it) | `diff` card; "Saved. Claude reads this before it cancels for a guest." The largest group stays `update_policy`'s (#152) |
-| `try_request` | `party_size`, `date?`, `time?` | What an agent gets: the times, or the 413 with the booking page; "Agents get a 404 until you publish" while `building` |
-| `send_test_booking` | (none) | A booking for 2 at the first free time, made through `AgentService.create_reservation` with `via="claude"` as the node's `BOOK` would; refused while `building` |
+| `try_request` | `party_size`, `date?`, `time?` | What an agent gets: the times, or "too many" with the booking page; "Agents get a 404 until you publish" while `building` |
+| `send_test_booking` | (none) | A booking for 2 at the first free time, made through `AgentService.create_reservation` with `via="claude"`, as the merchant's agent does on a confirm; refused while `building` |
 | `update_look` | `accent?`, `accent_2?` (`#rrggbb`), `display_font?`, `corners?`, `reset` | `diff` card(s), "See it" opens the management pane. The main colour must read as the small titles' colour, at 4.5:1 on `bg` and `surface` (`titled()`, the web's own steps); the second one at 3:1 on `bg` (`readable()`). The buttons' text (`on_accent`) must read at 4.5:1 on both colours and their 8 % darker shades (`fit_text()`, #209): it stays if it does, else it turns white or near-black; if neither reads, the colour just picked moves away from it, else the other one does. Each change is said, with its own `diff` card. `reset` reads the website's look again. Stored in the registry's profile copy, read by `GET /merchants/{slug}` |
 | `show_view` | `view`: `agent` or `manage`; `moment?`: `morning`, `before`, `during` or `after`, on `manage` (#154) | A `view` card: Studio switches its canvas, the plain chat shows nothing |
 | `link_page` | `page`: `reservations`, `guests`, `hours`, `floor`, `rules`, `agent` or `settings` | A `page` card: the management site's panel shows "You can change this in <Opening hours>." with the link (code's words, `tools.PAGE_LINKS` and the web's `PAGE_LINKS`); Studio and the plain chat show nothing. Only in a reply that calls no other tool (#140) |
@@ -156,6 +151,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 - Written after the answer, in its own task (`NodeServer(record=…)`), through the log's own engine (at most 2 connections, apart from the handlers'); a record is dropped with a warning when 100 are already waiting. The log never delays or fails an answer, not even another request's.
 - Rows older than 7 days are purged as new ones arrive. Rows hold guest names: only the merchant's own session may read them.
 - `AgentService.list_agent_requests(slug, day, refused=)` reads them for `GET /agent/requests`: the merchant's local day, newest first, at most 10. `agent.requests.describe` words each row from its frames:
+  - The closed intents keep their wording, for the 7 days of rows from before BATP 0.3 and the demo fixture (#254):
   - `AVAILABILITY` 200: "{agent} checked {time} for {n} guests" / "{day}. Your agent offered the closest free times." ("free times" without a time);
   - `BOOK` 200: "{guest} booked through {agent}" / "{day}, {time}, {n} guests, table {T}."; `AMEND` 200: "{guest} changed their booking through {agent}"; `CANCEL` 200: "{guest} cancelled through {agent}";
   - 413: "A group of {n} was sent to your booking page" / "Your limit is {max}, so the guest got your link instead." (the limit now; "No table fits them" when the group is within it);
@@ -241,7 +237,7 @@ for it in local development only.
 |---|---|---|---|
 | `GET /` | | `MerchantOverview`: name, city, price, tags, website, status, timezone, the server's clock (`now`), the agent's BATP address, its MCP URL, the management URL, `owner_name`, `demo`, `look` (the site's, #149; null: the default look) | #132 |
 | `GET /site` | | `PublicSite`: the screenshots stored with the build, `{path, width, height, image}` with `image` a `data:` URL; no pages for a merchant built before #151 | #151 |
-| `POST /agent/try` | `AgentTryInput` (`intent`), or `AgentTalkInput` (`message`, `conversation?`, `confirm?`, #253) | `AgentTryOutput`: both frames as text and the node's `status`. One real frame through the BATP node as `urn:batp:agent:sesame-studio`, with the platform choosing its params; the node's refusals are answers (`404` until published). `agent_unavailable` without `BATP_URL`. BOOK makes a real booking under the test guest With a `message`, a real `TALK`: the owner's text, a fresh `idempotency_key`, and `talk`, the `200` answer read from its frame (`TalkOutput`, else null). `confirm` needs its `conversation`. `TALK` has no guest field, so the agent asks for a name as it would ask anyone. | #151, #253 |
+| `POST /agent/try` | `AgentTryInput` (`intent`), or `AgentTalkInput` (`message`, `conversation?`, `confirm?`, #253) | `AgentTryOutput`: both frames as text and the node's `status`. One real frame through the BATP node as `urn:batp:agent:sesame-studio`, with the platform choosing its params; the node's refusals are answers (`404` until published, for a `TALK`). `agent_unavailable` without `BATP_URL`. `intent` is `DISCOVER`, `RECALL` or `PING`, which address no merchant; the closed intents are `422` (#254). With a `message`, a real `TALK`: the owner's text, a fresh `idempotency_key`, and `talk`, the `200` answer read from its frame (`TalkOutput`, else null). `confirm` needs its `conversation`. `TALK` has no guest field, so the agent asks for a name as it would ask anyone. | #151, #253 |
 | `POST /publish` | | `MerchantOverview`, now `live`: publishes the agent a build left `building`. A paused (`down`) agent is refused with `invalid_input` | #136 |
 | `GET /assistant` | | `AssistantConversation`: `{session_id, items}`, the owner's conversation with the assistant. One platform-made session per owner link (`o-` + 24 random bytes), shared by every device signed in with it; `/chat` on it still needs the owner's cookie. `items` are the web chat's shapes (`user`, `assistant`, `card`, `notification`, `error`; never the steps), the last 200, kept in memory until the platform restarts | #140 |
 | `GET /dashboard` | | `Dashboard`: `history` (30 days ending `date`, today), `next_days` (7), `channels` (bookings over `history`), `room`, `activity` (latest 6, `ACTIVITY_LINES`) | #135 |

@@ -1,4 +1,9 @@
-"""What only exists with the bridge: MCP → BATP → node, and that node dying or freezing (#61)."""
+"""What only exists with the bridge: MCP → BATP → node, and that node dying or freezing (#61).
+
+A booking crosses a node in this process whose merchant agent runs on a scripted model (#254).
+`python -m merchant_node`, which can die or freeze, has no model: its talks get the fallback
+URL, while its searches and the guest's bookings answer.
+"""
 
 import asyncio
 import json
@@ -12,17 +17,17 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
-from mcp import Client
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.discovery import find_merchant, find_named_merchant
+from agent.discovery import find_named_merchant
 from batp.client import BatpClient
 from core.config import Settings
 from core.models import SearchFilters, ToolError
 from gateway.agent_client import GATEWAY_AGENT as GATEWAY_IDENTITY
 from gateway.agent_client import BatpAgentClient, parse_batp_url
-from gateway.fallback import call_merchant, call_service
-from tests.e2e.conftest import BatpNode, running_gateway
+from gateway.fallback import call_service
+from tests.e2e.conftest import BatpNode, book, call, running_gateway, talk
+from tests.integration.agent_fakes import ScriptedLLM
 
 pytestmark = pytest.mark.integration
 
@@ -31,76 +36,63 @@ ZINC_FALLBACK = "http://localhost:8080/reservation.html"
 TZ = ZoneInfo("Europe/Zurich")
 GATEWAY_AGENT = "urn:batp:agent:claude-gateway"
 GOOD_TOKEN = "the-gateway-token-long-enough"
+# The gateway's budget for a talk in the frozen-node test, instead of the 30 s default.
+TALK_BUDGET_MS = 1500
 
 
-def availability() -> dict[str, Any]:
-    day = datetime.now(TZ).date() + timedelta(days=1)
-    return {"merchant": ZINC, "date": day.isoformat(), "time": "20:00", "party_size": 2}
-
-
-async def call(client: Client, tool: str, **arguments: Any) -> dict[str, Any]:
-    result = await client.call_tool(tool, arguments)
-    assert not result.is_error
-    assert result.structured_content is not None
-    content: dict[str, Any] = result.structured_content["result"]
-    return content
+def logged(caplog: pytest.LogCaptureFixture, message: str) -> list[dict[str, Any]]:
+    return [vars(record) for record in caplog.records if record.getMessage() == message]
 
 
 async def test_a_booking_crosses_the_node_under_the_gateway_s_identity(
-    bridge_base_url: str, batp_node: BatpNode, caplog: pytest.LogCaptureFixture
+    talking_gateway: str, agent_llm: ScriptedLLM, caplog: pytest.LogCaptureFixture
 ) -> None:
     guest = f"Alex {uuid4().hex[:8]}"
     day = datetime.now(TZ).date() + timedelta(days=1)
     starts_at = datetime.combine(day, datetime.strptime("19:30", "%H:%M").time(), TZ)
 
-    with caplog.at_level(logging.INFO, logger="gateway.tools"):
-        async with Client(f"{bridge_base_url}/mcp") as client:
-            booked = await call(
-                client,
-                "create_reservation",
-                merchant=ZINC,
-                starts_at=starts_at.isoformat(),
-                party_size=2,
-                guest_name=guest,
-                idempotency_key=str(uuid4()),
-            )
+    with caplog.at_level(logging.INFO):
+        reservation = await book(talking_gateway, agent_llm, ZINC, starts_at, guest)
 
-    assert booked["reservation"]["via"] == "claude"
-    gateway_line = next(r.__dict__ for r in caplog.records if r.getMessage() == "tool_call")
-    assert gateway_line["outcome"] == "ok"
-    node_lines = [json.loads(line) for line in batp_node.logs().splitlines() if '"BOOK"' in line]
-    assert any(
-        line.get("agent") == GATEWAY_AGENT and line.get("request") == gateway_line["batp_request"]
-        for line in node_lines
-    ), batp_node.logs()
-    assert guest not in batp_node.logs()
-    assert guest not in caplog.text
+    assert reservation["via"] == "claude"
+    talks = [line for line in logged(caplog, "tool_call") if line["tool"] == "talk_to_merchant"]
+    assert [line["outcome"] for line in talks] == ["ok", "ok"]
+    crossed = {
+        line["request"]: line["agent"]
+        for line in logged(caplog, "batp request")
+        if line["intent"] == "TALK"
+    }
+    assert {crossed.get(line["batp_request"]) for line in talks} == {GATEWAY_AGENT}
+    # Neither the gateway's lines nor the node's carry the guest's name, extras included.
+    assert not any(guest in str(vars(record)) for record in caplog.records)
 
 
 async def test_every_tool_goes_through_the_node(bridge_base_url: str, batp_node: BatpNode) -> None:
-    async with Client(f"{bridge_base_url}/mcp") as client:
-        await call(client, "search_merchants", query="restaurant")
-        await call(client, "get_my_reservations", guest_name="Nobody")
+    await call(bridge_base_url, "search_merchants", query="restaurant")
+    await call(bridge_base_url, "get_my_reservations", guest_name="Nobody")
+    answer = await talk(f"{bridge_base_url}/mcp", "Table for 2?", merchant=ZINC)
 
     logs = batp_node.logs()
     assert '"DISCOVER"' in logs
     assert '"RECALL"' in logs
+    assert '"TALK"' in logs
+    # This node has no model (#249): its 503 keeps the restaurant's link.
+    assert (answer["error"], answer["fallback_url"]) == ("agent_unavailable", ZINC_FALLBACK)
 
 
 async def test_node_down_gives_the_fallback_url_and_coming_back_needs_no_restart(
     bridge_base_url: str, batp_node: BatpNode
 ) -> None:
-    async with Client(f"{bridge_base_url}/mcp") as client:
-        assert "slots" in await call(client, "get_availability", **availability())
-        batp_node.stop()
-        try:
-            direct = await call(client, "get_availability", **availability())
-            named = await call(client, "search_merchants", query="a table at Le Petit Zinc")
-            generic = await call(client, "search_merchants", query="restaurant tonight")
-            mine = await call(client, "get_my_reservations", guest_name="Nobody")
-        finally:
-            batp_node.start()
-        back = await call(client, "get_availability", **availability())
+    assert (await call(bridge_base_url, "search_merchants", query="restaurant"))["merchants"]
+    batp_node.stop()
+    try:
+        direct = await talk(f"{bridge_base_url}/mcp", "Table for 2?", merchant=ZINC)
+        named = await call(bridge_base_url, "search_merchants", query="a table at Le Petit Zinc")
+        generic = await call(bridge_base_url, "search_merchants", query="restaurant tonight")
+        mine = await call(bridge_base_url, "get_my_reservations", guest_name="Nobody")
+    finally:
+        batp_node.start()
+    back = await call(bridge_base_url, "search_merchants", query="restaurant tonight")
 
     assert direct["error"] == "agent_unavailable"
     assert direct["fallback_url"] == ZINC_FALLBACK
@@ -109,42 +101,46 @@ async def test_node_down_gives_the_fallback_url_and_coming_back_needs_no_restart
     assert generic["error"] == "agent_unavailable"
     assert generic["fallback_url"] is None
     assert mine["error"] == "agent_unavailable"
-    assert "slots" in back
+    assert back["merchants"]
 
 
-async def test_slow_node_times_out_within_the_budget_and_the_session_survives(
-    bridge_base_url: str, batp_node: BatpNode
+async def test_slow_node_times_out_within_the_talk_s_budget_and_the_session_survives(
+    batp_node: BatpNode, e2e_database_url: str
 ) -> None:
-    async with Client(f"{bridge_base_url}/mcp") as client:
-        assert "slots" in await call(client, "get_availability", **availability())
+    settings = Settings(
+        _env_file=None,
+        database_url=e2e_database_url,
+        batp_url=batp_node.url,
+        agent_talk_timeout_ms=TALK_BUDGET_MS,
+    )
+    with running_gateway(settings) as gateway:
+        assert (await call(gateway, "search_merchants", query="restaurant"))["merchants"]
         batp_node.freeze()
         try:
             started = time.perf_counter()
-            slow = await call(client, "get_availability", **availability())
+            slow = await talk(f"{gateway}/mcp", "Table for 2?", merchant=ZINC)
             elapsed = time.perf_counter() - started
         finally:
             batp_node.resume()
-        back = await call(client, "get_availability", **availability())
+        back = await call(gateway, "search_merchants", query="restaurant")
 
     assert slow["error"] == "agent_unavailable"
     assert slow["fallback_url"] == ZINC_FALLBACK
-    assert 1.5 < elapsed < 3
-    assert "slots" in back
+    assert TALK_BUDGET_MS / 1000 < elapsed < 2 * TALK_BUDGET_MS / 1000
+    assert back["merchants"]
 
 
 async def test_a_burst_of_calls_over_one_session_is_never_invalid_input(
-    batp_node: BatpNode, e2e_engine: AsyncEngine
+    batp_node: BatpNode,
 ) -> None:
     # 80 calls on one session, 32 at most in flight on the node: none is refused as invalid (#90).
     host, port = parse_batp_url(batp_node.url)
     agent = BatpAgentClient(BatpClient(host, port, GATEWAY_IDENTITY))
-    day = datetime.now(TZ).date() + timedelta(days=1)
     settings = Settings(_env_file=None, database_url="postgresql+psycopg://u:p@h/db")
 
     async def one() -> object:
-        find = partial(find_merchant, ZINC, engine=e2e_engine)
-        op = partial(agent.get_availability, ZINC, day, 2, "20:00")
-        return await call_merchant(ZINC, "get_availability", find, op, settings=settings)
+        op = partial(agent.search_merchants, "restaurant", None, None, None)
+        return await call_service("search_merchants", op, settings=settings)
 
     try:
         results = await asyncio.gather(*(one() for _ in range(80)))
@@ -200,13 +196,11 @@ async def test_only_the_gateway_s_token_opens_a_session_on_a_secured_node(
                 batp_token=token,
             )
             with running_gateway(settings) as url:
-                async with Client(f"{url}/mcp") as client:
-                    result = await call(client, "get_availability", **availability())
+                result = await call(url, "get_my_reservations", guest_name="Nobody")
             if works:
-                assert "slots" in result
+                assert result == {"reservations": [], "notices": []}
             else:
                 assert result["error"] == "agent_unavailable"
-                assert result["fallback_url"] == ZINC_FALLBACK
                 assert token not in result["message"]
     finally:
         node.stop()

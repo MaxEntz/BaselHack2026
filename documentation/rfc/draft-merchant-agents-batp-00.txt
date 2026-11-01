@@ -17,15 +17,16 @@ Abstract
    application protocol reserved for software agents that book with
    merchants on behalf of people or businesses.  A BATP session runs
    over TCP, starts with a handshake that names the calling agent, and
-   carries newline-delimited JSON frames.  Each request states an intent
-   (discover merchants, check availability, book, amend, cancel, talk
-   with the merchant's agent in natural language, recall bookings, ping)
-   and the merchant it addresses.  Responses carry numeric status codes
-   and, when the merchant's own agent cannot serve the request, a
-   fallback URL to the merchant's website.  A write proposed in a
-   conversation is carried out only once the caller confirms it.  BATP
-   is designed to sit behind a Model Context Protocol (MCP) server,
-   which acts as a bridge for assistants that only speak MCP.
+   carries newline-delimited JSON frames.  Each request states an
+   intent: discover merchants, talk with a merchant's agent in natural
+   language, recall a guest's bookings, or ping.  A caller checks
+   availability and books, changes or cancels a booking only by talking
+   with the merchant's agent, which proposes each write and carries it
+   out only once the caller confirms it.  Responses carry numeric status
+   codes and, when the merchant's agent cannot serve the request, a
+   fallback URL to the merchant's website.  BATP is designed to sit
+   behind a Model Context Protocol (MCP) server, which acts as a bridge
+   for assistants that only speak MCP.
 
 Status of This Memo
 
@@ -52,7 +53,6 @@ Copyright Notice
 
 
 
-
                            Expires 5 May 2027                   [Page 1]
 
 Internet-Draft                    BATP                     November 2026
@@ -67,7 +67,7 @@ Internet-Draft                    BATP                     November 2026
 Table of Contents
 
    1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   3
-     1.1.  Scope . . . . . . . . . . . . . . . . . . . . . . . . . .   4
+     1.1.  Scope . . . . . . . . . . . . . . . . . . . . . . . . . .   3
      1.2.  Relation to MCP . . . . . . . . . . . . . . . . . . . . .   4
      1.3.  Relation to AGTP  . . . . . . . . . . . . . . . . . . . .   4
    2.  Conventions and Definitions . . . . . . . . . . . . . . . . .   4
@@ -90,22 +90,22 @@ Table of Contents
      7.8.  Confirmation before writes  . . . . . . . . . . . . . . .  14
    8.  Intents . . . . . . . . . . . . . . . . . . . . . . . . . . .  14
      8.1.  DISCOVER  . . . . . . . . . . . . . . . . . . . . . . . .  15
-     8.2.  AVAILABILITY  . . . . . . . . . . . . . . . . . . . . . .  16
-     8.3.  BOOK  . . . . . . . . . . . . . . . . . . . . . . . . . .  16
-     8.4.  AMEND . . . . . . . . . . . . . . . . . . . . . . . . . .  16
-     8.5.  CANCEL  . . . . . . . . . . . . . . . . . . . . . . . . .  17
-     8.6.  TALK  . . . . . . . . . . . . . . . . . . . . . . . . . .  17
-       8.6.1.  Proposals and confirmation  . . . . . . . . . . . . .  19
-       8.6.2.  Conversations . . . . . . . . . . . . . . . . . . . .  19
-       8.6.3.  Status  . . . . . . . . . . . . . . . . . . . . . . .  20
-     8.7.  RECALL  . . . . . . . . . . . . . . . . . . . . . . . . .  20
-     8.8.  PING  . . . . . . . . . . . . . . . . . . . . . . . . . .  21
-   9.  Status Codes  . . . . . . . . . . . . . . . . . . . . . . . .  21
+     8.2.  TALK  . . . . . . . . . . . . . . . . . . . . . . . . . .  15
+       8.2.1.  Proposals and confirmation  . . . . . . . . . . . . .  17
+       8.2.2.  Writes  . . . . . . . . . . . . . . . . . . . . . . .  18
+       8.2.3.  Conversations . . . . . . . . . . . . . . . . . . . .  18
+       8.2.4.  Status  . . . . . . . . . . . . . . . . . . . . . . .  19
+     8.3.  RECALL  . . . . . . . . . . . . . . . . . . . . . . . . .  20
+     8.4.  PING  . . . . . . . . . . . . . . . . . . . . . . . . . .  20
+   9.  Status Codes  . . . . . . . . . . . . . . . . . . . . . . . .  20
    10. Events  . . . . . . . . . . . . . . . . . . . . . . . . . . .  22
-   11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  23
+   11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  22
    12. Security Considerations . . . . . . . . . . . . . . . . . . .  23
    13. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  25
    14. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  26
+   15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  26
+     15.1.  Normative References . . . . . . . . . . . . . . . . . .  26
+     15.2.  Informative References . . . . . . . . . . . . . . . . .  27
 
 
 
@@ -114,28 +114,21 @@ Table of Contents
 Internet-Draft                    BATP                     November 2026
 
 
-   15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  27
-     15.1.  Normative References . . . . . . . . . . . . . . . . . .  27
-     15.2.  Informative References . . . . . . . . . . . . . . . . .  28
-   Appendix A.  The MCP Bridge . . . . . . . . . . . . . . . . . . .  29
+   Appendix A.  The MCP Bridge . . . . . . . . . . . . . . . . . . .  28
    Appendix B.  Example Session  . . . . . . . . . . . . . . . . . .  30
-   Appendix C.  JSON Schemas . . . . . . . . . . . . . . . . . . . .  34
-     C.1.  DISCOVER params . . . . . . . . . . . . . . . . . . . . .  34
-     C.2.  DISCOVER result . . . . . . . . . . . . . . . . . . . . .  36
-     C.3.  AVAILABILITY params . . . . . . . . . . . . . . . . . . .  39
-     C.4.  AVAILABILITY result . . . . . . . . . . . . . . . . . . .  39
-     C.5.  BOOK params . . . . . . . . . . . . . . . . . . . . . . .  40
-     C.6.  BOOK, AMEND and CANCEL result . . . . . . . . . . . . . .  41
-     C.7.  AMEND params  . . . . . . . . . . . . . . . . . . . . . .  43
-     C.8.  CANCEL params . . . . . . . . . . . . . . . . . . . . . .  44
-     C.9.  TALK params . . . . . . . . . . . . . . . . . . . . . . .  45
-     C.10. TALK result . . . . . . . . . . . . . . . . . . . . . . .  46
-     C.11. RECALL params . . . . . . . . . . . . . . . . . . . . . .  50
-     C.12. RECALL result . . . . . . . . . . . . . . . . . . . . . .  51
-     C.13. PING params and result  . . . . . . . . . . . . . . . . .  53
-   Appendix D.  Changes from Version 0.1 . . . . . . . . . . . . . .  54
-   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  55
-   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  55
+   Appendix C.  JSON Schemas . . . . . . . . . . . . . . . . . . . .  32
+     C.1.  DISCOVER params . . . . . . . . . . . . . . . . . . . . .  32
+     C.2.  DISCOVER result . . . . . . . . . . . . . . . . . . . . .  34
+     C.3.  TALK params . . . . . . . . . . . . . . . . . . . . . . .  37
+     C.4.  TALK result . . . . . . . . . . . . . . . . . . . . . . .  38
+     C.5.  RECALL params . . . . . . . . . . . . . . . . . . . . . .  42
+     C.6.  RECALL result . . . . . . . . . . . . . . . . . . . . . .  43
+     C.7.  PING params and result  . . . . . . . . . . . . . . . . .  45
+   Appendix D.  Changes from Earlier Versions  . . . . . . . . . . .  46
+     D.1.  Version 0.3 . . . . . . . . . . . . . . . . . . . . . . .  46
+     D.2.  Version 0.2 . . . . . . . . . . . . . . . . . . . . . . .  47
+   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  47
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  47
 
 1.  Introduction
 
@@ -147,21 +140,28 @@ Internet-Draft                    BATP                     November 2026
 
    BATP gives that traffic its own channel.  Every frame says which
    agent is talking (established once per session), what it intends to
-   do, and to which merchant.  The protocol is deliberately small: it
-   covers what a network of merchant agents needs to take bookings, and
-   nothing else.
+   do, and, when it addresses one, to which merchant.  The protocol is
+   deliberately small: it covers what a network of merchant agents needs
+   to take bookings, and nothing else.
 
-   This document defines version 0.2 of BATP.  Version 0.2 adds one
-   intent to version 0.1: TALK, with which a guest's agent talks with
-   the merchant's agent in natural language (Section 8.6).  The changes
-   are listed in Appendix D.
+   This document defines version 0.3 of BATP.  Version 0.2 added TALK,
+   with which a guest's agent talks with the merchant's agent in natural
+   language (Section 8.2).  Version 0.3 removes the four intents with
+   which a caller checked availability and booked, changed or cancelled
+   directly: a caller now does all of that through TALK.  Only the
+   merchant's agent, under the control of the node's code, uses the
+   merchant's booking operations, and every write follows a proposal
+   that the node built and a confirmation that names it, whoever the
+   caller is.  The changes are listed in Appendix D.
 
+1.1.  Scope
 
-
-
-
-
-
+   This version covers the guest side of booking with restaurants:
+   discovering merchants, a conversation with the merchant's agent to
+   check availability and to book, change or cancel a booking, and
+   recalling a guest's bookings.  Merchant-side operations (listing a
+   day's bookings, blocking a slot, changing a policy) are out of scope:
+   they stay on the merchant's own platform.
 
 
 
@@ -169,15 +169,6 @@ Internet-Draft                    BATP                     November 2026
 
 Internet-Draft                    BATP                     November 2026
 
-
-1.1.  Scope
-
-   This version covers the guest side of booking with restaurants:
-   discovery, availability, booking, amending, cancelling and recalling
-   a guest's bookings, and a conversation with the merchant's agent
-   about any of these.  Merchant-side operations (listing a day's
-   bookings, blocking a slot, changing a policy) are out of scope: they
-   stay on the merchant's own platform.
 
 1.2.  Relation to MCP
 
@@ -208,15 +199,24 @@ Internet-Draft                    BATP                     November 2026
    Node:  A BATP server.  It serves the merchant agents of one backend.
 
    Merchant agent:  One merchant's booking logic and data, served by a
-      node and addressed by the merchant's slug.  Since version 0.2, it
-      also includes the conversational agent, built on a language model,
-      that answers TALK (Section 8.6).
+      node and addressed by the merchant's slug, together with the
+      conversational agent, built on a language model, that answers TALK
+      for that merchant (Section 8.2).  Since version 0.3, that
+      conversational agent is the only way a caller reaches the
+      merchant's booking operations.
 
    Caller:  An agent that opens a session with a node: a user's
       assistant, a merchant's agent, or a bridge acting for one of them.
 
    Session:  One transport connection between a caller and a node, from
       the caller's hello to the connection's close.
+
+   Frame:  One JSON object followed by a line feed (Section 5).
+
+   Intent:  What a request asks the node to do, for example TALK.
+
+   Slug:  The stable identifier of a merchant on a node: 3 to 61
+      characters among lowercase ASCII letters, digits and "-".
 
 
 
@@ -226,23 +226,16 @@ Internet-Draft                    BATP                     November 2026
 Internet-Draft                    BATP                     November 2026
 
 
-   Frame:  One JSON object followed by a line feed (Section 5).
-
-   Intent:  What a request asks the node to do, for example BOOK.
-
-   Slug:  The stable identifier of a merchant on a node: 3 to 61
-      characters among lowercase ASCII letters, digits and "-".
-
    Guest:  The person a booking is for, identified in this version by
       the name the caller gives (see Section 13).
 
    Conversation:  A sequence of TALK requests from one caller to one
       merchant agent, named by an opaque identifier that the node
-      chooses (Section 8.6).
+      chooses (Section 8.2).
 
    Proposal:  A write (a booking, a change or a cancellation) that a
       merchant agent offers in a conversation, and carries out only when
-      a later TALK confirms it (Section 8.6).
+      a later TALK confirms it (Section 8.2).
 
 3.  Protocol Overview
 
@@ -277,15 +270,22 @@ Internet-Draft                    BATP                     November 2026
 
 
 
+
+
+
+
+
+
+
                            Expires 5 May 2027                   [Page 5]
 
 Internet-Draft                    BATP                     November 2026
 
 
      Caller                                        Node
-       |  hello {agent, token, batp: "0.2"}         |
+       |  hello {agent, token, batp: "0.3"}         |
        |------------------------------------------->|
-       |  welcome {batp: "0.2", node, intents,      |
+       |  welcome {batp: "0.3", node, intents,      |
        |           session}                         |
        |<-------------------------------------------|
        |  request {id: "r-1", intent: TALK}         |
@@ -319,7 +319,7 @@ Internet-Draft                    BATP                     November 2026
    Either side MAY close the connection at any time.  Closing the
    connection ends the session.  A request in flight when the session
    ends has no response, and the caller MUST NOT assume it was or was
-   not carried out (see Section 7.7 for retrying writes safely).
+   not carried out (see Section 7.7 for retrying a TALK safely).
 
 4.1.  Addressing
 
@@ -434,14 +434,14 @@ Internet-Draft                    BATP                     November 2026
       are only meaningful between parties that agreed on them.
 
    *  agent.kind is user-agent when the caller acts for a guest, and
-      merchant-agent when it acts for a business.
+      merchant-agent when it acts for a business.  The caller only
+      declares it: the token proves agent.id, not agent.kind
+      (Section 8.2.2).
 
    *  token is the caller's credential on this node, issued out of band.
       A node MUST refuse a hello from a non-loopback peer that has no
       token.  A node MAY accept a hello without token on the loopback
       interface.
-
-   The node MUST answer a hello with exactly one welcome or reject.
 
 
 
@@ -449,6 +449,8 @@ Internet-Draft                    BATP                     November 2026
 
 Internet-Draft                    BATP                     November 2026
 
+
+   The node MUST answer a hello with exactly one welcome or reject.
 
 6.2.  welcome
 
@@ -471,11 +473,14 @@ Internet-Draft                    BATP                     November 2026
 
                         Table 3: Members of welcome
 
-   intents lists only intents that the session's version defines: in a
-   session of version 0.1, a node that speaks 0.2 does not list TALK
+   intents lists only intents that the session's version defines and
+   that the node's version has not removed: in a session of version 0.1,
+   a node does not list TALK, and a node of version 0.3 lists none of
+   the intents that version 0.3 removed, in a session of any version
    (Section 11).  A caller MUST NOT send a request whose intent is not
    in intents.  A node that receives one MUST answer it with status 400
-   and code invalid_input, without carrying it out.
+   and code invalid_input, without carrying it out; the session stays
+   open.
 
 6.3.  reject
 
@@ -493,11 +498,6 @@ Internet-Draft                    BATP                     November 2026
 
                          Table 4: Members of reject
 
-   *  401: the agent is unknown to the node, the token is missing where
-      it is required, or the token does not match the agent.
-
-   *  426: the node does not speak the major version in hello.batp
-      (Section 11).  The node SHOULD include batp.
 
 
 
@@ -505,6 +505,12 @@ Internet-Draft                    BATP                     November 2026
 
 Internet-Draft                    BATP                     November 2026
 
+
+   *  401: the agent is unknown to the node, the token is missing where
+      it is required, or the token does not match the agent.
+
+   *  426: the node does not speak the major version in hello.batp
+      (Section 11).  The node SHOULD include batp.
 
    *  400: the first frame was not a valid hello.
 
@@ -514,24 +520,21 @@ Internet-Draft                    BATP                     November 2026
 
 7.1.  request
 
-         +==========+===============+============================+
-         | Member   | Type          | Requirement                |
-         +==========+===============+============================+
-         | type     | "request"     | REQUIRED                   |
-         +----------+---------------+----------------------------+
-         | id       | string, 1 to  | REQUIRED                   |
-         |          | 64 characters |                            |
-         +----------+---------------+----------------------------+
-         | intent   | intent name   | REQUIRED                   |
-         |          | (Section 8)   |                            |
-         +----------+---------------+----------------------------+
-         | merchant | slug          | REQUIRED for AVAILABILITY, |
-         |          |               | BOOK, AMEND, CANCEL and    |
-         |          |               | TALK; absent otherwise     |
-         +----------+---------------+----------------------------+
-         | params   | object        | REQUIRED ({} when the      |
-         |          |               | intent takes none)         |
-         +----------+---------------+----------------------------+
+     +==========+============================+=======================+
+     | Member   | Type                       | Requirement           |
+     +==========+============================+=======================+
+     | type     | "request"                  | REQUIRED              |
+     +----------+----------------------------+-----------------------+
+     | id       | string, 1 to 64 characters | REQUIRED              |
+     +----------+----------------------------+-----------------------+
+     | intent   | intent name (Section 8)    | REQUIRED              |
+     +----------+----------------------------+-----------------------+
+     | merchant | slug                       | REQUIRED for TALK;    |
+     |          |                            | absent otherwise      |
+     +----------+----------------------------+-----------------------+
+     | params   | object                     | REQUIRED ({} when the |
+     |          |                            | intent takes none)    |
+     +----------+----------------------------+-----------------------+
 
                         Table 5: Members of request
 
@@ -547,9 +550,6 @@ Internet-Draft                    BATP                     November 2026
    *  A request for an intent that needs merchant and lacks it, or for
       an intent that takes none and has it, MUST be answered with status
       400.
-
-
-
 
 
 
@@ -582,21 +582,20 @@ Internet-Draft                    BATP                     November 2026
 
                         Table 6: Members of response
 
-   +==============+=====================+==============================+
-   | Member of    | Type                | Requirement                  |
-   | error        |                     |                              |
-   +==============+=====================+==============================+
-   | code         | error code          | REQUIRED                     |
-   |              | (Section 9)         |                              |
-   +--------------+---------------------+------------------------------+
-   | message      | string, for         | REQUIRED                     |
-   |              | the guest or        |                              |
-   |              | the caller          |                              |
-   +--------------+---------------------+------------------------------+
-   | fallback_url | absolute URI        | REQUIRED for party_too_large |
-   |              |                     | and agent_unavailable;       |
-   |              |                     | absent otherwise             |
-   +--------------+---------------------+------------------------------+
+        +==============+=====================+====================+
+        | Member of    | Type                | Requirement        |
+        | error        |                     |                    |
+        +==============+=====================+====================+
+        | code         | error code          | REQUIRED           |
+        |              | (Section 9)         |                    |
+        +--------------+---------------------+--------------------+
+        | message      | string, for the     | REQUIRED           |
+        |              | guest or the caller |                    |
+        +--------------+---------------------+--------------------+
+        | fallback_url | absolute URI        | REQUIRED for       |
+        |              |                     | agent_unavailable; |
+        |              |                     | absent otherwise   |
+        +--------------+---------------------+--------------------+
 
                      Table 7: Members of response.error
 
@@ -608,8 +607,9 @@ Internet-Draft                    BATP                     November 2026
 
    *  fallback_url is the merchant's own booking page.  A caller SHOULD
       give it to the guest, so that the guest can still book when the
-      merchant agent cannot serve the request.
-
+      merchant agent cannot serve the request.  The result of TALK has a
+      fallback_url of its own, for a request that the agent answered but
+      cannot serve (Section 8.2).
 
 
 
@@ -639,7 +639,7 @@ Internet-Draft                    BATP                     November 2026
    A node SHOULD answer a TALK within 25 seconds of receiving it, and a
    request of any other intent within 10 seconds.  A TALK gets longer
    because the merchant's agent answers it with a model turn and the
-   tool calls that turn makes (Section 8.6).
+   tool calls that turn makes (Section 8.2).
 
    A node that has not carried out a request by the deadline it applies
    MUST answer it with status 503 and code agent_unavailable
@@ -654,7 +654,7 @@ Internet-Draft                    BATP                     November 2026
 
    A node SHOULD close a session that has received no frame for 60
    seconds, and MUST NOT close it for idleness sooner.  A caller that
-   wants to keep a session open sends PING (Section 8.8).
+   wants to keep a session open sends PING (Section 8.4).
 
 7.6.  Session errors
 
@@ -695,31 +695,31 @@ Internet-Draft                    BATP                     November 2026
 
 7.7.  Idempotency
 
-   A write sent again after a lost session must not book twice.
+   A message sent again after a lost session must not book twice.  In
+   this version, only TALK can carry out a write (Section 8.2.2):
+   DISCOVER, RECALL and PING change nothing.
 
-   *  BOOK, AMEND and TALK carry params.idempotency_key, chosen by the
-      caller.  A caller retrying one of them MUST reuse the key of the
-      first attempt, with the same params, and SHOULD use a fresh
-      unpredictable key for every new write and every new TALK message.
+   *  TALK carries params.idempotency_key, chosen by the caller.  A
+      caller retrying a TALK MUST reuse the key of the first attempt,
+      with the same params, and SHOULD use a fresh unpredictable key for
+      every new message.
 
-   *  For BOOK, the key is scoped to the merchant.  A node that receives
-      a BOOK with a key already used at that merchant, and the same
-      starts_at, party_size and guest, MUST return status 200 with the
-      reservation the first request created, and MUST NOT create
-      another.  If the params differ, it MUST answer status 400 with
-      code invalid_input.
+   *  The key is scoped to the merchant, the session's agent.id and the
+      conversation; the key of a first message, which names no
+      conversation yet, is scoped to the merchant and the agent.id.  A
+      node that receives a TALK with a key it already answered with
+      status 200 in that scope, with the same message, conversation and
+      confirm, MUST return the result it returned then, with status 200,
+      without calling its model again and without carrying out any
+      write.  If one of them differs, the node MUST answer status 400
+      with code invalid_input, without carrying out anything.  A TALK
+      answered with another status does not use up its key.
 
-   *  For AMEND, the key is scoped to the merchant too.  A node that
-      receives an AMEND with a key it already applied, for the same
-      booking and the same starts_at and party_size, MUST NOT change the
-      booking again and MUST return it as it is now, with status 200: a
-      late retry never undoes a later change.  If the booking or the
-      params differ, it MUST answer status 400 with code invalid_input.
-      An AMEND that failed does not use up its key.
-
-   *  CANCEL is idempotent without a key: cancelling a booking already
-      cancelled by the guest returns it again, with status 200.
-
+   *  The node cannot tell a retry from another guest of the same caller
+      who sends the same message with the same key.  A caller that
+      carries the messages of several guests under one agent.id, as a
+      bridge does (Appendix A), MUST therefore choose keys that they
+      cannot guess.
 
 
 
@@ -730,51 +730,51 @@ Internet-Draft                    BATP                     November 2026
 Internet-Draft                    BATP                     November 2026
 
 
-   *  For TALK, the key is scoped to the merchant and to the session's
-      agent.id.  A node that receives a TALK with a key it already
-      answered with status 200, for that merchant and that agent.id,
-      MUST return the result it returned then, with status 200, without
-      calling its model again and without carrying out any write.  A
-      TALK answered with another status does not use up its key.
+   *  A confirmed proposal has its own protection: the node carries it
+      out at most once, whatever key the TALK that confirms it carries
+      (Section 8.2.1).
 
-   *  TALK is not read-only: it can carry out a write (Section 8.6).  A
-      client library MUST NOT send a TALK again by itself after a lost
-      session, as it may for DISCOVER, AVAILABILITY, RECALL and PING;
-      the caller decides, and retries with the same key.
+   *  TALK is not read-only.  A client library MUST NOT send a TALK
+      again by itself after a lost session, as it may for DISCOVER,
+      RECALL and PING; the caller decides, and retries with the same
+      key.
 
 7.8.  Confirmation before writes
 
-   BOOK, AMEND and CANCEL change a guest's plans.  A caller acting for a
-   guest MUST obtain the guest's explicit confirmation of the merchant,
-   time, party size and name before sending any of them.  A node cannot
-   verify this; it is a requirement on callers, and a bridge enforces it
-   through what it tells the assistant (Appendix A).
+   A booking, a change or a cancellation changes a guest's plans.  In
+   this version, a caller can only obtain one through TALK, and the
+   node's code carries it out only on a confirm that names a proposal
+   the node returned, before the proposal expires (Section 8.2.1).  This
+   holds for every caller, whatever it declared in hello.
 
-   In a TALK conversation, the same requirement applies to confirm: a
-   caller acting for a guest MUST NOT send confirm before the guest
-   explicitly accepted the proposal's summary, after the caller showed
-   it to them.  A "yes" given before the proposal was shown does not
-   count.  Here the node enforces the other half: it carries out a
-   proposed write only on a confirm that names it (Section 8.6.1).
+   What the node cannot check is that the guest agreed.  A caller acting
+   for a guest MUST NOT send confirm before the guest explicitly
+   accepted the proposal's summary, after the caller showed it to them.
+   A "yes" given before the proposal was shown does not count.
 
 8.  Intents
 
    Times are RFC 3339 [RFC3339] date-time values with an explicit
-   offset. date is an RFC 3339 full-date and time is HH:MM (24-hour
-   clock), both in the merchant's local time zone.  The params and
-   result of each intent are defined by the JSON Schemas of Appendix C;
-   this section states their meaning and errors.
+   offset. date is an RFC 3339 full-date, in the merchant's local time
+   zone.  The params and result of each intent are defined by the JSON
+   Schemas of Appendix C; this section states their meaning and errors.
 
+    +==========+==========+===========================================+
+    | Intent   | merchant | Purpose                                   |
+    +==========+==========+===========================================+
+    | DISCOVER | absent   | Find merchants matching a query and       |
+    |          |          | preferences                               |
+    +----------+----------+-------------------------------------------+
+    | TALK     | required | Talk with the merchant's agent in natural |
+    |          |          | language: ask, check availability, book,  |
+    |          |          | change or cancel (since 0.2)              |
+    +----------+----------+-------------------------------------------+
+    | RECALL   | absent   | A guest's upcoming bookings and notices   |
+    +----------+----------+-------------------------------------------+
+    | PING     | absent   | Liveness check, keeps the session open    |
+    +----------+----------+-------------------------------------------+
 
-
-
-
-
-
-
-
-
-
+                         Table 9: BATP 0.3 intents
 
 
 
@@ -786,33 +786,12 @@ Internet-Draft                    BATP                     November 2026
 Internet-Draft                    BATP                     November 2026
 
 
-       +==============+==========+=================================+
-       | Intent       | merchant | Purpose                         |
-       +==============+==========+=================================+
-       | DISCOVER     | absent   | Find merchants matching a query |
-       |              |          | and preferences                 |
-       +--------------+----------+---------------------------------+
-       | AVAILABILITY | required | Up to 3 start times with a free |
-       |              |          | table                           |
-       +--------------+----------+---------------------------------+
-       | BOOK         | required | Create a booking                |
-       +--------------+----------+---------------------------------+
-       | AMEND        | required | Move a booking or change its    |
-       |              |          | party size                      |
-       +--------------+----------+---------------------------------+
-       | CANCEL       | required | Cancel a booking as the guest   |
-       +--------------+----------+---------------------------------+
-       | TALK         | required | Talk with the merchant's agent  |
-       |              |          | in natural language (since 0.2) |
-       +--------------+----------+---------------------------------+
-       | RECALL       | absent   | A guest's upcoming bookings and |
-       |              |          | notices                         |
-       +--------------+----------+---------------------------------+
-       | PING         | absent   | Liveness check, keeps the       |
-       |              |          | session open                    |
-       +--------------+----------+---------------------------------+
-
-                         Table 9: BATP 0.2 intents
+   Versions 0.1 and 0.2 also defined AVAILABILITY, BOOK, AMEND and
+   CANCEL, with which a caller checked availability and booked, changed
+   or cancelled without the merchant's agent.  Version 0.3 removes them
+   (Section 11).  A node MUST answer a request for one of them as for an
+   unknown intent, with status 400 and code invalid_input, in a session
+   of any version, without carrying it out; the session stays open.
 
 8.1.  DISCOVER
 
@@ -831,81 +810,7 @@ Internet-Draft                    BATP                     November 2026
 
    Errors: 400.
 
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 15]
-
-Internet-Draft                    BATP                     November 2026
-
-
-8.2.  AVAILABILITY
-
-   Params: date, party_size (integer, at least 1), and optionally time.
-
-   Result: slots, at most 3, each with starts_at and table_label.  When
-   time is given, the node returns the start times closest to it (the
-   earlier one at equal distance); otherwise, the earliest ones.  Start
-   times already past are never returned.  The result is sorted by
-   starts_at.  An empty slots array means nothing is free that day for
-   that party.
-
-   Errors: 400, 404, 413, 503.
-
-8.3.  BOOK
-
-   Params: starts_at, party_size, guest_name (non-empty string),
-   idempotency_key (non-empty string).
-
-   Result: reservation, with id (the merchant's reference, for example
-   "R-001"), merchant, starts_at, party_size, table_label, status
-   ("confirmed"), guest_name and via.
-
-   via is the booking channel, as the merchant sees it.  Versions 0.1
-   and 0.2 define "claude", "merchant" and "website"; "website" is never
-   set by BATP.  The same rule applies to a booking made through TALK
-   (Section 8.6).  A node MUST record "merchant" when the caller's
-   agent.kind is merchant-agent, and "claude" when it is user-agent,
-   whatever assistant the caller is.  So in this version, via is only
-   accurate for callers behind the reference bridge (Section 12).  A
-   later version may add a value for other assistants.
-
-   starts_at MUST be a start time the merchant offers; AVAILABILITY
-   returns such times.  Errors: 400, 404, 409, 413, 503.
-
-8.4.  AMEND
-
-   Params: reservation_id, guest_name, idempotency_key, and at least one
-   of starts_at and party_size.
-
-   The booking MUST be confirmed and MUST belong to guest_name;
-   otherwise the node answers 404, without saying which check failed.
-   Result: reservation, as amended.
-
-   Errors: 400, 404, 409, 413, 503.
-
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 16]
-
-Internet-Draft                    BATP                     November 2026
-
-
-8.5.  CANCEL
-
-   Params: reservation_id, guest_name.  The same ownership rule as AMEND
-   applies.  Result: reservation, with status "cancelled".
-
-   Errors: 400, 404, 503.
-
-8.6.  TALK
+8.2.  TALK
 
    TALK is defined since version 0.2.  A node MUST NOT offer or serve it
    in a session of version 0.1 (Section 11).
@@ -916,7 +821,8 @@ Internet-Draft                    BATP                     November 2026
    merchant's agent can check availability, look up the guest's bookings
    at this merchant, and propose a booking, a change or a cancellation.
    It carries out a proposal only when the caller confirms it in a later
-   TALK (Section 8.6.1).
+   TALK (Section 8.2.1).  Since version 0.3, TALK is the only intent
+   with which a caller can book, change or cancel.
 
    Params:
 
@@ -925,12 +831,20 @@ Internet-Draft                    BATP                     November 2026
       2000 characters long, and it MUST NOT contain a control character
       (Unicode general category Cc) other than LF (U+000A).
 
-   *  idempotency_key (REQUIRED): as for BOOK, with the same bounds
-      (Section 7.7).
+   *  idempotency_key (REQUIRED): a string of 1 to 200 characters,
+      chosen by the caller (Section 7.7).
+
+
+
+
+                           Expires 5 May 2027                  [Page 15]
+
+Internet-Draft                    BATP                     November 2026
+
 
    *  conversation: absent on the first message of a conversation.  On
       every later message, the conversation that the node returned
-      (Section 8.6.2).
+      (Section 8.2.3).
 
    *  confirm: the id of the conversation's pending proposal, sent to
       have it carried out.  A caller MUST send it only after the guest's
@@ -947,13 +861,6 @@ Internet-Draft                    BATP                     November 2026
 
    Result:
 
-
-
-                           Expires 5 May 2027                  [Page 17]
-
-Internet-Draft                    BATP                     November 2026
-
-
    *  conversation: the conversation's identifier, an opaque-id: a new
       one on the first message, the one the caller sent on later
       messages.
@@ -968,9 +875,12 @@ Internet-Draft                    BATP                     November 2026
    the tools that the merchant's agent called, never from the model's
    text, so that a caller can rely on them:
 
-   *  slots: the start times the agent found free while answering, each
-      as in the result of AVAILABILITY; an empty array when it found
-      none or did not look.
+   *  slots: the start times the agent found free in its last check of
+      availability while answering, sorted by starts_at, each with
+      starts_at and table_label (the table that start time would get);
+      an empty array when it found none or did not look.  A slot is not
+      held: another guest may take it before a proposal for it is
+      confirmed.
 
    *  pending: the write the agent proposes, or null.  It has id (an
       opaque-id), action ("book", "change" or "cancel"), summary (1 to
@@ -979,38 +889,38 @@ Internet-Draft                    BATP                     November 2026
       date-time with an offset).  A conversation has at most one pending
       proposal: a new one replaces the previous one.
 
+
+
+
+
+                           Expires 5 May 2027                  [Page 16]
+
+Internet-Draft                    BATP                     November 2026
+
+
    *  reservation: the booking that a write carried out by this TALK
-      created, changed or cancelled, as in the result of BOOK; null when
-      this TALK carried out no write.
+      created, changed or cancelled (Section 8.2.2), with id (the
+      merchant's reference, for example "R-001"), merchant, starts_at,
+      party_size, table_label, status ("confirmed" or "cancelled"),
+      guest_name and via; null when this TALK carried out no write.
 
    *  fallback_url: the merchant's own booking page, set when the agent
       cannot serve what the guest asked, for example after one of its
-      tools refused it (Section 8.6.3); null otherwise.
+      tools refused it (Section 8.2.4); null otherwise.
 
    *  tools_called: the names of the tools the agent called while
       answering, in the order of the calls, without their arguments or
-      results.  When a confirm carried out a proposal, it also names the
-      write the node's code ran (for example "create_reservation"),
-      although the model has no tool that writes (Section 8.6.1).  Each
-      name is 1 to 64 characters: a lowercase ASCII letter, then
-      lowercase ASCII letters, digits and "_".
+      results.  On a TALK whose confirm names the conversation's pending
+      proposal, the first name is that of the write the node's code ran
+      or tried for it (Section 8.2.2), although the model did not call
+      it.  Each name is 1 to 64 characters: a lowercase ASCII letter,
+      then lowercase ASCII letters, digits and "_".
 
    conversation and reply are always present.  A caller handles an
    absent pending, reservation or fallback_url as null, and an absent
    slots or tools_called as an empty array.
 
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 18]
-
-Internet-Draft                    BATP                     November 2026
-
-
-8.6.1.  Proposals and confirmation
+8.2.1.  Proposals and confirmation
 
    The merchant's agent has no tool that writes: a booking, a change or
    a cancellation is first a proposal, returned in pending.
@@ -1034,6 +944,16 @@ Internet-Draft                    BATP                     November 2026
       (unknown, replaced or expired) carries out no write.  The node
       answers it with status 200, and reply says that nothing was done.
 
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 17]
+
+Internet-Draft                    BATP                     November 2026
+
+
    *  If the write fails when it is carried out, for example because the
       time was taken in the meantime, nothing is written and the
       proposal is gone.  The node answers with status 200; the agent MAY
@@ -1043,28 +963,57 @@ Internet-Draft                    BATP                     November 2026
    *  When this TALK carried out a write, the node MUST set reservation,
       even if its model fails afterwards.
 
-8.6.2.  Conversations
+8.2.2.  Writes
+
+   A confirmed proposal runs one of the merchant's booking operations,
+   with the arguments stored with the proposal.  Its action says which:
+
+   *  "book" creates a booking for the proposal's start time, party size
+      and guest name.  A node MUST NOT create it unless the start time
+      is one the merchant offers and a table that fits the party is free
+      at that time when the write runs; the node chooses the table.  The
+      write is named "create_reservation" in tools_called.
+
+   *  "change" moves a booking, changes its party size, or both, with
+      the same conditions for the new start time and party size.  It is
+      named "update_reservation".
+
+   *  "cancel" cancels a booking, as the guest.  It is named
+      "cancel_reservation".
+
+   A change or a cancellation applies only to an upcoming confirmed
+   booking at this merchant, under the guest name given in the proposal,
+   and only before the booking starts.  The merchant's agent cannot
+   propose one otherwise, and the node does not say which of these
+   conditions failed.
+
+   via is the booking channel, as the merchant sees it.  Versions 0.1 to
+   0.3 define "claude", "merchant" and "website"; "website" is never set
+   by BATP.  A node MUST record a booking that a TALK creates with via
+   "claude", whatever agent.kind the session declared: the caller
+   declares its kind, and its token does not prove it, so the node does
+   not trust it.  A change or a cancellation keeps the booking's via.
+   In this version, via therefore names the channel rather than the
+   calling assistant (Section 12); a later version may add a value for
+   other assistants.
+
+8.2.3.  Conversations
 
    *  A node MUST choose each conversation at random, with at least 128
       bits of entropy, and SHOULD choose each pending.id in the same
       way.
 
+
+
+                           Expires 5 May 2027                  [Page 18]
+
+Internet-Draft                    BATP                     November 2026
+
+
    *  A node binds a conversation, when it creates it, to the merchant
       and to the session's agent.id.  It MUST answer status 404 to a
       TALK whose conversation is unknown, has expired, or was created
       for another merchant or another agent.id, without saying which.
-
-
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 19]
-
-Internet-Draft                    BATP                     November 2026
-
 
    *  A conversation is not tied to a BATP session: a caller MAY
       continue it in a later session under the same agent.id, for
@@ -1073,21 +1022,25 @@ Internet-Draft                    BATP                     November 2026
       so only the unguessable identifier separates them.
 
    *  A node MAY expire a conversation, for example after a period
-      without messages, or lose it when it restarts.  A caller that gets
-      status 404 for a conversation MAY start a new one, without
-      conversation.
+      without messages or once it has had a number of messages, or lose
+      it when it restarts.  A caller that gets status 404 for a
+      conversation MAY start a new one, without conversation.
 
-8.6.3.  Status
+8.2.4.  Status
 
    Status 200 means that the merchant's agent answered, whatever the
    answer, including a refusal such as "we are full".  When one of the
-   agent's tools refuses, for example with party_too_large or
-   slot_unavailable, the refusal goes to the model, which words it in
-   reply, and the node's code sets fallback_url: the TALK still gets
-   status 200.  Any other status means that the agent could not answer:
+   agent's tools refuses, for example because the time is taken or the
+   party is above the merchant's online limit, the refusal goes to the
+   model, which words it in reply.  When the agent cannot serve the
+   request at all, as for a party above that limit, the node's code also
+   sets fallback_url.  The TALK still gets status 200: since version
+   0.3, no request is answered with status 409 or 413 (Section 9).  Any
+   other status means that the agent could not answer:
 
-   *  400 invalid_input: invalid params, confirm without conversation,
-      or a TALK in a session of version 0.1.
+   *  400 invalid_input: invalid params, confirm without conversation, a
+      key already used with other params (Section 7.7), or a TALK in a
+      session of version 0.1.
 
    *  404 not_found: the merchant is unknown or not yet live, or the
       conversation is unknown, has expired, or belongs to another
@@ -1106,14 +1059,61 @@ Internet-Draft                    BATP                     November 2026
 
    Errors: 400, 404, 429, 503.
 
-8.7.  RECALL
+
+
+                           Expires 5 May 2027                  [Page 19]
+
+Internet-Draft                    BATP                     November 2026
+
+
+8.3.  RECALL
 
    Params: guest_name.
 
    Result: reservations, the guest's upcoming confirmed bookings at
-   every live merchant of the node, and notices, messages for the guest
-   (for example, that a merchant cancelled a booking).  A node MUST
-   return a notice in every RECALL for the guest during 24 hours after
+   every live merchant of the node, each as reservation in the result of
+   TALK (Section 8.2), and notices, messages for the guest (for example,
+   that a merchant cancelled a booking).  A node MUST return a notice in
+   every RECALL for the guest during 24 hours after the first RECALL
+   that returned it, and MUST NOT return it after that.  An answer lost
+   on its way to the caller therefore loses no notice if the next RECALL
+   comes within those 24 hours, and a caller MAY send a RECALL again.  A
+   caller SHOULD NOT show the guest a notice it already showed them.
+
+   Errors: 400, 503.
+
+8.4.  PING
+
+   Params: {}. Result: pong (true) and server_time, the node's clock.
+
+   Errors: none defined.
+
+9.  Status Codes
+
+   +========+===================+======================+==============+
+   | Status | error.code        | Meaning              | fallback_url |
+   +========+===================+======================+==============+
+   | 200    | none              | Success              | no           |
+   +--------+-------------------+----------------------+--------------+
+   | 400    | invalid_input     | Invalid params,      | no           |
+   |        |                   | unknown intent       |              |
+   |        |                   | (including one that  |              |
+   |        |                   | version 0.3 removed) |              |
+   |        |                   | or one the session's |              |
+   |        |                   | version does not     |              |
+   |        |                   | define, missing or   |              |
+   |        |                   | unexpected merchant  |              |
+   +--------+-------------------+----------------------+--------------+
+   | 401    | none              | hello refused (in    | no           |
+   |        |                   | reject only)         |              |
+   +--------+-------------------+----------------------+--------------+
+   | 404    | not_found         | Unknown merchant,    | no           |
+   |        |                   | merchant not yet     |              |
+   |        |                   | live, or an unknown  |              |
+   |        |                   | or expired           |              |
+   |        |                   | conversation         |              |
+   +--------+-------------------+----------------------+--------------+
+   | 413    | none              | Frame above the size | no           |
 
 
 
@@ -1122,54 +1122,54 @@ Internet-Draft                    BATP                     November 2026
 Internet-Draft                    BATP                     November 2026
 
 
-   the first RECALL that returned it, and MUST NOT return it after that.
-   An answer lost on its way to the caller therefore loses no notice if
-   the next RECALL comes within those 24 hours, and a caller MAY send a
-   RECALL again.  A caller SHOULD NOT show the guest a notice it already
-   showed them.
+   |        |                   | limit (in error      |              |
+   |        |                   | frames only)         |              |
+   +--------+-------------------+----------------------+--------------+
+   | 426    | none              | Unsupported major    | no           |
+   |        |                   | version (in reject   |              |
+   |        |                   | only)                |              |
+   +--------+-------------------+----------------------+--------------+
+   | 429    | too_many_requests | Too many requests in | no           |
+   |        |                   | flight in the        |              |
+   |        |                   | session, or a TALK   |              |
+   |        |                   | beyond the node's    |              |
+   |        |                   | limits; retry later  |              |
+   +--------+-------------------+----------------------+--------------+
+   | 503    | agent_unavailable | The merchant agent   | yes          |
+   |        |                   | is down, failed, or  |              |
+   |        |                   | did not answer by    |              |
+   |        |                   | its deadline         |              |
+   +--------+-------------------+----------------------+--------------+
 
-   Errors: 400, 503.
+                     Table 10: BATP 0.3 status codes
 
-8.8.  PING
+   The status 400 also appears in error frames (Section 7.6), and 413
+   only there; error frames carry no error.code.
 
-   Params: {}. Result: pong (true) and server_time, the node's clock.
+   Versions 0.1 and 0.2 also answered status 409 with code
+   slot_unavailable (the time is taken, blocked, in the past, or not
+   offered) and status 413 with code party_too_large (the party is above
+   the merchant's online limit, or no table fits it) to the intents that
+   version 0.3 removed.  A node of version 0.3 answers neither to any
+   request: inside TALK, the refusals they stood for are part of an
+   answer with status 200 (Section 8.2.4).  A later version MUST NOT
+   give these two codes another meaning.
 
-   Errors: none defined.
+   A node MUST answer 503 to a TALK addressed to a merchant marked as
+   down, without calling its model.  A caller that gets 503 MUST NOT
+   retry the same request to the same merchant in a loop; it SHOULD
+   offer the guest the fallback_url.
 
-9.  Status Codes
+   A caller that receives a status it does not know MUST handle it as
+   the class of its first digit: 2 as success, 4 as a caller error, 5 as
+   a node error.
 
-    +========+===================+====================+==============+
-    | Status | error.code        | Meaning            | fallback_url |
-    +========+===================+====================+==============+
-    | 200    | none              | Success            | no           |
-    +--------+-------------------+--------------------+--------------+
-    | 400    | invalid_input     | Invalid params,    | no           |
-    |        |                   | unknown intent or  |              |
-    |        |                   | one the session's  |              |
-    |        |                   | version does not   |              |
-    |        |                   | define, missing or |              |
-    |        |                   | unexpected         |              |
-    |        |                   | merchant           |              |
-    +--------+-------------------+--------------------+--------------+
-    | 401    | none              | hello refused (in  | no           |
-    |        |                   | reject only)       |              |
-    +--------+-------------------+--------------------+--------------+
-    | 404    | not_found         | Unknown merchant,  | no           |
-    |        |                   | merchant not yet   |              |
-    |        |                   | live, unknown      |              |
-    |        |                   | booking, a booking |              |
-    |        |                   | that is not the    |              |
-    |        |                   | guest's, or an     |              |
-    |        |                   | unknown or expired |              |
-    |        |                   | conversation       |              |
-    +--------+-------------------+--------------------+--------------+
-    | 409    | slot_unavailable  | The time is taken, | no           |
-    |        |                   | blocked, in the    |              |
-    |        |                   | past, or not one   |              |
-    |        |                   | the merchant       |              |
-    |        |                   | offers             |              |
-    +--------+-------------------+--------------------+--------------+
-    | 413    | party_too_large   | The party is above | yes          |
+
+
+
+
+
+
 
 
 
@@ -1178,54 +1178,54 @@ Internet-Draft                    BATP                     November 2026
 Internet-Draft                    BATP                     November 2026
 
 
-    |        |                   | the merchant's     |              |
-    |        |                   | online limit, or   |              |
-    |        |                   | no table fits it   |              |
-    +--------+-------------------+--------------------+--------------+
-    | 426    | none              | Unsupported major  | no           |
-    |        |                   | version (in reject |              |
-    |        |                   | only)              |              |
-    +--------+-------------------+--------------------+--------------+
-    | 429    | too_many_requests | Too many requests  | no           |
-    |        |                   | in flight in the   |              |
-    |        |                   | session, or a TALK |              |
-    |        |                   | beyond the node's  |              |
-    |        |                   | limits; retry      |              |
-    |        |                   | later              |              |
-    +--------+-------------------+--------------------+--------------+
-    | 503    | agent_unavailable | The merchant agent | yes          |
-    |        |                   | is down, failed,   |              |
-    |        |                   | or did not answer  |              |
-    |        |                   | by its deadline    |              |
-    +--------+-------------------+--------------------+--------------+
-
-                     Table 10: BATP 0.2 status codes
-
-   The status values 400 and 413 also appear in error frames
-   (Section 7.6), which carry no error.code; there, 413 means a frame
-   above the size limit.
-
-   A node MUST answer 503 to AVAILABILITY, BOOK, AMEND, CANCEL and TALK
-   when the merchant is marked as down, without consulting the merchant
-   agent (for TALK, without calling its model).  A caller that gets 413
-   or 503 MUST NOT retry the same request to the same merchant in a
-   loop; it SHOULD offer the guest the fallback_url.
-
-   A caller that receives a status it does not know MUST handle it as
-   the class of its first digit: 2 as success, 4 as a caller error, 5 as
-   a node error.
-
 10.  Events
 
    Frames of type event, sent by the node without a request, are
-   reserved for a later minor version: version 0.2 does not define them.
+   reserved for a later minor version: version 0.3 does not define them.
    One intended use is to tell a guest's agent that a merchant cancelled
    a booking; in this version, that reaches the guest as a notice
-   returned by RECALL.  A caller of version 0.1 or 0.2 ignores them
+   returned by RECALL.  A caller of versions 0.1 to 0.3 ignores them
    (Section 7.6).
 
+11.  Versioning and Extensibility
 
+   A version is written major.minor:
 
+   version = 1*DIGIT "." 1*DIGIT
+
+   This document defines version 0.3.  Version 0.2 added TALK to version
+   0.1.  Version 0.3 removes AVAILABILITY, BOOK, AMEND and CANCEL
+   (Section 8), and records every booking made through TALK with via
+   "claude", where version 0.2 recorded "merchant" for a caller that
+   declared itself a merchant-agent (Section 8.2.2).  Its other changes
+   state more precisely what version 0.2 defined for TALK (Appendix D).
+
+   In hello, the caller sends the highest version it speaks.  If the
+   node speaks the same major version, it answers welcome with the
+   highest minor version both speak, which is the lower of the caller's
+   minor version and its own, and both sides use that version for the
+   session.  Otherwise it answers reject with status 426.  A node speaks
+   every earlier minor version of its major version: a session of an
+   earlier version gets the intents that version defined, less those
+   that the node's version removed.  For example, a node of version 0.3
+   answers a hello with "batp": "0.1" with a welcome with "batp": "0.1",
+   and the session is a session of version 0.1, whose intents are
+   DISCOVER, RECALL and PING.
+
+   A node MUST NOT list in welcome.intents an intent that the session's
+   version does not define or that the node's version removed, and MUST
+   answer a request for one with status 400 and code invalid_input
+   (Section 6.2).  In a session of version 0.1, a node of version 0.3
+   therefore offers and serves neither TALK nor the removed intents: a
+   caller of version 0.1 can still discover merchants and recall
+   bookings, but can no longer book.  In a session of version 0.2 or
+   0.3, it offers DISCOVER, TALK, RECALL and PING.
+
+   Within a major version, a later minor version MAY add intents,
+   optional frame members, optional params, result members and status
+   codes: adding an intent, as version 0.2 did with TALK, is a minor
+   change.  It MUST NOT change the meaning of what an earlier minor
+   version defined.  While the major version is 0, a minor version MAY
 
 
 
@@ -1234,36 +1234,13 @@ Internet-Draft                    BATP                     November 2026
 Internet-Draft                    BATP                     November 2026
 
 
-11.  Versioning and Extensibility
-
-   A version is written major.minor:
-
-   version = 1*DIGIT "." 1*DIGIT
-
-   This document defines version 0.2.  Version 0.2 adds TALK to version
-   0.1, and changes nothing that version 0.1 defined.
-
-   In hello, the caller sends the highest version it speaks.  If the
-   node speaks the same major version, it answers welcome with the
-   highest minor version both speak, which is the lower of the caller's
-   minor version and its own, and both sides use that version for the
-   session.  Otherwise it answers reject with status 426.  A node speaks
-   every earlier minor version of its major version, since each one only
-   adds to the previous one.  For example, a node of version 0.2 answers
-   a hello with "batp": "0.1" with a welcome with "batp": "0.1", and the
-   session is a session of version 0.1.
-
-   A node MUST NOT list in welcome.intents an intent that the session's
-   version does not define, and MUST answer a request for one with
-   status 400 and code invalid_input (Section 6.2).  In a session of
-   version 0.1, a node of version 0.2 therefore neither offers nor
-   serves TALK, and a caller of version 0.1 keeps working unchanged.
-
-   Within a major version, a later minor version MAY add intents,
-   optional frame members, optional params, result members and status
-   codes: adding an intent, as version 0.2 does with TALK, is a minor
-   change.  It MUST NOT change the meaning of what an earlier minor
-   version defined.  Because unknown params members are invalid
+   also remove intents, as version 0.3 does, and correct a rule of an
+   earlier minor version, as version 0.3 does for via.  Removing an
+   intent is not backward compatible: a caller that relied on it can no
+   longer use it.  It is accepted only because version 0 is
+   experimental; from version 1.0, it would need a new major version.  A
+   node answers a removed intent as an unknown one, with status 400 and
+   code invalid_input.  Because unknown params members are invalid
    (Section 7), a caller MUST NOT send params that the session's version
    does not define.  A caller MUST ignore result members it does not
    know.
@@ -1276,20 +1253,12 @@ Internet-Draft                    BATP                     November 2026
       refuse a hello whose token does not match.  A node SHOULD compare
       tokens in constant time.  Tokens MUST NOT be sent outside TLS
       except on the loopback interface, and SHOULD be long random
-      strings that a node can revoke individually.
+      strings that a node can revoke individually.  A token proves
+      agent.id only: agent.kind is the caller's claim, and a node does
+      not grant or record anything on the strength of it
+      (Section 8.2.2).
 
    Transport:  Without TLS, anyone on the path reads guest names,
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 23]
-
-Internet-Draft                    BATP                     November 2026
-
-
       bookings and tokens, and can change them.  Section 4 therefore
       requires TLS 1.3 off the loopback interface.  A node bound to the
       loopback interface is reachable by every local process:
@@ -1303,21 +1272,33 @@ Internet-Draft                    BATP                     November 2026
       expensive than any other request: a node SHOULD bound the model
       turns it runs at once and the TALK requests each merchant receives
       per unit of time, and answer 429 beyond them without calling its
-      model (Section 8.6.3).
+      model (Section 8.2.4).
 
-   Booking channel:  In this version, as in version 0.1, a node records
-      every user-agent booking with via "claude" (Section 8), and the
-      merchant is told the booking came through Claude.  With other
-      assistants, that is wrong.  A merchant SHOULD read via as "an
-      assistant" until a later version names the calling agent in it.
+   Booking channel:  In this version, a node records every booking made
+      through TALK with via "claude" (Section 8.2.2), whatever
+      agent.kind the caller declared, and the merchant is told the
+      booking came through Claude.  With other assistants, that is
+      wrong.  A merchant SHOULD read via as "an assistant" until a later
+      version names the calling agent in it.
 
-   Writes without confirmation:  A misbehaving caller can book, amend or
-      cancel without asking the guest.  The node cannot detect it.
-      Idempotency keys prevent duplicate bookings on retries, not
-      unwanted ones.  Through TALK, a node does enforce that a write
-      follows a confirm naming a proposal it returned (Section 8.6.1),
-      but it still cannot tell whether the caller asked the guest before
-      sending confirm.
+   Writes without confirmation:  Since version 0.3, no caller can book,
+
+
+
+                           Expires 5 May 2027                  [Page 23]
+
+Internet-Draft                    BATP                     November 2026
+
+
+      change or cancel except through TALK, and the node's code carries
+      out a write only on a confirm that names a proposal it returned,
+      before the proposal expires (Section 8.2.1).  This holds for every
+      caller, whatever its agent.kind, and no longer depends on what a
+      bridge tells its assistant.  A misbehaving caller can still send
+      confirm without asking the guest: the node cannot tell whether the
+      guest agreed.  Idempotency keys and the rule that a proposal runs
+      at most once prevent duplicate writes on retries, not unwanted
+      ones.
 
    A language model reading untrusted text:  The merchant's agent that
       answers TALK is a language model, and message is text it cannot
@@ -1329,7 +1310,7 @@ Internet-Draft                    BATP                     November 2026
 
    Confirmation of writes in code:  A write proposed through TALK runs
       only on a later confirm that names its proposal before it expires,
-      with the arguments stored with the proposal (Section 8.6.1).  This
+      with the arguments stored with the proposal (Section 8.2.1).  This
       check MUST be made by the node's code, never left to the model:
       the model has no tool that writes, so no output of the model alone
       can create, change or cancel a booking.
@@ -1338,14 +1319,6 @@ Internet-Draft                    BATP                     November 2026
       the guest-side operations of its own merchant (checking
       availability, finding the guest's bookings at that merchant, and
       proposing a booking, a change or a cancellation), never merchant-
-
-
-
-                           Expires 5 May 2027                  [Page 24]
-
-Internet-Draft                    BATP                     November 2026
-
-
       side operations such as listing a day's bookings or blocking a
       slot.  The merchant MUST be bound by the node's code, from the
       request's merchant, and MUST NOT be an argument of any tool the
@@ -1360,10 +1333,23 @@ Internet-Draft                    BATP                     November 2026
       controls.
 
    Conversation identifiers:  A conversation identifier is a capability:
+
+
+
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 24]
+
+Internet-Draft                    BATP                     November 2026
+
+
       with it, and the token of the agent.id it is bound to, a caller
       can continue the conversation and confirm its proposal.  A node
       MUST make it unguessable and bind it to the merchant and the
-      agent.id (Section 8.6.2).  A node and a bridge MUST NOT log
+      agent.id (Section 8.2.3).  A node and a bridge MUST NOT log
       conversation identifiers together with guest names at a level
       enabled in production, and SHOULD log a digest of the identifier
       rather than the identifier itself.
@@ -1376,10 +1362,10 @@ Internet-Draft                    BATP                     November 2026
 
    Guest identity:  In this version, a booking belongs to whoever gives
       its guest name and reference.  Any authenticated caller that knows
-      both can amend or cancel it, and RECALL returns the bookings of
-      any name.  This is acceptable only in an experiment with trusted
-      callers.  A deployment beyond that needs guest authentication,
-      which a later version would define.
+      both can have it changed or cancelled through TALK, and RECALL
+      returns the bookings of any name.  This is acceptable only in an
+      experiment with trusted callers.  A deployment beyond that needs
+      guest authentication, which a later version would define.
 
    Error messages:  error.message reaches people.  A node MUST NOT put
       stack traces, internal names or data of other guests in it.
@@ -1391,17 +1377,6 @@ Internet-Draft                    BATP                     November 2026
 13.  Privacy Considerations
 
    Guest names:  Guest names and party sizes are personal data.  A node
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 25]
-
-Internet-Draft                    BATP                     November 2026
-
-
       SHOULD NOT write guest names to logs at a level enabled in
       production.  The reference implementation logs, for each request,
       the agent id, intent, merchant, status and latency, and nothing
@@ -1419,6 +1394,14 @@ Internet-Draft                    BATP                     November 2026
       which a node does not keep, a conversation keeps what was said in
       it for as long as the node keeps the conversation: a node SHOULD
       keep a conversation no longer than it accepts messages in it, and
+
+
+
+                           Expires 5 May 2027                  [Page 25]
+
+Internet-Draft                    BATP                     November 2026
+
+
       SHOULD NOT link it to a guest beyond it.  A node that shows its
       merchant the requests it received shows the merchant what the
       guest's agent said.
@@ -1449,15 +1432,6 @@ Internet-Draft                    BATP                     November 2026
 
       *  Status: Provisional
 
-
-
-
-
-                           Expires 5 May 2027                  [Page 26]
-
-Internet-Draft                    BATP                     November 2026
-
-
       *  Applications/protocols that use this scheme name: the Broad
          Agent Transfer Protocol (this document)
 
@@ -1473,6 +1447,16 @@ Internet-Draft                    BATP                     November 2026
 15.  References
 
 15.1.  Normative References
+
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 26]
+
+Internet-Draft                    BATP                     November 2026
+
 
    [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
               Requirement Levels", BCP 14, RFC 2119,
@@ -1506,14 +1490,6 @@ Internet-Draft                    BATP                     November 2026
               DOI 10.17487/RFC8259, December 2017,
               <https://www.rfc-editor.org/rfc/rfc8259>.
 
-
-
-
-                           Expires 5 May 2027                  [Page 27]
-
-Internet-Draft                    BATP                     November 2026
-
-
    [RFC9293]  Eddy, W., Ed., "Transmission Control Protocol (TCP)",
               STD 7, RFC 9293, DOI 10.17487/RFC9293, August 2022,
               <https://www.rfc-editor.org/rfc/rfc9293>.
@@ -1529,6 +1505,14 @@ Internet-Draft                    BATP                     November 2026
               from the reference implementation)", 1 November 2026,
               <https://github.com/MaxEntz/BaselHack2026/tree/main/
               documentation/rfc/schemas>.
+
+
+
+
+                           Expires 5 May 2027                  [Page 27]
+
+Internet-Draft                    BATP                     November 2026
+
 
    [I-D.bhutton-json-schema]
               Wright, A., Andrews, H. H., Hutton, B., and G. Dennis,
@@ -1560,16 +1544,6 @@ Internet-Draft                    BATP                     November 2026
               RFC 7595, DOI 10.17487/RFC7595, June 2015,
               <https://www.rfc-editor.org/rfc/rfc7595>.
 
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 28]
-
-Internet-Draft                    BATP                     November 2026
-
-
    [RFC8141]  Saint-Andre, P. and J. Klensin, "Uniform Resource Names
               (URNs)", RFC 8141, DOI 10.17487/RFC8141, April 2017,
               <https://www.rfc-editor.org/rfc/rfc8141>.
@@ -1581,43 +1555,69 @@ Appendix A.  The MCP Bridge
    urn:batp:agent:claude-gateway and agent.kind user-agent, and maps its
    tools to intents:
 
-   +=====================+==============+=============================+
-   | MCP tool            | BATP intent  | Notes                       |
-   +=====================+==============+=============================+
-   | search_merchants    | DISCOVER     |                             |
-   +---------------------+--------------+-----------------------------+
-   | get_availability    | AVAILABILITY | the tool's merchant becomes |
-   |                     |              | the request's merchant      |
-   +---------------------+--------------+-----------------------------+
-   | create_reservation  | BOOK         | idem                        |
-   +---------------------+--------------+-----------------------------+
-   | update_reservation  | AMEND        | idem                        |
-   +---------------------+--------------+-----------------------------+
-   | cancel_reservation  | CANCEL       | the tool returns {"status": |
-   |                     |              | "cancelled"}                |
-   +---------------------+--------------+-----------------------------+
-   | talk_to_merchant    | TALK         | the tool's merchant becomes |
-   |                     |              | the request's merchant      |
-   +---------------------+--------------+-----------------------------+
-   | get_my_reservations | RECALL       |                             |
-   +---------------------+--------------+-----------------------------+
-
-                   Table 11: MCP tools and BATP intents
-
-   For TALK, the bridge has one tool, talk_to_merchant(merchant,
-   message, idempotency_key, conversation?, confirm?), whose arguments
-   other than merchant become the params of TALK, and whose result is
-   the result of TALK.  In this version, the four booking tools
-   (get_availability, create_reservation, update_reservation and
-   cancel_reservation) stay mapped to their intents as above, until a
-   later version closes the direct intents to guests' agents in favor of
-   TALK.
 
 
 
 
 
 
+
+
+
+
+                           Expires 5 May 2027                  [Page 28]
+
+Internet-Draft                    BATP                     November 2026
+
+
+    +=====================+=============+=============================+
+    | MCP tool            | BATP intent | Notes                       |
+    +=====================+=============+=============================+
+    | search_merchants    | DISCOVER    |                             |
+    +---------------------+-------------+-----------------------------+
+    | talk_to_merchant    | TALK        | the tool's merchant becomes |
+    |                     |             | the request's merchant      |
+    +---------------------+-------------+-----------------------------+
+    | get_my_reservations | RECALL      |                             |
+    +---------------------+-------------+-----------------------------+
+
+                    Table 11: MCP tools and BATP intents
+
+   The tool talk_to_merchant(merchant, message, idempotency_key,
+   conversation?, confirm?) passes its arguments other than merchant as
+   the params of TALK, and returns the result of TALK.  Since version
+   0.3, it is the only tool with which the assistant can check
+   availability or book, change or cancel.  The reference bridge also
+   serves one MCP endpoint per merchant, whose only tool is
+   talk_to_merchant without merchant: the request's merchant is the
+   endpoint's.
+
+   *  The description of talk_to_merchant tells the assistant to relay
+      reply, to show pending.summary and ask the guest when pending is
+      set, to send confirm only after the guest's explicit yes to that
+      summary, never in the same reply as the call that returned
+      pending, and to give the guest any fallback_url.  That is how the
+      bridge meets the caller's part of Section 7.8; the node's code
+      enforces the rest.
+
+   *  The tool takes a random UUID as idempotency_key, one per message:
+      the bridge carries all its users under one agent.id, so their keys
+      must not be guessable (Section 7.7).
+
+   *  The bridge answers each tool call within 2 seconds, including the
+      round trip to the node, except talk_to_merchant, which it gives 30
+      seconds: longer than the node's deadline for TALK (Section 7.4),
+      so that the node's 503 and its fallback_url arrive before the
+      bridge gives up.  A timeout, a lost session or a 503 becomes an
+      agent_unavailable tool error with the merchant's fallback_url.
+      When the call carried confirm, the error adds that the write may
+      have gone through, and that the assistant should check with
+      get_my_reservations before sending the message again with the same
+      key.
+
+   *  The bridge carries the conversations of all its users on its one
+      session, under one agent.id: only the conversation identifier,
+      which the node makes unguessable (Section 8.2.3), keeps one user
 
 
 
@@ -1626,24 +1626,6 @@ Appendix A.  The MCP Bridge
 Internet-Draft                    BATP                     November 2026
 
 
-   *  The tool descriptions tell the assistant to confirm with the guest
-      before create_reservation, update_reservation and
-      cancel_reservation, which is how the bridge meets the confirmation
-      requirement of Section 7.8.  The description of talk_to_merchant
-      tells it to relay reply, to show pending.summary and ask the guest
-      when pending is set, to send confirm only after the guest's
-      explicit yes, and to give the guest any fallback_url.
-
-   *  The bridge answers each tool call within 2 seconds, including the
-      round trip to the node, except talk_to_merchant, which it gives 30
-      seconds: longer than the node's deadline for TALK (Section 7.4),
-      so that the node's 503 and its fallback_url arrive before the
-      bridge gives up.  A timeout, a lost session or a 503 becomes an
-      agent_unavailable tool error with the merchant's fallback_url.
-
-   *  The bridge carries the conversations of all its users on its one
-      session, under one agent.id: only the conversation identifier,
-      which the node makes unguessable (Section 8.6.2), keeps one user
       from continuing another's conversation.  A 404 for an unknown or
       expired conversation is a not_found tool error, not an outage: the
       assistant starts a new conversation.
@@ -1661,13 +1643,31 @@ Appendix B.  Example Session
    caller.  Long frames are wrapped here for readability: on the wire,
    each is one line.
 
+   C: {"type": "hello", "batp": "0.3",
+       "agent": {"id": "urn:batp:agent:claude-gateway",
+                 "name": "Claude via the Sésame gateway",
+                 "kind": "user-agent", "operator": "merchant-agents"},
+       "token": "q7Lr..."}
+   N: {"type": "welcome", "batp": "0.3",
+       "node": {"id": "urn:batp:node:merchant-agents",
+                "name": "Sésame"},
+       "intents": ["DISCOVER", "TALK", "RECALL", "PING"],
+       "session": "s-2f6c"}
+   C: {"type": "request", "id": "r-1", "intent": "DISCOVER",
+       "params": {"query": "bistro", "filters": {"tags": ["vegetarian"],
+                  "max_price": "€€"}}}
+   N: {"type": "response", "id": "r-1", "status": 200,
+       "result": {"merchants": [{"slug": "le-petit-zinc",
+         "name": "Le Petit Zinc", "city": "Mulhouse",
+         "tags": ["vegetarian", "terrace"], "price_level": "€€",
+         "website": "https://le-petit-zinc.example/"}],
+         "suggestions": [], "ignored_filters": []}}
 
+                Figure 3: Opening the session and discovery
 
-
-
-
-
-
+   The caller then talks with the merchant's agent.  Its first message
+   opens a conversation.  While the TALK waits for the agent's model
+   turn, the caller sends a ping, which is answered first.
 
 
 
@@ -1682,54 +1682,54 @@ Appendix B.  Example Session
 Internet-Draft                    BATP                     November 2026
 
 
-C: {"type": "hello", "batp": "0.2",
-    "agent": {"id": "urn:batp:agent:claude-gateway",
-              "name": "Claude via the S\u00e9same gateway",
-              "kind": "user-agent", "operator": "merchant-agents"},
-    "token": "q7Lr..."}
-N: {"type": "welcome", "batp": "0.2",
-    "node": {"id": "urn:batp:node:merchant-agents",
-             "name": "S\u00e9same"},
-    "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
-                "TALK", "RECALL", "PING"],
-    "session": "s-2f6c"}
-C: {"type": "request", "id": "r-1", "intent": "DISCOVER",
-    "params": {"query": "bistro", "filters": {"tags": ["vegetarian"],
-               "max_price": "€€"}}}
-N: {"type": "response", "id": "r-1", "status": 200,
-    "result": {"merchants": [{"slug": "le-petit-zinc",
-      "name": "Le Petit Zinc", "city": "Mulhouse",
-      "tags": ["vegetarian", "terrace"], "price_level": "€€",
-      "website": "https://le-petit-zinc.example/"}],
-      "suggestions": [], "ignored_filters": []}}
-C: {"type": "request", "id": "r-2", "intent": "AVAILABILITY",
-    "merchant": "le-petit-zinc",
-    "params": {"date": "2026-11-02", "time": "20:00", "party_size": 4}}
-N: {"type": "response", "id": "r-2", "status": 200,
-    "result": {"slots": [
-      {"starts_at": "2026-11-02T19:30:00+01:00", "table_label": "T5"},
-      {"starts_at": "2026-11-02T20:00:00+01:00", "table_label": "T5"},
-      {"starts_at": "2026-11-02T20:30:00+01:00", "table_label": "T5"}]}}
+ C: {"type": "request", "id": "r-2", "intent": "TALK",
+     "merchant": "le-petit-zinc",
+     "params": {"message":
+       "Table for 4 on Monday around 20:00? Any vegetarian dishes?",
+       "idempotency_key": "0b6f3a9c-1e2d-4c5b-9a8f-7e6d5c4b3a21"}}
+ C: {"type": "request", "id": "r-3", "intent": "PING", "params": {}}
+ N: {"type": "response", "id": "r-3", "status": 200,
+     "result": {"pong": true,
+                "server_time": "2026-10-31T18:02:11+01:00"}}
+ N: {"type": "response", "id": "r-2", "status": 200,
+     "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+       "reply":
+         "Yes, two vegetarian mains. I can do 19:30, 20:00 or 20:30.",
+       "slots": [
+       {"starts_at": "2026-11-02T19:30:00+01:00", "table_label": "T5"},
+       {"starts_at": "2026-11-02T20:00:00+01:00", "table_label": "T5"},
+       {"starts_at": "2026-11-02T20:30:00+01:00", "table_label": "T5"}],
+       "pending": null, "reservation": null, "fallback_url": null,
+       "tools_called": ["get_availability"]}}
 
-      Figure 3: Opening the session, discovery and availability
+            Figure 4: A first message, with a ping in flight
 
-   The caller then books, and checks a larger party while the booking is
-   in flight: the second answer arrives first.
+   The guest picks a time and gives a name, which the caller passes on.
+   The merchant's agent turns the request into a proposal.
 
+ C: {"type": "request", "id": "r-4", "intent": "TALK",
+     "merchant": "le-petit-zinc",
+     "params": {"message": "20:00 please, for Ada Martin.",
+       "conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+       "idempotency_key": "5d2e8f41-7a3b-4e6c-8d9f-0a1b2c3d4e5f"}}
+ N: {"type": "response", "id": "r-4", "status": 200,
+     "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+       "reply": "Shall I book a table for 4 at 20:00 for Ada Martin?",
+       "slots": [],
+       "pending": {"id": "p-Kq81sVd0LmZr6TfXe2NbA", "action": "book",
+         "summary":
+           "Table for 4 on Monday 2 November 2026 at 20:00, Ada Martin",
+         "expires_at": "2026-10-31T18:14:05+01:00"},
+       "reservation": null, "fallback_url": null,
+       "tools_called": ["propose_booking"]}}
 
+                       Figure 5: Up to a proposal
 
-
-
-
-
-
-
-
-
-
-
-
-
+   The caller shows the guest the proposal's summary.  Once the guest
+   has said yes, the caller confirms the proposal, and the node books
+   the table with the proposal's own arguments, before its model words
+   the answer. tools_called names that write, although the model called
+   no tool.
 
 
 
@@ -1738,53 +1738,53 @@ N: {"type": "response", "id": "r-2", "status": 200,
 Internet-Draft                    BATP                     November 2026
 
 
-C: {"type": "request", "id": "r-3", "intent": "BOOK",
-    "merchant": "le-petit-zinc",
-    "params": {"starts_at": "2026-11-02T20:00:00+01:00",
-               "party_size": 4, "guest_name": "Ada Martin",
-               "idempotency_key": "b1f0c2d4-3a9e"}}
-C: {"type": "request", "id": "r-4", "intent": "AVAILABILITY",
-    "merchant": "le-petit-zinc",
-    "params": {"date": "2026-11-02", "party_size": 9}}
-N: {"type": "response", "id": "r-4", "status": 413,
-    "error": {"code": "party_too_large",
-      "message":
-        "Le Petit Zinc takes online bookings for up to 6 guests",
-      "fallback_url": "https://le-petit-zinc.example/reservation.html"}}
-N: {"type": "response", "id": "r-3", "status": 200,
-    "result": {"reservation": {"id": "R-001",
+  C: {"type": "request", "id": "r-5", "intent": "TALK",
       "merchant": "le-petit-zinc",
-      "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
-      "table_label": "T5", "status": "confirmed",
-      "guest_name": "Ada Martin", "via": "claude"}}}
-C: {"type": "request", "id": "r-5", "intent": "PING", "params": {}}
-N: {"type": "response", "id": "r-5", "status": 200,
-    "result": {"pong": true,
-               "server_time": "2026-10-31T18:02:11+01:00"}}
+      "params": {"message": "Yes, please book it.",
+        "conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+        "confirm": "p-Kq81sVd0LmZr6TfXe2NbA",
+        "idempotency_key": "9c4b7e2a-3f1d-4a8b-b6e5-2d7c1f0e9a83"}}
+  N: {"type": "response", "id": "r-5", "status": 200,
+      "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+        "reply": "Booked for Monday at 20:00. Your reference is R-001.",
+        "slots": [], "pending": null,
+        "reservation": {"id": "R-001", "merchant": "le-petit-zinc",
+          "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
+          "table_label": "T5", "status": "confirmed",
+          "guest_name": "Ada Martin", "via": "claude"},
+        "fallback_url": null, "tools_called": ["create_reservation"]}}
 
-             Figure 4: Two requests in flight, and a ping
+                    Figure 6: Confirming the proposal
 
-   Another guest asks, in the same session, for a table on another day.
-   The caller talks with the merchant's agent: a first message, which
-   opens a conversation, then the guest's choice, which the agent turns
-   into a proposal.
+   The guest then asks for a party above the merchant's online limit.
+   The agent's availability check refuses it: the answer still has
+   status 200, with the merchant's own booking page in fallback_url.
 
+C: {"type": "request", "id": "r-6", "intent": "TALK",
+    "merchant": "le-petit-zinc",
+    "params": {"message": "And a table for 9 on Friday at 20:00?",
+      "conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "idempotency_key": "e1a7c3f5-8b2d-4f6a-9c0e-4b3a2d1c0f97"}}
+N: {"type": "response", "id": "r-6", "status": 200,
+    "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply":
+        "We take online bookings for up to 6. Please book on our site.",
+      "slots": [], "pending": null, "reservation": null,
+      "fallback_url":
+        "https://le-petit-zinc.example/reservation.html",
+      "tools_called": ["get_availability"]}}
 
+             Figure 7: A refusal inside the conversation
 
+Appendix C.  JSON Schemas
 
+   These schemas use JSON Schema 2020-12 [I-D.bhutton-json-schema].
+   They are generated from the reference implementation's contract
+   models, so this appendix and the implementation cannot drift
+   [BATP-SCHEMAS].  In the params of TALK, the merchant is not a member:
+   it is the request's merchant.
 
-
-
-
-
-
-
-
-
-
-
-
-
+C.1.  DISCOVER params
 
 
 
@@ -1793,90 +1793,6 @@ N: {"type": "response", "id": "r-5", "status": 200,
 
 Internet-Draft                    BATP                     November 2026
 
-
-C: {"type": "request", "id": "r-6", "intent": "TALK",
-    "merchant": "le-petit-zinc",
-    "params": {"message":
-      "Table for 2 on Tuesday around 19:30? Any vegetarian dishes?",
-      "idempotency_key": "6f3a9c1e-01"}}
-N: {"type": "response", "id": "r-6", "status": 200,
-    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-      "reply":
-        "Yes, two vegetarian mains. I can do 19:00, 19:30 or 20:00.",
-      "slots": [
-      {"starts_at": "2026-11-03T19:00:00+01:00", "table_label": "T2"},
-      {"starts_at": "2026-11-03T19:30:00+01:00", "table_label": "T2"},
-      {"starts_at": "2026-11-03T20:00:00+01:00", "table_label": "T2"}],
-      "pending": null, "reservation": null, "fallback_url": null,
-      "tools_called": ["get_availability"]}}
-C: {"type": "request", "id": "r-7", "intent": "TALK",
-    "merchant": "le-petit-zinc",
-    "params": {"message": "19:30 please, for Noah Weber.",
-               "conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-               "idempotency_key": "6f3a9c1e-02"}}
-N: {"type": "response", "id": "r-7", "status": 200,
-    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-      "reply": "Shall I book a table for 2 at 19:30 for Noah Weber?",
-      "slots": [],
-      "pending": {"id": "pKq81sVd0LmZr6TfXe2NbA", "action": "book",
-        "summary":
-          "Table for 2 on Tuesday 3 November 2026 at 19:30, Noah Weber",
-        "expires_at": "2026-10-31T18:14:05+01:00"},
-      "reservation": null, "fallback_url": null,
-      "tools_called": ["propose_booking"]}}
-
- Figure 5: A conversation with the merchant's agent, up to a proposal
-
-   The caller shows the guest the proposal's summary.  Once the guest
-   has said yes, the caller confirms the proposal, and the node books
-   the table with the proposal's own arguments, before its model words
-   the answer.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 33]
-
-Internet-Draft                    BATP                     November 2026
-
-
- C: {"type": "request", "id": "r-8", "intent": "TALK",
-     "merchant": "le-petit-zinc",
-     "params": {"message": "Yes, please book it.",
-                "conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-                "confirm": "pKq81sVd0LmZr6TfXe2NbA",
-                "idempotency_key": "6f3a9c1e-03"}}
- N: {"type": "response", "id": "r-8", "status": 200,
-     "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-       "reply": "Booked for Tuesday at 19:30. Your reference is R-002.",
-       "slots": [], "pending": null,
-       "reservation": {"id": "R-002", "merchant": "le-petit-zinc",
-         "starts_at": "2026-11-03T19:30:00+01:00", "party_size": 2,
-         "table_label": "T2", "status": "confirmed",
-         "guest_name": "Noah Weber", "via": "claude"},
-       "fallback_url": null, "tools_called": ["create_reservation"]}}
-
-                   Figure 6: Confirming the proposal
-
-Appendix C.  JSON Schemas
-
-   These schemas use JSON Schema 2020-12 [I-D.bhutton-json-schema].
-   They are generated from the reference implementation's contract
-   models, so this appendix and the implementation cannot drift
-   [BATP-SCHEMAS].  In the params of AVAILABILITY, BOOK, AMEND, CANCEL
-   and TALK, the merchant is not a member: it is the request's merchant.
-
-C.1.  DISCOVER params
 
    {
      "$comment": "Generated from core.models.SearchMerchantsInput",
@@ -1898,14 +1814,6 @@ C.1.  DISCOVER params
                {
                  "type": "null"
                }
-
-
-
-                           Expires 5 May 2027                  [Page 34]
-
-Internet-Draft                    BATP                     November 2026
-
-
              ],
              "default": null,
              "title": "Max Price"
@@ -1934,6 +1842,14 @@ Internet-Draft                    BATP                     November 2026
            },
            {
              "type": "null"
+
+
+
+                           Expires 5 May 2027                  [Page 33]
+
+Internet-Draft                    BATP                     November 2026
+
+
            }
          ],
          "default": null,
@@ -1954,14 +1870,6 @@ Internet-Draft                    BATP                     November 2026
          "anyOf": [
            {
              "type": "string"
-
-
-
-                           Expires 5 May 2027                  [Page 35]
-
-Internet-Draft                    BATP                     November 2026
-
-
            },
            {
              "type": "null"
@@ -1990,6 +1898,14 @@ C.2.  DISCOVER result
        "FilterSuggestion": {
          "additionalProperties": false,
          "properties": {
+
+
+
+                           Expires 5 May 2027                  [Page 34]
+
+Internet-Draft                    BATP                     November 2026
+
+
            "drop": {
              "title": "Drop",
              "type": "string"
@@ -2010,14 +1926,6 @@ C.2.  DISCOVER result
          "additionalProperties": false,
          "properties": {
            "city": {
-
-
-
-                           Expires 5 May 2027                  [Page 36]
-
-Internet-Draft                    BATP                     November 2026
-
-
              "anyOf": [
                {
                  "type": "string"
@@ -2046,6 +1954,14 @@ Internet-Draft                    BATP                     November 2026
              "pattern": "^[a-z0-9-]{3,61}$",
              "title": "Slug",
              "type": "string"
+
+
+
+                           Expires 5 May 2027                  [Page 35]
+
+Internet-Draft                    BATP                     November 2026
+
+
            },
            "tags": {
              "items": {
@@ -2066,14 +1982,6 @@ Internet-Draft                    BATP                     November 2026
            "website": {
              "format": "uri",
              "maxLength": 2083,
-
-
-
-                           Expires 5 May 2027                  [Page 37]
-
-Internet-Draft                    BATP                     November 2026
-
-
              "minLength": 1,
              "title": "Website",
              "type": "string"
@@ -2102,6 +2010,14 @@ Internet-Draft                    BATP                     November 2026
          "title": "Ignored Filters",
          "type": "array"
        },
+
+
+
+                           Expires 5 May 2027                  [Page 36]
+
+Internet-Draft                    BATP                     November 2026
+
+
        "merchants": {
          "items": {
            "$ref": "#/$defs/MerchantSummary"
@@ -2122,379 +2038,12 @@ Internet-Draft                    BATP                     November 2026
        "merchants"
      ],
      "title": "BATP DISCOVER result",
-
-
-
-                           Expires 5 May 2027                  [Page 38]
-
-Internet-Draft                    BATP                     November 2026
-
-
      "type": "object"
    }
 
-C.3.  AVAILABILITY params
+C.3.  TALK params
 
-   {
-     "$comment": "Generated from core.models.GetAvailabilityInput",
-     "$schema": "https://json-schema.org/draft/2020-12/schema",
-     "additionalProperties": false,
-     "properties": {
-       "date": {
-         "format": "date",
-         "title": "Date",
-         "type": "string"
-       },
-       "party_size": {
-         "exclusiveMinimum": 0,
-         "title": "Party Size",
-         "type": "integer"
-       },
-       "time": {
-         "anyOf": [
-           {
-             "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
-             "type": "string"
-           },
-           {
-             "type": "null"
-           }
-         ],
-         "default": null,
-         "title": "Time"
-       }
-     },
-     "required": [
-       "date",
-       "party_size"
-     ],
-     "title": "BATP AVAILABILITY params",
-     "type": "object"
-   }
-
-C.4.  AVAILABILITY result
-
-
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 39]
-
-Internet-Draft                    BATP                     November 2026
-
-
-   {
-     "$comment": "Generated from core.models.GetAvailabilityOutput",
-     "$defs": {
-       "Slot": {
-         "additionalProperties": false,
-         "properties": {
-           "starts_at": {
-             "format": "date-time",
-             "title": "Starts At",
-             "type": "string"
-           },
-           "table_label": {
-             "title": "Table Label",
-             "type": "string"
-           }
-         },
-         "required": [
-           "starts_at",
-           "table_label"
-         ],
-         "title": "Slot",
-         "type": "object"
-       }
-     },
-     "$schema": "https://json-schema.org/draft/2020-12/schema",
-     "additionalProperties": false,
-     "properties": {
-       "slots": {
-         "items": {
-           "$ref": "#/$defs/Slot"
-         },
-         "maxItems": 3,
-         "title": "Slots",
-         "type": "array"
-       }
-     },
-     "required": [
-       "slots"
-     ],
-     "title": "BATP AVAILABILITY result",
-     "type": "object"
-   }
-
-C.5.  BOOK params
-
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 40]
-
-Internet-Draft                    BATP                     November 2026
-
-
-   {
-     "$comment": "Generated from core.models.CreateReservationInput",
-     "$schema": "https://json-schema.org/draft/2020-12/schema",
-     "additionalProperties": false,
-     "properties": {
-       "guest_name": {
-         "maxLength": 200,
-         "minLength": 1,
-         "title": "Guest Name",
-         "type": "string"
-       },
-       "idempotency_key": {
-         "maxLength": 200,
-         "minLength": 1,
-         "title": "Idempotency Key",
-         "type": "string"
-       },
-       "party_size": {
-         "exclusiveMinimum": 0,
-         "title": "Party Size",
-         "type": "integer"
-       },
-       "starts_at": {
-         "format": "date-time",
-         "title": "Starts At",
-         "type": "string"
-       }
-     },
-     "required": [
-       "starts_at",
-       "party_size",
-       "guest_name",
-       "idempotency_key"
-     ],
-     "title": "BATP BOOK params",
-     "type": "object"
-   }
-
-C.6.  BOOK, AMEND and CANCEL result
-
-   The three intents return the same reservation object.
-
-   {
-     "$comment": "Generated from core.models.ReservationOutput",
-     "$defs": {
-       "Reservation": {
-         "additionalProperties": false,
-         "properties": {
-
-
-
-                           Expires 5 May 2027                  [Page 41]
-
-Internet-Draft                    BATP                     November 2026
-
-
-           "guest_name": {
-             "title": "Guest Name",
-             "type": "string"
-           },
-           "id": {
-             "title": "Id",
-             "type": "string"
-           },
-           "merchant": {
-             "pattern": "^[a-z0-9-]{3,61}$",
-             "title": "Merchant",
-             "type": "string"
-           },
-           "party_size": {
-             "exclusiveMinimum": 0,
-             "title": "Party Size",
-             "type": "integer"
-           },
-           "starts_at": {
-             "format": "date-time",
-             "title": "Starts At",
-             "type": "string"
-           },
-           "status": {
-             "enum": [
-               "confirmed",
-               "cancelled"
-             ],
-             "title": "Status",
-             "type": "string"
-           },
-           "table_label": {
-             "title": "Table Label",
-             "type": "string"
-           },
-           "via": {
-             "enum": [
-               "claude",
-               "merchant",
-               "website"
-             ],
-             "title": "Via",
-             "type": "string"
-           }
-         },
-         "required": [
-           "id",
-           "merchant",
-
-
-
-                           Expires 5 May 2027                  [Page 42]
-
-Internet-Draft                    BATP                     November 2026
-
-
-           "starts_at",
-           "party_size",
-           "table_label",
-           "status",
-           "guest_name",
-           "via"
-         ],
-         "title": "Reservation",
-         "type": "object"
-       }
-     },
-     "$schema": "https://json-schema.org/draft/2020-12/schema",
-     "additionalProperties": false,
-     "properties": {
-       "reservation": {
-         "$ref": "#/$defs/Reservation"
-       }
-     },
-     "required": [
-       "reservation"
-     ],
-     "title": "BATP BOOK result",
-     "type": "object"
-   }
-
-C.7.  AMEND params
-
-   {
-     "$comment": "Generated from core.models.UpdateReservationInput",
-     "$schema": "https://json-schema.org/draft/2020-12/schema",
-     "additionalProperties": false,
-     "properties": {
-       "guest_name": {
-         "maxLength": 200,
-         "minLength": 1,
-         "title": "Guest Name",
-         "type": "string"
-       },
-       "idempotency_key": {
-         "maxLength": 200,
-         "minLength": 1,
-         "title": "Idempotency Key",
-         "type": "string"
-       },
-       "party_size": {
-         "anyOf": [
-           {
-             "exclusiveMinimum": 0,
-
-
-
-                           Expires 5 May 2027                  [Page 43]
-
-Internet-Draft                    BATP                     November 2026
-
-
-             "type": "integer"
-           },
-           {
-             "type": "null"
-           }
-         ],
-         "default": null,
-         "title": "Party Size"
-       },
-       "reservation_id": {
-         "maxLength": 200,
-         "minLength": 1,
-         "title": "Reservation Id",
-         "type": "string"
-       },
-       "starts_at": {
-         "anyOf": [
-           {
-             "format": "date-time",
-             "type": "string"
-           },
-           {
-             "type": "null"
-           }
-         ],
-         "default": null,
-         "title": "Starts At"
-       }
-     },
-     "required": [
-       "reservation_id",
-       "guest_name",
-       "idempotency_key"
-     ],
-     "title": "BATP AMEND params",
-     "type": "object"
-   }
-
-C.8.  CANCEL params
-
-
-
-
-
-
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 44]
-
-Internet-Draft                    BATP                     November 2026
-
-
-   {
-     "$comment": "Generated from core.models.CancelReservationInput",
-     "$schema": "https://json-schema.org/draft/2020-12/schema",
-     "additionalProperties": false,
-     "properties": {
-       "guest_name": {
-         "maxLength": 200,
-         "minLength": 1,
-         "title": "Guest Name",
-         "type": "string"
-       },
-       "reservation_id": {
-         "maxLength": 200,
-         "minLength": 1,
-         "title": "Reservation Id",
-         "type": "string"
-       }
-     },
-     "required": [
-       "reservation_id",
-       "guest_name"
-     ],
-     "title": "BATP CANCEL params",
-     "type": "object"
-   }
-
-C.9.  TALK params
-
-   The schema does not express two rules of Section 8.6: message is
+   The schema does not express two rules of Section 8.2: message is
    measured once leading and trailing white space is removed, and
    confirm requires conversation.
 
@@ -2514,17 +2063,17 @@ C.9.  TALK params
            }
          ],
          "default": null,
+         "title": "Confirm"
+       },
+       "conversation": {
 
 
 
-                           Expires 5 May 2027                  [Page 45]
+                           Expires 5 May 2027                  [Page 37]
 
 Internet-Draft                    BATP                     November 2026
 
 
-         "title": "Confirm"
-       },
-       "conversation": {
          "anyOf": [
            {
              "pattern": "^[A-Za-z0-9_-]{1,64}$",
@@ -2558,7 +2107,7 @@ Internet-Draft                    BATP                     November 2026
      "type": "object"
    }
 
-C.10.  TALK result
+C.4.  TALK result
 
    {
      "$comment": "Generated from core.models.TalkOutput",
@@ -2570,17 +2119,17 @@ C.10.  TALK result
              "enum": [
                "book",
                "change",
+               "cancel"
+             ],
+             "title": "Action",
 
 
 
-                           Expires 5 May 2027                  [Page 46]
+                           Expires 5 May 2027                  [Page 38]
 
 Internet-Draft                    BATP                     November 2026
 
 
-               "cancel"
-             ],
-             "title": "Action",
              "type": "string"
            },
            "expires_at": {
@@ -2626,17 +2175,17 @@ Internet-Draft                    BATP                     November 2026
              "type": "string"
            },
            "party_size": {
+             "exclusiveMinimum": 0,
+             "title": "Party Size",
+             "type": "integer"
 
 
 
-                           Expires 5 May 2027                  [Page 47]
+                           Expires 5 May 2027                  [Page 39]
 
 Internet-Draft                    BATP                     November 2026
 
 
-             "exclusiveMinimum": 0,
-             "title": "Party Size",
-             "type": "integer"
            },
            "starts_at": {
              "format": "date-time",
@@ -2682,17 +2231,17 @@ Internet-Draft                    BATP                     November 2026
          "additionalProperties": false,
          "properties": {
            "starts_at": {
+             "format": "date-time",
+             "title": "Starts At",
+             "type": "string"
 
 
 
-                           Expires 5 May 2027                  [Page 48]
+                           Expires 5 May 2027                  [Page 40]
 
 Internet-Draft                    BATP                     November 2026
 
 
-             "format": "date-time",
-             "title": "Starts At",
-             "type": "string"
            },
            "table_label": {
              "title": "Table Label",
@@ -2738,17 +2287,17 @@ Internet-Draft                    BATP                     November 2026
            {
              "type": "null"
            }
+         ],
+         "default": null
+       },
 
 
 
-                           Expires 5 May 2027                  [Page 49]
+                           Expires 5 May 2027                  [Page 41]
 
 Internet-Draft                    BATP                     November 2026
 
 
-         ],
-         "default": null
-       },
        "reply": {
          "maxLength": 2000,
          "title": "Reply",
@@ -2791,13 +2340,16 @@ Internet-Draft                    BATP                     November 2026
      "type": "object"
    }
 
-C.11.  RECALL params
+C.5.  RECALL params
 
 
 
 
 
-                           Expires 5 May 2027                  [Page 50]
+
+
+
+                           Expires 5 May 2027                  [Page 42]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2821,7 +2373,7 @@ Internet-Draft                    BATP                     November 2026
      "type": "object"
    }
 
-C.12.  RECALL result
+C.6.  RECALL result
 
    {
      "$comment": "Generated from core.models.GetMyReservationsOutput",
@@ -2853,7 +2405,7 @@ C.12.  RECALL result
 
 
 
-                           Expires 5 May 2027                  [Page 51]
+                           Expires 5 May 2027                  [Page 43]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2909,7 +2461,7 @@ Internet-Draft                    BATP                     November 2026
 
 
 
-                           Expires 5 May 2027                  [Page 52]
+                           Expires 5 May 2027                  [Page 44]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2930,7 +2482,7 @@ Internet-Draft                    BATP                     November 2026
      "type": "object"
    }
 
-C.13.  PING params and result
+C.7.  PING params and result
 
    {
      "$comment": "Generated from batp_schemas.PingParams",
@@ -2965,7 +2517,7 @@ C.13.  PING params and result
 
 
 
-                           Expires 5 May 2027                  [Page 53]
+                           Expires 5 May 2027                  [Page 45]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2993,9 +2545,56 @@ Internet-Draft                    BATP                     November 2026
      "type": "object"
    }
 
-Appendix D.  Changes from Version 0.1
+Appendix D.  Changes from Earlier Versions
 
-   *  Added the TALK intent (Section 8.6), with its conversations and
+D.1.  Version 0.3
+
+   *  Removed the intents AVAILABILITY, BOOK, AMEND and CANCEL: a caller
+      checks availability and books, changes or cancels only through
+      TALK.  A node answers them as unknown intents, with status 400 and
+      code invalid_input, in a session of any version (Section 8).
+
+   *  TALK is the only intent that takes merchant (Section 7).
+
+   *  Stated what a confirmed proposal writes, and that a booking made
+      through TALK is recorded with via "claude" whatever agent.kind the
+      caller declares, since no token proves it; version 0.2 required
+      "merchant" for a merchant-agent (Section 8.2.2).
+
+   *  tools_called names the write that the node's code ran on a confirm
+      (Section 8.2).
+
+   *  No request is answered with status 409 or 413 any more; 413
+      remains for frames above the size limit, and a later version
+      cannot give slot_unavailable or party_too_large another meaning
+      (Section 9).
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 46]
+
+Internet-Draft                    BATP                     November 2026
+
+
+   *  Idempotency keys are those of TALK only, scoped to the
+      conversation; a key sent again with other params is invalid, and a
+      caller that carries several guests chooses keys they cannot guess
+      (Section 7.7).
+
+   *  Confirmation of writes is enforced by the node's code for every
+      caller (Section 7.8).
+
+   *  While the major version is 0, a minor version may remove intents
+      (Section 11).
+
+   *  The MCP bridge maps three tools, and books only through
+      talk_to_merchant (Appendix A).
+
+D.2.  Version 0.2
+
+   *  Added the TALK intent (Section 8.2), with its conversations and
       its proposals, which the node carries out only on confirm; TALK is
       addressed, so merchant is required for it.
 
@@ -3016,16 +2615,6 @@ Appendix D.  Changes from Version 0.1
    *  Added the security and privacy considerations of a merchant agent
       built on a language model (Section 12, Section 13).
 
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 54]
-
-Internet-Draft                    BATP                     November 2026
-
-
 Acknowledgments
 
    The agent-only protocol idea comes from the AGTP Internet-Draft
@@ -3040,41 +2629,4 @@ Author's Address
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 55]
+                           Expires 5 May 2027                  [Page 47]

@@ -11,14 +11,15 @@
 application protocol reserved for software agents that book with merchants
 on behalf of people or businesses. A BATP session runs over TCP, starts with
 a handshake that names the calling agent, and carries newline-delimited JSON
-frames. Each request states an intent (discover merchants, check
-availability, book, amend, cancel, talk with the merchant's agent in natural
-language, recall bookings, ping) and the merchant it addresses. Responses
-carry numeric status codes and, when the merchant's own agent cannot serve
-the request, a fallback URL to the merchant's website. A write proposed in a
-conversation is carried out only once the caller confirms it. BATP is
-designed to sit behind a Model Context Protocol (MCP) server, which acts as
-a bridge for assistants that only speak MCP. 
+frames. Each request states an intent: discover merchants, talk with a
+merchant's agent in natural language, recall a guest's bookings, or ping.
+A caller checks availability and books, changes or cancels a booking only
+by talking with the merchant's agent, which proposes each write and carries
+it out only once the caller confirms it. Responses carry numeric status
+codes and, when the merchant's agent cannot serve the request, a fallback
+URL to the merchant's website. BATP is designed to sit behind a Model
+Context Protocol (MCP) server, which acts as a bridge for assistants that
+only speak MCP. 
     " name="description">
 <meta content="xml2rfc 3.35.0" name="generator">
 <meta content="agents" name="keyword">
@@ -1274,14 +1275,15 @@ li > p:last-of-type:only-child {
 application protocol reserved for software agents that book with merchants
 on behalf of people or businesses. A BATP session runs over TCP, starts with
 a handshake that names the calling agent, and carries newline-delimited JSON
-frames. Each request states an intent (discover merchants, check
-availability, book, amend, cancel, talk with the merchant's agent in natural
-language, recall bookings, ping) and the merchant it addresses. Responses
-carry numeric status codes and, when the merchant's own agent cannot serve
-the request, a fallback URL to the merchant's website. A write proposed in a
-conversation is carried out only once the caller confirms it. BATP is
-designed to sit behind a Model Context Protocol (MCP) server, which acts as
-a bridge for assistants that only speak MCP.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+frames. Each request states an intent: discover merchants, talk with a
+merchant's agent in natural language, recall a guest's bookings, or ping.
+A caller checks availability and books, changes or cancels a booking only
+by talking with the merchant's agent, which proposes each write and carries
+it out only once the caller confirms it. Responses carry numeric status
+codes and, when the merchant's agent cannot serve the request, a fallback
+URL to the merchant's website. BATP is designed to sit behind a Model
+Context Protocol (MCP) server, which acts as a bridge for assistants that
+only speak MCP.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
 </section>
 <div id="status-of-memo">
 <section id="section-boilerplate.1">
@@ -1409,36 +1411,27 @@ a bridge for assistants that only speak MCP.<a href="#section-abstract-1" class=
                 <p id="section-toc.1-1.8.2.1.1"><a href="#section-8.1" class="auto internal xref">8.1</a>.  <a href="#name-discover" class="internal xref">DISCOVER</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2">
-                <p id="section-toc.1-1.8.2.2.1"><a href="#section-8.2" class="auto internal xref">8.2</a>.  <a href="#name-availability" class="internal xref">AVAILABILITY</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.3">
-                <p id="section-toc.1-1.8.2.3.1"><a href="#section-8.3" class="auto internal xref">8.3</a>.  <a href="#name-book" class="internal xref">BOOK</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.4">
-                <p id="section-toc.1-1.8.2.4.1"><a href="#section-8.4" class="auto internal xref">8.4</a>.  <a href="#name-amend" class="internal xref">AMEND</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.5">
-                <p id="section-toc.1-1.8.2.5.1"><a href="#section-8.5" class="auto internal xref">8.5</a>.  <a href="#name-cancel" class="internal xref">CANCEL</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.6">
-                <p id="section-toc.1-1.8.2.6.1"><a href="#section-8.6" class="auto internal xref">8.6</a>.  <a href="#name-talk" class="internal xref">TALK</a></p>
+                <p id="section-toc.1-1.8.2.2.1"><a href="#section-8.2" class="auto internal xref">8.2</a>.  <a href="#name-talk" class="internal xref">TALK</a></p>
 <ul class="compact toc ulBare ulEmpty">
-<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.6.2.1">
-                    <p id="section-toc.1-1.8.2.6.2.1.1"><a href="#section-8.6.1" class="auto internal xref">8.6.1</a>.  <a href="#name-proposals-and-confirmation" class="internal xref">Proposals and confirmation</a></p>
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2.2.1">
+                    <p id="section-toc.1-1.8.2.2.2.1.1"><a href="#section-8.2.1" class="auto internal xref">8.2.1</a>.  <a href="#name-proposals-and-confirmation" class="internal xref">Proposals and confirmation</a></p>
 </li>
-                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.6.2.2">
-                    <p id="section-toc.1-1.8.2.6.2.2.1"><a href="#section-8.6.2" class="auto internal xref">8.6.2</a>.  <a href="#name-conversations" class="internal xref">Conversations</a></p>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2.2.2">
+                    <p id="section-toc.1-1.8.2.2.2.2.1"><a href="#section-8.2.2" class="auto internal xref">8.2.2</a>.  <a href="#name-writes" class="internal xref">Writes</a></p>
 </li>
-                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.6.2.3">
-                    <p id="section-toc.1-1.8.2.6.2.3.1"><a href="#section-8.6.3" class="auto internal xref">8.6.3</a>.  <a href="#name-status" class="internal xref">Status</a></p>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2.2.3">
+                    <p id="section-toc.1-1.8.2.2.2.3.1"><a href="#section-8.2.3" class="auto internal xref">8.2.3</a>.  <a href="#name-conversations" class="internal xref">Conversations</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2.2.4">
+                    <p id="section-toc.1-1.8.2.2.2.4.1"><a href="#section-8.2.4" class="auto internal xref">8.2.4</a>.  <a href="#name-status" class="internal xref">Status</a></p>
 </li>
                 </ul>
 </li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.7">
-                <p id="section-toc.1-1.8.2.7.1"><a href="#section-8.7" class="auto internal xref">8.7</a>.  <a href="#name-recall" class="internal xref">RECALL</a></p>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.3">
+                <p id="section-toc.1-1.8.2.3.1"><a href="#section-8.3" class="auto internal xref">8.3</a>.  <a href="#name-recall" class="internal xref">RECALL</a></p>
 </li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.8">
-                <p id="section-toc.1-1.8.2.8.1"><a href="#section-8.8" class="auto internal xref">8.8</a>.  <a href="#name-ping" class="internal xref">PING</a></p>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.4">
+                <p id="section-toc.1-1.8.2.4.1"><a href="#section-8.4" class="auto internal xref">8.4</a>.  <a href="#name-ping" class="internal xref">PING</a></p>
 </li>
             </ul>
 </li>
@@ -1487,42 +1480,32 @@ a bridge for assistants that only speak MCP.<a href="#section-abstract-1" class=
                 <p id="section-toc.1-1.18.2.2.1"><a href="#appendix-C.2" class="auto internal xref">C.2</a>.  <a href="#name-discover-result" class="internal xref">DISCOVER result</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.3">
-                <p id="section-toc.1-1.18.2.3.1"><a href="#appendix-C.3" class="auto internal xref">C.3</a>.  <a href="#name-availability-params" class="internal xref">AVAILABILITY params</a></p>
+                <p id="section-toc.1-1.18.2.3.1"><a href="#appendix-C.3" class="auto internal xref">C.3</a>.  <a href="#name-talk-params" class="internal xref">TALK params</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.4">
-                <p id="section-toc.1-1.18.2.4.1"><a href="#appendix-C.4" class="auto internal xref">C.4</a>.  <a href="#name-availability-result" class="internal xref">AVAILABILITY result</a></p>
+                <p id="section-toc.1-1.18.2.4.1"><a href="#appendix-C.4" class="auto internal xref">C.4</a>.  <a href="#name-talk-result" class="internal xref">TALK result</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.5">
-                <p id="section-toc.1-1.18.2.5.1"><a href="#appendix-C.5" class="auto internal xref">C.5</a>.  <a href="#name-book-params" class="internal xref">BOOK params</a></p>
+                <p id="section-toc.1-1.18.2.5.1"><a href="#appendix-C.5" class="auto internal xref">C.5</a>.  <a href="#name-recall-params" class="internal xref">RECALL params</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.6">
-                <p id="section-toc.1-1.18.2.6.1"><a href="#appendix-C.6" class="auto internal xref">C.6</a>.  <a href="#name-book-amend-and-cancel-resul" class="internal xref">BOOK, AMEND and CANCEL result</a></p>
+                <p id="section-toc.1-1.18.2.6.1"><a href="#appendix-C.6" class="auto internal xref">C.6</a>.  <a href="#name-recall-result" class="internal xref">RECALL result</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.7">
-                <p id="section-toc.1-1.18.2.7.1"><a href="#appendix-C.7" class="auto internal xref">C.7</a>.  <a href="#name-amend-params" class="internal xref">AMEND params</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.8">
-                <p id="section-toc.1-1.18.2.8.1"><a href="#appendix-C.8" class="auto internal xref">C.8</a>.  <a href="#name-cancel-params" class="internal xref">CANCEL params</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.9">
-                <p id="section-toc.1-1.18.2.9.1"><a href="#appendix-C.9" class="auto internal xref">C.9</a>.  <a href="#name-talk-params" class="internal xref">TALK params</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.10">
-                <p id="section-toc.1-1.18.2.10.1"><a href="#appendix-C.10" class="auto internal xref">C.10</a>. <a href="#name-talk-result" class="internal xref">TALK result</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.11">
-                <p id="section-toc.1-1.18.2.11.1"><a href="#appendix-C.11" class="auto internal xref">C.11</a>. <a href="#name-recall-params" class="internal xref">RECALL params</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.12">
-                <p id="section-toc.1-1.18.2.12.1"><a href="#appendix-C.12" class="auto internal xref">C.12</a>. <a href="#name-recall-result" class="internal xref">RECALL result</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18.2.13">
-                <p id="section-toc.1-1.18.2.13.1"><a href="#appendix-C.13" class="auto internal xref">C.13</a>. <a href="#name-ping-params-and-result" class="internal xref">PING params and result</a></p>
+                <p id="section-toc.1-1.18.2.7.1"><a href="#appendix-C.7" class="auto internal xref">C.7</a>.  <a href="#name-ping-params-and-result" class="internal xref">PING params and result</a></p>
 </li>
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.19">
-            <p id="section-toc.1-1.19.1"><a href="#appendix-D" class="auto internal xref">Appendix D</a>.  <a href="#name-changes-from-version-01" class="internal xref">Changes from Version 0.1</a></p>
+            <p id="section-toc.1-1.19.1"><a href="#appendix-D" class="auto internal xref">Appendix D</a>.  <a href="#name-changes-from-earlier-versio" class="internal xref">Changes from Earlier Versions</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.19.2.1">
+                <p id="section-toc.1-1.19.2.1.1"><a href="#appendix-D.1" class="auto internal xref">D.1</a>.  <a href="#name-version-03" class="internal xref">Version 0.3</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.19.2.2">
+                <p id="section-toc.1-1.19.2.2.1"><a href="#appendix-D.2" class="auto internal xref">D.2</a>.  <a href="#name-version-02" class="internal xref">Version 0.2</a></p>
+</li>
+            </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.20">
             <p id="section-toc.1-1.20.1"><a href="#appendix-E" class="auto internal xref"></a><a href="#name-acknowledgments" class="internal xref">Acknowledgments</a></p>
@@ -1544,20 +1527,26 @@ check a table and book it. When that traffic uses HTTP, a merchant cannot
 tell it apart from a browser, so it cannot identify the calling agent,
 route agent traffic separately, or apply rules meant for agents.<a href="#section-1-1" class="pilcrow">¶</a></p>
 <p id="section-1-2">BATP gives that traffic its own channel. Every frame says which agent is
-talking (established once per session), what it intends to do, and to which
-merchant. The protocol is deliberately small: it covers what a network of
-merchant agents needs to take bookings, and nothing else.<a href="#section-1-2" class="pilcrow">¶</a></p>
-<p id="section-1-3">This document defines version 0.2 of BATP. Version 0.2 adds one intent to
-version 0.1: TALK, with which a guest's agent talks with the merchant's agent
-in natural language (<a href="#talk" class="auto internal xref">Section 8.6</a>). The changes are listed in <a href="#changes" class="auto internal xref">Appendix D</a>.<a href="#section-1-3" class="pilcrow">¶</a></p>
+talking (established once per session), what it intends to do, and, when
+it addresses one, to which merchant. The protocol is deliberately small: it
+covers what a network of merchant agents needs to take bookings, and
+nothing else.<a href="#section-1-2" class="pilcrow">¶</a></p>
+<p id="section-1-3">This document defines version 0.3 of BATP. Version 0.2 added TALK, with
+which a guest's agent talks with the merchant's agent in natural language
+(<a href="#talk" class="auto internal xref">Section 8.2</a>). Version 0.3 removes the four intents with which a caller
+checked availability and booked, changed or cancelled directly: a caller
+now does all of that through TALK. Only the merchant's agent, under the
+control of the node's code, uses the merchant's booking operations, and
+every write follows a proposal that the node built and a confirmation that
+names it, whoever the caller is. The changes are listed in <a href="#changes" class="auto internal xref">Appendix D</a>.<a href="#section-1-3" class="pilcrow">¶</a></p>
 <div id="scope">
 <section id="section-1.1">
         <h3 id="name-scope">
 <a href="#section-1.1" class="section-number selfRef">1.1. </a><a href="#name-scope" class="section-name selfRef">Scope</a>
         </h3>
-<p id="section-1.1-1">This version covers the guest side of booking with restaurants: discovery,
-availability, booking, amending, cancelling and recalling a guest's
-bookings, and a conversation with the merchant's agent about any of these.
+<p id="section-1.1-1">This version covers the guest side of booking with restaurants: discovering
+merchants, a conversation with the merchant's agent to check availability
+and to book, change or cancel a booking, and recalling a guest's bookings.
 Merchant-side operations (listing a day's bookings, blocking a
 slot, changing a policy) are out of scope: they stay on the merchant's own
 platform.<a href="#section-1.1-1" class="pilcrow">¶</a></p>
@@ -1608,9 +1597,10 @@ appear in all capitals, as shown here.<a href="#section-2-1" class="pilcrow">¶<
 <dt id="section-2-3.3">Merchant agent:</dt>
         <dd style="margin-left: 1.5em" id="section-2-3.4">
           <p id="section-2-3.4.1">One merchant's booking logic and data, served by a node and addressed by
-the merchant's slug. Since version 0.2, it also includes the
-conversational agent, built on a language model, that answers TALK
-(<a href="#talk" class="auto internal xref">Section 8.6</a>).<a href="#section-2-3.4.1" class="pilcrow">¶</a></p>
+the merchant's slug, together with the conversational agent, built on a
+language model, that answers TALK for that merchant (<a href="#talk" class="auto internal xref">Section 8.2</a>). Since
+version 0.3, that conversational agent is the only way a caller reaches
+the merchant's booking operations.<a href="#section-2-3.4.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 <dt id="section-2-3.5">Caller:</dt>
@@ -1632,7 +1622,7 @@ merchant's agent, or a bridge acting for one of them.<a href="#section-2-3.6.1" 
         <dd class="break"></dd>
 <dt id="section-2-3.11">Intent:</dt>
         <dd style="margin-left: 1.5em" id="section-2-3.12">
-          <p id="section-2-3.12.1">What a request asks the node to do, for example <code>BOOK</code>.<a href="#section-2-3.12.1" class="pilcrow">¶</a></p>
+          <p id="section-2-3.12.1">What a request asks the node to do, for example <code>TALK</code>.<a href="#section-2-3.12.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 <dt id="section-2-3.13">Slug:</dt>
@@ -1650,14 +1640,14 @@ caller gives (see <a href="#privacy" class="auto internal xref">Section 13</a>).
 <dt id="section-2-3.17">Conversation:</dt>
         <dd style="margin-left: 1.5em" id="section-2-3.18">
           <p id="section-2-3.18.1">A sequence of TALK requests from one caller to one merchant agent, named
-by an opaque identifier that the node chooses (<a href="#talk" class="auto internal xref">Section 8.6</a>).<a href="#section-2-3.18.1" class="pilcrow">¶</a></p>
+by an opaque identifier that the node chooses (<a href="#talk" class="auto internal xref">Section 8.2</a>).<a href="#section-2-3.18.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 <dt id="section-2-3.19">Proposal:</dt>
         <dd style="margin-left: 1.5em" id="section-2-3.20">
           <p id="section-2-3.20.1">A write (a booking, a change or a cancellation) that a merchant agent
 offers in a conversation, and carries out only when a later TALK confirms
-it (<a href="#talk" class="auto internal xref">Section 8.6</a>).<a href="#section-2-3.20.1" class="pilcrow">¶</a></p>
+it (<a href="#talk" class="auto internal xref">Section 8.2</a>).<a href="#section-2-3.20.1" class="pilcrow">¶</a></p>
 </dd>
       <dd class="break"></dd>
 </dl>
@@ -1699,9 +1689,9 @@ in any order.<a href="#section-3-1" class="pilcrow">¶</a></p>
         <div class="alignLeft art-ascii-art art-text artwork" id="section-3-3.1">
 <pre>
   Caller                                        Node
-    |  hello {agent, token, batp: "0.2"}         |
+    |  hello {agent, token, batp: "0.3"}         |
     |-------------------------------------------&gt;|
-    |  welcome {batp: "0.2", node, intents,      |
+    |  welcome {batp: "0.3", node, intents,      |
     |           session}                         |
     |&lt;-------------------------------------------|
     |  request {id: "r-1", intent: TALK}         |
@@ -1737,7 +1727,7 @@ name it connected to. TLS is set up before the first frame.<a href="#section-4-2
 <p id="section-4-3">Either side <span class="bcp14">MAY</span> close the connection at any time. Closing the connection
 ends the session. A request in flight when the session ends has no
 response, and the caller <span class="bcp14">MUST NOT</span> assume it was or was not carried out
-(see <a href="#idempotency" class="auto internal xref">Section 7.7</a> for retrying writes safely).<a href="#section-4-3" class="pilcrow">¶</a></p>
+(see <a href="#idempotency" class="auto internal xref">Section 7.7</a> for retrying a TALK safely).<a href="#section-4-3" class="pilcrow">¶</a></p>
 <div id="addressing">
 <section id="section-4.1">
         <h3 id="name-addressing">
@@ -1934,7 +1924,8 @@ meaningful between parties that agreed on them.<a href="#section-6.1-3.1.1" clas
 </li>
           <li class="normal" id="section-6.1-3.2">
             <p id="section-6.1-3.2.1"><code>agent.kind</code> is <code>user-agent</code> when the caller acts for a guest, and
-<code>merchant-agent</code> when it acts for a business.<a href="#section-6.1-3.2.1" class="pilcrow">¶</a></p>
+<code>merchant-agent</code> when it acts for a business. The caller only declares
+it: the token proves <code>agent.id</code>, not <code>agent.kind</code> (<a href="#talk-writes" class="auto internal xref">Section 8.2.2</a>).<a href="#section-6.1-3.2.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-6.1-3.3">
             <p id="section-6.1-3.3.1"><code>token</code> is the caller's credential on this node, issued out of band. A
@@ -2012,11 +2003,13 @@ A node <span class="bcp14">MAY</span> accept a <code>hello</code> without <code>
             </tr>
           </tbody>
         </table>
-<p id="section-6.2-2"><code>intents</code> lists only intents that the session's version defines: in a
-session of version 0.1, a node that speaks 0.2 does not list TALK
-(<a href="#versioning" class="auto internal xref">Section 11</a>). A caller <span class="bcp14">MUST NOT</span> send a request whose intent is not in
-<code>intents</code>. A node that receives one <span class="bcp14">MUST</span> answer it with status 400 and code
-<code>invalid_input</code>, without carrying it out.<a href="#section-6.2-2" class="pilcrow">¶</a></p>
+<p id="section-6.2-2"><code>intents</code> lists only intents that the session's version defines and that
+the node's version has not removed: in a session of version 0.1, a node
+does not list TALK, and a node of version 0.3 lists none of the intents
+that version 0.3 removed, in a session of any version (<a href="#versioning" class="auto internal xref">Section 11</a>). A
+caller <span class="bcp14">MUST NOT</span> send a request whose intent is not in <code>intents</code>. A node
+that receives one <span class="bcp14">MUST</span> answer it with status 400 and code <code>invalid_input</code>,
+without carrying it out; the session stays open.<a href="#section-6.2-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="reject">
@@ -2153,7 +2146,7 @@ required, or the token does not match the agent.<a href="#section-6.3-2.1.1" cla
 </td>
               <td class="text-left" rowspan="1" colspan="1">slug</td>
               <td class="text-left" rowspan="1" colspan="1">
-                <span class="bcp14">REQUIRED</span> for AVAILABILITY, BOOK, AMEND, CANCEL and TALK; absent otherwise</td>
+                <span class="bcp14">REQUIRED</span> for TALK; absent otherwise</td>
             </tr>
             <tr>
               <td class="text-left" rowspan="1" colspan="1">
@@ -2285,7 +2278,7 @@ intent that takes none and has it, <span class="bcp14">MUST</span> be answered w
 </td>
               <td class="text-left" rowspan="1" colspan="1">absolute URI</td>
               <td class="text-left" rowspan="1" colspan="1">
-                <span class="bcp14">REQUIRED</span> for <code>party_too_large</code> and <code>agent_unavailable</code>; absent otherwise</td>
+                <span class="bcp14">REQUIRED</span> for <code>agent_unavailable</code>; absent otherwise</td>
             </tr>
           </tbody>
         </table>
@@ -2301,7 +2294,9 @@ the session ends first.<a href="#section-7.2-3.1.1" class="pilcrow">¶</a></p>
           <li class="normal" id="section-7.2-3.3">
             <p id="section-7.2-3.3.1"><code>fallback_url</code> is the merchant's own booking page. A caller <span class="bcp14">SHOULD</span> give
 it to the guest, so that the guest can still book when the merchant
-agent cannot serve the request.<a href="#section-7.2-3.3.1" class="pilcrow">¶</a></p>
+agent cannot serve the request. The result of TALK has a <code>fallback_url</code>
+of its own, for a request that the agent answered but cannot serve
+(<a href="#talk" class="auto internal xref">Section 8.2</a>).<a href="#section-7.2-3.3.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-7.2-3.4">
             <p id="section-7.2-3.4.1"><code>message</code> <span class="bcp14">MUST NOT</span> contain stack traces or internal identifiers
@@ -2333,7 +2328,7 @@ been answered.<a href="#section-7.3-2" class="pilcrow">¶</a></p>
 <p id="section-7.4-1">A node <span class="bcp14">SHOULD</span> answer a TALK within 25 seconds of receiving it, and a
 request of any other intent within 10 seconds. A TALK gets longer because
 the merchant's agent answers it with a model turn and the tool calls that
-turn makes (<a href="#talk" class="auto internal xref">Section 8.6</a>).<a href="#section-7.4-1" class="pilcrow">¶</a></p>
+turn makes (<a href="#talk" class="auto internal xref">Section 8.2</a>).<a href="#section-7.4-1" class="pilcrow">¶</a></p>
 <p id="section-7.4-2">A node that has not carried out a request by the deadline it applies <span class="bcp14">MUST</span>
 answer it with status 503 and code <code>agent_unavailable</code> (<a href="#status-codes" class="auto internal xref">Section 9</a>),
 rather than leave it unanswered. A caller <span class="bcp14">SHOULD</span> wait for the answer to a
@@ -2349,7 +2344,7 @@ timeout. A caller that stops waiting for a request before its answer <span class
         </h3>
 <p id="section-7.5-1">A node <span class="bcp14">SHOULD</span> close a session that has received no frame for 60 seconds,
 and <span class="bcp14">MUST NOT</span> close it for idleness sooner. A caller that wants to keep a
-session open sends <code>PING</code> (<a href="#ping" class="auto internal xref">Section 8.8</a>).<a href="#section-7.5-1" class="pilcrow">¶</a></p>
+session open sends <code>PING</code> (<a href="#ping" class="auto internal xref">Section 8.4</a>).<a href="#section-7.5-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="error-frames">
@@ -2416,47 +2411,41 @@ versions can add frames sent by the node (<a href="#events" class="auto internal
         <h3 id="name-idempotency">
 <a href="#section-7.7" class="section-number selfRef">7.7. </a><a href="#name-idempotency" class="section-name selfRef">Idempotency</a>
         </h3>
-<p id="section-7.7-1">A write sent again after a lost session must not book twice.<a href="#section-7.7-1" class="pilcrow">¶</a></p>
+<p id="section-7.7-1">A message sent again after a lost session must not book twice. In this
+version, only TALK can carry out a write (<a href="#talk-writes" class="auto internal xref">Section 8.2.2</a>): DISCOVER,
+RECALL and PING change nothing.<a href="#section-7.7-1" class="pilcrow">¶</a></p>
 <ul class="normal">
 <li class="normal" id="section-7.7-2.1">
-            <p id="section-7.7-2.1.1">BOOK, AMEND and TALK carry <code>params.idempotency_key</code>, chosen by the
-caller. A caller retrying one of them <span class="bcp14">MUST</span> reuse the key of the first
-attempt, with the same params, and <span class="bcp14">SHOULD</span> use a fresh unpredictable key
-for every new write and every new TALK message.<a href="#section-7.7-2.1.1" class="pilcrow">¶</a></p>
+            <p id="section-7.7-2.1.1">TALK carries <code>params.idempotency_key</code>, chosen by the caller. A caller
+retrying a TALK <span class="bcp14">MUST</span> reuse the key of the first attempt, with the same
+params, and <span class="bcp14">SHOULD</span> use a fresh unpredictable key for every new message.<a href="#section-7.7-2.1.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-7.7-2.2">
-            <p id="section-7.7-2.2.1">For BOOK, the key is scoped to the merchant. A node that receives a BOOK
-with a key already used at that merchant, and the same <code>starts_at</code>,
-<code>party_size</code> and guest, <span class="bcp14">MUST</span> return status 200 with the reservation the
-first request created, and <span class="bcp14">MUST NOT</span> create another. If the params differ,
-it <span class="bcp14">MUST</span> answer status 400 with code <code>invalid_input</code>.<a href="#section-7.7-2.2.1" class="pilcrow">¶</a></p>
+            <p id="section-7.7-2.2.1">The key is scoped to the merchant, the session's <code>agent.id</code> and the
+conversation; the key of a first message, which names no conversation
+yet, is scoped to the merchant and the <code>agent.id</code>. A node that receives a
+TALK with a key it already answered with status 200 in that scope, with
+the same <code>message</code>, <code>conversation</code> and <code>confirm</code>, <span class="bcp14">MUST</span> return the result
+it returned then, with status 200, without calling its model again and
+without carrying out any write. If one of them differs, the node <span class="bcp14">MUST</span>
+answer status 400 with code <code>invalid_input</code>, without carrying out
+anything. A TALK answered with another status does not use up its key.<a href="#section-7.7-2.2.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-7.7-2.3">
-            <p id="section-7.7-2.3.1">For AMEND, the key is scoped to the merchant too. A node that receives an
-AMEND with a key it already applied, for the same booking and the same
-<code>starts_at</code> and <code>party_size</code>, <span class="bcp14">MUST NOT</span> change the booking again and <span class="bcp14">MUST</span>
-return it as it is now, with status 200: a late retry never undoes a
-later change. If the booking or the params differ, it <span class="bcp14">MUST</span> answer status
-400 with code <code>invalid_input</code>. An AMEND that failed does not use up its
-key.<a href="#section-7.7-2.3.1" class="pilcrow">¶</a></p>
+            <p id="section-7.7-2.3.1">The node cannot tell a retry from another guest of the same caller who
+sends the same message with the same key. A caller that carries the
+messages of several guests under one <code>agent.id</code>, as a bridge does
+(<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>), <span class="bcp14">MUST</span> therefore choose keys that they cannot guess.<a href="#section-7.7-2.3.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-7.7-2.4">
-            <p id="section-7.7-2.4.1">CANCEL is idempotent without a key: cancelling a booking already
-cancelled by the guest returns it again, with status 200.<a href="#section-7.7-2.4.1" class="pilcrow">¶</a></p>
+            <p id="section-7.7-2.4.1">A confirmed proposal has its own protection: the node carries it out at
+most once, whatever key the TALK that confirms it carries
+(<a href="#talk-confirm" class="auto internal xref">Section 8.2.1</a>).<a href="#section-7.7-2.4.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-7.7-2.5">
-            <p id="section-7.7-2.5.1">For TALK, the key is scoped to the merchant and to the session's
-<code>agent.id</code>. A node that receives a TALK with a key it already answered
-with status 200, for that merchant and that <code>agent.id</code>, <span class="bcp14">MUST</span> return the
-result it returned then, with status 200, without calling its model again
-and without carrying out any write. A TALK answered with another status
-does not use up its key.<a href="#section-7.7-2.5.1" class="pilcrow">¶</a></p>
-</li>
-          <li class="normal" id="section-7.7-2.6">
-            <p id="section-7.7-2.6.1">TALK is not read-only: it can carry out a write (<a href="#talk" class="auto internal xref">Section 8.6</a>). A client
-library <span class="bcp14">MUST NOT</span> send a TALK again by itself after a lost session, as it
-may for DISCOVER, AVAILABILITY, RECALL and PING; the caller decides, and
-retries with the same key.<a href="#section-7.7-2.6.1" class="pilcrow">¶</a></p>
+            <p id="section-7.7-2.5.1">TALK is not read-only. A client library <span class="bcp14">MUST NOT</span> send a TALK again by
+itself after a lost session, as it may for DISCOVER, RECALL and PING; the
+caller decides, and retries with the same key.<a href="#section-7.7-2.5.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
 </section>
@@ -2466,17 +2455,15 @@ retries with the same key.<a href="#section-7.7-2.6.1" class="pilcrow">¶</a></p
         <h3 id="name-confirmation-before-writes">
 <a href="#section-7.8" class="section-number selfRef">7.8. </a><a href="#name-confirmation-before-writes" class="section-name selfRef">Confirmation before writes</a>
         </h3>
-<p id="section-7.8-1">BOOK, AMEND and CANCEL change a guest's plans. A caller acting for a guest
-<span class="bcp14">MUST</span> obtain the guest's explicit confirmation of the merchant, time, party
-size and name before sending any of them. A node cannot verify this; it is
-a requirement on callers, and a bridge enforces it through what it tells
-the assistant (<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>).<a href="#section-7.8-1" class="pilcrow">¶</a></p>
-<p id="section-7.8-2">In a TALK conversation, the same requirement applies to <code>confirm</code>: a caller
-acting for a guest <span class="bcp14">MUST NOT</span> send <code>confirm</code> before the guest explicitly
-accepted the proposal's <code>summary</code>, after the caller showed it to them. A
-"yes" given before the proposal was shown does not count. Here the node
-enforces the other half: it carries out a proposed write only on a
-<code>confirm</code> that names it (<a href="#talk-confirm" class="auto internal xref">Section 8.6.1</a>).<a href="#section-7.8-2" class="pilcrow">¶</a></p>
+<p id="section-7.8-1">A booking, a change or a cancellation changes a guest's plans. In this
+version, a caller can only obtain one through TALK, and the node's code
+carries it out only on a <code>confirm</code> that names a proposal the node returned,
+before the proposal expires (<a href="#talk-confirm" class="auto internal xref">Section 8.2.1</a>). This holds for every
+caller, whatever it declared in <code>hello</code>.<a href="#section-7.8-1" class="pilcrow">¶</a></p>
+<p id="section-7.8-2">What the node cannot check is that the guest agreed. A caller acting for a
+guest <span class="bcp14">MUST NOT</span> send <code>confirm</code> before the guest explicitly accepted the
+proposal's <code>summary</code>, after the caller showed it to them. A "yes" given
+before the proposal was shown does not count.<a href="#section-7.8-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
@@ -2487,14 +2474,13 @@ enforces the other half: it carries out a proposed write only on a
 <a href="#section-8" class="section-number selfRef">8. </a><a href="#name-intents" class="section-name selfRef">Intents</a>
       </h2>
 <p id="section-8-1">Times are RFC 3339 <span>[<a href="#RFC3339" class="cite xref">RFC3339</a>]</span> <code>date-time</code> values with an explicit offset.
-<code>date</code> is an RFC 3339 <code>full-date</code> and <code>time</code> is <code>HH:MM</code> (24-hour clock),
-both in the merchant's local time zone. The params and result of each
-intent are defined by the JSON Schemas of <a href="#json-schemas" class="auto internal xref">Appendix C</a>; this section
-states their meaning and errors.<a href="#section-8-1" class="pilcrow">¶</a></p>
-<span id="name-batp-02-intents"></span><table class="center" id="table-9">
+<code>date</code> is an RFC 3339 <code>full-date</code>, in the merchant's local time zone. The
+params and result of each intent are defined by the JSON Schemas of
+<a href="#json-schemas" class="auto internal xref">Appendix C</a>; this section states their meaning and errors.<a href="#section-8-1" class="pilcrow">¶</a></p>
+<span id="name-batp-03-intents"></span><table class="center" id="table-9">
         <caption>
 <a href="#table-9" class="selfRef">Table 9</a>:
-<a href="#name-batp-02-intents" class="selfRef">BATP 0.2 intents</a>
+<a href="#name-batp-03-intents" class="selfRef">BATP 0.3 intents</a>
         </caption>
 <thead>
           <tr>
@@ -2510,29 +2496,9 @@ states their meaning and errors.<a href="#section-8-1" class="pilcrow">¶</a></p
             <td class="text-left" rowspan="1" colspan="1">Find merchants matching a query and preferences</td>
           </tr>
           <tr>
-            <td class="text-left" rowspan="1" colspan="1">AVAILABILITY</td>
-            <td class="text-left" rowspan="1" colspan="1">required</td>
-            <td class="text-left" rowspan="1" colspan="1">Up to 3 start times with a free table</td>
-          </tr>
-          <tr>
-            <td class="text-left" rowspan="1" colspan="1">BOOK</td>
-            <td class="text-left" rowspan="1" colspan="1">required</td>
-            <td class="text-left" rowspan="1" colspan="1">Create a booking</td>
-          </tr>
-          <tr>
-            <td class="text-left" rowspan="1" colspan="1">AMEND</td>
-            <td class="text-left" rowspan="1" colspan="1">required</td>
-            <td class="text-left" rowspan="1" colspan="1">Move a booking or change its party size</td>
-          </tr>
-          <tr>
-            <td class="text-left" rowspan="1" colspan="1">CANCEL</td>
-            <td class="text-left" rowspan="1" colspan="1">required</td>
-            <td class="text-left" rowspan="1" colspan="1">Cancel a booking as the guest</td>
-          </tr>
-          <tr>
             <td class="text-left" rowspan="1" colspan="1">TALK</td>
             <td class="text-left" rowspan="1" colspan="1">required</td>
-            <td class="text-left" rowspan="1" colspan="1">Talk with the merchant's agent in natural language (since 0.2)</td>
+            <td class="text-left" rowspan="1" colspan="1">Talk with the merchant's agent in natural language: ask, check availability, book, change or cancel (since 0.2)</td>
           </tr>
           <tr>
             <td class="text-left" rowspan="1" colspan="1">RECALL</td>
@@ -2546,6 +2512,12 @@ states their meaning and errors.<a href="#section-8-1" class="pilcrow">¶</a></p
           </tr>
         </tbody>
       </table>
+<p id="section-8-3">Versions 0.1 and 0.2 also defined AVAILABILITY, BOOK, AMEND and CANCEL,
+with which a caller checked availability and booked, changed or cancelled
+without the merchant's agent. Version 0.3 removes them (<a href="#versioning" class="auto internal xref">Section 11</a>). A
+node <span class="bcp14">MUST</span> answer a request for one of them as for an unknown intent, with
+status 400 and code <code>invalid_input</code>, in a session of any version, without
+carrying it out; the session stays open.<a href="#section-8-3" class="pilcrow">¶</a></p>
 <div id="discover">
 <section id="section-8.1">
         <h3 id="name-discover">
@@ -2564,299 +2536,291 @@ store them beyond the request.<a href="#section-8.1-3" class="pilcrow">¶</a></p
 <p id="section-8.1-4">Errors: 400.<a href="#section-8.1-4" class="pilcrow">¶</a></p>
 </section>
 </div>
-<div id="availability">
-<section id="section-8.2">
-        <h3 id="name-availability">
-<a href="#section-8.2" class="section-number selfRef">8.2. </a><a href="#name-availability" class="section-name selfRef">AVAILABILITY</a>
-        </h3>
-<p id="section-8.2-1">Params: <code>date</code>, <code>party_size</code> (integer, at least 1), and optionally <code>time</code>.<a href="#section-8.2-1" class="pilcrow">¶</a></p>
-<p id="section-8.2-2">Result: <code>slots</code>, at most 3, each with <code>starts_at</code> and <code>table_label</code>. When
-<code>time</code> is given, the node returns the start times closest to it (the
-earlier one at equal distance); otherwise, the earliest ones. Start times
-already past are never returned. The result is sorted by <code>starts_at</code>. An empty <code>slots</code> array means nothing is
-free that day for that party.<a href="#section-8.2-2" class="pilcrow">¶</a></p>
-<p id="section-8.2-3">Errors: 400, 404, 413, 503.<a href="#section-8.2-3" class="pilcrow">¶</a></p>
-</section>
-</div>
-<div id="book">
-<section id="section-8.3">
-        <h3 id="name-book">
-<a href="#section-8.3" class="section-number selfRef">8.3. </a><a href="#name-book" class="section-name selfRef">BOOK</a>
-        </h3>
-<p id="section-8.3-1">Params: <code>starts_at</code>, <code>party_size</code>, <code>guest_name</code> (non-empty string),
-<code>idempotency_key</code> (non-empty string).<a href="#section-8.3-1" class="pilcrow">¶</a></p>
-<p id="section-8.3-2">Result: <code>reservation</code>, with <code>id</code> (the merchant's reference, for example
-"R-001"), <code>merchant</code>, <code>starts_at</code>, <code>party_size</code>, <code>table_label</code>, <code>status</code>
-("confirmed"), <code>guest_name</code> and <code>via</code>.<a href="#section-8.3-2" class="pilcrow">¶</a></p>
-<p id="section-8.3-3"><code>via</code> is the booking channel, as the merchant sees it. Versions 0.1 and 0.2
-define "claude", "merchant" and "website"; "website" is never set by BATP.
-The same rule applies to a booking made through TALK (<a href="#talk" class="auto internal xref">Section 8.6</a>). A node
-<span class="bcp14">MUST</span> record "merchant" when the caller's <code>agent.kind</code> is <code>merchant-agent</code>,
-and "claude" when it is <code>user-agent</code>, whatever assistant the caller is. So
-in this version, <code>via</code> is only accurate for callers behind the reference
-bridge (<a href="#security" class="auto internal xref">Section 12</a>). A later version may add a value for other
-assistants.<a href="#section-8.3-3" class="pilcrow">¶</a></p>
-<p id="section-8.3-4"><code>starts_at</code> <span class="bcp14">MUST</span> be a start time the merchant offers; AVAILABILITY returns
-such times. Errors: 400, 404, 409, 413, 503.<a href="#section-8.3-4" class="pilcrow">¶</a></p>
-</section>
-</div>
-<div id="amend">
-<section id="section-8.4">
-        <h3 id="name-amend">
-<a href="#section-8.4" class="section-number selfRef">8.4. </a><a href="#name-amend" class="section-name selfRef">AMEND</a>
-        </h3>
-<p id="section-8.4-1">Params: <code>reservation_id</code>, <code>guest_name</code>, <code>idempotency_key</code>, and at least one
-of <code>starts_at</code> and <code>party_size</code>.<a href="#section-8.4-1" class="pilcrow">¶</a></p>
-<p id="section-8.4-2">The booking <span class="bcp14">MUST</span> be confirmed and <span class="bcp14">MUST</span> belong to <code>guest_name</code>; otherwise
-the node answers 404, without saying which check failed. Result:
-<code>reservation</code>, as amended.<a href="#section-8.4-2" class="pilcrow">¶</a></p>
-<p id="section-8.4-3">Errors: 400, 404, 409, 413, 503.<a href="#section-8.4-3" class="pilcrow">¶</a></p>
-</section>
-</div>
-<div id="cancel">
-<section id="section-8.5">
-        <h3 id="name-cancel">
-<a href="#section-8.5" class="section-number selfRef">8.5. </a><a href="#name-cancel" class="section-name selfRef">CANCEL</a>
-        </h3>
-<p id="section-8.5-1">Params: <code>reservation_id</code>, <code>guest_name</code>. The same ownership rule as AMEND
-applies. Result: <code>reservation</code>, with <code>status</code> "cancelled".<a href="#section-8.5-1" class="pilcrow">¶</a></p>
-<p id="section-8.5-2">Errors: 400, 404, 503.<a href="#section-8.5-2" class="pilcrow">¶</a></p>
-</section>
-</div>
 <div id="talk">
-<section id="section-8.6">
+<section id="section-8.2">
         <h3 id="name-talk">
-<a href="#section-8.6" class="section-number selfRef">8.6. </a><a href="#name-talk" class="section-name selfRef">TALK</a>
+<a href="#section-8.2" class="section-number selfRef">8.2. </a><a href="#name-talk" class="section-name selfRef">TALK</a>
         </h3>
-<p id="section-8.6-1">TALK is defined since version 0.2. A node <span class="bcp14">MUST NOT</span> offer or serve it in a
-session of version 0.1 (<a href="#versioning" class="auto internal xref">Section 11</a>).<a href="#section-8.6-1" class="pilcrow">¶</a></p>
-<p id="section-8.6-2">With TALK, a guest's agent talks with the merchant's agent in natural
+<p id="section-8.2-1">TALK is defined since version 0.2. A node <span class="bcp14">MUST NOT</span> offer or serve it in a
+session of version 0.1 (<a href="#versioning" class="auto internal xref">Section 11</a>).<a href="#section-8.2-1" class="pilcrow">¶</a></p>
+<p id="section-8.2-2">With TALK, a guest's agent talks with the merchant's agent in natural
 language: it passes on what the guest wants, with the guest's preferences,
 and the merchant's agent answers. To answer, the merchant's agent can check
 availability, look up the guest's bookings at this merchant, and propose a
 booking, a change or a cancellation. It carries out a proposal only when the
-caller confirms it in a later TALK (<a href="#talk-confirm" class="auto internal xref">Section 8.6.1</a>).<a href="#section-8.6-2" class="pilcrow">¶</a></p>
-<p id="section-8.6-3">Params:<a href="#section-8.6-3" class="pilcrow">¶</a></p>
+caller confirms it in a later TALK (<a href="#talk-confirm" class="auto internal xref">Section 8.2.1</a>). Since version 0.3,
+TALK is the only intent with which a caller can book, change or cancel.<a href="#section-8.2-2" class="pilcrow">¶</a></p>
+<p id="section-8.2-3">Params:<a href="#section-8.2-3" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-8.6-4.1">
-            <p id="section-8.6-4.1.1"><code>message</code> (<span class="bcp14">REQUIRED</span>): what the caller says to the merchant's agent. Once
+<li class="normal" id="section-8.2-4.1">
+            <p id="section-8.2-4.1.1"><code>message</code> (<span class="bcp14">REQUIRED</span>): what the caller says to the merchant's agent. Once
 leading and trailing white space is removed, it <span class="bcp14">MUST</span> be 1 to 2000
 characters long, and it <span class="bcp14">MUST NOT</span> contain a control character (Unicode
-general category Cc) other than LF (U+000A).<a href="#section-8.6-4.1.1" class="pilcrow">¶</a></p>
+general category Cc) other than LF (U+000A).<a href="#section-8.2-4.1.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-8.6-4.2">
-            <p id="section-8.6-4.2.1"><code>idempotency_key</code> (<span class="bcp14">REQUIRED</span>): as for BOOK, with the same bounds
-(<a href="#idempotency" class="auto internal xref">Section 7.7</a>).<a href="#section-8.6-4.2.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="section-8.2-4.2">
+            <p id="section-8.2-4.2.1"><code>idempotency_key</code> (<span class="bcp14">REQUIRED</span>): a string of 1 to 200 characters, chosen by
+the caller (<a href="#idempotency" class="auto internal xref">Section 7.7</a>).<a href="#section-8.2-4.2.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-8.6-4.3">
-            <p id="section-8.6-4.3.1"><code>conversation</code>: absent on the first message of a conversation. On every
+          <li class="normal" id="section-8.2-4.3">
+            <p id="section-8.2-4.3.1"><code>conversation</code>: absent on the first message of a conversation. On every
 later message, the <code>conversation</code> that the node returned
-(<a href="#conversations" class="auto internal xref">Section 8.6.2</a>).<a href="#section-8.6-4.3.1" class="pilcrow">¶</a></p>
+(<a href="#conversations" class="auto internal xref">Section 8.2.3</a>).<a href="#section-8.2-4.3.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-8.6-4.4">
-            <p id="section-8.6-4.4.1"><code>confirm</code>: the <code>id</code> of the conversation's <code>pending</code> proposal, sent to have
+          <li class="normal" id="section-8.2-4.4">
+            <p id="section-8.2-4.4.1"><code>confirm</code>: the <code>id</code> of the conversation's <code>pending</code> proposal, sent to have
 it carried out. A caller <span class="bcp14">MUST</span> send it only after the guest's explicit
 confirmation (<a href="#confirmation" class="auto internal xref">Section 7.8</a>). A TALK with <code>confirm</code> <span class="bcp14">MUST</span> also carry
 <code>conversation</code>; a node answers one without it with status 400 and code
-<code>invalid_input</code>.<a href="#section-8.6-4.4.1" class="pilcrow">¶</a></p>
+<code>invalid_input</code>.<a href="#section-8.2-4.4.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
-<p id="section-8.6-5">Conversation and proposal identifiers are opaque to the caller, and follow
-this rule:<a href="#section-8.6-5" class="pilcrow">¶</a></p>
-<div class="lang-abnf sourcecode" id="section-8.6-6">
+<p id="section-8.2-5">Conversation and proposal identifiers are opaque to the caller, and follow
+this rule:<a href="#section-8.2-5" class="pilcrow">¶</a></p>
+<div class="lang-abnf sourcecode" id="section-8.2-6">
 <pre>
 opaque-id = 1*64( ALPHA / DIGIT / "_" / "-" )
-</pre><a href="#section-8.6-6" class="pilcrow">¶</a>
+</pre><a href="#section-8.2-6" class="pilcrow">¶</a>
 </div>
-<p id="section-8.6-7">As for every intent, unknown params are invalid (<a href="#requests" class="auto internal xref">Section 7</a>).<a href="#section-8.6-7" class="pilcrow">¶</a></p>
-<p id="section-8.6-8">Result:<a href="#section-8.6-8" class="pilcrow">¶</a></p>
+<p id="section-8.2-7">As for every intent, unknown params are invalid (<a href="#requests" class="auto internal xref">Section 7</a>).<a href="#section-8.2-7" class="pilcrow">¶</a></p>
+<p id="section-8.2-8">Result:<a href="#section-8.2-8" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-8.6-9.1">
-            <p id="section-8.6-9.1.1"><code>conversation</code>: the conversation's identifier, an <code>opaque-id</code>: a new one
-on the first message, the one the caller sent on later messages.<a href="#section-8.6-9.1.1" class="pilcrow">¶</a></p>
+<li class="normal" id="section-8.2-9.1">
+            <p id="section-8.2-9.1.1"><code>conversation</code>: the conversation's identifier, an <code>opaque-id</code>: a new one
+on the first message, the one the caller sent on later messages.<a href="#section-8.2-9.1.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-8.6-9.2">
-            <p id="section-8.6-9.2.1"><code>reply</code>: the merchant agent's answer, at most 2000 characters. It is the
+          <li class="normal" id="section-8.2-9.2">
+            <p id="section-8.2-9.2.1"><code>reply</code>: the merchant agent's answer, at most 2000 characters. It is the
 only member written by the agent's language model. A caller <span class="bcp14">SHOULD</span> relay
 it to the guest. A caller <span class="bcp14">MUST NOT</span> take <code>reply</code> as proof that anything was
-booked, changed or cancelled: only <code>reservation</code> says so.<a href="#section-8.6-9.2.1" class="pilcrow">¶</a></p>
+booked, changed or cancelled: only <code>reservation</code> says so.<a href="#section-8.2-9.2.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
-<p id="section-8.6-10">The other members are built by the node's code from the results of the
+<p id="section-8.2-10">The other members are built by the node's code from the results of the
 tools that the merchant's agent called, never from the model's text, so
-that a caller can rely on them:<a href="#section-8.6-10" class="pilcrow">¶</a></p>
+that a caller can rely on them:<a href="#section-8.2-10" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-8.6-11.1">
-            <p id="section-8.6-11.1.1"><code>slots</code>: the start times the agent found free while answering, each as in
-the result of AVAILABILITY; an empty array when it found none or did not
-look.<a href="#section-8.6-11.1.1" class="pilcrow">¶</a></p>
+<li class="normal" id="section-8.2-11.1">
+            <p id="section-8.2-11.1.1"><code>slots</code>: the start times the agent found free in its last check of
+availability while answering, sorted by <code>starts_at</code>, each with
+<code>starts_at</code> and <code>table_label</code> (the table that start time would get); an
+empty array when it found none or did not look. A slot is not held:
+another guest may take it before a proposal for it is confirmed.<a href="#section-8.2-11.1.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-8.6-11.2">
-            <p id="section-8.6-11.2.1"><code>pending</code>: the write the agent proposes, or null. It has <code>id</code> (an
+          <li class="normal" id="section-8.2-11.2">
+            <p id="section-8.2-11.2.1"><code>pending</code>: the write the agent proposes, or null. It has <code>id</code> (an
 <code>opaque-id</code>), <code>action</code> ("book", "change" or "cancel"), <code>summary</code> (1 to 500
 characters, built by code from the proposal's own arguments, for the
 caller to show the guest) and <code>expires_at</code> (an RFC 3339 <code>date-time</code> with
 an offset). A conversation has at most one pending proposal: a new one
-replaces the previous one.<a href="#section-8.6-11.2.1" class="pilcrow">¶</a></p>
+replaces the previous one.<a href="#section-8.2-11.2.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-8.6-11.3">
-            <p id="section-8.6-11.3.1"><code>reservation</code>: the booking that a write carried out by this TALK created,
-changed or cancelled, as in the result of BOOK; null when this TALK
-carried out no write.<a href="#section-8.6-11.3.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="section-8.2-11.3">
+            <p id="section-8.2-11.3.1"><code>reservation</code>: the booking that a write carried out by this TALK created,
+changed or cancelled (<a href="#talk-writes" class="auto internal xref">Section 8.2.2</a>), with <code>id</code> (the merchant's
+reference, for example "R-001"), <code>merchant</code>, <code>starts_at</code>, <code>party_size</code>,
+<code>table_label</code>, <code>status</code> ("confirmed" or "cancelled"), <code>guest_name</code> and
+<code>via</code>; null when this TALK carried out no write.<a href="#section-8.2-11.3.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-8.6-11.4">
-            <p id="section-8.6-11.4.1"><code>fallback_url</code>: the merchant's own booking page, set when the agent
+          <li class="normal" id="section-8.2-11.4">
+            <p id="section-8.2-11.4.1"><code>fallback_url</code>: the merchant's own booking page, set when the agent
 cannot serve what the guest asked, for example after one of its tools
-refused it (<a href="#talk-status" class="auto internal xref">Section 8.6.3</a>); null otherwise.<a href="#section-8.6-11.4.1" class="pilcrow">¶</a></p>
+refused it (<a href="#talk-status" class="auto internal xref">Section 8.2.4</a>); null otherwise.<a href="#section-8.2-11.4.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-8.6-11.5">
-            <p id="section-8.6-11.5.1"><code>tools_called</code>: the names of the tools the agent called while answering,
-in the order of the calls, without their arguments or results. When a
-<code>confirm</code> carried out a proposal, it also names the write the node's code
-ran (for example "create_reservation"), although the model has no tool
-that writes (<a href="#talk-confirm" class="auto internal xref">Section 8.6.1</a>). Each name is 1 to 64 characters: a
-lowercase ASCII letter, then lowercase ASCII letters, digits and "_".<a href="#section-8.6-11.5.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="section-8.2-11.5">
+            <p id="section-8.2-11.5.1"><code>tools_called</code>: the names of the tools the agent called while answering,
+in the order of the calls, without their arguments or results. On a TALK
+whose <code>confirm</code> names the conversation's pending proposal, the first name
+is that of the write the node's code ran or tried for it
+(<a href="#talk-writes" class="auto internal xref">Section 8.2.2</a>), although the model did not call it. Each name is 1 to
+64 characters: a lowercase ASCII letter, then lowercase ASCII letters,
+digits and "_".<a href="#section-8.2-11.5.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
-<p id="section-8.6-12"><code>conversation</code> and <code>reply</code> are always present. A caller handles an absent
+<p id="section-8.2-12"><code>conversation</code> and <code>reply</code> are always present. A caller handles an absent
 <code>pending</code>, <code>reservation</code> or <code>fallback_url</code> as null, and an absent <code>slots</code> or
-<code>tools_called</code> as an empty array.<a href="#section-8.6-12" class="pilcrow">¶</a></p>
+<code>tools_called</code> as an empty array.<a href="#section-8.2-12" class="pilcrow">¶</a></p>
 <div id="talk-confirm">
-<section id="section-8.6.1">
+<section id="section-8.2.1">
           <h4 id="name-proposals-and-confirmation">
-<a href="#section-8.6.1" class="section-number selfRef">8.6.1. </a><a href="#name-proposals-and-confirmation" class="section-name selfRef">Proposals and confirmation</a>
+<a href="#section-8.2.1" class="section-number selfRef">8.2.1. </a><a href="#name-proposals-and-confirmation" class="section-name selfRef">Proposals and confirmation</a>
           </h4>
-<p id="section-8.6.1-1">The merchant's agent has no tool that writes: a booking, a change or a
-cancellation is first a proposal, returned in <code>pending</code>.<a href="#section-8.6.1-1" class="pilcrow">¶</a></p>
+<p id="section-8.2.1-1">The merchant's agent has no tool that writes: a booking, a change or a
+cancellation is first a proposal, returned in <code>pending</code>.<a href="#section-8.2.1-1" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-8.6.1-2.1">
-              <p id="section-8.6.1-2.1.1">A node <span class="bcp14">MUST NOT</span> carry out a write proposed in a conversation until a
+<li class="normal" id="section-8.2.1-2.1">
+              <p id="section-8.2.1-2.1.1">A node <span class="bcp14">MUST NOT</span> carry out a write proposed in a conversation until a
 later TALK of the same conversation names the proposal's <code>id</code> in
 <code>confirm</code>, before its <code>expires_at</code>. The node's code <span class="bcp14">MUST</span> enforce this,
 whatever the model outputs and whatever the message says: a message that
-says "yes" without <code>confirm</code> carries out nothing.<a href="#section-8.6.1-2.1.1" class="pilcrow">¶</a></p>
+says "yes" without <code>confirm</code> carries out nothing.<a href="#section-8.2.1-2.1.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.1-2.2">
-              <p id="section-8.6.1-2.2.1">On a TALK whose <code>confirm</code> names the conversation's pending proposal before
+            <li class="normal" id="section-8.2.1-2.2">
+              <p id="section-8.2.1-2.2.1">On a TALK whose <code>confirm</code> names the conversation's pending proposal before
 it expires, the node carries out that proposal with the arguments stored
 with it, before it calls the model, so that neither the message nor the
-model's output can change what is written.<a href="#section-8.6.1-2.2.1" class="pilcrow">¶</a></p>
+model's output can change what is written.<a href="#section-8.2.1-2.2.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.1-2.3">
-              <p id="section-8.6.1-2.3.1">A node <span class="bcp14">MUST</span> carry out a proposal at most once, even when the TALK that
-confirms it is sent again under another key.<a href="#section-8.6.1-2.3.1" class="pilcrow">¶</a></p>
+            <li class="normal" id="section-8.2.1-2.3">
+              <p id="section-8.2.1-2.3.1">A node <span class="bcp14">MUST</span> carry out a proposal at most once, even when the TALK that
+confirms it is sent again under another key.<a href="#section-8.2.1-2.3.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.1-2.4">
-              <p id="section-8.6.1-2.4.1">A <code>confirm</code> that names no pending proposal of the conversation (unknown,
+            <li class="normal" id="section-8.2.1-2.4">
+              <p id="section-8.2.1-2.4.1">A <code>confirm</code> that names no pending proposal of the conversation (unknown,
 replaced or expired) carries out no write. The node answers it with
-status 200, and <code>reply</code> says that nothing was done.<a href="#section-8.6.1-2.4.1" class="pilcrow">¶</a></p>
+status 200, and <code>reply</code> says that nothing was done.<a href="#section-8.2.1-2.4.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.1-2.5">
-              <p id="section-8.6.1-2.5.1">If the write fails when it is carried out, for example because the time
+            <li class="normal" id="section-8.2.1-2.5">
+              <p id="section-8.2.1-2.5.1">If the write fails when it is carried out, for example because the time
 was taken in the meantime, nothing is written and the proposal is gone.
 The node answers with status 200; the agent <span class="bcp14">MAY</span> offer other times in a
-new proposal, which needs a new confirmation.<a href="#section-8.6.1-2.5.1" class="pilcrow">¶</a></p>
+new proposal, which needs a new confirmation.<a href="#section-8.2.1-2.5.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.1-2.6">
-              <p id="section-8.6.1-2.6.1">When this TALK carried out a write, the node <span class="bcp14">MUST</span> set <code>reservation</code>, even
-if its model fails afterwards.<a href="#section-8.6.1-2.6.1" class="pilcrow">¶</a></p>
+            <li class="normal" id="section-8.2.1-2.6">
+              <p id="section-8.2.1-2.6.1">When this TALK carried out a write, the node <span class="bcp14">MUST</span> set <code>reservation</code>, even
+if its model fails afterwards.<a href="#section-8.2.1-2.6.1" class="pilcrow">¶</a></p>
 </li>
           </ul>
 </section>
 </div>
+<div id="talk-writes">
+<section id="section-8.2.2">
+          <h4 id="name-writes">
+<a href="#section-8.2.2" class="section-number selfRef">8.2.2. </a><a href="#name-writes" class="section-name selfRef">Writes</a>
+          </h4>
+<p id="section-8.2.2-1">A confirmed proposal runs one of the merchant's booking operations, with
+the arguments stored with the proposal. Its <code>action</code> says which:<a href="#section-8.2.2-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-8.2.2-2.1">
+              <p id="section-8.2.2-2.1.1">"book" creates a booking for the proposal's start time, party size and
+guest name. A node <span class="bcp14">MUST NOT</span> create it unless the start time is one the
+merchant offers and a table that fits the party is free at that time
+when the write runs; the node chooses the table. The write is named
+"create_reservation" in <code>tools_called</code>.<a href="#section-8.2.2-2.1.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-8.2.2-2.2">
+              <p id="section-8.2.2-2.2.1">"change" moves a booking, changes its party size, or both, with the same
+conditions for the new start time and party size. It is named
+"update_reservation".<a href="#section-8.2.2-2.2.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-8.2.2-2.3">
+              <p id="section-8.2.2-2.3.1">"cancel" cancels a booking, as the guest. It is named
+"cancel_reservation".<a href="#section-8.2.2-2.3.1" class="pilcrow">¶</a></p>
+</li>
+          </ul>
+<p id="section-8.2.2-3">A change or a cancellation applies only to an upcoming confirmed booking at
+this merchant, under the guest name given in the proposal, and only before
+the booking starts. The merchant's agent cannot propose one otherwise, and
+the node does not say which of these conditions failed.<a href="#section-8.2.2-3" class="pilcrow">¶</a></p>
+<p id="section-8.2.2-4"><code>via</code> is the booking channel, as the merchant sees it. Versions 0.1 to 0.3
+define "claude", "merchant" and "website"; "website" is never set by BATP.
+A node <span class="bcp14">MUST</span> record a booking that a TALK creates with <code>via</code> "claude",
+whatever <code>agent.kind</code> the session declared: the caller declares its kind,
+and its token does not prove it, so the node does not trust it. A change or
+a cancellation keeps the booking's <code>via</code>. In this version, <code>via</code> therefore
+names the channel rather than the calling assistant (<a href="#security" class="auto internal xref">Section 12</a>); a later
+version may add a value for other assistants.<a href="#section-8.2.2-4" class="pilcrow">¶</a></p>
+</section>
+</div>
 <div id="conversations">
-<section id="section-8.6.2">
+<section id="section-8.2.3">
           <h4 id="name-conversations">
-<a href="#section-8.6.2" class="section-number selfRef">8.6.2. </a><a href="#name-conversations" class="section-name selfRef">Conversations</a>
+<a href="#section-8.2.3" class="section-number selfRef">8.2.3. </a><a href="#name-conversations" class="section-name selfRef">Conversations</a>
           </h4>
 <ul class="normal">
-<li class="normal" id="section-8.6.2-1.1">
-              <p id="section-8.6.2-1.1.1">A node <span class="bcp14">MUST</span> choose each <code>conversation</code> at random, with at least 128 bits
-of entropy, and <span class="bcp14">SHOULD</span> choose each <code>pending.id</code> in the same way.<a href="#section-8.6.2-1.1.1" class="pilcrow">¶</a></p>
+<li class="normal" id="section-8.2.3-1.1">
+              <p id="section-8.2.3-1.1.1">A node <span class="bcp14">MUST</span> choose each <code>conversation</code> at random, with at least 128 bits
+of entropy, and <span class="bcp14">SHOULD</span> choose each <code>pending.id</code> in the same way.<a href="#section-8.2.3-1.1.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.2-1.2">
-              <p id="section-8.6.2-1.2.1">A node binds a conversation, when it creates it, to the merchant and to
+            <li class="normal" id="section-8.2.3-1.2">
+              <p id="section-8.2.3-1.2.1">A node binds a conversation, when it creates it, to the merchant and to
 the session's <code>agent.id</code>. It <span class="bcp14">MUST</span> answer status 404 to a TALK whose
 <code>conversation</code> is unknown, has expired, or was created for another
-merchant or another <code>agent.id</code>, without saying which.<a href="#section-8.6.2-1.2.1" class="pilcrow">¶</a></p>
+merchant or another <code>agent.id</code>, without saying which.<a href="#section-8.2.3-1.2.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.2-1.3">
-              <p id="section-8.6.2-1.3.1">A conversation is not tied to a BATP session: a caller <span class="bcp14">MAY</span> continue it in
+            <li class="normal" id="section-8.2.3-1.3">
+              <p id="section-8.2.3-1.3.1">A conversation is not tied to a BATP session: a caller <span class="bcp14">MAY</span> continue it in
 a later session under the same <code>agent.id</code>, for example after a lost
 session. A bridge carries the conversations of all its users on one
 session, under one <code>agent.id</code> (<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>), so only the unguessable
-identifier separates them.<a href="#section-8.6.2-1.3.1" class="pilcrow">¶</a></p>
+identifier separates them.<a href="#section-8.2.3-1.3.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.2-1.4">
-              <p id="section-8.6.2-1.4.1">A node <span class="bcp14">MAY</span> expire a conversation, for example after a period without
-messages, or lose it when it restarts. A caller that gets status 404 for
-a conversation <span class="bcp14">MAY</span> start a new one, without <code>conversation</code>.<a href="#section-8.6.2-1.4.1" class="pilcrow">¶</a></p>
+            <li class="normal" id="section-8.2.3-1.4">
+              <p id="section-8.2.3-1.4.1">A node <span class="bcp14">MAY</span> expire a conversation, for example after a period without
+messages or once it has had a number of messages, or lose it when it
+restarts. A caller that gets status 404 for a conversation <span class="bcp14">MAY</span> start a
+new one, without <code>conversation</code>.<a href="#section-8.2.3-1.4.1" class="pilcrow">¶</a></p>
 </li>
           </ul>
 </section>
 </div>
 <div id="talk-status">
-<section id="section-8.6.3">
+<section id="section-8.2.4">
           <h4 id="name-status">
-<a href="#section-8.6.3" class="section-number selfRef">8.6.3. </a><a href="#name-status" class="section-name selfRef">Status</a>
+<a href="#section-8.2.4" class="section-number selfRef">8.2.4. </a><a href="#name-status" class="section-name selfRef">Status</a>
           </h4>
-<p id="section-8.6.3-1">Status 200 means that the merchant's agent answered, whatever the answer,
+<p id="section-8.2.4-1">Status 200 means that the merchant's agent answered, whatever the answer,
 including a refusal such as "we are full". When one of the agent's tools
-refuses, for example with <code>party_too_large</code> or <code>slot_unavailable</code>, the
-refusal goes to the model, which words it in <code>reply</code>, and the node's code
-sets <code>fallback_url</code>: the TALK still gets status 200. Any other status means
-that the agent could not answer:<a href="#section-8.6.3-1" class="pilcrow">¶</a></p>
+refuses, for example because the time is taken or the party is above the
+merchant's online limit, the refusal goes to the model, which words it in
+<code>reply</code>. When the agent cannot serve the request at all, as for a party
+above that limit, the node's code also sets <code>fallback_url</code>. The TALK still
+gets status 200: since version 0.3, no request is answered with status 409
+or 413 (<a href="#status-codes" class="auto internal xref">Section 9</a>). Any other status means that the agent could not
+answer:<a href="#section-8.2.4-1" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-8.6.3-2.1">
-              <p id="section-8.6.3-2.1.1">400 <code>invalid_input</code>: invalid params, <code>confirm</code> without <code>conversation</code>, or
-a TALK in a session of version 0.1.<a href="#section-8.6.3-2.1.1" class="pilcrow">¶</a></p>
+<li class="normal" id="section-8.2.4-2.1">
+              <p id="section-8.2.4-2.1.1">400 <code>invalid_input</code>: invalid params, <code>confirm</code> without <code>conversation</code>, a
+key already used with other params (<a href="#idempotency" class="auto internal xref">Section 7.7</a>), or a TALK in a
+session of version 0.1.<a href="#section-8.2.4-2.1.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.3-2.2">
-              <p id="section-8.6.3-2.2.1">404 <code>not_found</code>: the merchant is unknown or not yet live, or the
+            <li class="normal" id="section-8.2.4-2.2">
+              <p id="section-8.2.4-2.2.1">404 <code>not_found</code>: the merchant is unknown or not yet live, or the
 conversation is unknown, has expired, or belongs to another merchant or
-another <code>agent.id</code>.<a href="#section-8.6.3-2.2.1" class="pilcrow">¶</a></p>
+another <code>agent.id</code>.<a href="#section-8.2.4-2.2.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.3-2.3">
-              <p id="section-8.6.3-2.3.1">429 <code>too_many_requests</code>: too many requests in flight in the session
+            <li class="normal" id="section-8.2.4-2.3">
+              <p id="section-8.2.4-2.3.1">429 <code>too_many_requests</code>: too many requests in flight in the session
 (<a href="#concurrency" class="auto internal xref">Section 7.3</a>). A node <span class="bcp14">MAY</span> also answer 429, without calling its model,
 to a TALK beyond the limits it sets on model use, such as the model turns
 running at once or the TALK requests a merchant receives per minute. The
-caller <span class="bcp14">MAY</span> send it again later, with the same key.<a href="#section-8.6.3-2.3.1" class="pilcrow">¶</a></p>
+caller <span class="bcp14">MAY</span> send it again later, with the same key.<a href="#section-8.2.4-2.3.1" class="pilcrow">¶</a></p>
 </li>
-            <li class="normal" id="section-8.6.3-2.4">
-              <p id="section-8.6.3-2.4.1">503 <code>agent_unavailable</code>, with <code>fallback_url</code>: the merchant is marked as
+            <li class="normal" id="section-8.2.4-2.4">
+              <p id="section-8.2.4-2.4.1">503 <code>agent_unavailable</code>, with <code>fallback_url</code>: the merchant is marked as
 down, the agent failed, or it did not answer by its deadline
-(<a href="#deadlines" class="auto internal xref">Section 7.4</a>).<a href="#section-8.6.3-2.4.1" class="pilcrow">¶</a></p>
+(<a href="#deadlines" class="auto internal xref">Section 7.4</a>).<a href="#section-8.2.4-2.4.1" class="pilcrow">¶</a></p>
 </li>
           </ul>
-<p id="section-8.6.3-3">Errors: 400, 404, 429, 503.<a href="#section-8.6.3-3" class="pilcrow">¶</a></p>
+<p id="section-8.2.4-3">Errors: 400, 404, 429, 503.<a href="#section-8.2.4-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
 </div>
 <div id="recall">
-<section id="section-8.7">
+<section id="section-8.3">
         <h3 id="name-recall">
-<a href="#section-8.7" class="section-number selfRef">8.7. </a><a href="#name-recall" class="section-name selfRef">RECALL</a>
+<a href="#section-8.3" class="section-number selfRef">8.3. </a><a href="#name-recall" class="section-name selfRef">RECALL</a>
         </h3>
-<p id="section-8.7-1">Params: <code>guest_name</code>.<a href="#section-8.7-1" class="pilcrow">¶</a></p>
-<p id="section-8.7-2">Result: <code>reservations</code>, the guest's upcoming confirmed bookings at every
-live merchant of the node, and <code>notices</code>, messages for the guest (for
+<p id="section-8.3-1">Params: <code>guest_name</code>.<a href="#section-8.3-1" class="pilcrow">¶</a></p>
+<p id="section-8.3-2">Result: <code>reservations</code>, the guest's upcoming confirmed bookings at every
+live merchant of the node, each as <code>reservation</code> in the result of TALK
+(<a href="#talk" class="auto internal xref">Section 8.2</a>), and <code>notices</code>, messages for the guest (for
 example, that a merchant cancelled a booking). A node <span class="bcp14">MUST</span> return a notice
 in every RECALL for the guest during 24 hours after the first RECALL that
 returned it, and <span class="bcp14">MUST NOT</span> return it after that. An answer lost on its way
 to the caller therefore loses no notice if the next RECALL comes within
-those 24 hours, and a caller <span class="bcp14">MAY</span> send a RECALL again. A caller <span class="bcp14">SHOULD NOT</span> show the guest a notice it already showed them.<a href="#section-8.7-2" class="pilcrow">¶</a></p>
-<p id="section-8.7-3">Errors: 400, 503.<a href="#section-8.7-3" class="pilcrow">¶</a></p>
+those 24 hours, and a caller <span class="bcp14">MAY</span> send a RECALL again. A caller <span class="bcp14">SHOULD NOT</span> show the guest a notice it already showed them.<a href="#section-8.3-2" class="pilcrow">¶</a></p>
+<p id="section-8.3-3">Errors: 400, 503.<a href="#section-8.3-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="ping">
-<section id="section-8.8">
+<section id="section-8.4">
         <h3 id="name-ping">
-<a href="#section-8.8" class="section-number selfRef">8.8. </a><a href="#name-ping" class="section-name selfRef">PING</a>
+<a href="#section-8.4" class="section-number selfRef">8.4. </a><a href="#name-ping" class="section-name selfRef">PING</a>
         </h3>
-<p id="section-8.8-1">Params: <code>{}</code>. Result: <code>pong</code> (true) and <code>server_time</code>, the node's clock.<a href="#section-8.8-1" class="pilcrow">¶</a></p>
-<p id="section-8.8-2">Errors: none defined.<a href="#section-8.8-2" class="pilcrow">¶</a></p>
+<p id="section-8.4-1">Params: <code>{}</code>. Result: <code>pong</code> (true) and <code>server_time</code>, the node's clock.<a href="#section-8.4-1" class="pilcrow">¶</a></p>
+<p id="section-8.4-2">Errors: none defined.<a href="#section-8.4-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
@@ -2866,10 +2830,10 @@ those 24 hours, and a caller <span class="bcp14">MAY</span> send a RECALL again.
       <h2 id="name-status-codes">
 <a href="#section-9" class="section-number selfRef">9. </a><a href="#name-status-codes" class="section-name selfRef">Status Codes</a>
       </h2>
-<span id="name-batp-02-status-codes"></span><table class="center" id="table-10">
+<span id="name-batp-03-status-codes"></span><table class="center" id="table-10">
         <caption>
 <a href="#table-10" class="selfRef">Table 10</a>:
-<a href="#name-batp-02-status-codes" class="selfRef">BATP 0.2 status codes</a>
+<a href="#name-batp-03-status-codes" class="selfRef">BATP 0.3 status codes</a>
         </caption>
 <thead>
           <tr>
@@ -2891,7 +2855,7 @@ those 24 hours, and a caller <span class="bcp14">MAY</span> send a RECALL again.
             <td class="text-left" rowspan="1" colspan="1">
               <code>invalid_input</code>
 </td>
-            <td class="text-left" rowspan="1" colspan="1">Invalid params, unknown intent or one the session's version does not define, missing or unexpected <code>merchant</code>
+            <td class="text-left" rowspan="1" colspan="1">Invalid params, unknown intent (including one that version 0.3 removed) or one the session's version does not define, missing or unexpected <code>merchant</code>
 </td>
             <td class="text-left" rowspan="1" colspan="1">no</td>
           </tr>
@@ -2907,24 +2871,14 @@ those 24 hours, and a caller <span class="bcp14">MAY</span> send a RECALL again.
             <td class="text-left" rowspan="1" colspan="1">
               <code>not_found</code>
 </td>
-            <td class="text-left" rowspan="1" colspan="1">Unknown merchant, merchant not yet live, unknown booking, a booking that is not the guest's, or an unknown or expired conversation</td>
-            <td class="text-left" rowspan="1" colspan="1">no</td>
-          </tr>
-          <tr>
-            <td class="text-left" rowspan="1" colspan="1">409</td>
-            <td class="text-left" rowspan="1" colspan="1">
-              <code>slot_unavailable</code>
-</td>
-            <td class="text-left" rowspan="1" colspan="1">The time is taken, blocked, in the past, or not one the merchant offers</td>
+            <td class="text-left" rowspan="1" colspan="1">Unknown merchant, merchant not yet live, or an unknown or expired conversation</td>
             <td class="text-left" rowspan="1" colspan="1">no</td>
           </tr>
           <tr>
             <td class="text-left" rowspan="1" colspan="1">413</td>
-            <td class="text-left" rowspan="1" colspan="1">
-              <code>party_too_large</code>
-</td>
-            <td class="text-left" rowspan="1" colspan="1">The party is above the merchant's online limit, or no table fits it</td>
-            <td class="text-left" rowspan="1" colspan="1">yes</td>
+            <td class="text-left" rowspan="1" colspan="1">none</td>
+            <td class="text-left" rowspan="1" colspan="1">Frame above the size limit (in <code>error</code> frames only)</td>
+            <td class="text-left" rowspan="1" colspan="1">no</td>
           </tr>
           <tr>
             <td class="text-left" rowspan="1" colspan="1">426</td>
@@ -2950,17 +2904,22 @@ those 24 hours, and a caller <span class="bcp14">MAY</span> send a RECALL again.
           </tr>
         </tbody>
       </table>
-<p id="section-9-2">The <code>status</code> values 400 and 413 also appear in <code>error</code> frames
-(<a href="#error-frames" class="auto internal xref">Section 7.6</a>), which carry no <code>error.code</code>; there, 413 means a frame
-above the size limit.<a href="#section-9-2" class="pilcrow">¶</a></p>
-<p id="section-9-3">A node <span class="bcp14">MUST</span> answer 503 to AVAILABILITY, BOOK, AMEND, CANCEL and TALK when
-the merchant is marked as down, without consulting the merchant agent (for
-TALK, without calling its model). A
-caller that gets 413 or 503 <span class="bcp14">MUST NOT</span> retry the same request to the same
-merchant in a loop; it <span class="bcp14">SHOULD</span> offer the guest the <code>fallback_url</code>.<a href="#section-9-3" class="pilcrow">¶</a></p>
-<p id="section-9-4">A caller that receives a status it does not know <span class="bcp14">MUST</span> handle it as the
+<p id="section-9-2">The status 400 also appears in <code>error</code> frames (<a href="#error-frames" class="auto internal xref">Section 7.6</a>), and 413
+only there; <code>error</code> frames carry no <code>error.code</code>.<a href="#section-9-2" class="pilcrow">¶</a></p>
+<p id="section-9-3">Versions 0.1 and 0.2 also answered status 409 with code <code>slot_unavailable</code>
+(the time is taken, blocked, in the past, or not offered) and status 413 with code
+<code>party_too_large</code> (the party is above the merchant's online limit, or no
+table fits it) to the intents that version 0.3 removed. A node of version
+0.3 answers neither to any request: inside TALK, the refusals they stood
+for are part of an answer with status 200 (<a href="#talk-status" class="auto internal xref">Section 8.2.4</a>). A later
+version <span class="bcp14">MUST NOT</span> give these two codes another meaning.<a href="#section-9-3" class="pilcrow">¶</a></p>
+<p id="section-9-4">A node <span class="bcp14">MUST</span> answer 503 to a TALK addressed to a merchant marked as down,
+without calling its model. A caller that gets 503 <span class="bcp14">MUST NOT</span> retry the same
+request to the same merchant in a loop; it <span class="bcp14">SHOULD</span> offer the guest the
+<code>fallback_url</code>.<a href="#section-9-4" class="pilcrow">¶</a></p>
+<p id="section-9-5">A caller that receives a status it does not know <span class="bcp14">MUST</span> handle it as the
 class of its first digit: 2 as success, 4 as a caller error, 5 as a node
-error.<a href="#section-9-4" class="pilcrow">¶</a></p>
+error.<a href="#section-9-5" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="events">
@@ -2969,10 +2928,10 @@ error.<a href="#section-9-4" class="pilcrow">¶</a></p>
 <a href="#section-10" class="section-number selfRef">10. </a><a href="#name-events" class="section-name selfRef">Events</a>
       </h2>
 <p id="section-10-1">Frames of type <code>event</code>, sent by the node without a request, are reserved
-for a later minor version: version 0.2 does not define them. One intended
+for a later minor version: version 0.3 does not define them. One intended
 use is to tell a guest's agent that a merchant cancelled a booking; in this
 version, that reaches the guest as a notice returned by RECALL. A caller of
-version 0.1 or 0.2 ignores them (<a href="#error-frames" class="auto internal xref">Section 7.6</a>).<a href="#section-10-1" class="pilcrow">¶</a></p>
+versions 0.1 to 0.3 ignores them (<a href="#error-frames" class="auto internal xref">Section 7.6</a>).<a href="#section-10-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="versioning">
@@ -2986,29 +2945,43 @@ version 0.1 or 0.2 ignores them (<a href="#error-frames" class="auto internal xr
 version = 1*DIGIT "." 1*DIGIT
 </pre><a href="#section-11-2" class="pilcrow">¶</a>
 </div>
-<p id="section-11-3">This document defines version 0.2. Version 0.2 adds TALK to version 0.1,
-and changes nothing that version 0.1 defined.<a href="#section-11-3" class="pilcrow">¶</a></p>
+<p id="section-11-3">This document defines version 0.3. Version 0.2 added TALK to version 0.1.
+Version 0.3 removes AVAILABILITY, BOOK, AMEND and CANCEL (<a href="#intents" class="auto internal xref">Section 8</a>), and
+records every booking made through TALK with <code>via</code> "claude", where version
+0.2 recorded "merchant" for a caller that declared itself a
+<code>merchant-agent</code> (<a href="#talk-writes" class="auto internal xref">Section 8.2.2</a>). Its other changes state more precisely
+what version 0.2 defined for TALK (<a href="#changes" class="auto internal xref">Appendix D</a>).<a href="#section-11-3" class="pilcrow">¶</a></p>
 <p id="section-11-4">In <code>hello</code>, the caller sends the highest version it speaks. If the node
 speaks the same major version, it answers <code>welcome</code> with the highest minor
 version both speak, which is the lower of the caller's minor version and
 its own, and both sides use that version for the session. Otherwise it
 answers <code>reject</code> with status 426. A node speaks every earlier minor version
-of its major version, since each one only adds to the previous one. For
-example, a node of version 0.2 answers a <code>hello</code> with <code>"batp": "0.1"</code> with
+of its major version: a session of an earlier version gets the intents
+that version defined, less those that the node's version removed. For
+example, a node of version 0.3 answers a <code>hello</code> with <code>"batp": "0.1"</code> with
 a <code>welcome</code> with <code>"batp": "0.1"</code>, and the session is a session of version
-0.1.<a href="#section-11-4" class="pilcrow">¶</a></p>
+0.1, whose intents are DISCOVER, RECALL and PING.<a href="#section-11-4" class="pilcrow">¶</a></p>
 <p id="section-11-5">A node <span class="bcp14">MUST NOT</span> list in <code>welcome.intents</code> an intent that the session's
-version does not define, and <span class="bcp14">MUST</span> answer a request for one with status 400
-and code <code>invalid_input</code> (<a href="#welcome" class="auto internal xref">Section 6.2</a>). In a session of version 0.1, a node
-of version 0.2 therefore neither offers nor serves TALK, and a caller of
-version 0.1 keeps working unchanged.<a href="#section-11-5" class="pilcrow">¶</a></p>
+version does not define or that the node's version removed, and <span class="bcp14">MUST</span>
+answer a request for one with status 400 and code <code>invalid_input</code>
+(<a href="#welcome" class="auto internal xref">Section 6.2</a>). In a session of version 0.1, a node of version 0.3
+therefore offers and serves neither TALK nor the removed intents: a caller
+of version 0.1 can still discover merchants and recall bookings, but can no
+longer book. In a session of version 0.2 or 0.3, it offers DISCOVER, TALK,
+RECALL and PING.<a href="#section-11-5" class="pilcrow">¶</a></p>
 <p id="section-11-6">Within a major version, a later minor version <span class="bcp14">MAY</span> add intents, optional
 frame members, optional params, result members and status codes: adding an
-intent, as version 0.2 does with TALK, is a minor change. It <span class="bcp14">MUST NOT</span>
-change the meaning of what an earlier minor version defined. Because
-unknown <code>params</code> members are invalid (<a href="#requests" class="auto internal xref">Section 7</a>), a caller <span class="bcp14">MUST NOT</span> send
-params that the session's version does not define. A caller <span class="bcp14">MUST</span> ignore
-result members it does not know.<a href="#section-11-6" class="pilcrow">¶</a></p>
+intent, as version 0.2 did with TALK, is a minor change. It <span class="bcp14">MUST NOT</span>
+change the meaning of what an earlier minor version defined. While the
+major version is 0, a minor version <span class="bcp14">MAY</span> also remove intents, as version 0.3
+does, and correct a rule of an earlier minor version, as version 0.3 does
+for <code>via</code>. Removing an intent is not backward compatible: a caller that
+relied on it can no longer use it. It is accepted only because version 0
+is experimental; from version 1.0, it would need a new major version. A
+node answers a removed intent as an unknown one, with status 400 and code
+<code>invalid_input</code>. Because unknown <code>params</code> members are invalid
+(<a href="#requests" class="auto internal xref">Section 7</a>), a caller <span class="bcp14">MUST NOT</span> send params that the session's version
+does not define. A caller <span class="bcp14">MUST</span> ignore result members it does not know.<a href="#section-11-6" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="security">
@@ -3024,7 +2997,9 @@ attribution is only as good as the token check: a node <span class="bcp14">MUST<
 token to one <code>agent.id</code> and refuse a <code>hello</code> whose token does not match.
 A node <span class="bcp14">SHOULD</span> compare tokens in constant time. Tokens <span class="bcp14">MUST NOT</span> be sent
 outside TLS except on the loopback interface, and <span class="bcp14">SHOULD</span> be long random
-strings that a node can revoke individually.<a href="#section-12-1.2.1" class="pilcrow">¶</a></p>
+strings that a node can revoke individually. A token proves <code>agent.id</code>
+only: <code>agent.kind</code> is the caller's claim, and a node does not grant or
+record anything on the strength of it (<a href="#talk-writes" class="auto internal xref">Section 8.2.2</a>).<a href="#section-12-1.2.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 <dt id="section-12-1.3">Transport:</dt>
@@ -3045,26 +3020,29 @@ size limit instead of buffering it. A TALK costs a model turn, which is
 far more expensive than any other request: a node <span class="bcp14">SHOULD</span> bound the model
 turns it runs at once and the TALK requests each merchant receives per
 unit of time, and answer 429 beyond them without calling its model
-(<a href="#talk-status" class="auto internal xref">Section 8.6.3</a>).<a href="#section-12-1.6.1" class="pilcrow">¶</a></p>
+(<a href="#talk-status" class="auto internal xref">Section 8.2.4</a>).<a href="#section-12-1.6.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 <dt id="section-12-1.7">Booking channel:</dt>
         <dd style="margin-left: 1.5em" id="section-12-1.8">
-          <p id="section-12-1.8.1">In this version, as in version 0.1, a node records every <code>user-agent</code>
-booking with <code>via</code> "claude" (<a href="#intents" class="auto internal xref">Section 8</a>), and the merchant is told the booking came
-through Claude. With other assistants, that is wrong. A merchant <span class="bcp14">SHOULD</span>
-read <code>via</code> as "an assistant" until a later version names the calling
-agent in it.<a href="#section-12-1.8.1" class="pilcrow">¶</a></p>
+          <p id="section-12-1.8.1">In this version, a node records every booking made through TALK with
+<code>via</code> "claude" (<a href="#talk-writes" class="auto internal xref">Section 8.2.2</a>), whatever <code>agent.kind</code> the caller
+declared, and the merchant is told the booking came through Claude. With
+other assistants, that is wrong. A merchant <span class="bcp14">SHOULD</span> read <code>via</code> as "an
+assistant" until a later version names the calling agent in it.<a href="#section-12-1.8.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 <dt id="section-12-1.9">Writes without confirmation:</dt>
         <dd style="margin-left: 1.5em" id="section-12-1.10">
-          <p id="section-12-1.10.1">A misbehaving caller can book, amend or cancel without asking the guest.
-The node cannot detect it. Idempotency keys prevent duplicate bookings
-on retries, not unwanted ones. Through TALK, a node does enforce that a
-write follows a <code>confirm</code> naming a proposal it returned
-(<a href="#talk-confirm" class="auto internal xref">Section 8.6.1</a>), but it still cannot tell whether the caller asked the
-guest before sending <code>confirm</code>.<a href="#section-12-1.10.1" class="pilcrow">¶</a></p>
+          <p id="section-12-1.10.1">Since version 0.3, no caller can book, change or cancel except through
+TALK, and the node's code carries out a write only on a <code>confirm</code> that
+names a proposal it returned, before the proposal expires
+(<a href="#talk-confirm" class="auto internal xref">Section 8.2.1</a>). This holds for every caller, whatever its
+<code>agent.kind</code>, and no longer depends on what a bridge tells its
+assistant. A misbehaving caller can still send <code>confirm</code> without asking
+the guest: the node cannot tell whether the guest agreed. Idempotency
+keys and the rule that a proposal runs at most once prevent duplicate
+writes on retries, not unwanted ones.<a href="#section-12-1.10.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 <dt id="section-12-1.11">A language model reading untrusted text:</dt>
@@ -3081,7 +3059,7 @@ everything below.<a href="#section-12-1.12.1" class="pilcrow">¶</a></p>
         <dd style="margin-left: 1.5em" id="section-12-1.14">
           <p id="section-12-1.14.1">A write proposed through TALK runs only on a later <code>confirm</code> that names
 its proposal before it expires, with the arguments stored with the
-proposal (<a href="#talk-confirm" class="auto internal xref">Section 8.6.1</a>). This check <span class="bcp14">MUST</span> be made by the node's code,
+proposal (<a href="#talk-confirm" class="auto internal xref">Section 8.2.1</a>). This check <span class="bcp14">MUST</span> be made by the node's code,
 never left to the model: the model has no tool that writes, so no output
 of the model alone can create, change or cancel a booking.<a href="#section-12-1.14.1" class="pilcrow">¶</a></p>
 </dd>
@@ -3113,7 +3091,7 @@ who can edit that website controls.<a href="#section-12-1.18.1" class="pilcrow">
           <p id="section-12-1.20.1">A conversation identifier is a capability: with it, and the token of the
 <code>agent.id</code> it is bound to, a caller can continue the conversation and
 confirm its proposal. A node <span class="bcp14">MUST</span> make it unguessable and bind it to the
-merchant and the <code>agent.id</code> (<a href="#conversations" class="auto internal xref">Section 8.6.2</a>). A node and a bridge
+merchant and the <code>agent.id</code> (<a href="#conversations" class="auto internal xref">Section 8.2.3</a>). A node and a bridge
 <span class="bcp14">MUST NOT</span> log conversation identifiers together with guest names at a
 level enabled in production, and <span class="bcp14">SHOULD</span> log a digest of the identifier
 rather than the identifier itself.<a href="#section-12-1.20.1" class="pilcrow">¶</a></p>
@@ -3131,8 +3109,8 @@ proposal itself.<a href="#section-12-1.22.1" class="pilcrow">¶</a></p>
 <dt id="section-12-1.23">Guest identity:</dt>
         <dd style="margin-left: 1.5em" id="section-12-1.24">
           <p id="section-12-1.24.1">In this version, a booking belongs to whoever gives its guest name and
-reference. Any authenticated caller that knows both can amend or cancel
-it, and RECALL returns the bookings of any name. This is acceptable only
+reference. Any authenticated caller that knows both can have it changed
+or cancelled through TALK, and RECALL returns the bookings of any name. This is acceptable only
 in an experiment with trusted callers. A deployment beyond that needs
 guest authentication, which a later version would define.<a href="#section-12-1.24.1" class="pilcrow">¶</a></p>
 </dd>
@@ -3378,36 +3356,6 @@ tools to intents:<a href="#appendix-A-1" class="pilcrow">¶</a></p>
           </tr>
           <tr>
             <td class="text-left" rowspan="1" colspan="1">
-              <code>get_availability</code>
-</td>
-            <td class="text-left" rowspan="1" colspan="1">AVAILABILITY</td>
-            <td class="text-left" rowspan="1" colspan="1">the tool's <code>merchant</code> becomes the request's <code>merchant</code>
-</td>
-          </tr>
-          <tr>
-            <td class="text-left" rowspan="1" colspan="1">
-              <code>create_reservation</code>
-</td>
-            <td class="text-left" rowspan="1" colspan="1">BOOK</td>
-            <td class="text-left" rowspan="1" colspan="1">idem</td>
-          </tr>
-          <tr>
-            <td class="text-left" rowspan="1" colspan="1">
-              <code>update_reservation</code>
-</td>
-            <td class="text-left" rowspan="1" colspan="1">AMEND</td>
-            <td class="text-left" rowspan="1" colspan="1">idem</td>
-          </tr>
-          <tr>
-            <td class="text-left" rowspan="1" colspan="1">
-              <code>cancel_reservation</code>
-</td>
-            <td class="text-left" rowspan="1" colspan="1">CANCEL</td>
-            <td class="text-left" rowspan="1" colspan="1">the tool returns <code>{"status": "cancelled"}</code>
-</td>
-          </tr>
-          <tr>
-            <td class="text-left" rowspan="1" colspan="1">
               <code>talk_to_merchant</code>
 </td>
             <td class="text-left" rowspan="1" colspan="1">TALK</td>
@@ -3423,45 +3371,52 @@ tools to intents:<a href="#appendix-A-1" class="pilcrow">¶</a></p>
           </tr>
         </tbody>
       </table>
-<p id="appendix-A-3">For TALK, the bridge has one tool, <code>talk_to_merchant(merchant, message,
-idempotency_key, conversation?, confirm?)</code>, whose arguments other than
-<code>merchant</code> become the params of TALK, and whose result is the result of
-TALK. In this version, the four booking tools (<code>get_availability</code>,
-<code>create_reservation</code>, <code>update_reservation</code> and <code>cancel_reservation</code>) stay
-mapped to their intents as above, until a later version closes the direct
-intents to guests' agents in favor of TALK.<a href="#appendix-A-3" class="pilcrow">¶</a></p>
+<p id="appendix-A-3">The tool <code>talk_to_merchant(merchant, message, idempotency_key,
+conversation?, confirm?)</code> passes its arguments other than <code>merchant</code> as the
+params of TALK, and returns the result of TALK. Since version 0.3, it is
+the only tool with which the assistant can check availability or book,
+change or cancel. The reference bridge also serves one MCP endpoint per
+merchant, whose only tool is <code>talk_to_merchant</code> without <code>merchant</code>: the
+request's <code>merchant</code> is the endpoint's.<a href="#appendix-A-3" class="pilcrow">¶</a></p>
 <ul class="normal">
 <li class="normal" id="appendix-A-4.1">
-          <p id="appendix-A-4.1.1">The tool descriptions tell the assistant to confirm with the guest before
-<code>create_reservation</code>, <code>update_reservation</code> and <code>cancel_reservation</code>,
-which is how the bridge meets the confirmation requirement of
-<a href="#confirmation" class="auto internal xref">Section 7.8</a>. The description of <code>talk_to_merchant</code> tells it to
-relay <code>reply</code>, to show <code>pending.summary</code> and ask the guest when <code>pending</code>
-is set, to send <code>confirm</code> only after the guest's explicit yes, and to
-give the guest any <code>fallback_url</code>.<a href="#appendix-A-4.1.1" class="pilcrow">¶</a></p>
+          <p id="appendix-A-4.1.1">The description of <code>talk_to_merchant</code> tells the assistant to relay
+<code>reply</code>, to show <code>pending.summary</code> and ask the guest when <code>pending</code> is
+set, to send <code>confirm</code> only after the guest's explicit yes to that
+summary, never in the same reply as the call that returned <code>pending</code>,
+and to give the guest any <code>fallback_url</code>. That is how the bridge meets
+the caller's part of <a href="#confirmation" class="auto internal xref">Section 7.8</a>; the node's code enforces the rest.<a href="#appendix-A-4.1.1" class="pilcrow">¶</a></p>
 </li>
         <li class="normal" id="appendix-A-4.2">
-          <p id="appendix-A-4.2.1">The bridge answers each tool call within 2 seconds, including the round
+          <p id="appendix-A-4.2.1">The tool takes a random UUID as <code>idempotency_key</code>, one per message: the
+bridge carries all its users under one <code>agent.id</code>, so their keys must not
+be guessable (<a href="#idempotency" class="auto internal xref">Section 7.7</a>).<a href="#appendix-A-4.2.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="appendix-A-4.3">
+          <p id="appendix-A-4.3.1">The bridge answers each tool call within 2 seconds, including the round
 trip to the node, except <code>talk_to_merchant</code>, which it gives 30 seconds:
 longer than the node's deadline for TALK (<a href="#deadlines" class="auto internal xref">Section 7.4</a>), so that the
 node's 503 and its <code>fallback_url</code> arrive before the bridge gives up. A
 timeout, a lost session or a 503 becomes an <code>agent_unavailable</code> tool
-error with the merchant's <code>fallback_url</code>.<a href="#appendix-A-4.2.1" class="pilcrow">¶</a></p>
-</li>
-        <li class="normal" id="appendix-A-4.3">
-          <p id="appendix-A-4.3.1">The bridge carries the conversations of all its users on its one
-session, under one <code>agent.id</code>: only the conversation identifier, which
-the node makes unguessable (<a href="#conversations" class="auto internal xref">Section 8.6.2</a>), keeps one user from
-continuing another's conversation. A 404 for an unknown or expired
-conversation is a <code>not_found</code> tool error, not an outage: the assistant
-starts a new conversation.<a href="#appendix-A-4.3.1" class="pilcrow">¶</a></p>
+error with the merchant's <code>fallback_url</code>. When the call carried
+<code>confirm</code>, the error adds that the write may have gone through, and that
+the assistant should check with <code>get_my_reservations</code> before sending the
+message again with the same key.<a href="#appendix-A-4.3.1" class="pilcrow">¶</a></p>
 </li>
         <li class="normal" id="appendix-A-4.4">
-          <p id="appendix-A-4.4.1">A status and its <code>error</code> object become the tool error <code>{"error": code,
+          <p id="appendix-A-4.4.1">The bridge carries the conversations of all its users on its one
+session, under one <code>agent.id</code>: only the conversation identifier, which
+the node makes unguessable (<a href="#conversations" class="auto internal xref">Section 8.2.3</a>), keeps one user from
+continuing another's conversation. A 404 for an unknown or expired
+conversation is a <code>not_found</code> tool error, not an outage: the assistant
+starts a new conversation.<a href="#appendix-A-4.4.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="appendix-A-4.5">
+          <p id="appendix-A-4.5.1">A status and its <code>error</code> object become the tool error <code>{"error": code,
 "message": ..., "fallback_url": ...}</code>.
 <code>too_many_requests</code> is not a tool error code: the bridge stays under the
 limit on requests in flight, and reports any 429, including one for a
-TALK beyond the node's limits on model use, as <code>agent_unavailable</code>.<a href="#appendix-A-4.4.1" class="pilcrow">¶</a></p>
+TALK beyond the node's limits on model use, as <code>agent_unavailable</code>.<a href="#appendix-A-4.5.1" class="pilcrow">¶</a></p>
 </li>
       </ul>
 </section>
@@ -3476,19 +3431,18 @@ caller to the node, and lines starting with "N:" from the node to the
 caller.
 Long frames are wrapped here for readability: on the wire, each is one
 line.<a href="#appendix-B-1" class="pilcrow">¶</a></p>
-<span id="name-opening-the-session-discove"></span><figure id="figure-3">
+<span id="name-opening-the-session-and-dis"></span><figure id="figure-3">
         <div class="alignLeft art-text artwork" id="appendix-B-2.1">
 <pre>
-C: {"type": "hello", "batp": "0.2",
+C: {"type": "hello", "batp": "0.3",
     "agent": {"id": "urn:batp:agent:claude-gateway",
-              "name": "Claude via the S\u00e9same gateway",
+              "name": "Claude via the Sésame gateway",
               "kind": "user-agent", "operator": "merchant-agents"},
     "token": "q7Lr..."}
-N: {"type": "welcome", "batp": "0.2",
+N: {"type": "welcome", "batp": "0.3",
     "node": {"id": "urn:batp:node:merchant-agents",
-             "name": "S\u00e9same"},
-    "intents": ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL",
-                "TALK", "RECALL", "PING"],
+             "name": "Sésame"},
+    "intents": ["DISCOVER", "TALK", "RECALL", "PING"],
     "session": "s-2f6c"}
 C: {"type": "request", "id": "r-1", "intent": "DISCOVER",
     "params": {"query": "bistro", "filters": {"tags": ["vegetarian"],
@@ -3499,119 +3453,116 @@ N: {"type": "response", "id": "r-1", "status": 200,
       "tags": ["vegetarian", "terrace"], "price_level": "€€",
       "website": "https://le-petit-zinc.example/"}],
       "suggestions": [], "ignored_filters": []}}
-C: {"type": "request", "id": "r-2", "intent": "AVAILABILITY",
-    "merchant": "le-petit-zinc",
-    "params": {"date": "2026-11-02", "time": "20:00", "party_size": 4}}
-N: {"type": "response", "id": "r-2", "status": 200,
-    "result": {"slots": [
-      {"starts_at": "2026-11-02T19:30:00+01:00", "table_label": "T5"},
-      {"starts_at": "2026-11-02T20:00:00+01:00", "table_label": "T5"},
-      {"starts_at": "2026-11-02T20:30:00+01:00", "table_label": "T5"}]}}
 </pre>
 </div>
 <figcaption><a href="#figure-3" class="selfRef">Figure 3</a>:
-<a href="#name-opening-the-session-discove" class="selfRef">Opening the session, discovery and availability</a>
+<a href="#name-opening-the-session-and-dis" class="selfRef">Opening the session and discovery</a>
         </figcaption></figure>
-<p id="appendix-B-3">The caller then books, and checks a larger party while the booking is in
-flight: the second answer arrives first.<a href="#appendix-B-3" class="pilcrow">¶</a></p>
-<span id="name-two-requests-in-flight-and-"></span><figure id="figure-4">
+<p id="appendix-B-3">The caller then talks with the merchant's agent. Its first message opens a
+conversation. While the TALK waits for the agent's model turn, the caller
+sends a ping, which is answered first.<a href="#appendix-B-3" class="pilcrow">¶</a></p>
+<span id="name-a-first-message-with-a-ping"></span><figure id="figure-4">
         <div class="alignLeft art-text artwork" id="appendix-B-4.1">
 <pre>
-C: {"type": "request", "id": "r-3", "intent": "BOOK",
+C: {"type": "request", "id": "r-2", "intent": "TALK",
     "merchant": "le-petit-zinc",
-    "params": {"starts_at": "2026-11-02T20:00:00+01:00",
-               "party_size": 4, "guest_name": "Ada Martin",
-               "idempotency_key": "b1f0c2d4-3a9e"}}
-C: {"type": "request", "id": "r-4", "intent": "AVAILABILITY",
-    "merchant": "le-petit-zinc",
-    "params": {"date": "2026-11-02", "party_size": 9}}
-N: {"type": "response", "id": "r-4", "status": 413,
-    "error": {"code": "party_too_large",
-      "message":
-        "Le Petit Zinc takes online bookings for up to 6 guests",
-      "fallback_url": "https://le-petit-zinc.example/reservation.html"}}
+    "params": {"message":
+      "Table for 4 on Monday around 20:00? Any vegetarian dishes?",
+      "idempotency_key": "0b6f3a9c-1e2d-4c5b-9a8f-7e6d5c4b3a21"}}
+C: {"type": "request", "id": "r-3", "intent": "PING", "params": {}}
 N: {"type": "response", "id": "r-3", "status": 200,
-    "result": {"reservation": {"id": "R-001",
-      "merchant": "le-petit-zinc",
-      "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
-      "table_label": "T5", "status": "confirmed",
-      "guest_name": "Ada Martin", "via": "claude"}}}
-C: {"type": "request", "id": "r-5", "intent": "PING", "params": {}}
-N: {"type": "response", "id": "r-5", "status": 200,
     "result": {"pong": true,
                "server_time": "2026-10-31T18:02:11+01:00"}}
+N: {"type": "response", "id": "r-2", "status": 200,
+    "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply":
+        "Yes, two vegetarian mains. I can do 19:30, 20:00 or 20:30.",
+      "slots": [
+      {"starts_at": "2026-11-02T19:30:00+01:00", "table_label": "T5"},
+      {"starts_at": "2026-11-02T20:00:00+01:00", "table_label": "T5"},
+      {"starts_at": "2026-11-02T20:30:00+01:00", "table_label": "T5"}],
+      "pending": null, "reservation": null, "fallback_url": null,
+      "tools_called": ["get_availability"]}}
 </pre>
 </div>
 <figcaption><a href="#figure-4" class="selfRef">Figure 4</a>:
-<a href="#name-two-requests-in-flight-and-" class="selfRef">Two requests in flight, and a ping</a>
+<a href="#name-a-first-message-with-a-ping" class="selfRef">A first message, with a ping in flight</a>
         </figcaption></figure>
-<p id="appendix-B-5">Another guest asks, in the same session, for a table on another day. The
-caller talks with the merchant's agent: a first message, which opens a
-conversation, then the guest's choice, which the agent turns into a
-proposal.<a href="#appendix-B-5" class="pilcrow">¶</a></p>
-<span id="name-a-conversation-with-the-mer"></span><figure id="figure-5">
+<p id="appendix-B-5">The guest picks a time and gives a name, which the caller passes on. The
+merchant's agent turns the request into a proposal.<a href="#appendix-B-5" class="pilcrow">¶</a></p>
+<span id="name-up-to-a-proposal"></span><figure id="figure-5">
         <div class="alignLeft art-text artwork" id="appendix-B-6.1">
 <pre>
-C: {"type": "request", "id": "r-6", "intent": "TALK",
+C: {"type": "request", "id": "r-4", "intent": "TALK",
     "merchant": "le-petit-zinc",
-    "params": {"message":
-      "Table for 2 on Tuesday around 19:30? Any vegetarian dishes?",
-      "idempotency_key": "6f3a9c1e-01"}}
-N: {"type": "response", "id": "r-6", "status": 200,
-    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-      "reply":
-        "Yes, two vegetarian mains. I can do 19:00, 19:30 or 20:00.",
-      "slots": [
-      {"starts_at": "2026-11-03T19:00:00+01:00", "table_label": "T2"},
-      {"starts_at": "2026-11-03T19:30:00+01:00", "table_label": "T2"},
-      {"starts_at": "2026-11-03T20:00:00+01:00", "table_label": "T2"}],
-      "pending": null, "reservation": null, "fallback_url": null,
-      "tools_called": ["get_availability"]}}
-C: {"type": "request", "id": "r-7", "intent": "TALK",
-    "merchant": "le-petit-zinc",
-    "params": {"message": "19:30 please, for Noah Weber.",
-               "conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-               "idempotency_key": "6f3a9c1e-02"}}
-N: {"type": "response", "id": "r-7", "status": 200,
-    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-      "reply": "Shall I book a table for 2 at 19:30 for Noah Weber?",
+    "params": {"message": "20:00 please, for Ada Martin.",
+      "conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "idempotency_key": "5d2e8f41-7a3b-4e6c-8d9f-0a1b2c3d4e5f"}}
+N: {"type": "response", "id": "r-4", "status": 200,
+    "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply": "Shall I book a table for 4 at 20:00 for Ada Martin?",
       "slots": [],
-      "pending": {"id": "pKq81sVd0LmZr6TfXe2NbA", "action": "book",
+      "pending": {"id": "p-Kq81sVd0LmZr6TfXe2NbA", "action": "book",
         "summary":
-          "Table for 2 on Tuesday 3 November 2026 at 19:30, Noah Weber",
+          "Table for 4 on Monday 2 November 2026 at 20:00, Ada Martin",
         "expires_at": "2026-10-31T18:14:05+01:00"},
       "reservation": null, "fallback_url": null,
       "tools_called": ["propose_booking"]}}
 </pre>
 </div>
 <figcaption><a href="#figure-5" class="selfRef">Figure 5</a>:
-<a href="#name-a-conversation-with-the-mer" class="selfRef">A conversation with the merchant's agent, up to a proposal</a>
+<a href="#name-up-to-a-proposal" class="selfRef">Up to a proposal</a>
         </figcaption></figure>
 <p id="appendix-B-7">The caller shows the guest the proposal's <code>summary</code>. Once the guest has
 said yes, the caller confirms the proposal, and the node books the table
-with the proposal's own arguments, before its model words the answer.<a href="#appendix-B-7" class="pilcrow">¶</a></p>
+with the proposal's own arguments, before its model words the answer.
+<code>tools_called</code> names that write, although the model called no tool.<a href="#appendix-B-7" class="pilcrow">¶</a></p>
 <span id="name-confirming-the-proposal"></span><figure id="figure-6">
         <div class="alignLeft art-text artwork" id="appendix-B-8.1">
 <pre>
-C: {"type": "request", "id": "r-8", "intent": "TALK",
+C: {"type": "request", "id": "r-5", "intent": "TALK",
     "merchant": "le-petit-zinc",
     "params": {"message": "Yes, please book it.",
-               "conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-               "confirm": "pKq81sVd0LmZr6TfXe2NbA",
-               "idempotency_key": "6f3a9c1e-03"}}
-N: {"type": "response", "id": "r-8", "status": 200,
-    "result": {"conversation": "Zx3kQ9mLr2VtB7nHc4WpYa",
-      "reply": "Booked for Tuesday at 19:30. Your reference is R-002.",
+      "conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "confirm": "p-Kq81sVd0LmZr6TfXe2NbA",
+      "idempotency_key": "9c4b7e2a-3f1d-4a8b-b6e5-2d7c1f0e9a83"}}
+N: {"type": "response", "id": "r-5", "status": 200,
+    "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply": "Booked for Monday at 20:00. Your reference is R-001.",
       "slots": [], "pending": null,
-      "reservation": {"id": "R-002", "merchant": "le-petit-zinc",
-        "starts_at": "2026-11-03T19:30:00+01:00", "party_size": 2,
-        "table_label": "T2", "status": "confirmed",
-        "guest_name": "Noah Weber", "via": "claude"},
+      "reservation": {"id": "R-001", "merchant": "le-petit-zinc",
+        "starts_at": "2026-11-02T20:00:00+01:00", "party_size": 4,
+        "table_label": "T5", "status": "confirmed",
+        "guest_name": "Ada Martin", "via": "claude"},
       "fallback_url": null, "tools_called": ["create_reservation"]}}
 </pre>
 </div>
 <figcaption><a href="#figure-6" class="selfRef">Figure 6</a>:
 <a href="#name-confirming-the-proposal" class="selfRef">Confirming the proposal</a>
+        </figcaption></figure>
+<p id="appendix-B-9">The guest then asks for a party above the merchant's online limit. The
+agent's availability check refuses it: the answer still has status 200,
+with the merchant's own booking page in <code>fallback_url</code>.<a href="#appendix-B-9" class="pilcrow">¶</a></p>
+<span id="name-a-refusal-inside-the-conver"></span><figure id="figure-7">
+        <div class="alignLeft art-text artwork" id="appendix-B-10.1">
+<pre>
+C: {"type": "request", "id": "r-6", "intent": "TALK",
+    "merchant": "le-petit-zinc",
+    "params": {"message": "And a table for 9 on Friday at 20:00?",
+      "conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "idempotency_key": "e1a7c3f5-8b2d-4f6a-9c0e-4b3a2d1c0f97"}}
+N: {"type": "response", "id": "r-6", "status": 200,
+    "result": {"conversation": "c-Zx3kQ9mLr2VtB7nHc4WpYa",
+      "reply":
+        "We take online bookings for up to 6. Please book on our site.",
+      "slots": [], "pending": null, "reservation": null,
+      "fallback_url":
+        "https://le-petit-zinc.example/reservation.html",
+      "tools_called": ["get_availability"]}}
+</pre>
+</div>
+<figcaption><a href="#figure-7" class="selfRef">Figure 7</a>:
+<a href="#name-a-refusal-inside-the-conver" class="selfRef">A refusal inside the conversation</a>
         </figcaption></figure>
 </section>
 </div>
@@ -3623,8 +3574,8 @@ N: {"type": "response", "id": "r-8", "status": 200,
 <p id="appendix-C-1">These schemas use JSON Schema 2020-12 <span>[<a href="#I-D.bhutton-json-schema" class="cite xref">I-D.bhutton-json-schema</a>]</span>. They are
 generated from the reference implementation's contract models, so this
 appendix and the implementation cannot drift <span>[<a href="#BATP-SCHEMAS" class="cite xref">BATP-SCHEMAS</a>]</span>. In the
-params of AVAILABILITY, BOOK, AMEND, CANCEL and TALK, the merchant is not a
-member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class="pilcrow">¶</a></p>
+params of TALK, the merchant is not a member: it is the request's
+<code>merchant</code>.<a href="#appendix-C-1" class="pilcrow">¶</a></p>
 <div id="discover-params">
 <section id="appendix-C.1">
         <h3 id="name-discover-params">
@@ -3858,358 +3809,15 @@ member: it is the request's <code>merchant</code>.<a href="#appendix-C-1" class=
 </div>
 </section>
 </div>
-<div id="availability-params">
-<section id="appendix-C.3">
-        <h3 id="name-availability-params">
-<a href="#appendix-C.3" class="section-number selfRef">C.3. </a><a href="#name-availability-params" class="section-name selfRef">AVAILABILITY params</a>
-        </h3>
-<div class="lang-json sourcecode" id="appendix-C.3-1">
-<pre>
-{
-  "$comment": "Generated from core.models.GetAvailabilityInput",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "date": {
-      "format": "date",
-      "title": "Date",
-      "type": "string"
-    },
-    "party_size": {
-      "exclusiveMinimum": 0,
-      "title": "Party Size",
-      "type": "integer"
-    },
-    "time": {
-      "anyOf": [
-        {
-          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Time"
-    }
-  },
-  "required": [
-    "date",
-    "party_size"
-  ],
-  "title": "BATP AVAILABILITY params",
-  "type": "object"
-}
-</pre><a href="#appendix-C.3-1" class="pilcrow">¶</a>
-</div>
-</section>
-</div>
-<div id="availability-result">
-<section id="appendix-C.4">
-        <h3 id="name-availability-result">
-<a href="#appendix-C.4" class="section-number selfRef">C.4. </a><a href="#name-availability-result" class="section-name selfRef">AVAILABILITY result</a>
-        </h3>
-<div class="lang-json sourcecode" id="appendix-C.4-1">
-<pre>
-{
-  "$comment": "Generated from core.models.GetAvailabilityOutput",
-  "$defs": {
-    "Slot": {
-      "additionalProperties": false,
-      "properties": {
-        "starts_at": {
-          "format": "date-time",
-          "title": "Starts At",
-          "type": "string"
-        },
-        "table_label": {
-          "title": "Table Label",
-          "type": "string"
-        }
-      },
-      "required": [
-        "starts_at",
-        "table_label"
-      ],
-      "title": "Slot",
-      "type": "object"
-    }
-  },
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "slots": {
-      "items": {
-        "$ref": "#/$defs/Slot"
-      },
-      "maxItems": 3,
-      "title": "Slots",
-      "type": "array"
-    }
-  },
-  "required": [
-    "slots"
-  ],
-  "title": "BATP AVAILABILITY result",
-  "type": "object"
-}
-</pre><a href="#appendix-C.4-1" class="pilcrow">¶</a>
-</div>
-</section>
-</div>
-<div id="book-params">
-<section id="appendix-C.5">
-        <h3 id="name-book-params">
-<a href="#appendix-C.5" class="section-number selfRef">C.5. </a><a href="#name-book-params" class="section-name selfRef">BOOK params</a>
-        </h3>
-<div class="lang-json sourcecode" id="appendix-C.5-1">
-<pre>
-{
-  "$comment": "Generated from core.models.CreateReservationInput",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "guest_name": {
-      "maxLength": 200,
-      "minLength": 1,
-      "title": "Guest Name",
-      "type": "string"
-    },
-    "idempotency_key": {
-      "maxLength": 200,
-      "minLength": 1,
-      "title": "Idempotency Key",
-      "type": "string"
-    },
-    "party_size": {
-      "exclusiveMinimum": 0,
-      "title": "Party Size",
-      "type": "integer"
-    },
-    "starts_at": {
-      "format": "date-time",
-      "title": "Starts At",
-      "type": "string"
-    }
-  },
-  "required": [
-    "starts_at",
-    "party_size",
-    "guest_name",
-    "idempotency_key"
-  ],
-  "title": "BATP BOOK params",
-  "type": "object"
-}
-</pre><a href="#appendix-C.5-1" class="pilcrow">¶</a>
-</div>
-</section>
-</div>
-<div id="book-amend-and-cancel-result">
-<section id="appendix-C.6">
-        <h3 id="name-book-amend-and-cancel-resul">
-<a href="#appendix-C.6" class="section-number selfRef">C.6. </a><a href="#name-book-amend-and-cancel-resul" class="section-name selfRef">BOOK, AMEND and CANCEL result</a>
-        </h3>
-<p id="appendix-C.6-1">The three intents return the same <code>reservation</code> object.<a href="#appendix-C.6-1" class="pilcrow">¶</a></p>
-<div class="breakable lang-json sourcecode" id="appendix-C.6-2">
-<pre>
-{
-  "$comment": "Generated from core.models.ReservationOutput",
-  "$defs": {
-    "Reservation": {
-      "additionalProperties": false,
-      "properties": {
-        "guest_name": {
-          "title": "Guest Name",
-          "type": "string"
-        },
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "merchant": {
-          "pattern": "^[a-z0-9-]{3,61}$",
-          "title": "Merchant",
-          "type": "string"
-        },
-        "party_size": {
-          "exclusiveMinimum": 0,
-          "title": "Party Size",
-          "type": "integer"
-        },
-        "starts_at": {
-          "format": "date-time",
-          "title": "Starts At",
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "confirmed",
-            "cancelled"
-          ],
-          "title": "Status",
-          "type": "string"
-        },
-        "table_label": {
-          "title": "Table Label",
-          "type": "string"
-        },
-        "via": {
-          "enum": [
-            "claude",
-            "merchant",
-            "website"
-          ],
-          "title": "Via",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "merchant",
-        "starts_at",
-        "party_size",
-        "table_label",
-        "status",
-        "guest_name",
-        "via"
-      ],
-      "title": "Reservation",
-      "type": "object"
-    }
-  },
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "reservation": {
-      "$ref": "#/$defs/Reservation"
-    }
-  },
-  "required": [
-    "reservation"
-  ],
-  "title": "BATP BOOK result",
-  "type": "object"
-}
-</pre><a href="#appendix-C.6-2" class="pilcrow">¶</a>
-</div>
-</section>
-</div>
-<div id="amend-params">
-<section id="appendix-C.7">
-        <h3 id="name-amend-params">
-<a href="#appendix-C.7" class="section-number selfRef">C.7. </a><a href="#name-amend-params" class="section-name selfRef">AMEND params</a>
-        </h3>
-<div class="breakable lang-json sourcecode" id="appendix-C.7-1">
-<pre>
-{
-  "$comment": "Generated from core.models.UpdateReservationInput",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "guest_name": {
-      "maxLength": 200,
-      "minLength": 1,
-      "title": "Guest Name",
-      "type": "string"
-    },
-    "idempotency_key": {
-      "maxLength": 200,
-      "minLength": 1,
-      "title": "Idempotency Key",
-      "type": "string"
-    },
-    "party_size": {
-      "anyOf": [
-        {
-          "exclusiveMinimum": 0,
-          "type": "integer"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Party Size"
-    },
-    "reservation_id": {
-      "maxLength": 200,
-      "minLength": 1,
-      "title": "Reservation Id",
-      "type": "string"
-    },
-    "starts_at": {
-      "anyOf": [
-        {
-          "format": "date-time",
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Starts At"
-    }
-  },
-  "required": [
-    "reservation_id",
-    "guest_name",
-    "idempotency_key"
-  ],
-  "title": "BATP AMEND params",
-  "type": "object"
-}
-</pre><a href="#appendix-C.7-1" class="pilcrow">¶</a>
-</div>
-</section>
-</div>
-<div id="cancel-params">
-<section id="appendix-C.8">
-        <h3 id="name-cancel-params">
-<a href="#appendix-C.8" class="section-number selfRef">C.8. </a><a href="#name-cancel-params" class="section-name selfRef">CANCEL params</a>
-        </h3>
-<div class="lang-json sourcecode" id="appendix-C.8-1">
-<pre>
-{
-  "$comment": "Generated from core.models.CancelReservationInput",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "guest_name": {
-      "maxLength": 200,
-      "minLength": 1,
-      "title": "Guest Name",
-      "type": "string"
-    },
-    "reservation_id": {
-      "maxLength": 200,
-      "minLength": 1,
-      "title": "Reservation Id",
-      "type": "string"
-    }
-  },
-  "required": [
-    "reservation_id",
-    "guest_name"
-  ],
-  "title": "BATP CANCEL params",
-  "type": "object"
-}
-</pre><a href="#appendix-C.8-1" class="pilcrow">¶</a>
-</div>
-</section>
-</div>
 <div id="talk-params">
-<section id="appendix-C.9">
+<section id="appendix-C.3">
         <h3 id="name-talk-params">
-<a href="#appendix-C.9" class="section-number selfRef">C.9. </a><a href="#name-talk-params" class="section-name selfRef">TALK params</a>
+<a href="#appendix-C.3" class="section-number selfRef">C.3. </a><a href="#name-talk-params" class="section-name selfRef">TALK params</a>
         </h3>
-<p id="appendix-C.9-1">The schema does not express two rules of <a href="#talk" class="auto internal xref">Section 8.6</a>: <code>message</code> is measured
+<p id="appendix-C.3-1">The schema does not express two rules of <a href="#talk" class="auto internal xref">Section 8.2</a>: <code>message</code> is measured
 once leading and trailing white space is removed, and <code>confirm</code> requires
-<code>conversation</code>.<a href="#appendix-C.9-1" class="pilcrow">¶</a></p>
-<div class="breakable lang-json sourcecode" id="appendix-C.9-2">
+<code>conversation</code>.<a href="#appendix-C.3-1" class="pilcrow">¶</a></p>
+<div class="breakable lang-json sourcecode" id="appendix-C.3-2">
 <pre>
 {
   "$comment": "Generated from core.models.TalkInput",
@@ -4262,16 +3870,16 @@ once leading and trailing white space is removed, and <code>confirm</code> requi
   "title": "BATP TALK params",
   "type": "object"
 }
-</pre><a href="#appendix-C.9-2" class="pilcrow">¶</a>
+</pre><a href="#appendix-C.3-2" class="pilcrow">¶</a>
 </div>
 </section>
 </div>
 <div id="talk-result">
-<section id="appendix-C.10">
+<section id="appendix-C.4">
         <h3 id="name-talk-result">
-<a href="#appendix-C.10" class="section-number selfRef">C.10. </a><a href="#name-talk-result" class="section-name selfRef">TALK result</a>
+<a href="#appendix-C.4" class="section-number selfRef">C.4. </a><a href="#name-talk-result" class="section-name selfRef">TALK result</a>
         </h3>
-<div class="breakable lang-json sourcecode" id="appendix-C.10-1">
+<div class="breakable lang-json sourcecode" id="appendix-C.4-1">
 <pre>
 {
   "$comment": "Generated from core.models.TalkOutput",
@@ -4471,16 +4079,16 @@ once leading and trailing white space is removed, and <code>confirm</code> requi
   "title": "BATP TALK result",
   "type": "object"
 }
-</pre><a href="#appendix-C.10-1" class="pilcrow">¶</a>
+</pre><a href="#appendix-C.4-1" class="pilcrow">¶</a>
 </div>
 </section>
 </div>
 <div id="recall-params">
-<section id="appendix-C.11">
+<section id="appendix-C.5">
         <h3 id="name-recall-params">
-<a href="#appendix-C.11" class="section-number selfRef">C.11. </a><a href="#name-recall-params" class="section-name selfRef">RECALL params</a>
+<a href="#appendix-C.5" class="section-number selfRef">C.5. </a><a href="#name-recall-params" class="section-name selfRef">RECALL params</a>
         </h3>
-<div class="lang-json sourcecode" id="appendix-C.11-1">
+<div class="lang-json sourcecode" id="appendix-C.5-1">
 <pre>
 {
   "$comment": "Generated from core.models.GetMyReservationsInput",
@@ -4500,16 +4108,16 @@ once leading and trailing white space is removed, and <code>confirm</code> requi
   "title": "BATP RECALL params",
   "type": "object"
 }
-</pre><a href="#appendix-C.11-1" class="pilcrow">¶</a>
+</pre><a href="#appendix-C.5-1" class="pilcrow">¶</a>
 </div>
 </section>
 </div>
 <div id="recall-result">
-<section id="appendix-C.12">
+<section id="appendix-C.6">
         <h3 id="name-recall-result">
-<a href="#appendix-C.12" class="section-number selfRef">C.12. </a><a href="#name-recall-result" class="section-name selfRef">RECALL result</a>
+<a href="#appendix-C.6" class="section-number selfRef">C.6. </a><a href="#name-recall-result" class="section-name selfRef">RECALL result</a>
         </h3>
-<div class="breakable lang-json sourcecode" id="appendix-C.12-1">
+<div class="breakable lang-json sourcecode" id="appendix-C.6-1">
 <pre>
 {
   "$comment": "Generated from core.models.GetMyReservationsOutput",
@@ -4601,16 +4209,16 @@ once leading and trailing white space is removed, and <code>confirm</code> requi
   "title": "BATP RECALL result",
   "type": "object"
 }
-</pre><a href="#appendix-C.12-1" class="pilcrow">¶</a>
+</pre><a href="#appendix-C.6-1" class="pilcrow">¶</a>
 </div>
 </section>
 </div>
 <div id="ping-params-and-result">
-<section id="appendix-C.13">
+<section id="appendix-C.7">
         <h3 id="name-ping-params-and-result">
-<a href="#appendix-C.13" class="section-number selfRef">C.13. </a><a href="#name-ping-params-and-result" class="section-name selfRef">PING params and result</a>
+<a href="#appendix-C.7" class="section-number selfRef">C.7. </a><a href="#name-ping-params-and-result" class="section-name selfRef">PING params and result</a>
         </h3>
-<div class="lang-json sourcecode" id="appendix-C.13-1">
+<div class="lang-json sourcecode" id="appendix-C.7-1">
 <pre>
 {
   "$comment": "Generated from batp_schemas.PingParams",
@@ -4620,9 +4228,9 @@ once leading and trailing white space is removed, and <code>confirm</code> requi
   "title": "BATP PING params",
   "type": "object"
 }
-</pre><a href="#appendix-C.13-1" class="pilcrow">¶</a>
+</pre><a href="#appendix-C.7-1" class="pilcrow">¶</a>
 </div>
-<div class="lang-json sourcecode" id="appendix-C.13-2">
+<div class="lang-json sourcecode" id="appendix-C.7-2">
 <pre>
 {
   "$comment": "Generated from batp_schemas.PingResult",
@@ -4646,7 +4254,7 @@ once leading and trailing white space is removed, and <code>confirm</code> requi
   "title": "BATP PING result",
   "type": "object"
 }
-</pre><a href="#appendix-C.13-2" class="pilcrow">¶</a>
+</pre><a href="#appendix-C.7-2" class="pilcrow">¶</a>
 </div>
 </section>
 </div>
@@ -4654,39 +4262,97 @@ once leading and trailing white space is removed, and <code>confirm</code> requi
 </div>
 <div id="changes">
 <section id="appendix-D">
-      <h2 id="name-changes-from-version-01">
-<a href="#appendix-D" class="section-number selfRef">Appendix D. </a><a href="#name-changes-from-version-01" class="section-name selfRef">Changes from Version 0.1</a>
+      <h2 id="name-changes-from-earlier-versio">
+<a href="#appendix-D" class="section-number selfRef">Appendix D. </a><a href="#name-changes-from-earlier-versio" class="section-name selfRef">Changes from Earlier Versions</a>
       </h2>
+<div id="version-03">
+<section id="appendix-D.1">
+        <h3 id="name-version-03">
+<a href="#appendix-D.1" class="section-number selfRef">D.1. </a><a href="#name-version-03" class="section-name selfRef">Version 0.3</a>
+        </h3>
 <ul class="normal">
-<li class="normal" id="appendix-D-1.1">
-          <p id="appendix-D-1.1.1">Added the TALK intent (<a href="#talk" class="auto internal xref">Section 8.6</a>), with its conversations and its
+<li class="normal" id="appendix-D.1-1.1">
+            <p id="appendix-D.1-1.1.1">Removed the intents AVAILABILITY, BOOK, AMEND and CANCEL: a caller checks
+availability and books, changes or cancels only through TALK. A node
+answers them as unknown intents, with status 400 and code
+<code>invalid_input</code>, in a session of any version (<a href="#intents" class="auto internal xref">Section 8</a>).<a href="#appendix-D.1-1.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="appendix-D.1-1.2">
+            <p id="appendix-D.1-1.2.1">TALK is the only intent that takes <code>merchant</code> (<a href="#requests" class="auto internal xref">Section 7</a>).<a href="#appendix-D.1-1.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="appendix-D.1-1.3">
+            <p id="appendix-D.1-1.3.1">Stated what a confirmed proposal writes, and that a booking made through
+TALK is recorded with <code>via</code> "claude" whatever <code>agent.kind</code> the caller
+declares, since no token proves it; version 0.2 required "merchant" for a
+<code>merchant-agent</code> (<a href="#talk-writes" class="auto internal xref">Section 8.2.2</a>).<a href="#appendix-D.1-1.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="appendix-D.1-1.4">
+            <p id="appendix-D.1-1.4.1"><code>tools_called</code> names the write that the node's code ran on a <code>confirm</code>
+(<a href="#talk" class="auto internal xref">Section 8.2</a>).<a href="#appendix-D.1-1.4.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="appendix-D.1-1.5">
+            <p id="appendix-D.1-1.5.1">No request is answered with status 409 or 413 any more; 413 remains for
+frames above the size limit, and a later version cannot give
+<code>slot_unavailable</code> or <code>party_too_large</code> another meaning
+(<a href="#status-codes" class="auto internal xref">Section 9</a>).<a href="#appendix-D.1-1.5.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="appendix-D.1-1.6">
+            <p id="appendix-D.1-1.6.1">Idempotency keys are those of TALK only, scoped to the conversation; a
+key sent again with other params is invalid, and a caller that carries
+several guests chooses keys they cannot guess (<a href="#idempotency" class="auto internal xref">Section 7.7</a>).<a href="#appendix-D.1-1.6.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="appendix-D.1-1.7">
+            <p id="appendix-D.1-1.7.1">Confirmation of writes is enforced by the node's code for every caller
+(<a href="#confirmation" class="auto internal xref">Section 7.8</a>).<a href="#appendix-D.1-1.7.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="appendix-D.1-1.8">
+            <p id="appendix-D.1-1.8.1">While the major version is 0, a minor version may remove intents
+(<a href="#versioning" class="auto internal xref">Section 11</a>).<a href="#appendix-D.1-1.8.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="appendix-D.1-1.9">
+            <p id="appendix-D.1-1.9.1">The MCP bridge maps three tools, and books only through
+<code>talk_to_merchant</code> (<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>).<a href="#appendix-D.1-1.9.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+</section>
+</div>
+<div id="version-02">
+<section id="appendix-D.2">
+        <h3 id="name-version-02">
+<a href="#appendix-D.2" class="section-number selfRef">D.2. </a><a href="#name-version-02" class="section-name selfRef">Version 0.2</a>
+        </h3>
+<ul class="normal">
+<li class="normal" id="appendix-D.2-1.1">
+            <p id="appendix-D.2-1.1.1">Added the TALK intent (<a href="#talk" class="auto internal xref">Section 8.2</a>), with its conversations and its
 proposals, which the node carries out only on <code>confirm</code>; TALK is
-addressed, so <code>merchant</code> is required for it.<a href="#appendix-D-1.1.1" class="pilcrow">¶</a></p>
+addressed, so <code>merchant</code> is required for it.<a href="#appendix-D.2-1.1.1" class="pilcrow">¶</a></p>
 </li>
-        <li class="normal" id="appendix-D-1.2">
-          <p id="appendix-D-1.2.1">Stated how the session's version is chosen, and that a session of
-version 0.1 is neither offered nor served TALK (<a href="#versioning" class="auto internal xref">Section 11</a>).<a href="#appendix-D-1.2.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="appendix-D.2-1.2">
+            <p id="appendix-D.2-1.2.1">Stated how the session's version is chosen, and that a session of
+version 0.1 is neither offered nor served TALK (<a href="#versioning" class="auto internal xref">Section 11</a>).<a href="#appendix-D.2-1.2.1" class="pilcrow">¶</a></p>
 </li>
-        <li class="normal" id="appendix-D-1.3">
-          <p id="appendix-D-1.3.1">Added deadlines for answering requests: 25 seconds for TALK, 10 seconds
-for the other intents (<a href="#deadlines" class="auto internal xref">Section 7.4</a>).<a href="#appendix-D-1.3.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="appendix-D.2-1.3">
+            <p id="appendix-D.2-1.3.1">Added deadlines for answering requests: 25 seconds for TALK, 10 seconds
+for the other intents (<a href="#deadlines" class="auto internal xref">Section 7.4</a>).<a href="#appendix-D.2-1.3.1" class="pilcrow">¶</a></p>
 </li>
-        <li class="normal" id="appendix-D-1.4">
-          <p id="appendix-D-1.4.1">Added TALK to the idempotency rules, and said that a client library does
-not send a TALK again by itself (<a href="#idempotency" class="auto internal xref">Section 7.7</a>).<a href="#appendix-D-1.4.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="appendix-D.2-1.4">
+            <p id="appendix-D.2-1.4.1">Added TALK to the idempotency rules, and said that a client library does
+not send a TALK again by itself (<a href="#idempotency" class="auto internal xref">Section 7.7</a>).<a href="#appendix-D.2-1.4.1" class="pilcrow">¶</a></p>
 </li>
-        <li class="normal" id="appendix-D-1.5">
-          <p id="appendix-D-1.5.1">Moved the reservation of <code>event</code> frames to a later minor version
-(<a href="#events" class="auto internal xref">Section 10</a>).<a href="#appendix-D-1.5.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="appendix-D.2-1.5">
+            <p id="appendix-D.2-1.5.1">Moved the reservation of <code>event</code> frames to a later minor version
+(<a href="#events" class="auto internal xref">Section 10</a>).<a href="#appendix-D.2-1.5.1" class="pilcrow">¶</a></p>
 </li>
-        <li class="normal" id="appendix-D-1.6">
-          <p id="appendix-D-1.6.1">Added the bridge's <code>talk_to_merchant</code> tool (<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>).<a href="#appendix-D-1.6.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="appendix-D.2-1.6">
+            <p id="appendix-D.2-1.6.1">Added the bridge's <code>talk_to_merchant</code> tool (<a href="#mcp-bridge" class="auto internal xref">Appendix A</a>).<a href="#appendix-D.2-1.6.1" class="pilcrow">¶</a></p>
 </li>
-        <li class="normal" id="appendix-D-1.7">
-          <p id="appendix-D-1.7.1">Added the security and privacy considerations of a merchant agent built
-on a language model (<a href="#security" class="auto internal xref">Section 12</a>, <a href="#privacy" class="auto internal xref">Section 13</a>).<a href="#appendix-D-1.7.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="appendix-D.2-1.7">
+            <p id="appendix-D.2-1.7.1">Added the security and privacy considerations of a merchant agent built
+on a language model (<a href="#security" class="auto internal xref">Section 12</a>, <a href="#privacy" class="auto internal xref">Section 13</a>).<a href="#appendix-D.2-1.7.1" class="pilcrow">¶</a></p>
 </li>
-      </ul>
+        </ul>
+</section>
+</div>
 </section>
 </div>
 <div id="acknowledgments">

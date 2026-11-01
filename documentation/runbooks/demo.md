@@ -98,7 +98,7 @@ La Graine Verte holds the management mockup's 30 days of data (#131).
 
 1. Issue its link on the server, from `/opt/merchant-agents/platform`: `../code/.venv/bin/python ../code/scripts/owner_link.py la-graine-verte --name Camille`.
 2. Open that link. Home shows the mockup's figures (982 guests over 30 days, 597 of them through the agent, 17 guests tonight) only with the clock at 19:40. On stage, the real clock moves them.
-3. Run `.venv/bin/python scripts/demo_booking.py --url http://127.0.0.1:8001/mcp` on the server: it talks to La Graine Verte's agent, checks its proposal and confirms it, and Kim Weber's booking, 20:00 for 2, arrives live as R-056 ([code/README.md](../../code/README.md#demo-data)). It needs the node's key: without a proposal, it prints the agent's reply and books nothing.
+3. Run `.venv/bin/python scripts/demo_booking.py --url http://127.0.0.1:8001/mcp` on the server: La Graine Verte's agent proposes Kim Weber's booking, 20:00 for 2, the script confirms it, and it arrives live as R-056 ([code/README.md](../../code/README.md#demo-data)). If the agent answers with a question instead of the proposal, the script prints it and books nothing: run it again. Without the node's key, every answer is the booking page.
 
 ### Optional: two AIs talking in BATP
 

@@ -286,12 +286,12 @@ describe("Booking rules", () => {
   it("shows what an AI agent reads, and follows a save", async () => {
     open("rules");
     expect((await field("How long a table is held")).value).toBe("120 minutes");
-    expect(screen.getByText(/Groups up to 4\.$/)).toBeTruthy();
+    expect(screen.getByText(/Groups up to 4\./)).toBeTruthy();
 
     type(await field("Largest group"), "3");
     click("Save");
 
-    expect(await screen.findByText(/Groups up to 3\.$/)).toBeTruthy();
+    expect(await screen.findByText(/Groups up to 3\./)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "What Claude reads about you" })).toBeTruthy();
   });
 
@@ -312,11 +312,11 @@ describe("Booking rules", () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     expect(largest.value).toBe("6");
     expect(policy.value).toBe("Call us.");
-    expect(screen.getByText(/Groups up to 6\.$/)).toBeTruthy();
+    expect(screen.getByText(/Groups up to 6\./)).toBeTruthy();
 
     click("Discard");
     await waitFor(() => expect(largest.value).toBe("3"));
-    expect(await screen.findByText(/Groups up to 3\.$/)).toBeTruthy();
+    expect(await screen.findByText(/Groups up to 3\./)).toBeTruthy();
   });
 
   it.each([

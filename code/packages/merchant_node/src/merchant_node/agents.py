@@ -1,12 +1,13 @@
 """The merchant agents behind the BATP node: one handler per intent (PROTOCOL.md §7).
 
 `TALK` goes to the merchant's AI agent (`agent.talk`, #246, #249), within the node's limits
-(`limits.py`); without OPENAI_API_KEY there is no agent, and it answers `503 agent_unavailable`
-with the fallback URL while the other intents work as before.
+(`limits.py`): it is the only addressed intent, and the agent the only caller of the booking
+tools (#254). Without OPENAI_API_KEY there is no agent, and `TALK` answers `503
+agent_unavailable` with the fallback URL while `DISCOVER`, `RECALL` and `PING` work as before.
 
-Params and results are the tool contracts of `core.models`, so BATP and the MCP tools agree by
-construction. A merchant marked `down` refuses agent traffic with its fallback URL, as the
-gateway does for Claude (#13); its own website keeps booking through the platform.
+Params and results are the contracts of `core.models`. A merchant marked `down` refuses agent
+traffic with its fallback URL, as the gateway does for Claude (#13); its own website keeps
+booking through the platform.
 """
 
 import logging
@@ -25,23 +26,13 @@ from batp.server import FAILED
 from batp.status import WITH_FALLBACK, Refused, TooManyRequests
 from core.errors import AgentError, AgentUnavailable, InvalidInput, NotFound
 from core.models import (
-    CancelReservationInput,
-    CreateReservationInput,
-    GetAvailabilityInput,
-    GetAvailabilityOutput,
     GetMyReservationsInput,
     GetMyReservationsOutput,
-    ReservationOutput,
     SearchMerchantsInput,
     TalkInput,
-    UpdateReservationInput,
-    Via,
 )
 from merchant_node.limits import TalkLimits
 
-# Bookings over BATP come from guests' agents. The `kind` a caller declares is not trusted, and
-# `Via` has no value for agents other than Claude yet: every BATP booking is `claude`.
-VIA: Via = "claude"
 NO_AGENT = "{name}'s agent can't talk right now; book on its website"
 
 log = logging.getLogger("merchant_node")
@@ -68,10 +59,6 @@ class MerchantAgents:
         self._handlers: dict[Intent, IntentHandler] = {
             "PING": self._ping,
             "DISCOVER": self._discover,
-            "AVAILABILITY": self._availability,
-            "BOOK": self._book,
-            "AMEND": self._amend,
-            "CANCEL": self._cancel,
             "TALK": self._talk,
             "RECALL": self._recall,
         }
@@ -95,57 +82,6 @@ class MerchantAgents:
         # `search` refuses a query or filters beyond its bounds before reading the registry.
         found = await search(inp.query, inp.near, inp.date, inp.filters, engine=self.engine)
         return _dump(found)
-
-    async def _availability(self, agent: AgentIdentity, request: Request) -> Result:
-        slug, params = await self._merchant(request)
-        inp = _params(GetAvailabilityInput, request, params)
-        slots = await self._refusing(
-            slug, self.service.get_availability(slug, inp.date, inp.party_size, inp.time)
-        )
-        return _dump(GetAvailabilityOutput(slots=tuple(slots)))
-
-    async def _book(self, agent: AgentIdentity, request: Request) -> Result:
-        slug, params = await self._merchant(request)
-        inp = _params(CreateReservationInput, request, params)
-        reservation = await self._refusing(
-            slug,
-            self.service.create_reservation(
-                slug,
-                inp.starts_at,
-                inp.party_size,
-                inp.guest_name,
-                inp.idempotency_key,
-                via=VIA,
-            ),
-        )
-        return _dump(ReservationOutput(reservation=reservation))
-
-    async def _amend(self, agent: AgentIdentity, request: Request) -> Result:
-        slug, params = await self._merchant(request)
-        inp = _params(UpdateReservationInput, request, params)
-        reservation = await self._refusing(
-            slug,
-            self.service.update_reservation(
-                slug,
-                inp.reservation_id,
-                inp.guest_name,
-                inp.idempotency_key,
-                starts_at=inp.starts_at,
-                party_size=inp.party_size,
-            ),
-        )
-        return _dump(ReservationOutput(reservation=reservation))
-
-    async def _cancel(self, agent: AgentIdentity, request: Request) -> Result:
-        slug, params = await self._merchant(request)
-        inp = _params(CancelReservationInput, request, params)
-        reservation = await self._refusing(
-            slug,
-            self.service.cancel_reservation(
-                slug, inp.reservation_id, by="guest", guest_name=inp.guest_name
-            ),
-        )
-        return _dump(ReservationOutput(reservation=reservation))
 
     async def _talk(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)

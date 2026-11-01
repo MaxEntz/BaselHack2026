@@ -59,11 +59,11 @@ def validation_error() -> ValidationError:
 
 
 async def test_result_is_returned_as_is() -> None:
-    assert await call_agent(ZINC, "get_availability", ok, settings=SETTINGS) == "booked"
+    assert await call_agent(ZINC, "search_merchants", ok, settings=SETTINGS) == "booked"
 
 
 async def test_unknown_merchant_is_not_found_without_url() -> None:
-    result = await call_agent(None, "get_availability", ok, settings=SETTINGS)
+    result = await call_agent(None, "search_merchants", ok, settings=SETTINGS)
 
     assert isinstance(result, ToolError)
     assert result.error == "not_found"
@@ -73,7 +73,7 @@ async def test_unknown_merchant_is_not_found_without_url() -> None:
 async def test_merchant_still_building_looks_unknown() -> None:
     building = RegistryEntry(ZINC.slug, ZINC.name, "building", URL)
 
-    result = await call_agent(building, "get_availability", ok, settings=SETTINGS)
+    result = await call_agent(building, "search_merchants", ok, settings=SETTINGS)
 
     assert isinstance(result, ToolError)
     assert result.error == "not_found"
@@ -88,7 +88,7 @@ async def test_down_merchant_gets_the_fallback_url_without_calling_the_agent() -
         return "booked"
 
     down = RegistryEntry(ZINC.slug, ZINC.name, "down", URL)
-    result = await call_agent(down, "create_reservation", op, settings=SETTINGS)
+    result = await call_agent(down, "talk_to_merchant", op, settings=SETTINGS)
 
     assert isinstance(result, ToolError)
     assert result.error == "agent_unavailable"
@@ -111,7 +111,7 @@ async def test_down_merchant_gets_the_fallback_url_without_calling_the_agent() -
     ],
 )
 async def test_errors_are_converted(error: Exception, code: ErrorCode, has_url: bool) -> None:
-    result = await call_agent(ZINC, "get_availability", raising(error), settings=SETTINGS)
+    result = await call_agent(ZINC, "search_merchants", raising(error), settings=SETTINGS)
 
     assert isinstance(result, ToolError)
     assert result.error == code
@@ -122,7 +122,7 @@ async def test_errors_are_converted(error: Exception, code: ErrorCode, has_url: 
 async def test_party_too_large_keeps_the_merchants_message_and_adds_the_link() -> None:
     error = PartyTooLarge("Le Petit Zinc takes online bookings for up to 6 guests")
 
-    result = await call_agent(ZINC, "get_availability", raising(error), settings=SETTINGS)
+    result = await call_agent(ZINC, "search_merchants", raising(error), settings=SETTINGS)
 
     assert isinstance(result, ToolError)
     assert result.message == (
@@ -132,7 +132,7 @@ async def test_party_too_large_keeps_the_merchants_message_and_adds_the_link() -
 
 async def test_validation_error_names_the_field_without_the_rejected_value() -> None:
     result = await call_agent(
-        ZINC, "get_availability", raising(validation_error()), settings=SETTINGS
+        ZINC, "search_merchants", raising(validation_error()), settings=SETTINGS
     )
 
     assert isinstance(result, ToolError)
@@ -148,7 +148,7 @@ async def test_slow_agent_times_out_at_the_deadline() -> None:
         return "booked"
 
     started = time.perf_counter()
-    result = await call_agent(ZINC, "get_availability", slow, settings=SETTINGS)
+    result = await call_agent(ZINC, "search_merchants", slow, settings=SETTINGS)
     elapsed = time.perf_counter() - started
 
     assert isinstance(result, ToolError)
@@ -157,22 +157,15 @@ async def test_slow_agent_times_out_at_the_deadline() -> None:
     assert elapsed < 0.3
 
 
-@pytest.mark.parametrize(
-    ("tool", "warned"),
-    [
-        ("create_reservation", True),
-        ("update_reservation", True),
-        ("cancel_reservation", True),
-        ("get_availability", False),
-    ],
-)
-async def test_a_write_that_timed_out_invites_to_check_before_retrying(
-    tool: str, warned: bool
-) -> None:
-    result = await call_agent(ZINC, tool, raising(TimeoutError()), settings=SETTINGS)
+@pytest.mark.parametrize("writes", [True, False])
+async def test_a_write_that_timed_out_invites_to_check_before_retrying(writes: bool) -> None:
+    # Only a talk carrying a `confirm` writes (#254): its caller says so.
+    result = await call_agent(
+        ZINC, "talk_to_merchant", raising(TimeoutError()), settings=SETTINGS, writes=writes
+    )
 
     assert isinstance(result, ToolError)
-    assert ("get_my_reservations" in result.message) is warned
+    assert ("get_my_reservations" in result.message) is writes
 
 
 async def test_unexpected_exception_is_logged_with_its_trace_but_never_returned(
@@ -182,7 +175,7 @@ async def test_unexpected_exception_is_logged_with_its_trace_but_never_returned(
 
     with caplog.at_level(logging.ERROR, logger="gateway.tools"):
         result = await call_agent(
-            ZINC, "get_availability", raising(RuntimeError(secret)), settings=SETTINGS
+            ZINC, "search_merchants", raising(RuntimeError(secret)), settings=SETTINGS
         )
 
     assert isinstance(result, ToolError)
@@ -199,7 +192,7 @@ async def test_cancellation_is_not_swallowed() -> None:
         await asyncio.sleep(10)
         return "booked"
 
-    task = asyncio.create_task(call_agent(ZINC, "get_availability", slow, settings=SETTINGS))
+    task = asyncio.create_task(call_agent(ZINC, "search_merchants", slow, settings=SETTINGS))
     await asyncio.sleep(0)
     task.cancel()
 
@@ -214,13 +207,13 @@ async def test_call_is_logged_as_one_json_line_without_guest_name(
         return GUEST
 
     with caplog.at_level(logging.INFO, logger="gateway.tools"):
-        await call_agent(ZINC, "create_reservation", booked_for_guest, settings=SETTINGS)
+        await call_agent(ZINC, "talk_to_merchant", booked_for_guest, settings=SETTINGS)
 
     records = [record for record in caplog.records if record.name == "gateway.tools"]
     assert len(records) == 1
     line = json.loads(JsonFormatter().format(records[0]))
     assert line["event"] == "tool_call"
-    assert line["tool"] == "create_reservation"
+    assert line["tool"] == "talk_to_merchant"
     assert line["merchant"] == "le-petit-zinc"
     assert line["outcome"] == "ok"
     assert isinstance(line["latency_ms"], int)
@@ -235,7 +228,7 @@ async def test_log_outcome_is_the_error_code(
     error: Exception, outcome: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.INFO, logger="gateway.tools"):
-        await call_agent(ZINC, "get_availability", raising(error), settings=SETTINGS)
+        await call_agent(ZINC, "search_merchants", raising(error), settings=SETTINGS)
 
     logged = [record for record in caplog.records if record.getMessage() == "tool_call"]
     assert [record.__dict__["outcome"] for record in logged] == [outcome]
@@ -250,7 +243,7 @@ async def test_chaos_delay_triggers_the_fallback_on_its_targets(
 ) -> None:
     settings = make_settings(chaos_delay_ms=200, chaos_merchants=targets)
 
-    result = await call_agent(ZINC, "get_availability", ok, settings=settings)
+    result = await call_agent(ZINC, "search_merchants", ok, settings=settings)
 
     assert isinstance(result, ToolError) is times_out
 
@@ -326,7 +319,7 @@ async def test_call_merchant_finds_the_merchant_then_calls_the_agent(
         return ZINC
 
     with caplog.at_level(logging.INFO, logger="gateway.tools"):
-        result = await call_merchant(ZINC.slug, "get_availability", find, ok, settings=SETTINGS)
+        result = await call_merchant(ZINC.slug, "search_merchants", find, ok, settings=SETTINGS)
 
     assert result == "booked"
     logged = [record for record in caplog.records if record.getMessage() == "tool_call"]
@@ -337,7 +330,7 @@ async def test_call_merchant_with_an_unknown_slug_is_not_found() -> None:
     async def find() -> None:
         return None
 
-    result = await call_merchant("nobody", "get_availability", find, ok, settings=SETTINGS)
+    result = await call_merchant("nobody", "search_merchants", find, ok, settings=SETTINGS)
 
     assert isinstance(result, ToolError)
     assert result.error == "not_found"
@@ -351,7 +344,7 @@ async def test_call_merchant_without_registry_is_unavailable_without_url(
         raise error
 
     with caplog.at_level(logging.INFO, logger="gateway.tools"):
-        result = await call_merchant(ZINC.slug, "create_reservation", find, ok, settings=SETTINGS)
+        result = await call_merchant(ZINC.slug, "talk_to_merchant", find, ok, settings=SETTINGS)
 
     assert isinstance(result, ToolError)
     assert result.error == "agent_unavailable"
@@ -453,7 +446,7 @@ async def test_the_log_line_has_no_batp_field_without_a_hop(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.INFO, logger="gateway.tools"):
-        await call_agent(ZINC, "get_availability", ok, settings=SETTINGS)
+        await call_agent(ZINC, "search_merchants", ok, settings=SETTINGS)
 
     line = json.loads(JsonFormatter().format(caplog.records[-1]))
     assert "batp_request" not in line
@@ -495,7 +488,7 @@ async def timed(call: Awaitable[Any]) -> tuple[Any, float]:
 
 async def test_call_merchant_answers_within_one_budget_when_the_lookup_is_slow() -> None:
     result, elapsed = await timed(
-        call_merchant("le-petit-zinc", "get_availability", slow_find, hang, settings=TIGHT)
+        call_merchant("le-petit-zinc", "search_merchants", slow_find, hang, settings=TIGHT)
     )
 
     assert isinstance(result, ToolError)
@@ -506,7 +499,7 @@ async def test_call_merchant_answers_within_one_budget_when_the_lookup_is_slow()
 
 async def test_call_merchant_answers_within_one_budget_when_the_registry_hangs() -> None:
     result, elapsed = await timed(
-        call_merchant("le-petit-zinc", "get_availability", hang, ok, settings=TIGHT)
+        call_merchant("le-petit-zinc", "search_merchants", hang, ok, settings=TIGHT)
     )
 
     assert isinstance(result, ToolError)
@@ -520,7 +513,7 @@ async def test_call_merchant_takes_the_deadline_of_the_whole_request() -> None:
 
     result, elapsed = await timed(
         call_merchant(
-            "le-petit-zinc", "get_availability", slow_find, ok, settings=TIGHT, deadline=deadline
+            "le-petit-zinc", "search_merchants", slow_find, ok, settings=TIGHT, deadline=deadline
         )
     )
 

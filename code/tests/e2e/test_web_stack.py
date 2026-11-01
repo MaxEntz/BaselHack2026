@@ -3,9 +3,11 @@
 Studio builds and publishes a merchant, its private link opens the management site in another
 browser, a guest books through the gateway and the booking shows up live, a time blocked on
 the Reservations page leaves the agent's answers, and a pause sends guests to the fallback.
-Real Postgres, platform (`default_app`), gateway and web app; only the model and the crawl are
-fakes. Needs a build of the current web sources (`make web-dist`, or `make test-stack`): CI
-builds it and fails without it, a local run without it, or with an older one, is skipped.
+Real Postgres, platform (`default_app`), gateway, BATP node and web app; only the models (the
+platform's, the merchant agent's) and the crawl are fakes: the guest books by talking to the
+merchant's agent (#254). Needs a build of the current web sources (`make web-dist`, or
+`make test-stack`): CI builds it and fails without it, a local run without it, or with an older
+one, is skipped.
 """
 
 import json
@@ -16,7 +18,6 @@ from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -35,14 +36,15 @@ from core.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
 from core.models import StepEvent
 from merchant_platform.api import default_app
 from tests.e2e.conftest import (
-    call,
+    book,
     free_port,
     offered,
-    running_gateway,
     serving,
     subscribed,
+    talk,
     tomorrow,
 )
+from tests.integration.agent_fakes import ScriptedLLM
 
 pytestmark = [pytest.mark.integration, pytest.mark.browser]
 
@@ -173,21 +175,22 @@ def built_web() -> None:
 
 
 @pytest.fixture(scope="module")
-def stack(built_web: None, e2e_database_url: str) -> Iterator[tuple[str, str, FastAPI]]:
-    """The web app with its platform, and the gateway, on one database: their base URLs, and
-    the platform itself."""
-    with running_gateway(Settings(_env_file=None, database_url=e2e_database_url)) as gateway:
-        port = free_port()
-        settings = Settings(
-            _env_file=None,
-            database_url=e2e_database_url,
-            platform_web_url=f"http://127.0.0.1:{port}",
-            gateway_public_url=gateway,
-            builder_cache="off",
-        )
-        platform = default_app(settings, llm=FakeModel(), crawler=fake_crawl)
-        with serving(web_app(platform), port) as web:
-            yield web, gateway, platform
+def stack(
+    built_web: None, e2e_database_url: str, talking_gateway: str
+) -> Iterator[tuple[str, str, FastAPI]]:
+    """The web app with its platform, and the gateway bridged to the talking node, on one
+    database: their base URLs, and the platform itself."""
+    port = free_port()
+    settings = Settings(
+        _env_file=None,
+        database_url=e2e_database_url,
+        platform_web_url=f"http://127.0.0.1:{port}",
+        gateway_public_url=talking_gateway,
+        builder_cache="off",
+    )
+    platform = default_app(settings, llm=FakeModel(), crawler=fake_crawl)
+    with serving(web_app(platform), port) as web:
+        yield web, talking_gateway, platform
 
 
 @pytest.fixture
@@ -222,7 +225,9 @@ async def build_and_publish(studio: Page, web: str) -> str:
     return link.group(0)
 
 
-async def test_a_merchants_first_evening(browser: Browser, stack: tuple[str, str, FastAPI]) -> None:
+async def test_a_merchants_first_evening(
+    browser: Browser, stack: tuple[str, str, FastAPI], agent_llm: ScriptedLLM
+) -> None:
     web, gateway, platform = stack
     studio_browser = await browser.new_context()
     link = await build_and_publish(await studio_browser.new_page(), web)
@@ -242,37 +247,28 @@ async def test_a_merchants_first_evening(browser: Browser, stack: tuple[str, str
 
     # A guest books through the gateway: the booking shows up live, with no reload.
     day = tomorrow()
-    booked = await call(
-        gateway,
-        "create_reservation",
-        merchant=slug,
-        starts_at=datetime.combine(day, datetime.strptime("20:00", "%H:%M").time(), TZ).isoformat(),
-        party_size=2,
-        guest_name="Lena Koch",
-        idempotency_key=str(uuid4()),
-    )
-    assert booked["reservation"]["status"] == "confirmed"
+    starts_at = datetime.combine(day, datetime.strptime("20:00", "%H:%M").time(), TZ)
+    booked = await book(gateway, agent_llm, slug, starts_at, "Lena Koch")
+    assert booked["status"] == "confirmed"
     # The bell counts what arrived since the page loaded (the toast gives way to the assistant
     # panel, open at this width); Home's feed reads the booking again.
     await expect(manage.get_by_role("button", name="Notifications")).to_have_text("1")
     await expect(activity).to_contain_text("Lena Koch, 2 guests")
 
     # A time blocked on the Reservations page leaves the agent's answers.
-    assert "21:00" in await offered(gateway, slug, day, "21:00")
+    assert "21:00" in await offered(gateway, agent_llm, slug, day, "21:00")
     await manage.goto(f"{web}/manage/{slug}/reservations?date={day.isoformat()}")
     await manage.get_by_role("button", name="Block a time").click()
     dialog = manage.get_by_role("dialog")
     await dialog.locator("label", has_text="21:00").click()
     await dialog.get_by_role("button", name="Save").click()
     await expect(manage.locator(".toast")).to_contain_text("Blocked 21:00")
-    assert "21:00" not in await offered(gateway, slug, day, "21:00")
+    assert "21:00" not in await offered(gateway, agent_llm, slug, day, "21:00")
 
     # Paused, the agent sends guests to the merchant's own booking page.
     await manage.goto(f"{web}/manage/{slug}/agent")
     await manage.get_by_role("button", name="Pause the agent").click()
     paused = manage.get_by_text("Paused. Guests get your booking page.", exact=True)
     await expect(paused).to_be_visible()
-    refused = await call(
-        gateway, "get_availability", merchant=slug, date=day.isoformat(), party_size=2
-    )
+    refused = await talk(f"{gateway}/mcp", "A table for 2 tomorrow?", merchant=slug)
     assert (refused.get("error"), refused.get("fallback_url")) == ("agent_unavailable", WEBSITE)
