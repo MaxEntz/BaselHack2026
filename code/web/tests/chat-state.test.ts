@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { ChatEvent } from "../src/types.ts";
+import type { ChatEvent, ConversationItem } from "../src/types.ts";
 import {
   type ChatAction,
   type ChatState,
@@ -121,4 +121,31 @@ test("a built agent's card leaves the pill on building until it is published (#1
     { type: "chat", event: { type: "step", step: "deploy", status: "done" } },
   );
   assert.equal(published.status, "live");
+});
+
+// External JSON (#220): an event or a kept item of a type this build doesn't know changes
+// nothing, rather than leaving Studio with no state.
+test("an unknown chat event leaves the state as it is", () => {
+  const state = midBuild();
+  const unknown = { type: "zzz" } as unknown as ChatEvent;
+
+  assert.equal(chatReducer(state, { type: "chat", event: unknown }), state);
+});
+
+test("a kept conversation drops the items it doesn't know", () => {
+  const items = [
+    { type: "user", text: "Hi" },
+    { type: "zzz", text: "from a newer platform" },
+    { type: "assistant", text: "Hello" },
+  ] as unknown as ConversationItem[];
+
+  const restored = chatReducer(initialChatState("Hello", ZINC), { type: "restore", items });
+
+  assert.deepEqual(
+    restored.items.map((item) => [item.type, item.id]),
+    [
+      ["user", "1"],
+      ["assistant", "2"],
+    ],
+  );
 });

@@ -9,7 +9,8 @@ npm ci
 npm run dev                # http://localhost:5173, /api → http://localhost:8002
 VITE_MOCK=1 npm run dev    # no backend: replays src/mocks/*.json
 npm run build              # tsc (strict) + vite build
-npm run lint
+npm run lint               # oxlint: hooks' dependencies, no function over 100 lines in src/, tests apart (#220)
+npm run knip               # no unused file, export or dependency (#220)
 npm run check:contracts    # mocks vs src/types.ts
 npm run check:bundle       # after npm run build: no mock, fixture or gallery in dist/ (#220)
 npm test                   # tests/*.test.ts on Node's own runner (Node version: ../README.md), then Vitest (src/**/*.test.{ts,tsx})
@@ -21,7 +22,8 @@ npm run test:visual:docker # screenshots (e2e/visual.spec.ts) in Playwright's Do
 Routes ([ADR-0017](../../documentation/adr/0017-router-and-test-tools-for-the-management-site.md)):
 `/` is Studio, `/manage/<slug>` and `/manage/<slug>/<page>`
 (`assistant`, `reservations`, `guests`, `hours`, `floor`, `rules`, `agent`, `settings`) the
-management site. An unknown page goes to that merchant's Home, any other path to `/`.
+management site. An unknown page goes to that merchant's Home, any other path to `/`. The management
+site is its own chunk, loaded on its first visit (`src/management/LazyManagePage.tsx`, #220).
 
 `e2e/primitives.spec.ts` compares each management primitive's computed styles with the v10
 mockup (`documentation/design/poc-v10/sesame-management.html`), and `e2e/shell.spec.ts` the shell's
@@ -42,9 +44,9 @@ profile, reservations incl. empty, stats, policy, notifications, errors). It exi
 A production build (`npm run build`) holds no mock, demo fixture or gallery, and no demo restaurant unless
 `VITE_DEMO=1` (#220): they are read through `import.meta.env.VITE_MOCK` written in full, which Vite replaces
 at build time, and loaded with dynamic `import()`. `npm run check:bundle`, after the build (the CI `web` job
-runs it), fails if `dist/` holds one of them or any `.jpg`. The mock build inlines those imports
-(`vite.config.ts`), so that it ships one chunk and one stylesheet in the production order, as the
-screenshots need.
+runs it), fails if `dist/` holds one of them or any `.jpg`. The mock build inlines every dynamic import
+(`vite.config.ts`), so that it ships one chunk and one stylesheet, in the order the screenshots were
+taken with: the production build's rules, the management site's before Studio's.
 
 ## Environment
 
@@ -76,9 +78,9 @@ the code once and removes it from the address bar.
 - `src/studio/`: Studio (#141). `StudioPage.tsx` puts the page together from its parts and hooks.
   `phase.ts` holds, as pure functions, what each conversation state
   shows: the phase, the feed, the chips and the top bar's pill. `feed.tsx` draws the feed and its
-  cards with the fixed sentences, `Hello.tsx` the empty conversation's question, `TopBar.tsx` the
+  cards with the fixed sentences, `Hello.tsx` the empty conversation's question (in the feed's log, so that the first reply is announced), `TopBar.tsx` the
   top bar, `Rail.tsx` the restaurants on the left, `PaneSwitch.tsx` the narrow layout's two panes,
-  `Composer.tsx` the chips and the message box, `Canvas.tsx` the pasteboard and the public site as read,
+  `Composer.tsx` the chips and the message box (it holds the text typed, so a keystroke redraws only it), `Canvas.tsx` the pasteboard and the public site as read,
   `AgentSheet.tsx` the agent site's frames, `motion.ts` the split's opening (the crossfades are
   `src/management/motion.ts`'s), `publish.ts` the top bar's Publish (the route, with no model in
   the way), `chatClient.ts` the chat's client, the mock's with `VITE_MOCK=1`, and its welcome.
@@ -87,7 +89,9 @@ the code once and removes it from the address bar.
   `useOverview.ts`, what the platform knows of the merchant; `useTurns.ts`, what the messages,
   chips and buttons start; `useCopy.ts`, the copy buttons' toast.
   `src/moments.ts` works out the moment of the day for Home's top and for Studio's dock; add
-  `?moment=morning|before|during|after` to `/manage/<slug>` to preview one. Its classes start with `st-`, because `cards.css` is global.
+  `?moment=morning|before|during|after` to `/manage/<slug>` to preview one. In Studio's frame, the page
+  posts `sesame:moment-ready` once it listens, and the dock's moment goes to it then (`sesame:moment`).
+  Its classes start with `st-`, because `cards.css` is global.
 - `src/chat/state.ts`: `ChatItem` union and the pure reducer that turns `ChatEvent`
   and `LiveEvent` into chat items (steps of one build grouped, text deltas merged).
 - `src/chat/client.ts`: `POST /api/chat` SSE client and `EventSource` on
@@ -108,6 +112,8 @@ the code once and removes it from the address bar.
 - `src/router.tsx`, `src/Studio.tsx`: the routes; `src/RouteError.tsx`, what a page that fails to
   draw shows instead.
 - `src/clipboard.ts`: the copy buttons' clipboard, and the text to copy by hand without one.
+- `src/ime.ts`: `composing`, true while an input method composes, so that its Enter doesn't send.
+- `src/json.ts`: `isRecord` and `typesOf`, to narrow the platform's JSON before reading it.
 - `src/management/`: the management site. `tokens.css` (scoped to `.mg`, light only),
   `fonts.css` and `fonts/` (Fraunces Soft, Karla, self-hosted with their OFL licences),
   `ui/` (Pill, Tag, Box, Blob, Under, Doodle, Seed, Icon, Field, Dialog, Toast, SaveBar, Source),

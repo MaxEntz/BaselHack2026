@@ -1,10 +1,11 @@
+import { plural } from "../../../cards/format.ts";
 import type { MomentAt } from "../../../moments.ts";
 import type { ManagedReservation, Rules, Service } from "../../../types.ts";
 import { Box, Source } from "../../ui/index.ts";
 import { bookings, guests, minutes, serviceWord, throughAgent } from "./format.ts";
 
-const services = (n: number) => `${n} ${n === 1 ? "service" : "services"}`;
-const seats = (n: number) => `${n} ${n === 1 ? "seat" : "seats"}`;
+const services = (n: number) => plural(n, "service");
+const seats = (n: number) => plural(n, "seat");
 const capitalized = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 
 type MomentPanelProps = {
