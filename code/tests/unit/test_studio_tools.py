@@ -194,6 +194,8 @@ async def test_update_knowledge_shows_what_the_agent_stops_and_starts_saying() -
         }
     ]
     assert "Saved. Your agent answers guests with this from now on." in said(llm)
+    # What it removed is the site's own words: on the card, never for this model (#248).
+    assert "Tartare" not in said(llm)
 
 
 async def test_update_knowledge_says_when_it_changed_nothing() -> None:

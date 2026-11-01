@@ -764,6 +764,8 @@ async def test_the_crawled_quotes_never_reach_the_model() -> None:
         {"title": "No cancellation policy on your site.", "detail": "Guests see none."}
     ]
     assert "6 personnes" not in message["content"]
+    assert "Kougelhopf" in PROFILE.model_dump_json()  # the demo profile's knowledge
+    assert "Kougelhopf" not in message["content"]
     [card] = [e for e in events if e.get("kind") == "profile"]
     assert card["data"]["facts"][0]["quote"] == "jusqu'à 6 personnes"
 

@@ -130,11 +130,14 @@ class BookingTools:
         change = await self._agent.update_knowledge(slug, arguments.remove, arguments.add)
         if not change.removed and not change.added:
             return confirmation(KNOWLEDGE_UNCHANGED)
+        # Counts only: what it removed is the crawled site's own words, for the merchant's card,
+        # never for a model that holds write tools (ARCHITECTURE.md §4).
         return Outcome(
             {
                 "shown_to_merchant": "change",
                 "text": KNOWLEDGE_SAVED,
-                **change.model_dump(mode="json"),
+                "removed": len(change.removed),
+                "added": len(change.added),
             },
             diff(
                 KNOWLEDGE, "; ".join(change.removed) or None, "; ".join(change.added) or "Removed"
