@@ -5,6 +5,7 @@ bridge: Claude still speaks MCP to it, and it speaks BATP to the node serving th
 (`documentation/PROTOCOL.md`, §12). Tools only know the `AgentClient` interface.
 """
 
+import logging
 from datetime import date, datetime
 from typing import Protocol
 from uuid import uuid4
@@ -32,9 +33,13 @@ from core.models import (
     SearchMerchantsInput,
     SearchMerchantsOutput,
     Slot,
+    TalkInput,
+    TalkOutput,
     UpdateReservationInput,
 )
 from gateway.fallback import batp_request
+
+log = logging.getLogger("gateway.agent_client")
 
 GATEWAY_AGENT = AgentIdentity(
     id="urn:batp:agent:claude-gateway",
@@ -42,6 +47,8 @@ GATEWAY_AGENT = AgentIdentity(
     kind="user-agent",
     operator="merchant-agents",
 )
+# The merchants' agents are LLMs served by the node (#249): this process has none to talk to.
+NO_TALK_IN_PROCESS = "The merchant's agent only answers through a BATP node: set BATP_URL."
 
 
 class AgentClient(Protocol):
@@ -79,6 +86,10 @@ class AgentClient(Protocol):
     ) -> Reservation: ...
 
     async def get_my_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]: ...
+
+    async def talk(self, turn: TalkInput) -> TalkOutput:
+        """One message to the merchant's agent, and its answer (`TALK`, #245)."""
+        ...
 
     async def close(self) -> None: ...
 
@@ -134,6 +145,10 @@ class LocalAgentClient:
 
     async def get_my_reservations(self, guest_name: str) -> tuple[list[Reservation], list[str]]:
         return await self.service.find_guest_reservations(guest_name)
+
+    async def talk(self, turn: TalkInput) -> TalkOutput:
+        """Never: the gateway has no LLM. The guest gets the fallback URL; dev runs `make node`."""
+        raise AgentUnavailable(NO_TALK_IN_PROCESS)
 
     async def close(self) -> None:
         pass
@@ -223,6 +238,10 @@ class BatpAgentClient:
         result = await self._request("RECALL", None, params, GetMyReservationsOutput)
         return list(result.reservations), list(result.notices)
 
+    async def talk(self, turn: TalkInput) -> TalkOutput:
+        """A `TALK`. The client never resends it on a lost session: the caller retries, same key."""
+        return await self._request("TALK", turn.merchant, turn, TalkOutput)
+
     async def close(self) -> None:
         await self.client.close()
 
@@ -230,6 +249,8 @@ class BatpAgentClient:
 def make_agent_client(settings: Settings, engine: AsyncEngine) -> AgentClient:
     """Over BATP when `BATP_URL` is set, in this process otherwise."""
     if not settings.batp_url:
+        if settings.gateway_talk:
+            log.warning("GATEWAY_TALK without BATP_URL: every talk gets the fallback URL")
         service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
         return LocalAgentClient(service, engine)
     host, port = parse_batp_url(settings.batp_url)
