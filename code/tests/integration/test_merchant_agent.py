@@ -97,6 +97,37 @@ class ScriptedLLM:
         return reply
 
 
+class HangingLLM(ScriptedLLM):
+    """After `hang()`, its next call never answers: the caller cuts the turn short."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.hanging = asyncio.Event()
+        self._hang = False
+
+    def hang(self) -> None:
+        self._hang = True
+
+    async def respond(self, **kwargs: Any) -> LLMReply:
+        if not self._hang:
+            return await super().respond(**kwargs)
+        self._hang = False
+        self.calls.append(kwargs)
+        self.hanging.set()
+        await asyncio.Event().wait()
+        raise AssertionError("never answers")
+
+
+async def cut_short(llm: HangingLLM, talking: Awaitable[TalkOutput]) -> None:
+    """Cancels the turn while the model is called, as the node does past its deadline, on a
+    closed session or a stop."""
+    task = asyncio.ensure_future(talking)
+    await llm.hanging.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
 class LoopingLLM(ScriptedLLM):
     async def respond(self, **kwargs: Any) -> LLMReply:
         self.calls.append(kwargs)
@@ -572,6 +603,59 @@ async def test_a_confirmed_booking_is_reported_when_the_model_fails_after_it(
         "November 2026 at 20:00, under the name Lena Koch."
     )
     assert await bookings(engine, slug) == [(GUEST, "20:00", 2)]
+
+
+async def test_a_confirm_cut_short_after_the_write_replays_the_booking(
+    slug: str, service: PgAgentService, engine: AsyncEngine, clock: Clock
+) -> None:
+    llm = HangingLLM()
+    agent = agent_for(llm, service, engine, clock)
+    first = await proposed(agent, llm, slug)
+    assert first.pending is not None
+    yes = message(slug, "Yes", conversation=first.conversation, confirm=first.pending.id)
+    llm.hang()
+    await cut_short(llm, agent.talk(slug, CALLER, yes))
+    assert await bookings(engine, slug) == [(GUEST, "20:00", 2)]
+
+    calls_before = len(llm.calls)
+    replayed = await agent.talk(slug, CALLER, yes)
+    assert replayed.reservation is not None and replayed.reservation.status == "confirmed"
+    assert replayed.reply.startswith(f"Booked: booking {replayed.reservation.id}, ")
+    assert replayed.tools_called == ("create_reservation",)
+    assert replayed.pending is None
+    assert len(llm.calls) == calls_before
+    assert await bookings(engine, slug) == [(GUEST, "20:00", 2)]
+
+    # The yes is in the history once, answered by what code did.
+    llm.then(says("You're welcome."))
+    await agent.talk(slug, CALLER, message(slug, "Thanks", conversation=first.conversation))
+    history = llm.calls[-1]["history"]
+    assert [m for m in history if m["role"] == "user"][-2:] == [
+        {"role": "user", "content": "Yes"},
+        {"role": "user", "content": "Thanks"},
+    ]
+    assert history[-2]["role"] == "assistant" and history[-2]["content"] == replayed.reply
+
+
+async def test_a_turn_cut_short_before_any_write_leaves_nothing_behind(
+    slug: str, service: PgAgentService, engine: AsyncEngine, clock: Clock
+) -> None:
+    llm = HangingLLM()
+    store = Conversations(clock=clock.monotonic)
+    agent = MerchantAgent(
+        llm, service, registry_merchants(engine), TZ, conversations=store, clock=clock
+    )
+    first = message(slug, "Table for 2 on Monday?")
+    llm.hang()
+    await cut_short(llm, agent.talk(slug, CALLER, first))
+
+    llm.then(says("Monday: 19:00, 19:30 or 20:00."))
+    output = await agent.talk(slug, CALLER, first)
+    assert output.reply == "Monday: 19:00, 19:30 or 20:00."
+    assert llm.calls[-1]["history"] == [{"role": "user", "content": first.message}]
+    # The cut turn doesn't count against the conversation's 20 messages.
+    later = message(slug, "And Tuesday?", conversation=output.conversation)
+    assert store.open(slug, CALLER, later).turns == 1
 
 
 async def test_an_expired_proposal_writes_nothing(
