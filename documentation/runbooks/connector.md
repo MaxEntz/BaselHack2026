@@ -52,6 +52,7 @@ It never touches `/opt/merchant-agents/code/.env`, and stops before touching Cad
 DATABASE_URL=postgresql+psycopg://merchant:…@127.0.0.1:5432/merchant_agents   # without it, neither service starts
 GATEWAY_PUBLIC_URL=https://191-96-88-152.sslip.io   # no /mcp; without it, every public request gets 421
 BATP_TOKENS='{"urn:batp:agent:claude-gateway":"…"}' # node: one token per known agent, 16+ characters
+# with `make guest` (#252), also its own: '{"urn:batp:agent:claude-gateway":"…","urn:batp:agent:sesame-guest":"…"}'
 BATP_URL=batp://127.0.0.1:4710                      # gateway: go through the node
 BATP_TOKEN=…                                        # gateway: its token, the one listed in BATP_TOKENS
 # every caller; Caddy adds it for Claude.ai (ADR-0019)

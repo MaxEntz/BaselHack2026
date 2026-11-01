@@ -25,9 +25,14 @@ gateway: ## MCP server -> http://localhost:8001/mcp
 node: ## BATP node (our agent protocol) -> batp://127.0.0.1:4710
 	uv run python -m merchant_node
 
+# The guest's message reaches the script through the environment, as typed: quotes, `$(…)` and
+# backticks in it stay text, and make doesn't expand it either.
+override MESSAGE := $(value MESSAGE)
+export MESSAGE
+
 guest: ## A guest's own AI agent talking to the merchants' agents over BATP (MESSAGE="Table for 2 tonight")
-	@test -n "$(MESSAGE)" || { echo 'Say what the guest wants: make guest MESSAGE="Table for 2 tonight at 8pm"' >&2; exit 1; }
-	uv run python scripts/batp_guest.py "$(MESSAGE)"
+	@test -n "$$MESSAGE" || { echo 'Say what the guest wants: make guest MESSAGE="Table for 2 tonight at 8pm"' >&2; exit 1; }
+	uv run python scripts/batp_guest.py "$$MESSAGE"
 
 platform: ## Platform API -> http://localhost:8002
 	uv run uvicorn merchant_platform.api:app --port 8002
