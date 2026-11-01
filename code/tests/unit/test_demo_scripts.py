@@ -1,5 +1,6 @@
 """Seed, demo reset and outage switch (#10), with provisioning (#7) and the service (#8) faked."""
 
+from collections.abc import Iterator
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
@@ -41,6 +42,7 @@ class FakeRegistry:
         self.engines_used: set[object] = set()
         self.statuses: dict[str, str] = {}
         self.provisioned: list[str] = []
+        self.profiles: dict[str, MerchantProfile] = {}
         self.invalid: set[str] = set()
 
     async def provision(self, profile: MerchantProfile, *, engine: object = None) -> None:
@@ -50,6 +52,7 @@ class FakeRegistry:
         if profile.slug in self.statuses:
             raise SlugTaken(f"Merchant {profile.slug!r} is already provisioned")
         self.provisioned.append(profile.slug)
+        self.profiles[profile.slug] = profile
         self.statuses[profile.slug] = "building"
 
     async def deploy(self, slug: str, *, engine: object = None) -> None:
@@ -96,13 +99,17 @@ class FakeAgent:
 
 
 @pytest.fixture
-def registry(monkeypatch: pytest.MonkeyPatch) -> FakeRegistry:
+def registry(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRegistry]:
     fake = FakeRegistry()
     for name in ("provision", "deploy", "set_status"):
         monkeypatch.setattr(provisioning, name, getattr(fake, name), raising=False)
     monkeypatch.setattr(provisioning, "SlugTaken", SlugTaken, raising=False)
     monkeypatch.setattr(seed, "make_engine", lambda: fake.engine)
-    return fake
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost:5432/db")
+    monkeypatch.delenv("DEMO_SITES_DOMAIN", raising=False)
+    get_settings.cache_clear()
+    yield fake
+    get_settings.cache_clear()
 
 
 @pytest.fixture
@@ -124,6 +131,41 @@ def test_demo_mode_seeds_every_merchant_but_le_petit_zinc(registry: FakeRegistry
     assert registry.statuses == {"la-graine-verte": "live", "maison-albane": "live"}
     assert registry.engines_used == {registry.engine}
     assert registry.engine.disposed
+
+
+def test_seeded_links_stay_local_without_a_sites_domain(registry: FakeRegistry) -> None:
+    assert seed.main(["--except", "le-petit-zinc"]) == 0
+
+    profile = registry.profiles["la-graine-verte"]
+    assert str(profile.website) == "http://localhost:8081/"
+    assert str(profile.fallback_url) == "http://localhost:8081/#reserver"
+
+
+def test_seeded_links_open_the_public_sites_with_a_sites_domain(
+    registry: FakeRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEMO_SITES_DOMAIN", "sites.example")
+    get_settings.cache_clear()
+
+    assert seed.main(["--all"]) == 0
+
+    assert {
+        slug: (str(profile.website), str(profile.fallback_url))
+        for slug, profile in registry.profiles.items()
+    } == {
+        "le-petit-zinc": (
+            "https://le-petit-zinc.sites.example/",
+            "https://le-petit-zinc.sites.example/reservation.html",
+        ),
+        "la-graine-verte": (
+            "https://la-graine-verte.sites.example/",
+            "https://la-graine-verte.sites.example/#reserver",
+        ),
+        "maison-albane": (
+            "https://maison-albane.sites.example/",
+            "https://maison-albane.sites.example/#reserver",
+        ),
+    }
 
 
 def test_seeding_again_keeps_existing_merchants_and_sets_them_live(
