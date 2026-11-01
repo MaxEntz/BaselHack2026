@@ -232,19 +232,20 @@ class MerchantAgent:
         """One message from the guest's agent `caller` (the BATP session's `agent.id`).
 
         `NotFound` for an unknown, unpublished or expired conversation or merchant;
-        `AgentUnavailable` when the model fails or runs out of time before any write.
+        `AgentUnavailable` when the model fails or runs out of time before any write;
+        `InvalidInput` for a key already sent with another message (`conversations.fingerprint`).
         """
         started = time.monotonic()
-        conversation = self._conversations.open(slug, caller, inp.conversation, inp.idempotency_key)
+        conversation = self._conversations.open(slug, caller, inp)
         async with conversation.lock:
-            if (stored := conversation.answers.get(inp.idempotency_key)) is not None:
+            if (stored := conversation.answered(inp)) is not None:
                 self._log(conversation, Turn(outcome="replayed"), started)
                 return stored
             conversation.take_turn()
             merchant = await self._merchant(slug)
             turn = Turn()
             output = await self._answer(conversation, merchant, inp, turn)
-            conversation.answers[inp.idempotency_key] = output
+            conversation.keep(inp, output)
         self._log(conversation, turn, started)
         return output
 

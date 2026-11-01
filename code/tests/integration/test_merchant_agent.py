@@ -19,7 +19,7 @@ from agent.guest_tools import PROPOSAL_TTL, SPECS
 from agent.service import PgAgentService
 from agent.talk import NOT_PENDING, TOO_MANY_STEPS, MerchantAgent, registry_merchants
 from core.db import merchant_conn, reservations_t
-from core.errors import AgentUnavailable, NotFound
+from core.errors import AgentUnavailable, InvalidInput, NotFound
 from core.llm import LLMReply, LLMUnavailable, Message, OnText, ToolCall, ToolSpec
 from core.models import TalkInput, TalkOutput
 
@@ -357,6 +357,39 @@ async def test_a_replayed_message_gets_the_same_answer_with_no_model_call(
     second = await agent.talk(slug, CALLER, later)
     assert await agent.talk(slug, CALLER, later) == second
     assert len(llm.calls) == 2
+
+
+async def test_two_guests_behind_one_gateway_with_the_same_key_dont_share_a_conversation(
+    slug: str, service: PgAgentService, engine: AsyncEngine, clock: Clock
+) -> None:
+    # The gateway carries all its guests under one `agent.id`, and any caller picks its keys.
+    llm = ScriptedLLM(
+        calls(
+            call(
+                "propose_booking", starts_at=at("20:00").isoformat(), party_size=2, guest_name=GUEST
+            )
+        ),
+        says("I can book 20:00 for 2. Shall I?"),
+    )
+    agent = agent_for(llm, service, engine, clock)
+    guest_a = TalkInput(
+        merchant=slug, message="Table for 2 at 20:00, Lena", idempotency_key="talk-1"
+    )
+    theirs = await agent.talk(slug, CALLER, guest_a)
+    assert theirs.pending is not None
+    guest_b = guest_a.model_copy(update={"message": "Table for 6 on Friday?"})
+
+    with pytest.raises(InvalidInput, match="another message"):
+        await agent.talk(slug, CALLER, guest_b)
+    assert len(llm.calls) == 2
+    assert await agent.talk(slug, CALLER, guest_a) == theirs  # A's own replay still works
+    # Within a conversation too: a key comes back only with its own message.
+    llm.then(says("Under which name?"))
+    later = message(slug, "At 20:00", conversation=theirs.conversation)
+    await agent.talk(slug, CALLER, later)
+    with pytest.raises(InvalidInput, match="another message"):
+        await agent.talk(slug, CALLER, later.model_copy(update={"message": "At 21:00"}))
+    assert await bookings(engine, slug) == []
 
 
 @pytest.mark.parametrize("status", ["building", "down"])
