@@ -214,7 +214,7 @@ describe("Studio's canvas", () => {
       await screen.findByText("Book a table for 2 tonight at 20:00.");
       fake.talkToAgent.mockResolvedValueOnce({
         ...proposed,
-        talk: { ...answer, reply: "It's booked.", pending: null, tools_called: ["create_reservation"] },
+        talk: { ...answer, reply: "It's booked.", pending: null, tools_called: [] },
       });
       await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
       expect(fake.talkToAgent).toHaveBeenLastCalledWith("la-graine-verte", {

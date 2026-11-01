@@ -332,11 +332,15 @@ test("saving rules, hours or settings rewrites what an AI agent reads", async ()
   const rules = await mock.saveRules(SLUG, { ...RULES, max_party_size: 2, cancellation_policy: "" });
 
   assert.equal(rules.cancellation_policy, null);
-  assert.equal(
-    rules.tools[0]?.description,
-    "Check free tables at La Graine (Mulhouse). Services: 11:30-14:30, 18:30-21:30. Groups up to 2.",
+  // One tool, to talk to the agent: only it calls the booking tools (#254).
+  assert.deepEqual(
+    rules.tools.map((tool) => tool.name),
+    ["talk_to_merchant"],
   );
-  assert.match(rules.tools[3]?.description ?? "", /Policy: see the restaurant's own website\.$/);
+  const read = rules.tools[0]?.description ?? "";
+  assert.ok(read.startsWith("Talk to the agent of La Graine (Mulhouse)"));
+  assert.ok(read.includes("Services: 11:30-14:30, 18:30-21:30. Groups up to 2."));
+  assert.match(read, /Policy: see the restaurant's own website\.$/);
   assert.equal((await mock.dashboard(SLUG)).room.largest_group, 2);
 });
 

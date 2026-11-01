@@ -8,9 +8,6 @@
   },
   "default_tables_rule": "When seats >= 30, 6 of the seats go to one 6-seat table; the rest goes to 4-seat tables, then 2-seat tables for the remainder (rounded up). Labels T1, T2, ... with the 6-seat table last.",
   "tools": [
-    { "name": "get_availability", "description": "Check free tables at {name} ({city}). Services: {services}. Groups up to {max_party_size}." },
-    { "name": "create_reservation", "description": "Book a table at {name}. Always confirm with the guest first." },
-    { "name": "update_reservation", "description": "Move or resize a booking at {name}." },
-    { "name": "cancel_reservation", "description": "Cancel a booking at {name}. Policy: {cancellation_policy}." }
+    { "name": "talk_to_merchant", "description": "Talk to the agent of {name} ({city}) in natural language: it answers about the restaurant, offers free tables and books once the guest says yes. Services: {services}. Groups up to {max_party_size}. Policy: {cancellation_policy}." }
   ]
 }

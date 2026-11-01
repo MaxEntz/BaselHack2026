@@ -11,7 +11,7 @@ from batp.messages import Request
 from core.errors import NotFound
 from merchant_node.agents import MerchantAgents
 
-REQUEST = Request(id="r-1", intent="AVAILABILITY", merchant="le-petit-zinc")
+REQUEST = Request(id="r-1", intent="TALK", merchant="le-petit-zinc")
 
 
 def agents_whose_registry(raises: Exception, monkeypatch: pytest.MonkeyPatch) -> MerchantAgents:
