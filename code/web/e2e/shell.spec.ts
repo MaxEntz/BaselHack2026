@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type Page, expect, test } from "@playwright/test";
+import { openMockup } from "./mockup.ts";
 
 // The management shell (#137) beside the v10 mockup, at 1440 and 390 px, with the demo fixture
 // and its clock at 19:40: the sidebar, the top bar and the assistant's column take the same
@@ -75,7 +76,7 @@ for (const width of [1440, 390]) {
       await settle(page);
 
       const mockup = await browser.newPage({ viewport: { width, height: 900 } });
-      await mockup.goto(`${pathToFileURL(MOCKUP).href}#home`);
+      await openMockup(mockup, `${pathToFileURL(MOCKUP).href}#home`);
       await settle(mockup);
 
       for (const [name, selector, text] of PARTS) {
@@ -138,7 +139,7 @@ for (const [width, path, hash] of [
       await settle(page);
 
       const mockup = await browser.newPage({ viewport: { width, height: 900 } });
-      await mockup.goto(`${pathToFileURL(MOCKUP).href}${hash}`);
+      await openMockup(mockup, `${pathToFileURL(MOCKUP).href}${hash}`);
       await settle(mockup);
 
       for (const [name, selector] of FEED) {

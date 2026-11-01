@@ -7,7 +7,8 @@ import type { Look } from "../types.ts";
 /**
  * La Graine Verte's look. `tokens.css` holds its values as the mockup picked them by hand (its
  * darker shades follow no single formula), so this look sets no variable and the site stays the
- * mockup exactly. A merchant without a look gets it too.
+ * mockup, but for the olive, darker there as `lookStyle` would make it. A merchant without a look
+ * gets it too.
  */
 export const DEFAULT_LOOK: Look = {
   bg: "#edebe2",
@@ -30,6 +31,8 @@ const RED = "#a3322a";
 const TEXT_CONTRAST = 4.5;
 const STEP = 0.08;
 const MAX_STEPS = 40;
+// The darker shades of the accents: the band under the sidebar and cards, the deep brick.
+const SHADE = 0.08;
 const ORGANIC_RADIUS = 30;
 
 const SERIF = 'Georgia, "Times New Roman", serif';
@@ -46,17 +49,18 @@ export type Corners = Look["corners"];
 /** The CSS variables of `look` for the site's root; none for the default look. */
 export function lookStyle(look: Look | null | undefined): CSSProperties {
   if (!look || sameLook(look, DEFAULT_LOOK)) return {};
+  const { olive, band, on } = accent(look);
   const variables: Record<string, string> = {
     "--bg": look.bg,
     "--cream": look.surface,
     "--line": look.line,
     "--ink": look.ink,
     "--mut": look.muted,
-    "--olive": look.accent,
+    "--olive": olive,
     "--brick": look.accent_2,
-    "--on": look.on_accent,
-    "--olive-band": darker(look.accent, 0.08),
-    "--brick-deep": darker(look.accent_2, 0.08),
+    "--on": on,
+    "--olive-band": band,
+    "--brick-deep": darker(look.accent_2, SHADE),
     "--line-2": darker(look.line, 0.1),
     "--display": DISPLAY[look.display_font],
     "--body": BODY[look.body_font],
@@ -88,15 +92,40 @@ function stroke(color: string): string {
   return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 36' preserveAspectRatio='none'%3E%3Cpath fill='${fill}' d='M2 22C70 11 170 5 297 6c3 0 3 3 0 3C200 11 120 16 42 26 20 29 0 27 2 22Z'/%3E%3Cpath fill='${fill}' d='M92 29c38-7 76-11 112-14 3 0 3 3 0 4-34 4-72 10-110 15-4 0-6-3-2-5Z'/%3E%3C/svg%3E")`;
 }
 
-/** `color` as is if it reads on every background, else lightened (dark page) or darkened. */
+/**
+ * The accent, its band and the text on them, at 4.5:1 whatever the merchant picked (#153): the
+ * accent moves away from the page (darker, or lighter on a dark page) until titles in it read on
+ * the page and the cards, then further if no text colour reads on both it and its band. The
+ * second accent is the platform's to check (#209).
+ */
+function accent(look: Look): { olive: string; band: string; on: string } {
+  const away = isDark(look.bg) ? lighter : darker;
+  let olive = readable(look.accent, [look.bg, look.surface]);
+  for (let step = 0; ; step++) {
+    const band = darker(olive, SHADE);
+    const on = readable(look.on_accent, [olive, band]);
+    if (step === MAX_STEPS || reads(on, [olive, band])) return { olive, band, on };
+    olive = away(olive, STEP);
+  }
+}
+
+/**
+ * `color` as is if it reads on every background, else lightened (dark background) or darkened,
+ * and black or white, whichever reads better, if that never gets there.
+ */
 export function readable(color: string, backgrounds: readonly string[]): string {
   const lighten = isDark(backgrounds[0]);
   let current = color;
   for (let step = 0; step < MAX_STEPS; step++) {
-    if (backgrounds.every((background) => contrast(current, background) >= TEXT_CONTRAST)) return current;
+    if (reads(current, backgrounds)) return current;
     current = lighten ? lighter(current, STEP) : darker(current, STEP);
   }
-  return current;
+  const worst = (candidate: string) => Math.min(...backgrounds.map((background) => contrast(candidate, background)));
+  return worst("#000000") > worst("#ffffff") ? "#000000" : "#ffffff";
+}
+
+function reads(color: string, backgrounds: readonly string[]): boolean {
+  return backgrounds.every((background) => contrast(color, background) >= TEXT_CONTRAST);
 }
 
 export function contrast(a: string, b: string): number {

@@ -95,6 +95,8 @@
 .mg #chips:empty { display: none; }
 .mg .box-in { display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px; border: 1px solid var(--line-2); border-radius: 26px; background: var(--bg); }
 .mg .box-in:focus-within { border-color: var(--olive); }
+/* The textarea draws no ring of its own: its box does (#153). */
+.mg .box-in:has(textarea:focus-visible) { outline: 2px solid var(--brick); outline-offset: 2px; }
 .mg .box-in textarea { flex: 1; min-width: 0; min-height: 0; max-height: 8em; padding: 7px 0; border: 0; border-radius: 0; outline: 0; background: none; resize: none; font-size: 16.5px; line-height: 1.3; }
 .mg .send { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--brick); color: var(--on); font-size: 18px; }
 .mg .send:disabled { background: var(--stone); cursor: default; }

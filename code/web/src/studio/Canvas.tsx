@@ -154,27 +154,33 @@ function Dock({ moment, services, look, onMoment, onColour }: DockProps) {
   const dots = look ? [look.accent, look.bg, look.accent_2, look.surface] : [];
   return (
     <div className="st-dock">
+      {/* One target for the four colours, big enough to tap (WCAG 2.5.8, #153). */}
       {dots.length > 0 && (
-        <span className="st-dots">
+        <button type="button" className="st-dots" aria-label="Change the colours" onClick={onColour}>
           {dots.map((colour, index) => (
-            <button
-              key={`${colour}-${index}`}
-              type="button"
-              aria-label="Change the colours"
-              style={{ background: colour }}
-              onClick={onColour}
-            />
+            <i key={`${colour}-${index}`} style={{ background: colour }} />
           ))}
-        </span>
+        </button>
       )}
       {look && <span className="st-dock-font">{FONT_NAMES[look.display_font]}</span>}
       {look && <span className="st-dock-sep" />}
       <div className="st-moments" role="group" aria-label="Time of day">
-        {MOMENTS.map(({ id, label }) => (
-          <button key={id} type="button" title={label} aria-label={label} aria-pressed={moment === id} onClick={() => onMoment(id)}>
-            {previewTime(id, services) ?? label}
-          </button>
-        ))}
+        {MOMENTS.map(({ id, label }) => {
+          const time = previewTime(id, services);
+          // The name starts with the time shown, for voice control (WCAG 2.5.3, #153).
+          return (
+            <button
+              key={id}
+              type="button"
+              title={label}
+              aria-label={time ? `${time}, ${label}` : label}
+              aria-pressed={moment === id}
+              onClick={() => onMoment(id)}
+            >
+              {time ?? label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ write a new one and mark the old one `Superseded by ADR-NNNN`.
 
 | ADR | Decision | Status | Date |
 |---|---|---|---|
+| [0020](0020-check-accessibility-with-axe-and-screenshots-in-playwrights-image.md) | Check accessibility with axe, and take screenshots in Playwright's image | Accepted | 2026-11-01 |
 | [0019](0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md) | A token for every caller of the public gateway, added by Caddy for Claude.ai | Accepted | 2026-10-31 |
 | [0018](0018-open-a-merchants-site-with-a-secret-link.md) | Open a merchant's site with a secret link and a signed cookie | Accepted | 2026-10-31 |
 | [0017](0017-router-and-test-tools-for-the-management-site.md) | Use React Router, Vitest with Testing Library, and Playwright in the web app | Accepted | 2026-10-31 |

@@ -19,6 +19,7 @@ const OFFSETS = [0, 16, 4, 20, 2, 14, 6, 18, 0];
 const SOON_MIN = 60;
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+const surname = (name: string) => name.split(" ").at(-1);
 
 type FloorBase = { today: string; clock: string; tables: TableSpec[] };
 
@@ -227,18 +228,17 @@ function RoomAt({
               style={{ "--y": `${OFFSETS[index % OFFSETS.length]}px` } as CSSProperties}
               aria-label={
                 booking
-                  ? `Table ${table.label}, ${booking.guest_name}, ${plural(booking.party_size, "guest")}`
+                  ? `Table ${table.label}, ${surname(booking.guest_name)}, ${plural(booking.party_size, "guest")}`
                   : `Table ${table.label}, ${table.seats} seats, free`
               }
               onClick={() => choose(table)}
             >
               <Blob index={index} />
+              {/* The name holds the words shown, in order, for voice control (WCAG 2.5.3, #153). */}
               <span>
-                <b>{table.label}</b>
+                <b>{table.label}</b>{" "}
                 <small>
-                  {booking
-                    ? `${booking.guest_name.split(" ").at(-1)}, ${booking.party_size}`
-                    : `${table.seats} seats`}
+                  {booking ? `${surname(booking.guest_name)}, ${booking.party_size}` : `${table.seats} seats`}
                 </small>
               </span>
             </button>

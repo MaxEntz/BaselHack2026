@@ -14,6 +14,7 @@ npm run check:contracts    # mocks vs src/types.ts
 npm test                   # tests/*.test.ts on Node's own runner (Node version: ../README.md), then Vitest (src/**/*.test.tsx)
 npx playwright install chromium   # once
 npm run test:e2e           # Playwright (e2e/), 1440 px, starts Vite in mock mode on :5179
+npm run test:visual:docker # screenshots (e2e/visual.spec.ts) in Playwright's Docker image; `-- --update-snapshots` retakes them
 ```
 
 Routes ([ADR-0017](../../documentation/adr/0017-router-and-test-tools-for-the-management-site.md)):
@@ -24,6 +25,14 @@ management site. An unknown page goes to that merchant's Home, any other path to
 `e2e/primitives.spec.ts` compares each management primitive's computed styles with the v10
 mockup (`documentation/design/poc-v10/sesame-management.html`), and `e2e/shell.spec.ts` the shell's
 place, look and words at 1440 and 390 px, with the clock at 19:40. `SESAME_MOCKUP` points both at another copy.
+
+`e2e/a11y.spec.ts` runs axe-core's WCAG 2.2 AA rules on every page, the dialogs and Studio at
+1440 and 390 px, and checks the keyboard: a focus ring on every stop, the nav, the dialogs, the
+search, and nothing moving with reduced motion. `e2e/visual.spec.ts` holds every page and Studio
+state to its screenshot in `e2e/__screenshots__/`. Fonts render differently from one system to
+another, so these screenshots are taken and checked only in Playwright's image, as the CI job
+`visual` does. Retake them in the PR that changes a page on purpose
+([ADR-0020](../../documentation/adr/0020-check-accessibility-with-axe-and-screenshots-in-playwrights-image.md)).
 
 Open <http://localhost:5173/?gallery> to review every management primitive and every card and state (steps,
 profile, reservations incl. empty, stats, policy, notifications, errors).
