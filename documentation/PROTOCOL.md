@@ -215,11 +215,12 @@ merchant cancelled their booking. Today that goes through the guest notice retur
 → {"type":"request","id":"r-3","intent":"TALK","merchant":"le-petit-zinc","params":{"message":"Same for Saturday at 8pm, name Ada?","idempotency_key":"m-1"}}
 ← {"type":"response","id":"r-3","status":200,"result":{"conversation":"c-9f2c…","reply":"I can book 20:00 on Saturday for 4, name Ada. Shall I?","slots":[…],"pending":{"id":"p-1","action":"book","summary":"Table for 4, Saturday 20:00, Ada","expires_at":"…"},"reservation":null,"fallback_url":null,"tools_called":["get_availability","propose_booking"]}}
 → {"type":"request","id":"r-4","intent":"TALK","merchant":"le-petit-zinc","params":{"message":"Yes, please.","conversation":"c-9f2c…","confirm":"p-1","idempotency_key":"m-2"}}
-← {"type":"response","id":"r-4","status":200,"result":{"conversation":"c-9f2c…","reply":"Booked: R-002.","slots":[],"pending":null,"reservation":{"id":"R-002",…},"fallback_url":null,"tools_called":[]}}
+← {"type":"response","id":"r-4","status":200,"result":{"conversation":"c-9f2c…","reply":"Booked: R-002.","slots":[],"pending":null,"reservation":{"id":"R-002",…},"fallback_url":null,"tools_called":["create_reservation"]}}
 ```
 
 The agent's tools only propose a write (#246). On `confirm`, code runs it before any model call
-(#247), so `tools_called` is empty and `reservation` comes from the write itself.
+(#247): `tools_called` names the write code ran, though the model never called a write tool, and
+`reservation` comes from the write itself.
 
 ## 12. The MCP bridge
 
