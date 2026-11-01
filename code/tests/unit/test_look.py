@@ -9,9 +9,11 @@ from builder.look import (
     NO_LOOK,
     contrast,
     describe,
+    fit_text,
     parse,
     read_look,
     readable,
+    reads_on,
     rgb_of,
 )
 from core.models import MerchantProfile
@@ -55,7 +57,8 @@ def test_each_colour_gets_its_role() -> None:
         "line": "#d5d2c3",
         "ink": "#47522f",
         "muted": "#5f6a45",
-        "accent": "#727f55",
+        # The bands' olive, darker: its cream button text read at 3.8:1 (#209).
+        "accent": "#616c48",
         "accent_2": "#935046",
         "on_accent": "#f4f2ea",
         "display_font": "Fraunces Soft",
@@ -64,7 +67,13 @@ def test_each_colour_gets_its_role() -> None:
         "radius_px": 30,
         "texture": "leather",
     }
-    assert flags == []
+    assert [(f.title, f.detail) for f in flags] == [
+        (
+            "Your olive (#727f55) is hard to read under your buttons' text.",
+            "The management site uses #616c48 instead, which reads well.",
+        )
+    ]
+    assert look == DEFAULT_LOOK
     assert describe(look) == "Olive, brick and cream. Soft italic titles. Organic shapes."
 
 
@@ -72,7 +81,7 @@ def test_nothing_readable_gives_no_look_and_a_flag() -> None:
     for unreadable in (None, {}, sample(bg="not a colour")):
         # No look: the management site uses the default one (#150).
         assert read_look(unreadable) == (None, [NO_LOOK])
-    assert DEFAULT_LOOK.accent == "#727f55"
+    assert DEFAULT_LOOK.accent == "#616c48"
     assert NO_LOOK.detail == "The colours will be plain until you pick some."
 
 
@@ -82,9 +91,9 @@ def test_a_low_contrast_accent_is_darkened_and_flagged() -> None:
 
     assert contrast(rgb_of(look.accent), rgb_of(look.bg)) >= 3
     assert look.accent != "#c8d2aa"
-    [flag] = [f for f in flags if "hard to read" in f.title]
+    [flag] = [f for f in flags if "on your background" in f.title]
     assert flag.title.startswith("Your sand (#c8d2aa) is hard to read")
-    assert look.accent in flag.detail
+    assert reads_on(rgb_of(look.on_accent), [rgb_of(look.accent), rgb_of(look.accent_2)])
 
 
 def test_text_under_4_5_to_1_is_darkened_too() -> None:
@@ -106,14 +115,56 @@ def test_a_site_with_one_accent_gets_it_12_percent_darker_as_accent_2() -> None:
         )
     )
 
-    assert look.accent == "#727f55"
-    assert look.accent_2 == "#64704b"  # 12 % toward black
+    assert look.accent_2 == "#64704b"  # 12 % toward black, from #727f55
+    # No text of its own on them: white, and the olive one step darker for it (#209).
+    assert (look.on_accent, look.accent) == ("#ffffff", "#69754e")
 
 
 def test_without_its_own_colour_the_name_gives_way_to_the_most_used_vivid_one() -> None:
     look, _ = read_look(sample(heading={"size": 60, "color": "rgb(71, 82, 47)", "font": "serif"}))
 
-    assert look.accent == "#727f55"  # the bands, not the brick button
+    assert look.accent == "#616c48"  # the bands, not the brick button (darker for its text)
+
+
+def test_button_text_reads_on_both_accents_and_their_darker_shades() -> None:
+    for overrides in ({}, {"bg": "rgb(21, 20, 19)"}, {"texts": {}}):
+        look, _ = read_look(sample(**overrides))
+        accents = [rgb_of(look.accent), rgb_of(look.accent_2)]
+        assert reads_on(rgb_of(look.on_accent), accents), overrides
+
+
+def test_fit_text_keeps_the_text_that_reads_else_white_or_near_black() -> None:
+    green, navy, bg = (79, 154, 74), (31, 58, 95), (247, 242, 232)
+    near_black, white = (17, 17, 17), (255, 255, 255)
+    # Near-black reads on the green and its shade: kept.
+    assert fit_text({"accent": green}, bg, near_black, movable=[]) == (near_black, {})
+    # On the navy it doesn't (1.6:1): white does.
+    assert fit_text({"accent": navy}, bg, near_black, movable=[]) == (white, {})
+
+
+def test_fit_text_moves_the_colour_the_merchant_changed() -> None:
+    green, red, bg = (79, 154, 74), (170, 60, 40), (247, 242, 232)
+    near_black = (17, 17, 17)
+    # Near-black reads on the green, not on the new red (3.1:1): the red lightens under it.
+    text, moved = fit_text({"accent": green, "accent_2": red}, bg, near_black, movable=["accent_2"])
+    assert text == near_black
+    assert list(moved) == ["accent_2"]
+    assert reads_on(text, [green, moved["accent_2"]])
+    assert contrast(moved["accent_2"], bg) >= 3
+
+
+def test_fit_text_moves_the_other_colour_when_that_alone_cant_do_it() -> None:
+    green, navy, bg = (79, 154, 74), (31, 58, 95), (247, 242, 232)
+    near_black, white = (17, 17, 17), (255, 255, 255)
+    # A navy light enough for near-black text falls under 3:1 on the page: the navy stays as
+    # picked, the text turns white, and the green darkens under it.
+    text, moved = fit_text(
+        {"accent": green, "accent_2": navy}, bg, near_black, movable=["accent_2"]
+    )
+    assert text == white
+    assert list(moved) == ["accent"]
+    assert reads_on(text, [moved["accent"], navy])
+    assert contrast(moved["accent"], bg) >= 3
 
 
 @pytest.mark.parametrize(

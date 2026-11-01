@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from agent.service import AgentService
-from builder.look import DEFAULT_LOOK
+from builder.look import DEFAULT_LOOK, reads_on, rgb_of
 from core.errors import PartyTooLarge
 from core.models import (
     BuildAgentInput,
@@ -217,9 +217,66 @@ async def test_update_look_sets_the_main_colour_and_keeps_text_on_it_readable() 
     assert saved.accent == "#2450c8"
     assert saved.bg == DEFAULT_LOOK.bg
     assert cards(events, "diff") == [
-        {"label": "Main colour", "before": "#727f55", "after": "#2450c8", "view": "manage"}
+        {"label": "Main colour", "before": "#616c48", "after": "#2450c8", "view": "manage"}
     ]
     assert "#2450c8 is your main colour now on the management site." in said(llm)
+
+
+async def test_a_second_colour_the_text_cant_read_on_keeps_and_the_rest_gives_way() -> None:
+    # #209's case: near-black text reads on the green; on the new navy it would read at 1.6:1.
+    look = DEFAULT_LOOK.model_copy(
+        update={"bg": "#f7f2e8", "accent": "#4f9a4a", "accent_2": "#b86a3c", "on_accent": "#111111"}
+    )
+    llm = ScriptedLLM(([], [call("update_look", accent_2="#1f3a5f")]), (["Done."], []))
+    studio = Studio(llm, look=look)
+
+    events = await studio.turn("Make the second colour #1f3a5f")
+
+    [saved] = studio.saved
+    assert (saved.accent_2, saved.on_accent) == ("#1f3a5f", "#ffffff")
+    assert saved.accent != "#4f9a4a"
+    assert reads_on(rgb_of(saved.on_accent), [rgb_of(saved.accent), rgb_of(saved.accent_2)])
+    assert [card["label"] for card in cards(events, "diff")] == [
+        "Second colour",
+        "Main colour",
+        "Buttons' text",
+    ]
+    text = said(llm)
+    assert "#1f3a5f is your second colour now on the management site." in text
+    assert f"Your main colour is {saved.accent} now, so your buttons' text reads on it too." in text
+    assert "Your buttons' text is white now, so it reads on both colours." in text
+
+
+async def test_a_second_colour_the_text_cant_read_on_is_adjusted_and_said() -> None:
+    look = DEFAULT_LOOK.model_copy(
+        update={"bg": "#f7f2e8", "accent": "#4f9a4a", "accent_2": "#b86a3c", "on_accent": "#111111"}
+    )
+    llm = ScriptedLLM(([], [call("update_look", accent_2="#aa3c28")]), (["Done."], []))
+    studio = Studio(llm, look=look)
+
+    await studio.turn("Make the second colour #aa3c28")
+
+    [saved] = studio.saved
+    assert (saved.accent, saved.on_accent) == ("#4f9a4a", "#111111")
+    assert saved.accent_2 not in ("#aa3c28", "#b86a3c")
+    assert reads_on(rgb_of(saved.on_accent), [rgb_of(saved.accent), rgb_of(saved.accent_2)])
+    assert (
+        f"#aa3c28 would make your buttons' text hard to read, so I adjusted it to {saved.accent_2}."
+        in said(llm)
+    )
+
+
+async def test_a_new_main_colour_keeps_the_text_that_reads_on_the_second() -> None:
+    # #209: swapping the cream text for near-black on a yellow would break it on the brick.
+    llm = ScriptedLLM(([], [call("update_look", accent="#f2d16b")]), (["Done."], []))
+    studio = Studio(llm, look=DEFAULT_LOOK)
+
+    await studio.turn("Make the main colour #f2d16b")
+
+    [saved] = studio.saved
+    assert saved.on_accent == DEFAULT_LOOK.on_accent
+    assert saved.accent != "#f2d16b"
+    assert reads_on(rgb_of(saved.on_accent), [rgb_of(saved.accent), rgb_of(saved.accent_2)])
 
 
 async def test_a_faint_colour_is_adjusted_and_the_merchant_told() -> None:

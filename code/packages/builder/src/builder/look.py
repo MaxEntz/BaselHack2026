@@ -7,21 +7,23 @@ review card (#136).
 """
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from typing import Any
 
 from core.models import BodyFont, BuildFlag, DisplayFont, Look
 
 RGB = tuple[int, int, int]
 
-# #150: no look means La Graine Verte's, the management mockup's own tokens.
+# #150: no look means La Graine Verte's, the management mockup's own tokens. Its olive is the
+# mockup's #727f55 made darker until its button text reads at 4.5:1 (#209), as `read_look`
+# gives it from the site and the management site's tokens.css has it (#153).
 DEFAULT_LOOK = Look(
     bg="#edebe2",
     surface="#f8f6ef",
     line="#d5d2c3",
     ink="#47522f",
     muted="#5f6a45",
-    accent="#727f55",
+    accent="#616c48",
     accent_2="#935046",
     on_accent="#f4f2ea",
     display_font="Fraunces Soft",
@@ -44,6 +46,11 @@ SURFACE_SHARE = 0.02
 BLOB_SHARE = 0.05
 ACCENT_CONTRAST = 3.0
 TEXT_CONTRAST = 4.5
+# The management site also sets text on each accent made this much darker (--olive-band,
+# --brick-deep, #150).
+SHADE = 0.08
+# Button text when the site's own doesn't read: white or near-black.
+TEXT_ON: tuple[RGB, RGB] = ((255, 255, 255), (17, 17, 17))
 MAX_RADIUS = 32
 
 FONTS_BUNDLED: dict[str, str] = {"fraunces soft": "Fraunces Soft", "fraunces": "Fraunces Soft"}
@@ -139,6 +146,62 @@ def readable(colour: RGB, bg: RGB, minimum: float) -> RGB:
             break
         c = tuple(round(v + (towards - v) * 0.08) for v in c)  # type: ignore[assignment]
     return c
+
+
+def shades(colour: RGB) -> tuple[RGB, RGB]:
+    """`colour` and the darker shade the management site also sets text on."""
+    return colour, mix(colour, (0, 0, 0), SHADE)
+
+
+def reads_on(text: RGB, accents: Iterable[RGB]) -> bool:
+    """Whether `text` reads at 4.5:1 on each accent and on its darker shade (#209)."""
+    return all(contrast(text, shade) >= TEXT_CONTRAST for a in accents for shade in shades(a))
+
+
+def under(accent: RGB, text: RGB) -> RGB:
+    """`accent` moved away from `text`, 8 % a step (as `readable`), until `text` reads on it."""
+    towards = 0 if luminance(text) > 0.4 else 255
+    c = accent
+    for _ in range(40):
+        if reads_on(text, [c]):
+            break
+        c = tuple(round(v + (towards - v) * 0.08) for v in c)  # type: ignore[assignment]
+    return c
+
+
+def fit_text(
+    accents: Mapping[str, RGB], bg: RGB, preferred: RGB | None, movable: Collection[str]
+) -> tuple[RGB, dict[str, RGB]]:
+    """The text for buttons on both accents, and the accents moved for it (#209).
+
+    `preferred` (the site's own, or the merchant's current one) if it reads at 4.5:1 on each
+    accent and its darker shade, else white or near-black, the better first. If none does, the
+    first of them that the `movable` accents can be moved under, away from it, while they still
+    read on the page at 3:1; then the same with every accent movable, so that a colour the
+    merchant just picked stays as picked when another one can give way.
+    """
+
+    def worst(text: RGB) -> float:
+        return min(contrast(text, s) for a in accents.values() for s in shades(a))
+
+    candidates = ([preferred] if preferred else []) + sorted(TEXT_ON, key=worst, reverse=True)
+    for text in candidates:
+        if reads_on(text, accents.values()):
+            return text, {}
+    fallback: tuple[RGB, dict[str, RGB]] | None = None
+    for allowed in (set(movable), set(accents)):
+        for text in candidates:
+            if not reads_on(text, (c for name, c in accents.items() if name not in allowed)):
+                continue
+            moved = {
+                name: under(c, text)
+                for name, c in accents.items()
+                if name in allowed and not reads_on(text, [c])
+            }
+            if all(contrast(c, bg) >= ACCENT_CONTRAST for c in moved.values()):
+                return text, moved
+            fallback = fallback or (text, moved)
+    return fallback or (candidates[0], {})
 
 
 def mix(colour: RGB, other: RGB, share: float) -> RGB:
@@ -290,10 +353,7 @@ def read_look(sample: Mapping[str, Any] | None) -> tuple[Look | None, list[Build
     for rgb, behind, chars in texts:
         if behind in (accent, accent_2):
             on_counts[rgb] = on_counts.get(rgb, 0) + chars
-    on_accent = _most(on_counts.items())
-    if on_accent is None or contrast(on_accent, accent) < ACCENT_CONTRAST:
-        white, dark = (255, 255, 255), (17, 17, 17)
-        on_accent = white if contrast(white, accent) >= contrast(dark, accent) else dark
+    own_on = _most(on_counts.items())
 
     flags: list[BuildFlag] = []
     adjusted: list[tuple[str, RGB, RGB]] = []
@@ -316,6 +376,18 @@ def read_look(sample: Mapping[str, Any] | None) -> tuple[Look | None, list[Build
                 detail=f"The management site uses {hex_of(after)} instead, which reads well.",
             )
         )
+    # on_accent: the text set on either accent, if it reads on both; else the accents move.
+    accents = {"accent": checked["accent"], "accent_2": checked["accent_2"]}
+    on_accent, moved = fit_text(accents, bg, own_on, movable=accents)
+    for role, after in moved.items():
+        flags.append(
+            BuildFlag(
+                title=f"Your {name_of(accents[role])} ({hex_of(accents[role])}) "
+                "is hard to read under your buttons' text.",
+                detail=f"The management site uses {hex_of(after)} instead, which reads well.",
+            )
+        )
+        checked[role] = after
 
     display, display_was = _font(
         str(heading.get("font") or sample.get("body_font") or ""), FONTS_BUNDLED

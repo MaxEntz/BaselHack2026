@@ -7,8 +7,8 @@ import type { Look } from "../types.ts";
 /**
  * La Graine Verte's look. `tokens.css` holds its values as the mockup picked them by hand (its
  * darker shades follow no single formula), so this look sets no variable and the site stays the
- * mockup, but for the olive, darker there as `lookStyle` would make it. A merchant without a look
- * gets it too.
+ * mockup, but for the olive: the builder makes it darker for the text on it (#209). A merchant
+ * without a look gets it too.
  */
 export const DEFAULT_LOOK: Look = {
   bg: "#edebe2",
@@ -16,7 +16,7 @@ export const DEFAULT_LOOK: Look = {
   line: "#d5d2c3",
   ink: "#47522f",
   muted: "#5f6a45",
-  accent: "#727f55",
+  accent: "#616c48",
   accent_2: "#935046",
   on_accent: "#f4f2ea",
   display_font: "Fraunces Soft",
