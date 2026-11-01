@@ -15,7 +15,7 @@ from typing import Any
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from pydantic import ValidationError
 
-from agent.discovery import RegistryEntry, routable
+from agent.discovery import MerchantPaused, RegistryEntry, routable
 from core.config import Settings, get_settings
 from core.errors import AgentUnavailable, InvalidInput, NotFound, PartyTooLarge, SlotUnavailable
 from core.models import ToolError
@@ -194,7 +194,8 @@ async def call_service[T](
     """`call_agent` for what no single merchant serves, so there is no fallback URL by default.
 
     `op` may return a `ToolError` itself, which is then logged as the call's outcome. A refusal
-    keeps its own code: the service answered. Only when it can't answer may `named` still find
+    keeps its own code: the service answered; a paused merchant (`discovery.MerchantPaused`)
+    gets its link. Only when the service can't answer may `named` still find
     the merchant the request is about, to give its link: within what is left of the budget, or
     `LINK_LOOKUP_SHARE` of it when `op` used it all.
     """
@@ -205,6 +206,8 @@ async def call_service[T](
     try:
         async with asyncio.timeout_at(deadline):
             result = await op()
+    except MerchantPaused as exc:
+        result = unavailable(exc.merchant)
     except (SlotUnavailable, NotFound, InvalidInput) as exc:
         result = ToolError(error=exc.code, message=str(exc))
     except Exception as exc:

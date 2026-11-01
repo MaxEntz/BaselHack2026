@@ -7,6 +7,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from agent.service import AgentService
+from agent.times import hhmm
 from agent.words import short_day
 from builder.words import joined
 from core.errors import AgentUnavailable, InvalidInput, PartyTooLarge
@@ -28,7 +29,7 @@ from core.models import (
     UpdateRulesInput,
     UpdateTablesInput,
 )
-from merchant_platform.specs import (
+from merchant_platform.tool_specs import (
     CANCELLED,
     HIDDEN,
     KNOWLEDGE,
@@ -203,16 +204,16 @@ class BookingTools:
         meant = starts_at.replace(tzinfo=self._tz)
         raise InvalidInput(
             f"{starts_at.isoformat()} doesn't use the {self._tz} offset, which is "
-            f"UTC{meant:%:z} on {meant:%Y-%m-%d}. For {meant:%H:%M} local time, send "
+            f"UTC{meant:%:z} on {meant:%Y-%m-%d}. For {hhmm(meant)} local time, send "
             f"{meant.isoformat()}."
         )
 
     def _local_time(self, at: datetime) -> str:
-        return at.astimezone(self._tz).strftime("%H:%M")
+        return hhmm(at, self._tz)
 
     def _when(self, starts_at: datetime) -> str:
         local = starts_at.astimezone(self._tz)
         day = local.date()
         if day == self._today():
-            return f"{local:%H:%M} tonight" if local.hour >= 17 else f"{local:%H:%M} today"
-        return f"{local:%H:%M} on {short_day(day)}"
+            return f"{hhmm(local)} tonight" if local.hour >= 17 else f"{hhmm(local)} today"
+        return f"{hhmm(local)} on {short_day(day)}"

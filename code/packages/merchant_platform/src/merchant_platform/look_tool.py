@@ -21,7 +21,7 @@ from core.errors import AgentUnavailable, InvalidInput
 from core.models import DiffCard, Look, UpdateLookInput
 from merchant_platform.registry import RegistryLookup, SaveLook
 from merchant_platform.sessions import Emit
-from merchant_platform.specs import (
+from merchant_platform.tool_specs import (
     ACCENT_LABELS,
     LOOK_RESET,
     NO_SITE_LOOK,

@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { announceChange } from "../management/changes.ts";
-import type { ChatEvent } from "../types.ts";
+import type { ChatEvent, SessionOutput } from "../types.ts";
 import type { ChatClient } from "./client.ts";
 import { useChat } from "./useChat.ts";
 
@@ -32,6 +32,31 @@ const client: ChatClient = {
 };
 
 describe("useChat", () => {
+  it("keeps the merchant of a session asked before a reset out of the new conversation (#220)", async () => {
+    const asked: string[] = [];
+    let answer: (value: SessionOutput) => void = () => {};
+    const slow: ChatClient = {
+      ...client,
+      async *send() {
+        yield { type: "done" };
+      },
+      // The first answer is the mount's; the second, after the turn, waits.
+      session: async (sessionId) => {
+        asked.push(sessionId);
+        if (asked.length === 1) return { merchant: null };
+        return new Promise<SessionOutput>((resolve) => (answer = resolve));
+      },
+    };
+    const { result } = renderHook(() => useChat(slow, { onboarding: "", operations: "" }, null));
+    await act(() => result.current.send("hello"));
+    await vi.waitFor(() => expect(asked).toHaveLength(2));
+
+    act(() => result.current.reset(""));
+    await act(async () => answer({ merchant: { slug: "le-petit-zinc", name: "Le Petit Zinc" } }));
+
+    expect(result.current.state.merchant).toBeNull();
+  });
+
   it("announces the change a tool made to the session's merchant, not a read (#137)", async () => {
     const frame = new BroadcastChannel("sesame:changes");
     const heard: unknown[] = [];

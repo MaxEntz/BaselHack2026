@@ -14,8 +14,9 @@ cancellation here says who made it in the row (`cancelled_by`).
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from pydantic import TypeAdapter, ValidationError
@@ -27,13 +28,16 @@ from agent import activity, notices
 from agent.guests import guest_key
 from agent.requests import describe
 from agent.times import day_and_time, day_bounds, hhmm
-from core.availability import bookable_starts, is_bookable_start
+from agent.writes import off_the_grid
+from core.availability import is_bookable_start
 from core.db import (
     AnyRow,
     agent_requests_t,
+    blocked_between,
     blocked_slots_t,
     merchants_t,
     policy_t,
+    reservation_confirmed,
     reservation_start,
     reservations_t,
     tables_t,
@@ -41,9 +45,13 @@ from core.db import (
 from core.errors import FormProblem, InvalidInput, NotFound
 from core.forms import MAX_SEATS, check_party_limit
 from core.models import (
+    MAX_AGENT_REQUESTS,
+    PUBLISHED_STATUSES,
     ActivityKind,
     AdminReservationRow,
     AgentRequest,
+    AgentStatus,
+    CancelledBy,
     FloorPlan,
     GuestRow,
     KnowledgeChange,
@@ -59,14 +67,46 @@ from core.models import (
     TableSpec,
 )
 
-# What the Agent page shows of a day (`AgentRequests`).
-MAX_AGENT_REQUESTS = 10
-
 # The Guests page covers today and the 6 days after it.
 DAYS_AHEAD = 7
 
 _SERVICES = TypeAdapter(Services)
 _FLOOR_PLAN = TypeAdapter(FloorPlan)
+
+
+# A booking as the merchant's lists show it (`AdminReservationRow`), joined with its table.
+_ROW_COLUMNS = (
+    reservations_t.c.id,
+    reservation_start.label("starts_at"),
+    reservations_t.c.guest_name,
+    reservations_t.c.party_size,
+    tables_t.c.label,
+    reservations_t.c.via,
+    reservations_t.c.status,
+)
+
+
+@dataclass(frozen=True)
+class BookingSnapshot:
+    """A booking as the live events re-read it (`merchant_platform.events`): its row, its
+    local day and who cancelled it."""
+
+    row: AdminReservationRow
+    day: date
+    cancelled_by: CancelledBy | None
+
+
+def _admin_row(row: AnyRow, tz: ZoneInfo) -> AdminReservationRow:
+    """`AdminReservationRow` from a row of `_ROW_COLUMNS`."""
+    return AdminReservationRow(
+        id=row.id,
+        time=hhmm(row.starts_at, tz),
+        guest_name=row.guest_name,
+        party_size=row.party_size,
+        table_label=row.label,
+        via=row.via,
+        status=row.status,
+    )
 
 
 async def list_reservations(
@@ -75,45 +115,39 @@ async def list_reservations(
     """The day's bookings by start time; cancelled ones only on request."""
     start, end = day_bounds(day, tz)
     query = (
-        select(
-            reservations_t.c.id,
-            reservation_start.label("starts_at"),
-            reservations_t.c.guest_name,
-            reservations_t.c.party_size,
-            tables_t.c.label,
-            reservations_t.c.via,
-            reservations_t.c.status,
-        )
+        select(*_ROW_COLUMNS)
         .join(tables_t, tables_t.c.id == reservations_t.c.table_id)
         .where(reservation_start >= start, reservation_start < end)
         .order_by(reservation_start, reservations_t.c.id)
     )
     if not include_cancelled:
-        query = query.where(reservations_t.c.status == "confirmed")
-    return [
-        AdminReservationRow(
-            id=row.id,
-            time=hhmm(row.starts_at, tz),
-            guest_name=row.guest_name,
-            party_size=row.party_size,
-            table_label=row.label,
-            via=row.via,
-            status=row.status,
+        query = query.where(reservation_confirmed)
+    return [_admin_row(row, tz) for row in await conn.execute(query)]
+
+
+async def booking_snapshot(
+    conn: AsyncConnection, reservation_id: str, tz: ZoneInfo
+) -> BookingSnapshot | None:
+    """The booking `reservation_id` as it is now; None when there is none."""
+    row = (
+        await conn.execute(
+            select(*_ROW_COLUMNS, reservations_t.c.cancelled_by)
+            .join(tables_t, tables_t.c.id == reservations_t.c.table_id)
+            .where(reservations_t.c.id == reservation_id)
         )
-        for row in await conn.execute(query)
-    ]
+    ).one_or_none()
+    if row is None:
+        return None
+    return BookingSnapshot(
+        _admin_row(row, tz), row.starts_at.astimezone(tz).date(), row.cancelled_by
+    )
 
 
 async def get_stats(conn: AsyncConnection, day: date, tz: ZoneInfo) -> Stats:
     """Confirmed bookings and guests that day, total capacity, the day's blocked starts."""
     bookings = await list_reservations(conn, day, tz)
     seats = await conn.scalar(select(func.coalesce(func.sum(tables_t.c.seats), 0)))
-    start, end = day_bounds(day, tz)
-    blocked = await conn.scalars(
-        select(blocked_slots_t.c.starts_at)
-        .where(blocked_slots_t.c.starts_at >= start, blocked_slots_t.c.starts_at < end)
-        .order_by(blocked_slots_t.c.starts_at)
-    )
+    blocked = await blocked_between(conn, *day_bounds(day, tz))
     return Stats(
         bookings=len(bookings),
         guests=sum(row.party_size for row in bookings),
@@ -136,9 +170,7 @@ async def list_guests(
             reservations_t.c.party_size,
             reservations_t.c.via,
         )
-        .where(
-            reservations_t.c.status == "confirmed", reservation_start > now, reservation_start < end
-        )
+        .where(reservation_confirmed, reservation_start > now, reservation_start < end)
         .order_by(reservation_start, reservations_t.c.id)
     )
     wanted = guest_key(query)
@@ -172,11 +204,7 @@ async def block_slot(
 ) -> None:
     """No new booking may start at `starts_at`. Existing bookings stay (AGENTS.md §6)."""
     if not is_bookable_start(services, starts_at, tz):
-        local = starts_at.astimezone(tz)
-        valid = ", ".join(hhmm(s, tz) for s in bookable_starts(services, local.date(), tz))
-        raise InvalidInput(
-            f"{local:%H:%M} is not a start time on {local:%Y-%m-%d}; valid times: {valid or 'none'}"
-        )
+        raise InvalidInput(off_the_grid(services, starts_at, tz))
     added = await conn.scalar(
         pg_insert(blocked_slots_t)
         .values(starts_at=starts_at)
@@ -202,7 +230,7 @@ async def unblock_slot(
 async def pause_or_resume(
     conn: AsyncConnection,
     slug: str,
-    status: Literal["live", "down"],
+    status: AgentStatus,
     *,
     at: datetime | None = None,
 ) -> None:
@@ -214,7 +242,7 @@ async def pause_or_resume(
     current = await conn.scalar(
         select(merchants_t.c.status).where(merchants_t.c.slug == slug).with_for_update()
     )
-    if current not in ("live", "down"):
+    if current not in PUBLISHED_STATUSES:
         raise InvalidInput("This agent isn't published yet: publish it first")
     if current == status:
         return  # paused twice: nothing changed, no line (#135)

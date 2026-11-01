@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from core.models import MIN_SERVICE_MINUTES, Service
+from core.models import MAX_SLOTS, MIN_SERVICE_MINUTES, Service
 from core.time_of_day import from_minutes, to_minutes
 
 STEP_MIN = 30
@@ -100,7 +100,7 @@ def find_slots(
     requested: time | None,
     now: datetime,
     slot_length: timedelta,
-    limit: int = 3,
+    limit: int = MAX_SLOTS,
 ) -> list[tuple[datetime, TableRow]]:
     """Up to `limit` free starts on `day`, each with the table it would get, sorted by time.
 

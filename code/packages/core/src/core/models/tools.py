@@ -73,6 +73,10 @@ class SearchMerchantsOutput(_Model):
     ignored_filters: tuple[str, ...] = ()
 
 
+# The most start times an availability search returns (AGENTS.md §6).
+MAX_SLOTS = 3
+
+
 class GetAvailabilityInput(_Model):
     merchant: Slug
     date: BookingDay
@@ -81,7 +85,7 @@ class GetAvailabilityInput(_Model):
 
 
 class GetAvailabilityOutput(_Model):
-    slots: tuple[Slot, ...] = Field(max_length=3)
+    slots: tuple[Slot, ...] = Field(max_length=MAX_SLOTS)
 
 
 class CreateReservationInput(_Model):

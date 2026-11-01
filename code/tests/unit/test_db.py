@@ -1,8 +1,8 @@
-"""schema_for: the only way a slug becomes a Postgres identifier."""
+"""schema_for: the only way a slug becomes a Postgres identifier, and its inverse."""
 
 import pytest
 
-from core.db import make_engine, merchant_conn, schema_for
+from core.db import make_engine, merchant_conn, schema_for, slug_for_schema
 from core.errors import InvalidInput
 
 
@@ -17,6 +17,16 @@ from core.errors import InvalidInput
 )
 def test_schema_for_maps_the_slug(slug: str, schema: str) -> None:
     assert schema_for(slug) == schema
+
+
+@pytest.mark.parametrize("slug", ["le-petit-zinc", "abc", "2-pieces-cuisine", "a" * 61])
+def test_slug_for_schema_is_the_inverse_of_schema_for(slug: str) -> None:
+    assert slug_for_schema(schema_for(slug)) == slug
+
+
+@pytest.mark.parametrize("schema", ["public", "m_", "m_ab", "m_Zinc", "m_" + "a" * 62, "x_abc"])
+def test_slug_for_schema_ignores_other_schemas(schema: str) -> None:
+    assert slug_for_schema(schema) is None
 
 
 def test_longest_schema_fits_the_postgres_identifier_limit() -> None:

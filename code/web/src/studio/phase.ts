@@ -2,6 +2,8 @@
 // from here and from feed.tsx, because the model's text can vary (`llm` tests assert facts).
 import type { CardEvent, ChatItem, ChatState, StepGroup, StepName, StepState } from "../chat/state.ts";
 import type { BuildAgentOutput, LiveEvent, Service } from "../types.ts";
+import { plural } from "../cards/format.ts";
+import { lastSeating as lastSeatingOf, toMinutes } from "../management/services.ts";
 import { momentSentence } from "../moments.ts";
 import { PUBLISH } from "./publish.ts";
 
@@ -208,26 +210,16 @@ const STEP_NOTES: Partial<Record<StepName, string>> = {
 // A step's note. The server words them, except what only the review card knows or Studio's own.
 export function stepNote(name: StepName, step: StepState, found: number | null): string | null {
   if (name === "extract" && step.status === "done") {
-    return found === null ? null : `Found ${found} ${found === 1 ? "detail" : "details"}.`;
+    return found === null ? null : `Found ${plural(found, "detail")}.`;
   }
   if (step.status === "done" && STEP_NOTES[name]) return STEP_NOTES[name];
   return step.detail ?? null;
 }
 
-const toMinutes = (time: string) => {
-  const [hours, minutes] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-};
-
-// The last start of the evening: every 30 minutes, last seating an hour before the end (§6).
+// The last start of the evening, by the management site's rule (§6).
 export function lastSeating(services: readonly Service[]): string | null {
   const last = services.toSorted((a, b) => toMinutes(a.start) - toMinutes(b.start)).at(-1);
-  if (!last) return null;
-  const start = toMinutes(last.start);
-  const steps = Math.floor((toMinutes(last.end) - 60 - start) / 30);
-  if (steps < 0) return null;
-  const minutes = start + steps * 30;
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  return last ? lastSeatingOf(last) : null;
 }
 
 // The mockup's other chips need what isn't there yet, and come with it: "A table for {n}?", the

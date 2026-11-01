@@ -6,9 +6,9 @@ from typing import Any
 import pytest
 
 from core.models import ChatEvent
-from merchant_platform.bookings import BookingTools
+from merchant_platform.booking_tools import BookingTools
 from merchant_platform.sessions import Session
-from merchant_platform.specs import SPECS, TOOL_FAILED
+from merchant_platform.tool_specs import SPECS, TOOL_FAILED
 from merchant_platform.tools import AdminTools
 from tests.unit.assistant_fakes import NOW, TODAY, TZ, call, fake_build, onboarded
 

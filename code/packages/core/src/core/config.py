@@ -8,6 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Every process's settings: each field is the environment variable of its name in upper
+    case (`DATABASE_URL` is `database_url`). Frozen: read once (`get_settings`)."""
+
     model_config = SettingsConfigDict(
         env_file=".env", env_ignore_empty=True, extra="ignore", frozen=True
     )

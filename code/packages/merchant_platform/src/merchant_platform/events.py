@@ -11,21 +11,19 @@ booking's channel would read as the guest's ("Booking cancelled via Claude", #81
 
 import asyncio
 import logging
-import re
 from collections import defaultdict
-from datetime import date
-from typing import Literal, NamedTuple
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 import psycopg
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from core.db import merchant_conn, merchants_t, reservations_t, tables_t
-from core.models import AdminReservationRow, LiveEvent, ReservationStatus, Via
-from core.models.base import SLUG_MAX, SLUG_MIN
+from agent.admin import BookingSnapshot, booking_snapshot
+from core.db import merchant_conn, merchants_t, slug_for_schema
+from core.models import LiveEvent, ReservationStatus, Via
 
 log = logging.getLogger("merchant_platform.events")
 
@@ -33,8 +31,6 @@ CHANNEL = "reservations"
 # An abandoned tab must not make memory grow: beyond this, the oldest events are dropped.
 QUEUE_SIZE = 100
 BACKOFF_SECONDS = (1, 2, 4, 10)
-# `schema_for` in reverse: `m_` + slug with `-` replaced by `_` (slugs have no `_`).
-_MERCHANT_SCHEMA = re.compile(rf"^m_([a-z0-9_]{{{SLUG_MIN},{SLUG_MAX}}})$")
 
 
 class LiveBus:
@@ -82,21 +78,13 @@ class Notification(BaseModel):
 Kind = Literal["new_booking", "updated", "cancelled"]
 
 
-class Booking(NamedTuple):
-    """A reservation as re-read for a live event."""
-
-    row: AdminReservationRow
-    day: date
-    cancelled_by: Literal["guest", "merchant"] | None
-
-
 def classify(op: str, status: str) -> Kind | None:
     if op == "INSERT":
         return "new_booking" if status == "confirmed" else None
     return "cancelled" if status == "cancelled" else "updated"
 
 
-def made_by_merchant(kind: Kind, booking: Booking, actor: str | None = None) -> bool:
+def made_by_merchant(kind: Kind, booking: BookingSnapshot, actor: str | None = None) -> bool:
     """The merchant's own change, which its pages and chat already confirm.
 
     A merchant operation says so (`actor`, #134): a move from the management site. Without it,
@@ -190,10 +178,9 @@ class LiveListener:
 
         Merchants provisioned after start-up are looked up on their first event, then cached.
         """
-        match = _MERCHANT_SCHEMA.match(schema)
-        if match is None:
+        slug = slug_for_schema(schema)
+        if slug is None:
             return None
-        slug = match.group(1).replace("_", "-")
         if slug in self._merchants:
             return slug
         async with self._engine.connect() as conn:
@@ -203,33 +190,7 @@ class LiveListener:
         self._merchants.add(slug)
         return slug
 
-    async def _reservation(self, slug: str, reservation_id: str) -> Booking | None:
-        query = (
-            select(
-                reservations_t.c.id,
-                func.lower(reservations_t.c.during).label("starts_at"),
-                reservations_t.c.guest_name,
-                reservations_t.c.party_size,
-                tables_t.c.label,
-                reservations_t.c.via,
-                reservations_t.c.status,
-                reservations_t.c.cancelled_by,
-            )
-            .join(tables_t, tables_t.c.id == reservations_t.c.table_id)
-            .where(reservations_t.c.id == reservation_id)
-        )
+    async def _reservation(self, slug: str, reservation_id: str) -> BookingSnapshot | None:
+        """The booking as the merchant's lists show it, read by the agent (`agent.admin`)."""
         async with merchant_conn(self._engine, slug) as conn:
-            row = (await conn.execute(query)).one_or_none()
-        if row is None:
-            return None
-        start = row.starts_at.astimezone(self._tz)
-        reservation = AdminReservationRow(
-            id=row.id,
-            time=start.strftime("%H:%M"),
-            guest_name=row.guest_name,
-            party_size=row.party_size,
-            table_label=row.label,
-            via=row.via,
-            status=row.status,
-        )
-        return Booking(reservation, start.date(), row.cancelled_by)
+            return await booking_snapshot(conn, reservation_id, self._tz)

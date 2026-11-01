@@ -48,6 +48,9 @@ CLAIM_SECONDS = 300
 
 @dataclass(eq=False)
 class Session:
+    """One conversation with the platform assistant: its history, the merchant it acts on and
+    the owner link it acts with, and what the web shows of it. Kept in memory only."""
+
     id: str
     # Conversation history, in the assistant's own format (#17).
     messages: list[dict[str, Any]] = field(default_factory=list)
@@ -108,6 +111,8 @@ RunTurn = Callable[[Session, str, Emit], Awaitable[None]]
 
 
 class SessionStore:
+    """The platform's sessions, in memory, by id: a restart forgets every conversation."""
+
     def __init__(self) -> None:
         self._sessions: dict[str, Session] = {}
         # The management site's conversation of each owner link (#140): (slug, link) → id.

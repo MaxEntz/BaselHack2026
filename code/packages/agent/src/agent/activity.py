@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from agent.times import hhmm
 from agent.words import short_day
 from core.db import merchant_activity_t
 from core.models import ActivityItem, ActivityKind, Via
@@ -160,7 +161,7 @@ def _word(
         days = sorted({moment.date() for moment in times})
         return "; ".join(
             f"{_day(day, today)} "
-            + ", ".join(f"{moment:%H:%M}" for moment in times if moment.date() == day)
+            + ", ".join(hhmm(moment) for moment in times if moment.date() == day)
             for day in days
         )
     if kind == "saved":
@@ -169,7 +170,7 @@ def _word(
 
 
 def _when(moment: datetime, today: date) -> str:
-    return f"{_day(moment.date(), today)} {moment:%H:%M}"
+    return f"{_day(moment.date(), today)} {hhmm(moment)}"
 
 
 def _day(day: date, today: date) -> str:

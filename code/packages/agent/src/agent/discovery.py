@@ -19,17 +19,19 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.guests import guest_key
 from core.db import merchants_t
-from core.errors import InvalidInput
+from core.errors import AgentUnavailable, InvalidInput
 from core.models import (
+    PUBLISHED_STATUSES,
     FilterSuggestion,
+    MerchantProfile,
     MerchantSummary,
     PriceLevel,
     SearchFilters,
     SearchMerchantsOutput,
     Tag,
 )
+from core.text import strip_accents
 
 log = logging.getLogger("agent.discovery")
 
@@ -134,7 +136,8 @@ class Criteria:
 def fold(text: str) -> str:
     """How user text is compared: case, accents and spacing ignored as in a guest's name
     (`guests.guest_key`), and ligatures spelled out ("Œuf" is "oeuf")."""
-    return guest_key(text.casefold().translate(LIGATURES))
+    spelled = strip_accents(text.casefold().translate(LIGATURES))
+    return " ".join(spelled.split()).casefold()
 
 
 def _tokens(text: str) -> list[str]:
@@ -287,12 +290,22 @@ async def find_merchant(slug: str, *, engine: AsyncEngine) -> RegistryEntry | No
     return RegistryEntry(**row) if row else None
 
 
+async def load_profile(slug: str, *, engine: AsyncEngine) -> MerchantProfile | None:
+    """The merchant's profile as the registry stores it: its display copy, kept in step with the
+    merchant's rows (#9). None if the slug is unknown; `ValidationError` if the stored copy no
+    longer fits the contract (each caller decides whether to skip it)."""
+    query = select(merchants_t.c.profile).where(merchants_t.c.slug == slug)
+    async with engine.connect() as conn:
+        stored = await conn.scalar(query)
+    return None if stored is None else MerchantProfile.model_validate(stored)
+
+
 async def _named_in_registry(query: str, engine: AsyncEngine) -> list[RegistryEntry]:
     """The live and `down` registry entries the query names (same rule as `search`), by slug."""
     if not _words(query, MIN_QUERY_WORD):
         return []
     registry = select(*_ENTRY_COLUMNS, merchants_t.c.city).where(
-        merchants_t.c.status.in_(("live", "down"))
+        merchants_t.c.status.in_(PUBLISHED_STATUSES)
     )
     async with engine.connect() as conn:
         rows = (await conn.execute(registry.order_by(merchants_t.c.slug))).mappings().all()
@@ -333,6 +346,25 @@ def check_search_bounds(query: str, filters: SearchFilters | None) -> None:
         raise InvalidInput(
             f"A search takes at most {MAX_TAGS} tags and a {MAX_QUERY}-character query"
         )
+
+
+class MerchantPaused(AgentUnavailable):
+    """A search whose query names only a `down` merchant: the guest gets its booking page.
+
+    The gateway words it (`gateway.fallback.unavailable`), with `merchant`'s fallback URL.
+    """
+
+    def __init__(self, merchant: RegistryEntry) -> None:
+        super().__init__(f"{merchant.name} is not taking bookings here right now")
+        self.merchant = merchant
+
+
+async def check_search(query: str, filters: SearchFilters | None, *, engine: AsyncEngine) -> None:
+    """What the gateway checks before a search: its bounds, then that its query doesn't name only
+    a `down` merchant (`find_named_down_merchant`), which is `MerchantPaused`."""
+    check_search_bounds(query, filters)
+    if down := await find_named_down_merchant(query, engine=engine):
+        raise MerchantPaused(down)
 
 
 async def search(

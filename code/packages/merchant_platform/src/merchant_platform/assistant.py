@@ -36,7 +36,7 @@ from merchant_platform.accounts import Accounts, IssuedLink, issued
 from merchant_platform.logs import session_tag
 from merchant_platform.registry import RegistryLookup, look_store, registry_records
 from merchant_platform.sessions import Emit, RunTurn, Session
-from merchant_platform.specs import SPECS
+from merchant_platform.tool_specs import SPECS
 from merchant_platform.tools import AdminTools
 
 log = logging.getLogger("merchant_platform.assistant")

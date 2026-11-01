@@ -13,6 +13,7 @@ from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from agent.guests import same_guest
+from agent.times import hhmm
 from core.db import AnyRow, guest_notices_t, merchants_t
 
 # A notice comes back on every lookup for this long after the first one that returned it, so
@@ -32,7 +33,7 @@ async def notify_cancellation(
         booking.id,
         booking.guest_name,
         f"{merchant.name} cancelled your booking {booking.id} on {start:%Y-%m-%d} at "
-        f"{start:%H:%M}. Please contact them at {merchant.website} or book again.",
+        f"{hhmm(start)}. Please contact them at {merchant.website} or book again.",
     )
 
 
@@ -54,7 +55,7 @@ async def notify_move(
         reservation_id,
         guest_name,
         f"{merchant.name} moved your booking {reservation_id} on {local:%Y-%m-%d} to "
-        f"{local:%H:%M}.",
+        f"{hhmm(local)}.",
     )
 
 

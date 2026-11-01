@@ -1,5 +1,5 @@
-"""Days in the merchant's words, in English whatever the server's locale (`strftime`'s `%a` and
-`%b` follow `LC_TIME`)."""
+"""Days in the merchant's words (`short_day`), in English whatever the server's locale
+(`strftime`'s `%a` and `%b` follow `LC_TIME`)."""
 
 from datetime import date
 

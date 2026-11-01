@@ -1,7 +1,7 @@
 """Admin tools of the platform assistant (AGENTS.md §8.2): runs the model's tool calls.
 
-What the model reads about each tool is `specs.py`'s; the tools on the merchant's agent are
-`bookings.py`'s, the look's `look_tool.py`'s. This module checks a call, dispatches it by tool
+What the model reads about each tool is `tool_specs.py`'s; the tools on the merchant's agent are
+`booking_tools.py`'s, the look's `look_tool.py`'s. This module checks a call, dispatches it by tool
 name, logs it and turns its outcome or its error into the model's result. Never the arguments
 or the result in the logs: they hold guest names (`list_reservations`).
 """
@@ -38,18 +38,18 @@ from core.models import (
     ViewCardData,
 )
 from merchant_platform.accounts import IssuedLink
-from merchant_platform.bookings import BookingTools
+from merchant_platform.booking_tools import BookingTools
 from merchant_platform.logs import traceback_without
 from merchant_platform.look_tool import LookTool, SiteLook
 from merchant_platform.registry import RegistryLookup, SaveLook
 from merchant_platform.sessions import Emit, Session
-from merchant_platform.specs import (
+from merchant_platform.tool_specs import (
     ALREADY_ONBOARDED,
     BY_NAME,
     NOT_AVAILABLE,
     NOT_ONBOARDED,
     PAGE_LINKS,
-    PUBLISHED,
+    PUBLISHED_REPLY,
     SITE_TAKEN,
     TOOL_FAILED,
     UNREVIEWED,
@@ -85,12 +85,18 @@ def session_tool[In: BaseModel](run: Callable[[Session, In, Emit], Awaitable[Out
     return handle
 
 
+def merchant_of(session: Session) -> str:
+    """The session's merchant: `_run` already refuses every tool but `build_agent` without one."""
+    if session.merchant_slug is None:
+        raise InvalidInput(NOT_ONBOARDED)
+    return session.merchant_slug
+
+
 def merchant_tool[In: BaseModel](run: Callable[[str, In], Awaitable[Outcome]]) -> Handler:
     """`run` on the session's merchant: every tool but `build_agent` needs one (`_run`)."""
 
     async def handle(session: Session, arguments: In, emit: Emit) -> Outcome:
-        assert session.merchant_slug is not None
-        return await run(session.merchant_slug, arguments)
+        return await run(merchant_of(session), arguments)
 
     return session_tool(handle)
 
@@ -248,15 +254,13 @@ class AdminTools:
             raise AgentUnavailable(NOT_AVAILABLE)
         if not merchant_spoke_since_build(session):
             raise InvalidInput(UNREVIEWED)
-        assert session.merchant_slug is not None
-        await self._publish(session.merchant_slug, emit)
-        return confirmation(PUBLISHED)
+        await self._publish(merchant_of(session), emit)
+        return confirmation(PUBLISHED_REPLY)
 
     async def _update_look(
         self, session: Session, arguments: UpdateLookInput, emit: Emit
     ) -> Outcome:
-        assert session.merchant_slug is not None
-        return await self._look(session.merchant_slug, arguments, emit)
+        return await self._look(merchant_of(session), arguments, emit)
 
     async def _status(self, slug: str) -> MerchantStatus | None:
         record = await self._merchant(slug) if self._merchant else None

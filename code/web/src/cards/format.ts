@@ -1,4 +1,5 @@
 import { now } from "../clock.ts";
+import { dayShort } from "../management/dates.ts";
 import { strings } from "../strings.ts";
 import type { LiveEvent, Service, Via } from "../types.ts";
 
@@ -23,8 +24,9 @@ export function formatMinutes(minutes: number): string {
   return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
 }
 
+/** 1 → "1 guest", 1204 → "1,204 guests" */
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : pluralForm}`;
+  return `${count.toLocaleString("en-GB")} ${count === 1 ? singular : pluralForm}`;
 }
 
 /**
@@ -40,7 +42,7 @@ export function describeDate(date: string): string {
   const day = new Date(`${date}T12:00:00`);
   if (Number.isNaN(day.getTime())) return `on ${date}`;
   if (day.toDateString() === now().toDateString()) return "tonight";
-  return `on ${shortDate(day)}`;
+  return `on ${dayShort(date)}`;
 }
 
 // A booking's day: "today", "tomorrow" or "Sat 7 Nov".
@@ -56,12 +58,8 @@ export function describeDay(date: string): string {
     case 1:
       return "tomorrow";
     default:
-      return shortDate(day);
+      return dayShort(date);
   }
-}
-
-function shortDate(day: Date): string {
-  return day.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 }
 
 // Live events only report guests' changes: the merchant's own are not sent.
