@@ -1,10 +1,16 @@
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from agent.guests import same_guest
-from agent.service import AgentService, PgAgentService, candidate_tables, check_start
+from agent.service import (
+    NOTICE_WINDOW,
+    AgentService,
+    PgAgentService,
+    candidate_tables,
+    check_start,
+)
 from core.availability import TableRow
 from core.db import make_engine
 from core.errors import SlotUnavailable
@@ -78,6 +84,11 @@ def test_pg_service_implements_the_contract() -> None:
     service: AgentService = PgAgentService(engine, tz=TZ)
 
     assert isinstance(service, PgAgentService)
+
+
+def test_notice_window_is_pinned_to_24_hours() -> None:
+    # AGENTS.md §6 and #91: the integration tests count from NOTICE_WINDOW, this pins its value.
+    assert timedelta(hours=24) == NOTICE_WINDOW
 
 
 def test_check_start_compares_instants_in_the_repeated_hour() -> None:

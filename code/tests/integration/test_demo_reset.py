@@ -3,6 +3,7 @@
 import asyncio
 
 import demo_reset
+import pytest
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.schema import CreateSchema
@@ -16,6 +17,8 @@ from core.db import (
     schema_for,
 )
 from core.models import MerchantProfile
+
+pytestmark = pytest.mark.integration
 
 
 def registry_row(profile: MerchantProfile) -> dict[str, object]:

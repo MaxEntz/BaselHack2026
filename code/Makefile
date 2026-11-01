@@ -119,7 +119,7 @@ test-stack: web-dist ## The browser test of the whole stack on a fresh build of 
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node
+	uv run mypy packages/core packages/agent packages/gateway packages/batp packages/merchant_node packages/builder packages/merchant_platform
 
 fmt:
 	uv run ruff check --fix .
