@@ -1,6 +1,6 @@
 """A merchant's `Look`, from its homepage's computed styles (#149).
 
-Pure code, no LLM (ADR-0003): the crawler samples the page (`crawl._LOOK`), and these rules
+Pure code, no LLM (ADR-0003): the crawler samples the page (`probes.LOOK`), and these rules
 give each colour a role. The contrast guard is the mockup's `readable()`
 (documentation/design/poc-v10/sesame-studio.html). The colours' names and the flags are for the
 review card (#136).
@@ -8,11 +8,15 @@ review card (#136).
 
 import re
 from collections.abc import Callable, Collection, Iterable, Mapping
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
+from builder.words import joined
 from core.models import BodyFont, BuildFlag, DisplayFont, Look
 
 RGB = tuple[int, int, int]
+Corners = Literal["organic", "rounded", "square"]
+Texture = Literal["leather", "none"]
 
 # #150: no look means La Graine Verte's, the management mockup's own tokens. Its olive is the
 # mockup's #727f55 made darker until its button text reads at 4.5:1 (#209), as `read_look`
@@ -54,6 +58,7 @@ SHADE = 0.08
 # Button text when the site's own doesn't read: white or near-black.
 TEXT_ON: tuple[RGB, RGB] = ((255, 255, 255), (17, 17, 17))
 MAX_RADIUS = 32
+ACCENTS = ("accent", "accent_2")
 
 FONTS_BUNDLED: dict[str, str] = {"fraunces soft": "Fraunces Soft", "fraunces": "Fraunces Soft"}
 BODY_BUNDLED: dict[str, str] = {"karla": "Karla"}
@@ -253,6 +258,67 @@ def fit_text(
     return (closest[1], closest[2]) if closest else (candidates[0], {})
 
 
+def as_drawn(role: str, colour: RGB, bg: RGB, surface: RGB) -> RGB:
+    """An accent as the management site can use it (#209): the main one as the small titles'
+    colour (`titled`), the second one at 3:1 on the page."""
+    if role == "accent":
+        return titled(colour, bg, surface)
+    return readable(colour, bg, ACCENT_CONTRAST)
+
+
+# Why an accent ends as it does: as asked, too faint on the page, moved for the buttons' text,
+# or (the other accent, stored before #209) moved so that the titles read.
+AccentReason = Literal["asked", "faint", "text", "titles"]
+
+
+@dataclass(frozen=True)
+class AccentChange:
+    """An accent the merchant asked for, or the other one, moved for it."""
+
+    role: str
+    before: str
+    after: str
+    # The colour the merchant asked for; None for the accent that gave way.
+    asked: str | None
+    why: AccentReason
+
+
+@dataclass(frozen=True)
+class AccentFit:
+    changes: tuple[AccentChange, ...]
+    # The buttons' text on both accents.
+    on_accent: str
+
+
+def adjust_accents(current: Look, wanted: Mapping[str, str]) -> AccentFit:
+    """The accents the merchant asked for (`wanted`: role to `#rrggbb`), as they can be stored.
+
+    Each one as drawn (`as_drawn`), and the buttons' text at 4.5:1 on both accents and their
+    darker shades (#209). The text changes, or a colour moves away from it, only when it
+    doesn't read: the colour just picked first, the other one when that alone can't do it.
+    """
+    bg, surface = rgb_of(current.bg), rgb_of(current.surface)
+    on_page = {role: as_drawn(role, rgb_of(asked), bg, surface) for role, asked in wanted.items()}
+    accents = {role: on_page.get(role, rgb_of(getattr(current, role))) for role in ACCENTS}
+    # A main colour stored before #209 may not read as titles yet: as the site draws it.
+    accents["accent"] = on_page.get("accent", titled(accents["accent"], bg, surface))
+    on, moved = fit_text(accents, bg, surface, rgb_of(current.on_accent), movable=wanted)
+    changes = []
+    for role, asked in wanted.items():
+        used = hex_of(moved.get(role, on_page[role]))
+        why: AccentReason = (
+            "asked" if used == asked else "faint" if hex_of(on_page[role]) != asked else "text"
+        )
+        changes.append(AccentChange(role, getattr(current, role), used, asked, why))
+    for role in ACCENTS:
+        after = hex_of(moved.get(role, accents[role]))
+        if role in wanted or after == getattr(current, role):
+            continue
+        why = "text" if role in moved else "titles"
+        changes.append(AccentChange(role, getattr(current, role), after, None, why))
+    return AccentFit(tuple(changes), hex_of(on))
+
+
 def mix(colour: RGB, other: RGB, share: float) -> RGB:
     """`colour` moved `share` of the way to `other`."""
     return tuple(round(c + (o - c) * share) for c, o in zip(colour, other, strict=True))  # type: ignore[return-value]
@@ -339,106 +405,175 @@ def _font(family: str, bundled: Mapping[str, str]) -> tuple[str, str | None]:
     return generic, None if first in GENERIC or not first else original
 
 
+@dataclass(frozen=True)
+class _Sample:
+    """The page's sample (`probes.LOOK`), its colours parsed over the page's background."""
+
+    raw: Mapping[str, Any]
+    bg: RGB
+    ink: RGB
+    page: float
+    backgrounds: dict[RGB, float]
+    borders: dict[RGB, float]
+    texts: list[tuple[RGB, RGB, float]]
+    heading: Mapping[str, Any]
+
+
+def _parsed(sample: Mapping[str, Any] | None) -> _Sample | None:
+    """None when the page's background or text colour can't be read."""
+    bg = parse(sample.get("bg")) if sample else None
+    ink = parse(sample.get("ink"), bg) if sample and bg else None
+    if sample is None or bg is None or ink is None:
+        return None
+    return _Sample(
+        raw=sample,
+        bg=bg,
+        ink=ink,
+        page=float(sample.get("page_area") or 1),
+        backgrounds=_weights(sample.get("backgrounds") or {}, bg),
+        borders=_weights(sample.get("borders") or {}, bg),
+        texts=_texts(sample, bg),
+        heading=sample.get("heading") or {},
+    )
+
+
 def read_look(sample: Mapping[str, Any] | None) -> tuple[Look | None, list[BuildFlag]]:
     """The look and the flags about it. None and a flag when nothing can be read: no look means
     the default one (`DEFAULT_LOOK`, #150)."""
-    bg = parse(sample.get("bg")) if sample else None
-    ink_read = parse(sample.get("ink"), bg) if sample and bg else None
-    if sample is None or bg is None or ink_read is None:
+    parsed = _parsed(sample)
+    if parsed is None:
         return None, [NO_LOOK]
-    page = float(sample.get("page_area") or 1)
-    backgrounds = _weights(sample.get("backgrounds") or {}, bg)
-    borders = _weights(sample.get("borders") or {}, bg)
-    texts = _texts(sample, bg)
-    heading = sample.get("heading") or {}
+    accent, accent_2 = _pick_accents(parsed)
+    surface = _pick_surface(parsed)
+    muted = _pick_muted(parsed, surface, taken={parsed.ink, accent, accent_2})
+    own = {"accent": accent, "accent_2": accent_2, "ink": parsed.ink, "muted": muted}
+    checked, on_accent, flags = _contrast_flags(
+        own, parsed.bg, surface, own_on=_own_on_accent(parsed, (accent, accent_2))
+    )
+    display, body, font_flags = _font_flags(parsed)
+    corners, radius, texture = _shape(parsed)
+    look = Look(
+        bg=hex_of(parsed.bg),
+        surface=hex_of(surface),
+        line=hex_of(_pick_line(parsed)),
+        ink=hex_of(checked["ink"]),
+        muted=hex_of(checked["muted"]),
+        accent=hex_of(checked["accent"]),
+        accent_2=hex_of(checked["accent_2"]),
+        on_accent=hex_of(on_accent),
+        display_font=display,
+        body_font=body,
+        corners=corners,
+        radius_px=radius,
+        texture=texture,
+    )
+    return look, [*flags, *font_flags]
 
-    # accent: the restaurant's name when it has its own colour, else the most used vivid one.
-    name_colour = parse(heading.get("color"), bg)
+
+def _pick_accents(sample: _Sample) -> tuple[RGB, RGB]:
+    """accent: the restaurant's name when it has its own colour, else the most used vivid one;
+    accent_2: the most used vivid colour of another hue, else accent 12 % darker."""
+    bg, ink = sample.bg, sample.ink
     vivid: dict[RGB, float] = {}
-    for rgb, share in backgrounds.items():
-        vivid[rgb] = vivid.get(rgb, 0) + share / page * 1000
-    for rgb, count in borders.items():
+    for rgb, share in sample.backgrounds.items():
+        vivid[rgb] = vivid.get(rgb, 0) + share / sample.page * 1000
+    for rgb, count in sample.borders.items():
         vivid[rgb] = vivid.get(rgb, 0) + count * 20
-    for rgb, _, chars in texts:
+    for rgb, _, chars in sample.texts:
         vivid[rgb] = vivid.get(rgb, 0) + chars
-    vivid = {rgb: w for rgb, w in vivid.items() if spread(rgb) >= VIVID and rgb != ink_read}
-    if name_colour is not None and name_colour != ink_read and spread(name_colour) >= VIVID:
+    vivid = {rgb: w for rgb, w in vivid.items() if spread(rgb) >= VIVID and rgb != ink}
+    name_colour = parse(sample.heading.get("color"), bg)
+    if name_colour is not None and name_colour != ink and spread(name_colour) >= VIVID:
         accent = name_colour
     else:
-        accent = _most(vivid.items()) or mix(ink_read, bg, 0.2)
-    # accent_2: the most used vivid colour of another hue, else accent 12 % darker.
+        accent = _most(vivid.items()) or mix(ink, bg, 0.2)
     other = [(rgb, w) for rgb, w in vivid.items() if hue_gap(rgb, accent) >= OTHER_HUE]
-    accent_2 = _most(other) or mix(accent, (0, 0, 0), 0.12)
+    return accent, _most(other) or mix(accent, (0, 0, 0), 0.12)
 
-    # surface: the neutral background closest to the page's, on its lighter side.
+
+def _pick_surface(sample: _Sample) -> RGB:
+    """The neutral background closest to the page's, on its lighter side."""
+    bg = sample.bg
     surfaces = [
         rgb
-        for rgb, share in backgrounds.items()
-        if share / page >= SURFACE_SHARE
+        for rgb, share in sample.backgrounds.items()
+        if share / sample.page >= SURFACE_SHARE
         and spread(rgb) < VIVID
         and luminance(rgb) > luminance(bg)
         and rgb != bg
     ]
-    surface = (
-        min(surfaces, key=lambda rgb: luminance(rgb) - luminance(bg))
-        if surfaces
-        else mix(bg, (255, 255, 255), 0.3)
-    )
-    # line: the most used neutral border, else the background 10 % toward the text.
-    lines = [
-        (rgb, n) for rgb, n in borders.items() if spread(rgb) < VIVID and rgb not in (bg, ink_read)
-    ]
-    line = _most(lines) or mix(bg, ink_read, 0.1)
-    # muted: the most used other readable text on the page or its cards.
-    on_page = {bg, surface}
-    taken = {ink_read, accent, accent_2}
-    muted_counts: dict[RGB, float] = {}
-    for rgb, behind, chars in texts:
-        if behind in on_page and rgb not in taken and contrast(rgb, behind) >= ACCENT_CONTRAST:
-            muted_counts[rgb] = muted_counts.get(rgb, 0) + chars
-    muted = _most(muted_counts.items()) or mix(ink_read, bg, 0.35)
-    # on_accent: the text set on either accent, else white or near-black, whichever reads.
-    on_counts: dict[RGB, float] = {}
-    for rgb, behind, chars in texts:
-        if behind in (accent, accent_2):
-            on_counts[rgb] = on_counts.get(rgb, 0) + chars
-    own_on = _most(on_counts.items())
+    if not surfaces:
+        return mix(bg, (255, 255, 255), 0.3)
+    return min(surfaces, key=lambda rgb: luminance(rgb) - luminance(bg))
 
-    flags: list[BuildFlag] = []
-    # Each colour as the management site can use it: the main accent as the titles' colour
-    # (`titled`), the second one at 3:1, text at 4.5:1; then the buttons' text on both accents,
-    # which may move them further (`fit_text`). One flag per colour, with its final value.
-    checked = {
-        "accent": titled(accent, bg, surface),
-        "accent_2": readable(accent_2, bg, ACCENT_CONTRAST),
-        "ink": readable(ink_read, bg, TEXT_CONTRAST),
-        "muted": readable(muted, bg, TEXT_CONTRAST),
-    }
-    own = {"accent": accent, "accent_2": accent_2, "ink": ink_read, "muted": muted}
-    accents = {"accent": checked["accent"], "accent_2": checked["accent_2"]}
+
+def _pick_line(sample: _Sample) -> RGB:
+    """The most used neutral border, else the background 10 % toward the text."""
+    bg, ink = sample.bg, sample.ink
+    lines = [
+        (rgb, n)
+        for rgb, n in sample.borders.items()
+        if spread(rgb) < VIVID and rgb not in (bg, ink)
+    ]
+    return _most(lines) or mix(bg, ink, 0.1)
+
+
+def _pick_muted(sample: _Sample, surface: RGB, *, taken: set[RGB]) -> RGB:
+    """The most used other readable text on the page or its cards."""
+    on_page = {sample.bg, surface}
+    counts: dict[RGB, float] = {}
+    for rgb, behind, chars in sample.texts:
+        if behind in on_page and rgb not in taken and contrast(rgb, behind) >= ACCENT_CONTRAST:
+            counts[rgb] = counts.get(rgb, 0) + chars
+    return _most(counts.items()) or mix(sample.ink, sample.bg, 0.35)
+
+
+def _own_on_accent(sample: _Sample, accents: tuple[RGB, RGB]) -> RGB | None:
+    """The text the page sets on either accent, if any."""
+    counts: dict[RGB, float] = {}
+    for rgb, behind, chars in sample.texts:
+        if behind in accents:
+            counts[rgb] = counts.get(rgb, 0) + chars
+    return _most(counts.items())
+
+
+def _contrast_flags(
+    own: Mapping[str, RGB], bg: RGB, surface: RGB, *, own_on: RGB | None
+) -> tuple[dict[str, RGB], RGB, list[BuildFlag]]:
+    """Each colour as the management site can use it, the buttons' text, and one flag per
+    colour that changed, with its final value.
+
+    The accents as drawn (`as_drawn`), text at 4.5:1; then the buttons' text on both accents,
+    which may move them further (`fit_text`)."""
+    accents = {role: as_drawn(role, own[role], bg, surface) for role in ACCENTS}
+    texts = {role: readable(own[role], bg, TEXT_CONTRAST) for role in ("ink", "muted")}
     on_accent, moved = fit_text(accents, bg, surface, own_on, movable=accents)
-    checked |= moved
+    checked = {**accents, **texts, **moved}
+    flags = []
     for role, before in own.items():
         after = checked[role]
         if after == before:
             continue
-        what = "text" if role in ("ink", "muted") else name_of(before)
-        where = (
-            "under your buttons' text"
-            if role in moved and accents[role] == before
-            else ("on your background")
-        )
+        what = "text" if role in texts else name_of(before)
+        moved_for_text = role in moved and accents[role] == before
+        where = "under your buttons' text" if moved_for_text else "on your background"
         flags.append(
             BuildFlag(
                 title=f"Your {what} ({hex_of(before)}) is hard to read {where}.",
                 detail=f"The management site uses {hex_of(after)} instead, which reads well.",
             )
         )
+    return checked, on_accent, flags
 
-    display, display_was = _font(
-        str(heading.get("font") or sample.get("body_font") or ""), FONTS_BUNDLED
-    )
-    body, body_was = _font(str(sample.get("body_font") or ""), BODY_BUNDLED)
+
+def _font_flags(sample: _Sample) -> tuple[DisplayFont, BodyFont, list[BuildFlag]]:
+    """The headings' and the text's fonts from the allow-list, and a flag for each family the
+    management site can't host."""
+    raw = sample.raw
+    heading_family = str(sample.heading.get("font") or raw.get("body_font") or "")
+    display, display_was = _font(heading_family, FONTS_BUNDLED)
+    body, body_was = _font(str(raw.get("body_font") or ""), BODY_BUNDLED)
+    flags = []
     for kind, was, used in (("titles use", display_was, display), ("text uses", body_was, body)):
         if was:
             closest = "serif" if used == "serif" else "sans-serif" if used == "sans" else used
@@ -448,29 +583,18 @@ def read_look(sample: Mapping[str, Any] | None) -> tuple[Look | None, list[Build
                     detail=f"It uses the closest it has: a {closest}.",
                 )
             )
+    return _display(display), _body(body), flags
 
-    radius = _radius(sample.get("radii") or [], float(sample.get("page_width") or 0))
-    blobs = float(sample.get("blob_area") or 0) / page
+
+def _shape(sample: _Sample) -> tuple[Corners, int, Texture]:
+    """The corners, the cards' radius and the texture."""
+    raw = sample.raw
+    radius = _radius(raw.get("radii") or [], float(raw.get("page_width") or 0))
+    blobs = float(raw.get("blob_area") or 0) / sample.page
     # Drawn shapes first: an organic site's bands are square, its blobs aren't.
-    corners = "organic" if blobs >= BLOB_SHARE else "square" if radius == 0 else "rounded"
-    texture = "leather" if int(sample.get("textures") or 0) > 0 else "none"
-
-    look = Look(
-        bg=hex_of(bg),
-        surface=hex_of(surface),
-        line=hex_of(line),
-        ink=hex_of(checked["ink"]),
-        muted=hex_of(checked["muted"]),
-        accent=hex_of(checked["accent"]),
-        accent_2=hex_of(checked["accent_2"]),
-        on_accent=hex_of(on_accent),
-        display_font=_display(display),
-        body_font=_body(body),
-        corners=corners,
-        radius_px=radius,
-        texture=texture,
-    )
-    return look, flags
+    corners: Corners = "organic" if blobs >= BLOB_SHARE else "square" if radius == 0 else "rounded"
+    texture: Texture = "leather" if int(raw.get("textures") or 0) > 0 else "none"
+    return corners, radius, texture
 
 
 # A family is the page's own text, and flags reach the assistant's model (ARCHITECTURE.md §4):
@@ -543,5 +667,7 @@ def describe(look: Look) -> str:
     names = list(
         dict.fromkeys(name_of(rgb_of(c)) for c in (look.accent, look.accent_2, look.surface))
     )
-    colours = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
-    return f"{colours.capitalize()}. {FONT_WORDS[look.display_font]}. {CORNER_WORDS[look.corners]}."
+    return (
+        f"{joined(names).capitalize()}. {FONT_WORDS[look.display_font]}. "
+        f"{CORNER_WORDS[look.corners]}."
+    )

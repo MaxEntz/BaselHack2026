@@ -3,49 +3,28 @@
 import asyncio
 import json
 import logging
-from collections.abc import Sequence
-from datetime import date, datetime, timedelta
-from pathlib import Path
+from datetime import date, datetime
 from typing import Any, cast, get_args
 from zoneinfo import ZoneInfo
 
 import pytest
 from openai import AsyncOpenAI
 from pydantic import SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from agent.service import AgentService, MerchantCancellation
 from builder.build import AlreadyProvisioned
 from builder.llm import (
-    LLMClient,
-    LLMReply,
-    LLMUnavailable,
     Message,
-    OnText,
-    OpenAIClient,
     ToolCall,
-    ToolSpec,
 )
 from core.config import Settings
-from core.errors import NotFound
 from core.models import (
-    AdminReservationRow,
     BuildAgentInput,
     BuildAgentOutput,
-    BuildFact,
-    BuildFlag,
     ChatEvent,
-    GeneratedTool,
     MerchantCancelOutcome,
-    MerchantProfile,
     MerchantStatus,
-    Policy,
     ProfileCard,
-    Reservation,
-    Service,
     Stats,
-    StepEvent,
-    TableSpec,
 )
 from merchant_platform.accounts import IssuedLink
 from merchant_platform.assistant import (
@@ -55,232 +34,35 @@ from merchant_platform.assistant import (
     STATUS_RULE,
     TOO_MANY_STEPS,
     UNAVAILABLE,
-    Assistant,
     compact,
     default_assistant,
     system_prompt,
 )
 from merchant_platform.logs import session_tag
 from merchant_platform.sessions import Session
-from merchant_platform.tools import (
+from merchant_platform.specs import (
     CANCELLED,
     NOT_AVAILABLE,
     NOT_ONBOARDED,
     SITE_TAKEN,
-    AdminTools,
 )
-
-TZ = ZoneInfo("Europe/Zurich")
-NOW = datetime(2026, 10, 31, 18, 30, tzinfo=TZ)
-TODAY = NOW.date()
-FIXTURE = Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json"
-PROFILE = MerchantProfile.model_validate_json(FIXTURE.read_text())
-SLUG = PROFILE.slug
-
-
-class ScriptedLLM:
-    """Replays replies in order; a reply is (text chunks, tool calls)."""
-
-    def __init__(self, *replies: tuple[Sequence[str], Sequence[ToolCall]]) -> None:
-        self.replies = list(replies)
-        self.calls: list[dict[str, Any]] = []
-
-    async def respond(
-        self,
-        *,
-        instructions: str,
-        tools: Sequence[ToolSpec],
-        history: Sequence[Message],
-        on_text: OnText,
-    ) -> LLMReply:
-        self.calls.append({"instructions": instructions, "history": list(history)})
-        if not self.replies:
-            raise AssertionError("unexpected LLM call")
-        chunks, calls = self.replies.pop(0)
-        for chunk in chunks:
-            await on_text(chunk)
-        return LLMReply(text="".join(chunks), tool_calls=tuple(calls))
-
-
-class LoopingLLM(ScriptedLLM):
-    """Asks for a tool on every call."""
-
-    async def respond(self, **kwargs: Any) -> LLMReply:
-        self.calls.append(kwargs)
-        return LLMReply(text="", tool_calls=(call("get_stats", date="2026-10-31"),))
-
-
-class DownLLM(ScriptedLLM):
-    async def respond(self, **kwargs: Any) -> LLMReply:
-        raise LLMUnavailable("InternalServerError")
-
-
-# What cancelling each of FakeAgent's bookings does (#82).
-OUTCOMES: dict[str, MerchantCancelOutcome] = {
-    "R-001": "notified",
-    "R-002": "ended",
-    "R-003": "guest_cancelled",
-    "R-004": "already_cancelled",
-}
-
-
-class FakeAgent:
-    """In-memory merchant operations for SLUG."""
-
-    def __init__(self) -> None:
-        self.blocked: list[datetime] = []
-        self.cancelled: list[str] = []
-        self.rows = [
-            AdminReservationRow(
-                id="R-001",
-                time="19:00",
-                guest_name="Alex Martin",
-                party_size=2,
-                table_label="T1",
-                via="website",
-                status="confirmed",
-            )
-        ]
-
-    async def list_reservations(self, slug: str, day: date) -> list[AdminReservationRow]:
-        return self.rows if day == TODAY else []
-
-    async def get_stats(self, slug: str, day: date) -> Stats:
-        return Stats(bookings=1, guests=2, seats=44, blocked=())
-
-    async def block_slot(self, slug: str, starts_at: datetime) -> None:
-        self.blocked.append(starts_at)
-
-    async def unblock_slot(self, slug: str, starts_at: datetime) -> None:
-        self.blocked.remove(starts_at)
-
-    async def update_policy(
-        self,
-        slug: str,
-        max_party_size: int | None = None,
-        services: Sequence[Service] | None = None,
-    ) -> Policy:
-        return Policy(
-            max_party_size=max_party_size or PROFILE.max_party_size,
-            slot_length_min=120,
-            services=tuple(services or PROFILE.services),
-        )
-
-    async def update_tables(self, slug: str, tables: Sequence[TableSpec]) -> list[TableSpec]:
-        return list(tables)
-
-    async def cancel_by_merchant(self, slug: str, reservation_id: str) -> MerchantCancellation:
-        outcome = OUTCOMES.get(reservation_id)
-        if outcome is None:
-            raise NotFound(f"No booking {reservation_id}")
-        self.cancelled.append(reservation_id)
-        return MerchantCancellation(
-            reservation=await self.cancel_reservation(slug, reservation_id, by="merchant"),
-            outcome=outcome,
-        )
-
-    async def cancel_reservation(
-        self, slug: str, reservation_id: str, *, by: str, guest_name: str | None = None
-    ) -> Reservation:
-        if reservation_id not in OUTCOMES:
-            raise NotFound(f"No booking {reservation_id}")
-        return Reservation(
-            id=reservation_id,
-            merchant=slug,
-            starts_at=NOW,
-            party_size=2,
-            table_label="T1",
-            status="cancelled",
-            guest_name="Alex Martin",
-            via="website",
-        )
-
-
-async def fake_build(arguments: BuildAgentInput, emit: Any) -> BuildAgentOutput:
-    for step in ("crawl", "extract", "validate", "provision"):
-        await emit(StepEvent(step=step, status="running"))  # type: ignore[arg-type]
-        await emit(StepEvent(step=step, status="done", duration_ms=1))  # type: ignore[arg-type]
-    await emit(StepEvent(step="deploy", status="waiting", detail="Waiting for you."))
-    return BuildAgentOutput(
-        profile=PROFILE,
-        status="building",
-        assumptions=("Bookings last 120 minutes (default).",),
-        facts=(
-            BuildFact(
-                key="max_party_size",
-                label="Largest group",
-                value='6, from "jusqu\'à 6 personnes"',
-                source="/reservation.html",
-                quote="jusqu'à 6 personnes",
-            ),
-        ),
-        flags=(BuildFlag(title="No cancellation policy on your site.", detail="Guests see none."),),
-        tools=(GeneratedTool(name="get_availability", description="Free tables."),),
-        mcp_url="http://localhost:8001/mcp",
-    )
-
-
-def call(name: str, call_id: str | None = None, **arguments: Any) -> ToolCall:
-    return ToolCall(id=call_id or f"call-{name}", name=name, arguments=json.dumps(arguments))
-
-
-class Harness:
-    def __init__(
-        self, llm: LLMClient, *, agent: FakeAgent | None = None, can_publish: bool = True
-    ) -> None:
-        self.llm = llm
-        self.agent = agent
-        self.events: list[ChatEvent] = []
-        self.provisioned: set[str] = set()
-        self.published: list[str] = []
-        # The registry's status, which the Publish button and the pause switch also change.
-        self.status: MerchantStatus = "building"
-        tools = AdminTools(
-            cast(AgentService, agent) if agent else None,
-            self._build,
-            TZ,
-            today=lambda: TODAY,
-            publish=self._publish if can_publish else None,
-        )
-        self.assistant = Assistant(
-            llm, tools, self._profiles, TZ, statuses=self._statuses, clock=lambda: NOW
-        )
-
-    async def _build(self, arguments: BuildAgentInput, emit: Any) -> BuildAgentOutput:
-        output = await fake_build(arguments, emit)
-        self.provisioned.add(output.profile.slug)
-        return output
-
-    async def _publish(self, slug: str, emit: Any) -> None:
-        await emit(StepEvent(step="deploy", status="running"))
-        self.published.append(slug)
-        self.status = "live"
-        await emit(StepEvent(step="deploy", status="done", detail="Your agent is live."))
-
-    async def _profiles(self, slug: str) -> MerchantProfile | None:
-        return PROFILE if slug in self.provisioned else None
-
-    async def _statuses(self, slug: str) -> MerchantStatus | None:
-        return self.status if slug in self.provisioned else None
-
-    async def emit(self, event: ChatEvent) -> None:
-        self.events.append(event)
-
-    async def turn(self, session: Session, message: str) -> list[dict[str, Any]]:
-        self.events.clear()
-        await self.assistant(session, message, self.emit)
-        return [json.loads(event.model_dump_json()) for event in self.events]
-
-
-def onboarded() -> Session:
-    session = Session(id="s")
-    session.merchant_slug = SLUG
-    return session
-
-
-def kinds(events: list[dict[str, Any]]) -> list[str]:
-    return [event.get("kind", event["type"]) for event in events]
-
+from merchant_platform.tools import AdminTools
+from tests.unit.assistant_fakes import (
+    NOW,
+    PROFILE,
+    SLUG,
+    TODAY,
+    TZ,
+    DownLLM,
+    FakeAgent,
+    Harness,
+    LoopingLLM,
+    ScriptedLLM,
+    call,
+    fake_build,
+    kinds,
+    onboarded,
+)
 
 # The loop
 
@@ -859,151 +641,6 @@ async def test_a_link_that_cant_be_stored_leaves_the_session_unattached() -> Non
     assert not [e for e in events if isinstance(e, ProfileCard)]
 
 
-def test_block_slot_confirmation_names_the_day() -> None:
-    tools = AdminTools(None, fake_build, TZ, today=lambda: TODAY)
-    tomorrow_noon = datetime.combine(TODAY + timedelta(days=1), datetime.min.time(), TZ).replace(
-        hour=12
-    )
-
-    assert tools._when(tomorrow_noon) == "12:00 on Sun 1 Nov"
-    assert tools._when(NOW.replace(hour=12, minute=0)) == "12:00 today"
-
-
-# Mini-evaluation against the real API (`llm` marker): rerun after every prompt change.
-
-
-class _LlmEnv(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
-
-    openai_api_key: SecretStr | None = None
-    openai_model: str = "gpt-6.1-terra"
-    openai_reasoning_effort: str | None = "low"
-
-
-def real_llm() -> OpenAIClient:
-    env = _LlmEnv()
-    assert env.openai_api_key is not None
-    client = AsyncOpenAI(api_key=env.openai_api_key.get_secret_value(), max_retries=0)
-    return OpenAIClient(client, env.openai_model, reasoning_effort=env.openai_reasoning_effort)
-
-
-def tools_called(session: Session, since: int = 0) -> list[tuple[str, dict[str, Any]]]:
-    return [
-        (call["name"], json.loads(call["arguments"]))
-        for message in session.messages[since:]
-        if message["role"] == "assistant"
-        for call in message["tool_calls"]
-    ]
-
-
-async def live_turns(*messages: str, onboarded_already: bool = True) -> tuple[Harness, Session]:
-    harness = Harness(real_llm(), agent=FakeAgent())
-    session = onboarded() if onboarded_already else Session(id="s")
-    if onboarded_already:
-        harness.provisioned.add(SLUG)
-    for message in messages:
-        await harness.turn(session, message)
-    return harness, session
-
-
-@pytest.mark.llm
-async def test_live_tonights_bookings() -> None:
-    _, session = await live_turns("What bookings do I have tonight?")
-    assert tools_called(session) == [("list_reservations", {"date": "2026-10-31"})]
-
-
-@pytest.mark.llm
-async def test_live_block_a_slot() -> None:
-    _, session = await live_turns("Block 21:00 tonight")
-    [(name, arguments)] = tools_called(session)
-    assert name == "block_slot"
-    starts_at = datetime.fromisoformat(arguments["starts_at"]).astimezone(TZ)
-    assert (starts_at.date(), starts_at.hour, starts_at.minute) == (TODAY, 21, 0)
-
-
-@pytest.mark.llm
-async def test_live_max_party_size() -> None:
-    _, session = await live_turns("Set max party size to 6")
-    [(name, arguments)] = tools_called(session)
-    assert (name, arguments["max_party_size"]) == ("update_policy", 6)
-
-
-@pytest.mark.llm
-async def test_live_how_busy() -> None:
-    _, session = await live_turns("How busy are we tonight?")
-    calls = tools_called(session)
-    # Facts, not one exact path: tonight's stats, and only reads (the model may also list the
-    # bookings, #109).
-    assert ("get_stats", {"date": "2026-10-31"}) in calls
-    assert {name for name, _ in calls} <= {"get_stats", "list_reservations"}
-
-
-@pytest.mark.llm
-async def test_live_cancel_asks_for_confirmation_first() -> None:
-    harness, session = await live_turns("Cancel R-001")
-    assert tools_called(session) == []
-    asked = len(session.messages)
-    await harness.turn(session, "Yes, cancel it")
-    assert tools_called(session, asked) == [("cancel_reservation", {"reservation_id": "R-001"})]
-
-
-@pytest.mark.llm
-async def test_live_knows_a_publish_from_the_button() -> None:
-    """The history says it's hidden; the Publish button has since put it live (#198)."""
-    harness = Harness(real_llm(), agent=FakeAgent())
-    harness.provisioned.add(SLUG)
-    session = onboarded()
-    session.messages += [
-        {"role": "user", "content": "Can guests book me yet?"},
-        {"role": "assistant", "content": "Not yet: your agent is hidden until you publish it."},
-    ]
-    harness.status = "live"
-    since = len(session.messages)
-
-    await harness.turn(session, "Is my agent live now?")
-
-    assert "publish_agent" not in [name for name, _ in tools_called(session, since)]
-    reply = session.messages[-1]["content"].lower()
-    assert "live" in reply
-    assert not any(no in reply for no in ("not live", "isn't live", "not yet", "until you publish"))
-
-
-@pytest.mark.llm
-async def test_live_sends_a_paused_merchant_to_the_agent_page() -> None:
-    """No tool resumes a paused agent: the Agent page's switch does (#198)."""
-    harness = Harness(real_llm(), agent=FakeAgent())
-    harness.provisioned.add(SLUG)
-    harness.status = "down"
-    session = onboarded()
-
-    await harness.turn(session, "Resume my agent, please.")
-
-    called = tools_called(session)
-    # Markdown left out: the model may write "the **Agent** page".
-    reply = session.messages[-1]["content"].lower().replace("*", "").replace("`", "")
-    # The link to the page (#140), or the page named in the reply.
-    assert called in ([], [("link_page", {"page": "agent"})])
-    assert called or "agent page" in reply or "pause switch" in reply
-
-
-@pytest.mark.llm
-async def test_live_onboarding_asks_then_builds() -> None:
-    harness, session = await live_turns("Hi!", onboarded_already=False)
-    assert tools_called(session) == []
-    await harness.turn(session, "http://localhost:8080/")
-    assert tools_called(session) == []
-    await harness.turn(
-        session,
-        "Lunch 12-14 and dinner 19-22 every day, 12 tables (four of 2, six of 4, two of 6), "
-        "groups up to 6 online, vegetarian and gluten-free options, a terrace, children "
-        "welcome, free cancellation until 2 hours before.",
-    )
-    [(name, arguments)] = tools_called(session)
-    assert name == "build_agent"
-    assert arguments["website"].startswith("http://localhost:8080")
-    assert session.merchant_slug == SLUG
-
-
 def test_a_model_call_that_stops_sending_gives_up_after_60_s(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1135,33 +772,8 @@ async def test_publish_waits_for_a_merchant_message_after_the_build() -> None:
     assert harness.published == [SLUG]
 
 
-# Studio's requests with a real model (#152): facts, not wording.
-
-
-@pytest.mark.llm
-async def test_live_publish_publishes() -> None:
-    harness, session = await live_turns("Publish my agent.")
-    assert harness.published == [SLUG]
-    assert [name for name, _ in tools_called(session)] == ["publish_agent"]
-
-
-@pytest.mark.llm
-async def test_live_change_my_website_changes_nothing() -> None:
-    harness, session = await live_turns("Change the colours on my website to blue.")
-    called = {name for name, _ in tools_called(session)}
-    # Nothing touches the merchant's site: at most the management site's look.
-    assert called <= {"update_look"}
-    assert harness.published == []
-
-
 def test_the_prompt_knows_the_management_pages() -> None:
     # #140: the assistant points to the pages, through link_page's card.
     prompt = system_prompt(NOW, PROFILE)
     assert "management site, with pages for Reservations" in prompt
     assert "call link_page" in prompt
-
-
-@pytest.mark.llm
-async def test_live_opening_hours_link_to_their_page() -> None:
-    _, session = await live_turns("What are my opening hours?")
-    assert ("link_page", {"page": "hours"}) in tools_called(session)

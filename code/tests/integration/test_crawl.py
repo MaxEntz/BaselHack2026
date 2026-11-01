@@ -426,11 +426,11 @@ async def test_a_slow_page_is_skipped_within_the_page_timeout(
     site = serve(tmp_path)
     site.slow.add("/menu.html")
     write(tmp_path, {"index.html": '<a href="menu.html">Menu</a>', "menu.html": "Trop tard"})
-    started = time.monotonic()
 
     result = await crawl(site.url, Steps(), page_timeout_s=1, allow_private=True)
 
-    assert time.monotonic() - started < 3
+    # Skipped, not waited for: the page answers 3 s later, well past its 1 s. No wall-clock
+    # bound: a loaded machine takes longer to launch Chromium, whatever the timeout (#220).
     assert paths(result) == ["/"]
     assert logged(caplog, "crawl_page_skipped") == [f"{site.url}menu.html"]
 

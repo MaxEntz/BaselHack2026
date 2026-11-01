@@ -6,19 +6,19 @@ import pytest
 
 from merchant_platform.accounts import (
     Accounts,
-    MemoryOwnerStore,
     Owner,
     Signer,
     hash_token,
     login_url,
 )
+from tests.unit.account_fakes import ForgettingStore
 
 SECRET = b"s" * 32
 NOW = datetime(2026, 10, 31, 19, 40, tzinfo=UTC)
 
 
-def accounts(clock: datetime = NOW, invite: str | None = None) -> tuple[Accounts, MemoryOwnerStore]:
-    store = MemoryOwnerStore()
+def accounts(clock: datetime = NOW, invite: str | None = None) -> tuple[Accounts, ForgettingStore]:
+    store = ForgettingStore()
     return Accounts(store, Signer(SECRET, clock=lambda: clock), invite), store
 
 

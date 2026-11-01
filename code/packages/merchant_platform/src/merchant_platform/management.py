@@ -55,7 +55,8 @@ from core.models import (
 from merchant_platform.accounts import Owner
 from merchant_platform.agent_try import try_intent
 from merchant_platform.auth import owner_of_path
-from merchant_platform.overview import RegistryLookup, merchant_overview
+from merchant_platform.overview import merchant_overview
+from merchant_platform.registry import RegistryLookup
 from merchant_platform.sessions import SessionStore
 
 router = APIRouter(
@@ -66,14 +67,6 @@ SlugPath = Annotated[Slug, Path()]
 Day = Annotated[BookingDay, Query()]
 ReservationId = Annotated[GuestText, Path()]
 Search = Annotated[SearchText, Query()]
-
-
-class NotBuiltYet(Exception):
-    """A frozen route whose issue hasn't landed: `501` with a `ManagementError` body. Every
-    route is built now (#133 was the last); kept for the next frozen route."""
-
-    def __init__(self, issue: str) -> None:
-        super().__init__(f"Not built yet: see {issue}.")
 
 
 def _agent(request: Request) -> AgentService:

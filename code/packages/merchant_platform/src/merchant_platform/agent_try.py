@@ -17,7 +17,7 @@ from batp.messages import AgentIdentity, Intent
 from core.config import Settings
 from core.errors import AgentError, AgentUnavailable
 from core.models import AgentTryOutput
-from merchant_platform.tools import TEST_GUEST
+from merchant_platform.trial import TEST_GUEST, TEST_PARTY, first_free_slot
 
 # Needs an entry in the node's BATP_TOKENS when it has any, with this platform's BATP_TOKEN.
 STUDIO_AGENT = AgentIdentity(
@@ -29,7 +29,6 @@ STUDIO_AGENT = AgentIdentity(
 NO_NODE = "Sending frames needs the BATP node, and this platform has no BATP_URL."
 # The first number no booking has: the node answers what it answers to any unknown booking.
 NO_BOOKING = "R-000"
-TEST_PARTY = 2
 # Asked for when the merchant is hidden and has no slot to offer: the node refuses it anyway.
 NOON = time(12)
 
@@ -91,14 +90,11 @@ async def _frame_for(
 
 
 async def _free_start(agent: AgentService, slug: str, today: date, tz: ZoneInfo) -> datetime:
-    for day in (today, today + timedelta(days=1)):
-        try:
-            slots = await agent.get_availability(slug, day, TEST_PARTY)
-        except AgentError:
-            break  # Hidden from guests, or too small: the node gives the real answer.
-        if slots:
-            return slots[0].starts_at
-    return datetime.combine(today + timedelta(days=1), NOON, tz)
+    try:
+        slot = await first_free_slot(agent, slug, today)
+    except AgentError:
+        slot = None  # Hidden from guests, or too small: the node gives the real answer.
+    return slot.starts_at if slot else datetime.combine(today + timedelta(days=1), NOON, tz)
 
 
 async def _test_booking(agent: AgentService, slug: str) -> tuple[str, int]:

@@ -16,10 +16,10 @@ from builder.extract import (
     TOOL_NAME,
     ExtractionFailed,
     extract_profile,
-    slugify,
     user_message,
 )
 from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec, strict_schema
+from builder.slugs import slugify
 from core.models import TableSpec
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())
@@ -205,6 +205,31 @@ async def test_fallback_url_stays_on_the_merchants_site(
     proposed: str | None, expected: str
 ) -> None:
     result = await extract_profile(CRAWL, "", FakeLLM(draft(fallback_url=proposed)))
+
+    assert str(result.profile.fallback_url) == expected
+
+
+TLS_SITE = "https://zinc.example/"
+TLS_CRAWL = CrawlResult(
+    website=TLS_SITE,
+    pages=[
+        Page(url=TLS_SITE, title="Le Petit Zinc", text="Bistrot alsacien.", json_ld=[]),
+        Page(url=f"{TLS_SITE}reservation.html", title="Réserver", text="Réservez.", json_ld=[]),
+    ],
+)
+
+
+@pytest.mark.parametrize(
+    ("proposed", "expected"),
+    [
+        # Its default port, written out: the same page.
+        ("https://zinc.example:443/reservation.html", "https://zinc.example/reservation.html"),
+        # Plain HTTP on the TLS port answers nothing: not the crawled page (#220).
+        ("http://zinc.example:443/reservation.html", "https://zinc.example/reservation.html"),
+    ],
+)
+async def test_a_default_port_is_only_its_own_schemes(proposed: str, expected: str) -> None:
+    result = await extract_profile(TLS_CRAWL, "", FakeLLM(draft(fallback_url=proposed)))
 
     assert str(result.profile.fallback_url) == expected
 

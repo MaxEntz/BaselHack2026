@@ -11,7 +11,7 @@ import sys
 from pydantic import ValidationError
 
 from core.config import Settings, get_settings
-from merchant_platform.api import check_account_settings
+from merchant_platform.account_settings import check_account_settings
 
 STEP = "(documentation/runbooks/platform.md, step 2)"
 

@@ -4,15 +4,13 @@ Only validated data enters the prompt (the merchant's profile from the registry)
 crawled website text.
 """
 
-import json
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, time, timedelta
 from functools import partial
 from zoneinfo import ZoneInfo
 
 from openai import AsyncOpenAI, Timeout
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import generated_tools
@@ -23,7 +21,6 @@ from builder.crawl import crawl
 from builder.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
 from builder.look import read_look
 from core.config import Settings
-from core.db import merchants_t
 from core.models import (
     BuildAgentInput,
     BuildAgentOutput,
@@ -36,15 +33,12 @@ from core.models import (
 )
 from merchant_platform.accounts import Accounts, IssuedLink, issued
 from merchant_platform.logs import session_tag
-from merchant_platform.overview import look_store, registry_records
-from merchant_platform.sessions import Session
-from merchant_platform.tools import SPECS, AdminTools, Emit
+from merchant_platform.registry import RegistryLookup, look_store, registry_records
+from merchant_platform.sessions import Emit, RunTurn, Session
+from merchant_platform.specs import SPECS
+from merchant_platform.tools import AdminTools
 
 log = logging.getLogger("merchant_platform.assistant")
-
-RunTurn = Callable[[Session, str, Emit], Awaitable[None]]
-ProfileLookup = Callable[[str], Awaitable[MerchantProfile | None]]
-StatusLookup = Callable[[str], Awaitable[MerchantStatus | None]]
 
 MAX_ITERATIONS = 8
 # Tool results older than this many merchant messages are cut down when long.
@@ -53,9 +47,9 @@ LONG_RESULT_CHARS = 600
 
 UNAVAILABLE = "The assistant is temporarily unavailable, please retry."
 # A model call that stops sending gives up after 60 s without a chunk (one retry, then
-# UNAVAILABLE). The web no longer does: it counts the platform's heartbeats as activity (#87),
-# and the SDK's default read timeout is 600 s. Streaming restarts the read timeout on every
-# chunk, so a long answer still goes through.
+# UNAVAILABLE), rather than at the SDK's default 600 s: the web never gives up on its own, since
+# it counts the platform's heartbeats as activity (#87). Streaming restarts the read timeout on
+# every chunk, so a long answer still goes through.
 LLM_TIMEOUT = Timeout(60, connect=5)
 INTERRUPTED = "Interrupted before it finished."
 TOO_MANY_STEPS = "I couldn't finish that request. Could you rephrase it or split it up?"
@@ -228,18 +222,6 @@ def compact(history: Sequence[Message]) -> list[Message]:
     return compacted
 
 
-async def session_merchant(
-    session: Session | None, default: str | None, profiles: ProfileLookup
-) -> MerchantProfile | None:
-    """The merchant `session` works on, or will from its next message (#88).
-
-    A session without a merchant takes `default` (PLATFORM_MERCHANT) once it is registered,
-    so that a page reload or a seeded demo doesn't force a new onboarding (AGENTS.md §14).
-    """
-    slug = (session.merchant_slug if session else None) or default
-    return await profiles(slug) if slug else None
-
-
 class Assistant:
     """`RunTurn` implementation: answers one merchant message."""
 
@@ -247,23 +229,24 @@ class Assistant:
         self,
         llm: LLMClient,
         tools: AdminTools,
-        profiles: ProfileLookup,
+        merchants: RegistryLookup,
         tz: ZoneInfo,
         *,
-        statuses: StatusLookup,
         default_merchant: str | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
+        """`merchants` reads the registry row the prompt is built from: the merchant's profile
+        and status, in one query."""
         self._llm = llm
         self._tools = tools
-        self._profiles = profiles
-        self._statuses = statuses
+        self._merchants = merchants
         self._default_merchant = default_merchant
         self._clock = clock or (lambda: datetime.now(tz))
 
     async def __call__(self, session: Session, user_message: str, emit: Emit) -> None:
-        if session.merchant_slug is None:
-            attached = await session_merchant(session, self._default_merchant, self._profiles)
+        if session.merchant_slug is None and self._default_merchant:
+            # A session without a merchant takes PLATFORM_MERCHANT once it is registered (#88).
+            attached, _ = await self._merchant(self._default_merchant)
             session.merchant_slug = attached.slug if attached else None
         session.messages.append({"role": "user", "content": user_message})
 
@@ -274,8 +257,7 @@ class Assistant:
             # Rebuilt every iteration: build_agent switches onboarding to operations mid-turn,
             # and the status may have changed since the last call (#198).
             slug = session.merchant_slug
-            profile = await self._profiles(slug) if slug else None
-            status = await self._statuses(slug) if slug and profile else None
+            profile, status = await self._merchant(slug) if slug else (None, None)
             try:
                 reply = await self._llm.respond(
                     instructions=system_prompt(self._clock(), profile, status),
@@ -303,33 +285,11 @@ class Assistant:
         log.warning("assistant_iteration_limit", extra={"session": session_tag(session.id)})
         await emit(ErrorEvent(message=TOO_MANY_STEPS))
 
-
-def registry_profiles(engine: AsyncEngine) -> ProfileLookup:
-    """The validated profile stored in the registry, or None for an unknown merchant."""
-
-    async def lookup(slug: str) -> MerchantProfile | None:
-        async with engine.connect() as conn:
-            stored = await conn.scalar(
-                select(merchants_t.c.profile).where(merchants_t.c.slug == slug)
-            )
-        if stored is None:
-            return None
-        return MerchantProfile.model_validate_json(json.dumps(stored))
-
-    return lookup
-
-
-def registry_statuses(engine: AsyncEngine) -> StatusLookup:
-    """The merchant's status in the registry, or None for an unknown merchant."""
-
-    async def lookup(slug: str) -> MerchantStatus | None:
-        async with engine.connect() as conn:
-            status: MerchantStatus | None = await conn.scalar(
-                select(merchants_t.c.status).where(merchants_t.c.slug == slug)
-            )
-        return status
-
-    return lookup
+    async def _merchant(self, slug: str) -> tuple[MerchantProfile | None, MerchantStatus | None]:
+        """The merchant's validated profile and its status; neither for an unknown merchant."""
+        record = await self._merchants(slug)
+        profile = record.profile() if record else None
+        return profile, record.status if record and profile else None
 
 
 async def run_turn(session: Session, user_message: str, emit: Emit) -> None:
@@ -357,25 +317,52 @@ def default_assistant(
     whole stack runs both as fakes (#153). Without `crawler`, the builder's checked crawl,
     which reads the homepage only for a look.
     """
-    if llm is not None:
-        extractor = llm
-    elif settings.openai_api_key is None:
+    clients = (llm, llm) if llm is not None else _openai_clients(settings)
+    if clients is None:
         return run_turn
-    else:
-        # Retries are ours (one, before any text reached the merchant).
-        openai = AsyncOpenAI(
-            api_key=settings.openai_api_key.get_secret_value(), max_retries=0, timeout=LLM_TIMEOUT
-        )
-        llm = OpenAIClient(
-            openai, settings.openai_model, reasoning_effort=settings.openai_reasoning_effort
-        )
-        # Spike #4: no reasoning extracts as well, a second faster.
-        extractor = OpenAIClient(
-            openai, settings.openai_model, reasoning_effort=settings.builder_reasoning_effort
-        )
+    chat, extractor = clients
     tz = ZoneInfo(settings.merchant_tz)
-    builder = Builder(
-        extractor,
+    merchants = registry_records(engine)
+    builder = _builder(settings, engine, extractor, crawler, tz)
+    tools = AdminTools(
+        agent,
+        partial(_build, builder),
+        tz,
+        today=lambda: datetime.now(tz).date(),
+        owned_merchant=settings.platform_merchant,
+        issue_link=partial(_issue_link, settings, accounts) if accounts else None,
+        publish=partial(publish, engine=engine),
+        merchant=merchants,
+        save_look=look_store(engine),
+        site_look=partial(_site_look, merchants, crawler or partial(crawl, max_pages=0)),
+    )
+    return Assistant(chat, tools, merchants, tz, default_merchant=settings.platform_merchant)
+
+
+def _openai_clients(settings: Settings) -> tuple[LLMClient, LLMClient] | None:
+    """The conversation's client and the extraction's, on one OpenAI connection; None without
+    OPENAI_API_KEY."""
+    if settings.openai_api_key is None:
+        return None
+    # Retries are ours (one, before any text reached the merchant).
+    openai = AsyncOpenAI(
+        api_key=settings.openai_api_key.get_secret_value(), max_retries=0, timeout=LLM_TIMEOUT
+    )
+    chat = OpenAIClient(
+        openai, settings.openai_model, reasoning_effort=settings.openai_reasoning_effort
+    )
+    # Spike #4: no reasoning extracts as well, a second faster.
+    extractor = OpenAIClient(
+        openai, settings.openai_model, reasoning_effort=settings.builder_reasoning_effort
+    )
+    return chat, extractor
+
+
+def _builder(
+    settings: Settings, engine: AsyncEngine, llm: LLMClient, crawler: Crawl | None, tz: ZoneInfo
+) -> Builder:
+    return Builder(
+        llm,
         engine,
         model=settings.openai_model,
         mcp_url=gateway_mcp_url(settings.gateway_public_url),
@@ -384,45 +371,23 @@ def default_assistant(
         tz=tz,
     )
 
-    async def build(arguments: BuildAgentInput, emit: BuildEmitter) -> BuildAgentOutput:
-        return await builder.build_agent(str(arguments.website), arguments.description, emit)
 
-    async def issue_link(slug: str) -> IssuedLink:
-        assert accounts is not None
-        return issued(settings.platform_web_url, await accounts.issue_link_token(slug))
+async def _build(
+    builder: Builder, arguments: BuildAgentInput, emit: BuildEmitter
+) -> BuildAgentOutput:
+    return await builder.build_agent(str(arguments.website), arguments.description, emit)
 
-    async def publish_agent(slug: str, emit: Emit) -> None:
-        await publish(slug, emit, engine=engine)
 
-    merchants = registry_records(engine)
-    homepage: Crawl = crawler or partial(crawl, max_pages=0)
+async def _issue_link(settings: Settings, accounts: Accounts, slug: str) -> IssuedLink:
+    """A new merchant's secret link, for its owner (#132)."""
+    return issued(settings.platform_web_url, await accounts.issue_link_token(slug))
 
-    async def site_look(slug: str) -> Look | None:
-        """The merchant website's own look, read again (#152's "back to the look from your
-        site"): the homepage only, through the builder's checked crawl or `crawler` (#220)."""
-        record = await merchants(slug)
-        if record is None:
-            return None
-        crawled = await homepage(record.website, _no_steps)
-        return read_look(crawled.pages[0].look)[0]
 
-    tools = AdminTools(
-        agent,
-        build,
-        tz,
-        today=lambda: datetime.now(tz).date(),
-        owned_merchant=settings.platform_merchant,
-        issue_link=issue_link if accounts else None,
-        publish=publish_agent,
-        merchant=merchants,
-        save_look=look_store(engine),
-        site_look=site_look,
-    )
-    return Assistant(
-        llm,
-        tools,
-        registry_profiles(engine),
-        tz,
-        statuses=registry_statuses(engine),
-        default_merchant=settings.platform_merchant,
-    )
+async def _site_look(merchants: RegistryLookup, homepage: Crawl, slug: str) -> Look | None:
+    """The merchant website's own look, read again (#152's "back to the look from your
+    site"): the homepage only, through the builder's checked crawl or `crawler` (#220)."""
+    record = await merchants(slug)
+    if record is None:
+        return None
+    crawled = await homepage(record.website, _no_steps)
+    return read_look(crawled.pages[0].look)[0]

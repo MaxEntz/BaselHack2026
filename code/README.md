@@ -103,7 +103,7 @@ scripts/                seed.py, demo_reset.py, demo_booking.py (make demo-booki
                         (La Graine Verte's management data), export_management_fixture.py, owner_link.py
                         (make owner-link), set_status.py (outage switch), caddy_env.py and platform_env.py
                         (make deploy), crawl_site.py, bench_extract.py (+ bench_sites/), batp_schemas.py
-                        (make rfc), spike_extract.py (+ spike_samples/, the #4 spike)
+                        (make rfc)
 deploy/                 systemd units and Caddyfile for make deploy
 tests/{unit,integration,e2e,fixtures}/
 ```

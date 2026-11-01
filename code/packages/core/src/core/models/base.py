@@ -25,7 +25,9 @@ PriceLevel = Literal["€", "€€", "€€€", "€€€€"]
 Via = Literal["claude", "merchant", "website"]
 ReservationStatus = Literal["confirmed", "cancelled"]
 HHMM = Annotated[str, StringConstraints(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
-Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{3,61}$")]
+# A slug's length: `m_` + slug must fit a Postgres identifier, 63 bytes (AGENTS.md §7.2).
+SLUG_MIN, SLUG_MAX = 3, 61
+Slug = Annotated[str, StringConstraints(pattern=rf"^[a-z0-9-]{{{SLUG_MIN},{SLUG_MAX}}}$")]
 
 
 def _no_control_characters(value: str) -> str:

@@ -20,7 +20,8 @@ from core.models import BuildFact, BuildFlag, MerchantProfile
 log = logging.getLogger("builder.cache")
 
 CacheMode = Literal["read_write", "read_only", "off"]
-DEFAULT_ROOT = Path(__file__).parents[4] / ".cache" / "builder"
+# `code/.cache/builder`, ignored by git: the cache's entries and the generated profiles.
+CACHE_ROOT = Path(__file__).parents[4] / ".cache" / "builder"
 
 
 # Part of the crawl cache key: bump it when `Page` changes or a demo site is rewritten, so no
@@ -51,7 +52,7 @@ def _sha256(text: str) -> str:
 
 
 class BuildCache:
-    def __init__(self, mode: CacheMode = "read_write", root: Path = DEFAULT_ROOT) -> None:
+    def __init__(self, mode: CacheMode = "read_write", root: Path = CACHE_ROOT) -> None:
         self.mode = mode
         self.root = root
 

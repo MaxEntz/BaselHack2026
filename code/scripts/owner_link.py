@@ -21,7 +21,7 @@ from merchant_platform.accounts import (
     Signer,
     login_url,
 )
-from merchant_platform.overview import registry_records
+from merchant_platform.registry import registry_records
 
 
 async def issue(slug: str, name: str | None) -> str | None:

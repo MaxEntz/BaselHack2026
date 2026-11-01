@@ -19,7 +19,7 @@ from merchant_node.__main__ import NODE
 from merchant_node.agents import MerchantAgents
 from merchant_platform.agent_try import NO_BOOKING, STUDIO_AGENT
 from merchant_platform.api import create_app
-from merchant_platform.tools import TEST_GUEST
+from merchant_platform.trial import TEST_GUEST
 
 pytestmark = pytest.mark.integration
 
