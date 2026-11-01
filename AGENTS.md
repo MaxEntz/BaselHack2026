@@ -330,7 +330,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | A booking re-reads its table's seats under the lock | #9 |
 | 2026-10-31 | `update_tables` refuses to remove a table that bookings refer to; no `active` flag | #9 |
 | 2026-10-31 | `update_policy` gives no warning about bookings above a lowered `max_party_size` | #9 |
-| 2026-10-31 | The crawler checks every request after DNS resolution, follows redirects itself, loads text only; link-local always refused; DNS rebinding not covered | #21 |
+| 2026-10-31 | The crawler checks every request after DNS resolution, follows redirects itself, loads text only; link-local always refused; WebRTC removed from every frame and its UDP disabled in Chromium (#233); DNS rebinding not covered | #21, #233 |
 | 2026-10-31 | Crawl link filter also matches German; crawl failures are `InvalidInput` shown in the `crawl` step | #21 |
 | 2026-10-31 | A guest notice is returned for 24 real hours after the first call that returned it | #91 |
 | 2026-10-31 | Guest text ≤ 200 characters without control characters; guest dates between 2000 and 2099; no guest change after a booking starts | #79 |
