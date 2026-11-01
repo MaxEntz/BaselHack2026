@@ -54,11 +54,15 @@ from core.models import (
     CancelledBy,
     FloorPlan,
     GuestRow,
+    KnowledgeChange,
+    KnowledgeItem,
+    KnowledgeNote,
     MerchantCancelOutcome,
     Policy,
     Problem,
     Service,
     Services,
+    SiteKnowledge,
     Stats,
     TableSpec,
 )
@@ -310,6 +314,47 @@ async def update_profile(conn: AsyncConnection, slug: str, changes: dict[str, An
     await conn.execute(
         update(merchants_t).where(merchants_t.c.slug == slug).values(profile={**profile, **changes})
     )
+
+
+async def update_knowledge(
+    conn: AsyncConnection,
+    slug: str,
+    remove: Sequence[str],
+    add: Sequence[KnowledgeNote],
+    *,
+    at: datetime | None = None,
+) -> KnowledgeChange:
+    """Correct what the merchant's agent knows beyond booking (#248), in the registry's profile,
+    where its next prompt reads it. What the owner adds comes first and has no source. Words
+    are compared as `guest_key` does: "tartare" removes "Le Tartare de bœuf". Nothing removed
+    and nothing new changes nothing, with no activity line."""
+    profile = await conn.scalar(
+        select(merchants_t.c.profile)
+        .where(merchants_t.c.slug == slug)
+        .with_for_update(key_share=True)
+    )
+    if profile is None:
+        raise NotFound(f"Unknown merchant: {slug!r}")
+    stored = SiteKnowledge.model_validate(profile.get("knowledge") or {"items": ()})
+    words = [guest_key(word) for word in remove]
+    kept = [i for i in stored.items if not any(word in guest_key(i.text) for word in words)]
+    removed = [item.text for item in stored.items if item not in kept]
+    known = {guest_key(item.text) for item in kept}
+    fresh = [note for note in add if guest_key(note.text) not in known]
+    if not removed and not fresh:
+        return KnowledgeChange(removed=(), added=())
+    items = (*(KnowledgeItem(topic=note.topic, text=note.text) for note in fresh), *kept)
+    try:
+        knowledge = SiteKnowledge(items=items)
+    except ValidationError:
+        raise InvalidInput("Your agent knows too much already: remove something first.") from None
+    await update_profile(
+        conn, slug, {"knowledge": knowledge.model_dump(mode="json") if items else None}
+    )
+    await activity.record(
+        conn, slug, "saved", "merchant", details={"what": activity.KNOWLEDGE}, at=at
+    )
+    return KnowledgeChange(removed=tuple(removed), added=tuple(note.text for note in fresh))
 
 
 async def update_policy(

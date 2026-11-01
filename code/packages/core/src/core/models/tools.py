@@ -15,6 +15,7 @@ from pydantic import (
 
 from core.models.base import (
     HHMM,
+    MAX_KNOWLEDGE_TEXT,
     BookingDay,
     BookingTime,
     DisplayFont,
@@ -216,6 +217,35 @@ class UpdateRulesInput(_Model):
     stays `update_policy`'s, so that one request never has two tools (#152)."""
 
     cancellation_policy: Annotated[str, StringConstraints(max_length=300)]
+
+
+class KnowledgeNote(_Model):
+    """One thing the owner tells the merchant's agent."""
+
+    topic: KnowledgeTopic
+    text: Annotated[NonEmptyStr, StringConstraints(max_length=MAX_KNOWLEDGE_TEXT)]
+
+
+class UpdateKnowledgeInput(_Model):
+    """`update_knowledge`: correct what the merchant's agent knows beyond booking (#248).
+    `remove` takes out every item holding these words, whole or in part; `add` gives the owner's
+    own. Three letters at least, so that a stray "e" can't empty it."""
+
+    remove: tuple[Annotated[NonEmptyStr, StringConstraints(min_length=3, max_length=200)], ...] = ()
+    add: tuple[KnowledgeNote, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_change(self) -> Self:
+        if not self.remove and not self.add:
+            raise ValueError("Say what to remove or what to add")
+        return self
+
+
+class KnowledgeChange(_Model):
+    """What `update_knowledge` did: the items' texts, for the merchant to read."""
+
+    removed: tuple[str, ...]
+    added: tuple[str, ...]
 
 
 class TryRequestInput(_Model):

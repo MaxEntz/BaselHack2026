@@ -28,6 +28,7 @@ OPENING_HOURS = "Opening hours"
 BOOKING_RULES = "Booking rules"
 FLOOR_PLAN = "Floor plan"
 SETTINGS = "Settings"
+KNOWLEDGE = "What your agent knows"
 PAUSED = "Guests get your booking page."
 RESUMED = "Your agent takes bookings again."
 

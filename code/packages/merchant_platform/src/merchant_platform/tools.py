@@ -158,6 +158,7 @@ class AdminTools:
             "build_agent": session_tool(self._build),
             "publish_agent": session_tool(self._publish_agent),
             "update_rules": merchant_tool(bookings.update_rules),
+            "update_knowledge": merchant_tool(bookings.update_knowledge),
             "try_request": merchant_tool(bookings.try_request),
             "send_test_booking": merchant_tool(bookings.send_test_booking),
             "update_look": session_tool(self._update_look),
