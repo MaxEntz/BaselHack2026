@@ -18,8 +18,8 @@ from builder.extract import (
     extract_profile,
     user_message,
 )
-from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec, strict_schema
 from builder.slugs import slugify
+from core.llm import LLMReply, Message, OnText, ToolCall, ToolSpec, strict_schema
 from core.models import MAX_KNOWLEDGE_ITEMS, MAX_KNOWLEDGE_TEXT, TableSpec
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json").read_text())

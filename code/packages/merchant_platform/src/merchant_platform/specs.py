@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from builder.llm import ToolSpec
+from core.llm import ToolSpec
 from core.models import (
     AdminCancelInput,
     BuildAgentInput,

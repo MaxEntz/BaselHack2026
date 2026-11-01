@@ -38,7 +38,7 @@ def test_builder_and_agent_lines_come_out_as_json(
     written: Callable[[], list[dict[str, Any]]],
 ) -> None:
     logging.getLogger("builder.build").info("builder_cache", extra={"stage": "crawl", "hit": True})
-    logging.getLogger("builder.llm").warning("llm_retry", extra={"error": "RateLimitError"})
+    logging.getLogger("core.llm").warning("llm_retry", extra={"error": "RateLimitError"})
     logging.getLogger("agent.service").info("slot blocked", extra={"merchant": "le-petit-zinc"})
     logging.getLogger("merchant_platform.api").info("chat_turn")
 
@@ -46,7 +46,7 @@ def test_builder_and_agent_lines_come_out_as_json(
 
     assert [(line["logger"], line["event"]) for line in logged] == [
         ("builder.build", "builder_cache"),
-        ("builder.llm", "llm_retry"),
+        ("core.llm", "llm_retry"),
         ("agent.service", "slot blocked"),
         ("merchant_platform.api", "chat_turn"),
     ]
