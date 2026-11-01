@@ -1,9 +1,10 @@
 """What the shared endpoint's booking tools and each merchant's own have in common (#23, #220).
 
-Both MCP servers expose the same 4 booking tools: the same hints, argument types, rule for writes
-and bodies (`Tools`). They differ only in where the merchant comes from (an argument, or the path)
-and in the sentences that open each description. Claude reads these texts: they are a contract
-(#14, #109), so a change here changes what both endpoints tell it.
+Both MCP servers expose the same 4 booking tools, or `talk_to_merchant` instead (`GATEWAY_TALK`,
+#251): the same hints, argument types, rule for writes and bodies (`Tools`). They differ only in
+where the merchant comes from (an argument, or the path) and in the sentences that open each
+description. Claude reads these texts: they are a contract (#14, #109), so a change here changes
+what both endpoints tell it.
 """
 
 import textwrap
@@ -11,9 +12,10 @@ from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from functools import partial
 from typing import Annotated
+from uuid import UUID
 
 from mcp.types import ToolAnnotations
-from pydantic import Field, PositiveInt
+from pydantic import AfterValidator, Field, PositiveInt
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent import discovery
@@ -26,20 +28,28 @@ from core.models import (
     GetAvailabilityOutput,
     GetMyReservationsOutput,
     GuestText,
+    OpaqueId,
     ReservationOutput,
     SearchFilters,
     SearchMerchantsOutput,
+    TalkInput,
+    TalkMessage,
+    TalkOutput,
     ToolError,
     UpdateReservationInput,
 )
 from gateway.agent_client import AgentClient
-from gateway.fallback import call_merchant, call_service
+from gateway.fallback import TALK_TOOL, call_merchant, call_service
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 IDEMPOTENT_WRITE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
 )
 DESTRUCTIVE = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False
+)
+# A conversation can end in a cancellation, once the user said yes; a key makes a resend harmless.
+CONVERSATION = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False
 )
 
@@ -62,19 +72,74 @@ NewStartsAt = Annotated[
     Field(description="New start time with its UTC offset, from get_availability."),
 ]
 NewPartySize = Annotated[PositiveInt | None, Field(description="New number of guests.")]
+Message = Annotated[
+    TalkMessage,
+    Field(
+        description=(
+            "What the user wants, in natural language, as they would say it to the restaurant, "
+            "with their known preferences."
+        ),
+    ),
+]
+
+
+# A real UUID, not free text: every Claude user reaches the node under the gateway's one agent id,
+# and the node replays a key's stored answer. Two guests sending the same first message with the
+# same naive key ("m-1") would share a conversation and its proposal (#251, review of #264).
+def _not_nil(key: UUID) -> UUID:
+    # The nil UUID is the example a model is likeliest to copy instead of generating one.
+    if key.int == 0:
+        raise ValueError("generate a random UUID, not the nil one")
+    return key
+
+
+TalkKey = Annotated[
+    UUID,
+    AfterValidator(_not_nil),
+    Field(
+        description=(
+            "A fresh random UUID you generate per message; reuse it only to resend the same "
+            "message."
+        )
+    ),
+]
+Conversation = Annotated[
+    OpaqueId | None,
+    Field(description="The `conversation` of the agent's last answer; omit it to start one."),
+]
+Confirm = Annotated[
+    OpaqueId | None,
+    Field(
+        description=(
+            "The `pending.id` the user said an explicit yes to, with that answer's `conversation`."
+        )
+    ),
+]
 
 # The rule for writes in the server instructions (#14, #109): a yes to a summary, never one given
 # before it, and never a write in the reply that made the summary. `{chosen}` is what the user
 # picks from the results of `{calls}`.
+NOT_A_YES = (
+    "Choosing {chosen} is not a yes, even when the request looks complete. Nor is a "
+    'confirmation given before the summary ("I confirm in advance", "book directly"): show the '
+    "summary anyway."
+)
 CONFIRM_RULE = (
     "Before create_reservation, update_reservation or cancel_reservation, summarize the action "
     "and stop: call the tool only once the user's reply to that summary is an explicit yes. "
-    "Choosing {chosen} is not a yes, even when the request looks complete. Nor is a "
-    'confirmation given before the summary ("I confirm in advance", "book directly"): show the '
-    "summary anyway. So never call a write tool in the same reply as the {calls} call your "
+    f"{NOT_A_YES} So never call a write tool in the same reply as the {{calls}} call your "
     "summary is based on. After the user's yes, checking availability again first is fine; if "
     "that check no longer offers the confirmed time, don't book another one: show the new times "
     "and ask again."
+)
+# The same rule when the merchant's agent writes (#251): the agent proposes, as `pending`, and
+# only a `confirm` sent after the user's yes to its summary lets it write.
+TALK_CONFIRM_RULE = (
+    "When talk_to_merchant returns `pending`, show the user its `summary`, ask them to confirm, "
+    "and stop: send its `id` as `confirm` only once the user's reply to that summary is an "
+    f"explicit yes. {NOT_A_YES} So never send `confirm` in the same reply as the "
+    "talk_to_merchant call that returned the `pending`. If the agent then answers that the "
+    "confirmed time is gone, don't confirm another one: relay its new times and ask again."
 )
 # Instructions are bullets of at most this many characters a line.
 INSTRUCTIONS_WIDTH = 98
@@ -100,14 +165,35 @@ CANCEL_RULE = (
 )
 
 
+# What `talk_to_merchant` says on both endpoints, after each one's opening sentence.
+TALK_RULES = (
+    "Write `message` as the user would say it to the restaurant, with what they want and their "
+    "known preferences (dietary needs, terrace, kid-friendly, budget). Relay `reply` to the user, "
+    "and only propose times the agent offered. To go on with the same agent, pass back the "
+    "`conversation` of its last answer. When the result contains `pending`, show the user its "
+    "`summary`, ask them to confirm, and stop. Send `confirm` (that `pending.id`) only once their "
+    "reply to that summary is an explicit yes, even if they confirmed in advance, and never in "
+    "the same reply as the call that returned the `pending`. Generate a fresh random UUID as "
+    "`idempotency_key` per message and reuse it only to resend the same message. "
+    f"{GIVE_FALLBACK}"
+)
+
+
+def bullet(text: str) -> str:
+    """`text` as a bullet of the server instructions."""
+    return textwrap.fill(
+        text, width=INSTRUCTIONS_WIDTH, initial_indent="- ", subsequent_indent="  "
+    )
+
+
 def confirm_rule(chosen: str, calls: str) -> str:
     """`CONFIRM_RULE` as a bullet of the server instructions."""
-    return textwrap.fill(
-        CONFIRM_RULE.format(chosen=chosen, calls=calls),
-        width=INSTRUCTIONS_WIDTH,
-        initial_indent="- ",
-        subsequent_indent="  ",
-    )
+    return bullet(CONFIRM_RULE.format(chosen=chosen, calls=calls))
+
+
+def talk_confirm_rule(chosen: str) -> str:
+    """`TALK_CONFIRM_RULE` as a bullet of the server instructions."""
+    return bullet(TALK_CONFIRM_RULE.format(chosen=chosen))
 
 
 async def availability(
@@ -180,6 +266,27 @@ async def my_reservations(agent: AgentClient, guest_name: str) -> GetMyReservati
     """`get_my_reservations`: the guest's upcoming bookings and notices."""
     reservations, notices = await agent.get_my_reservations(guest_name)
     return GetMyReservationsOutput(reservations=tuple(reservations), notices=tuple(notices))
+
+
+async def talk(
+    agent: AgentClient,
+    *,
+    merchant: str,
+    message: str,
+    idempotency_key: UUID,
+    conversation: str | None,
+    confirm: str | None,
+) -> TalkOutput:
+    """`talk_to_merchant`: the agent's answer, once the contract has checked the message. The key
+    travels in its canonical form, so that one UUID written two ways stays one key."""
+    turn = TalkInput(
+        merchant=merchant,
+        message=message,
+        idempotency_key=str(idempotency_key),
+        conversation=conversation,
+        confirm=confirm,
+    )
+    return await agent.talk(turn)
 
 
 class Tools:
@@ -276,8 +383,38 @@ class Tools:
         op = partial(my_reservations, self.agent, guest_name)
         return await call_service("get_my_reservations", op, settings=self.settings)
 
+    async def talk_to_merchant(
+        self,
+        slug: str,
+        *,
+        message: str,
+        idempotency_key: UUID,
+        conversation: str | None,
+        confirm: str | None,
+        deadline: float | None = None,
+    ) -> TalkOutput | ToolError:
+        """A turn of the conversation; only one carrying a `confirm` may have written."""
+        op = partial(
+            talk,
+            self.agent,
+            merchant=slug,
+            message=message,
+            idempotency_key=idempotency_key,
+            conversation=conversation,
+            confirm=confirm,
+        )
+        return await self._routed(TALK_TOOL, slug, op, deadline, writes=confirm is not None)
+
     async def _routed[T](
-        self, tool: str, slug: str, op: Callable[[], Awaitable[T]], deadline: float | None
+        self,
+        tool: str,
+        slug: str,
+        op: Callable[[], Awaitable[T]],
+        deadline: float | None,
+        *,
+        writes: bool | None = None,
     ) -> T | ToolError:
         find = partial(discovery.find_merchant, slug, engine=self.engine)
-        return await call_merchant(slug, tool, find, op, settings=self.settings, deadline=deadline)
+        return await call_merchant(
+            slug, tool, find, op, settings=self.settings, deadline=deadline, writes=writes
+        )

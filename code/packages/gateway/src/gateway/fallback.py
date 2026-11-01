@@ -25,7 +25,10 @@ log = logging.getLogger("gateway.tools")
 # Id of the BATP request behind the current tool call, to match this log line with the node's.
 batp_request: ContextVar[str | None] = ContextVar("batp_request", default=None)
 
+# A conversation with the merchant's agent (#251): a model turn, so it has its own deadline.
+TALK_TOOL = "talk_to_merchant"
 # A timeout can hit after the COMMIT: these calls may have succeeded although Claude sees an error.
+# `talk_to_merchant` only writes when it carries a `confirm`, so its caller says so (`writes`).
 WRITE_TOOLS = frozenset({"create_reservation", "update_reservation", "cancel_reservation"})
 MAYBE_SAVED = (
     "The change may have gone through: check get_my_reservations before retrying, "
@@ -37,9 +40,17 @@ SERVICE_UNAVAILABLE = "The booking service is unavailable right now. Please try 
 LINK_LOOKUP_SHARE = 0.1
 
 
-def deadline_in(settings: Settings) -> float:
-    """When a tool call starting now must have answered, in event loop time."""
-    return asyncio.get_running_loop().time() + settings.agent_timeout_ms / 1000
+def budget_ms(settings: Settings, tool: str | None = None) -> int:
+    """How long `tool` may take: `AGENT_TALK_TIMEOUT_MS` for a talk, `AGENT_TIMEOUT_MS` else."""
+    return settings.agent_talk_timeout_ms if tool == TALK_TOOL else settings.agent_timeout_ms
+
+
+def deadline_in(
+    settings: Settings, tool: str | None = None, *, start: float | None = None
+) -> float:
+    """When a call of `tool` starting now, or at `start`, must have answered, in event loop time."""
+    begin = asyncio.get_running_loop().time() if start is None else start
+    return begin + budget_ms(settings, tool) / 1000
 
 
 def log_call(tool: str, merchant: str | None, started: float, result: object) -> None:
@@ -81,7 +92,7 @@ def _invalid_input(error: ValidationError) -> ToolError:
     return ToolError(error="invalid_input", message=problems)
 
 
-def _to_error(exc: Exception, merchant: RegistryEntry, tool: str) -> ToolError:
+def _to_error(exc: Exception, merchant: RegistryEntry, tool: str, writes: bool) -> ToolError:
     match exc:
         case PartyTooLarge():
             url = merchant.fallback_url
@@ -96,7 +107,7 @@ def _to_error(exc: Exception, merchant: RegistryEntry, tool: str) -> ToolError:
             pass
         case _:
             log.error("tool_failed", extra={"tool": tool, "merchant": merchant.slug}, exc_info=exc)
-    return unavailable(merchant, MAYBE_SAVED if tool in WRITE_TOOLS else "")
+    return unavailable(merchant, MAYBE_SAVED if writes else "")
 
 
 def _service_unavailable(exc: Exception, tool: str, merchant: str | None) -> ToolError:
@@ -120,17 +131,21 @@ async def call_agent[T](
     settings: Settings | None = None,
     started: float | None = None,
     deadline: float | None = None,
+    writes: bool | None = None,
 ) -> T | ToolError:
     """Run `op` for a merchant: the result, or the `ToolError` Claude should read instead.
 
     A merchant guests can't address (`discovery.routable`) is `not_found`, a `paused` one gets
     its fallback URL: neither reaches `op`. Cancellation (the client went away) is not an
     `Exception` and propagates. `started` counts earlier work in the logged latency, `deadline`
-    (event loop time, default: a full budget from now) the time it already took.
+    (event loop time, default: the tool's full budget from now) the time it already took.
+    `writes` says whether `op` may write, so that a timeout says it may have (default: the tool
+    is one of `WRITE_TOOLS`).
     """
     settings = settings or get_settings()
     started = started or time.perf_counter()
-    deadline = deadline or deadline_in(settings)
+    deadline = deadline or deadline_in(settings, tool)
+    may_write = tool in WRITE_TOOLS if writes is None else writes
 
     async def attempt(target: RegistryEntry) -> T:
         if delay := _chaos_delay(target.slug, settings):
@@ -151,7 +166,7 @@ async def call_agent[T](
             async with asyncio.timeout_at(deadline):
                 result = await attempt(target)
         except Exception as exc:
-            result = _to_error(exc, target, tool)
+            result = _to_error(exc, target, tool, may_write)
     log_call(tool, merchant.slug if merchant else None, started, result)
     return result
 
@@ -164,14 +179,15 @@ async def call_merchant[T](
     *,
     settings: Settings | None = None,
     deadline: float | None = None,
+    writes: bool | None = None,
 ) -> T | ToolError:
     """`call_agent` after looking the merchant up; without the registry there is no URL to give.
 
-    The lookup and the agent share one deadline: `deadline`, or a full budget from now.
+    The lookup and the agent share one deadline: `deadline`, or the tool's full budget from now.
     """
     settings = settings or get_settings()
     started = time.perf_counter()
-    deadline = deadline or deadline_in(settings)
+    deadline = deadline or deadline_in(settings, tool)
     try:
         async with asyncio.timeout_at(deadline):
             merchant = await find()
@@ -180,7 +196,7 @@ async def call_merchant[T](
         log_call(tool, slug, started, result)
         return result
     return await call_agent(
-        merchant, tool, op, settings=settings, started=started, deadline=deadline
+        merchant, tool, op, settings=settings, started=started, deadline=deadline, writes=writes
     )
 
 
