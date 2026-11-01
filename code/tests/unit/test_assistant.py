@@ -651,7 +651,7 @@ def test_a_model_call_that_stops_sending_gives_up_after_60_s(
         built.append(kwargs)
         return AsyncOpenAI(**kwargs)
 
-    monkeypatch.setattr("merchant_platform.assistant.AsyncOpenAI", capture)
+    monkeypatch.setattr("core.llm.AsyncOpenAI", capture)
     settings = Settings(
         _env_file=None,  # type: ignore[call-arg]
         database_url="postgresql+psycopg://unused/db",

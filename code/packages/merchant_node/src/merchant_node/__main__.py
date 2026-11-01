@@ -10,13 +10,16 @@ from collections.abc import Callable, Sequence
 from contextlib import AsyncExitStack
 from zoneinfo import ZoneInfo
 
+from openai import Timeout
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agent.service import PgAgentService
+from agent.service import AgentService, PgAgentService
+from agent.talk import TURN_SECONDS, MerchantAgent, registry_merchants
 from batp.messages import Hello, NodeIdentity
 from batp.server import STOP_GRACE, NodeServer
 from core.config import Settings, get_settings
 from core.db import make_engine
+from core.llm import OpenAIClient, openai_connection
 from core.logs import use_json_logs
 from merchant_node.agents import MerchantAgents
 from merchant_node.requests_log import RequestLog, log_engine
@@ -28,6 +31,8 @@ NODE = NodeIdentity(id="urn:batp:node:merchant-agents", name="Sésame")
 STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 MIN_TOKEN = 16
+# A model call that stops sending gives up after 20 s, within the node's deadline for `TALK`.
+LLM_TIMEOUT = Timeout(20, connect=5)
 
 
 def exposure_problems(settings: Settings) -> list[str]:
@@ -74,6 +79,21 @@ def token_check(settings: Settings) -> Callable[[Hello], bool]:
     return authenticate
 
 
+def merchant_agent(
+    settings: Settings, engine: AsyncEngine, service: AgentService
+) -> MerchantAgent | None:
+    """The merchants' AI agent on OPENAI_API_KEY and OPENAI_MODEL, the builder's (#250); None
+    without a key: `TALK` then answers 503 with the fallback URL, the other intents work."""
+    connection = openai_connection(settings, LLM_TIMEOUT)
+    if connection is None:
+        log.warning("no OPENAI_API_KEY: TALK answers with the merchants' fallback URLs")
+        return None
+    llm = OpenAIClient(
+        connection, settings.openai_model, reasoning_effort=settings.agent_reasoning_effort
+    )
+    return MerchantAgent(llm, service, registry_merchants(engine), ZoneInfo(settings.merchant_tz))
+
+
 async def run(
     server: NodeServer,
     host: str,
@@ -111,15 +131,16 @@ async def serve(settings: Settings) -> None:
     engine = make_engine(settings.database_url)
     records = log_engine(settings.database_url)
     service = PgAgentService(engine, tz=ZoneInfo(settings.merchant_tz))
-    agents = MerchantAgents(engine, service)
+    agents = MerchantAgents(engine, service, merchant_agent(settings, engine, service))
     server = NodeServer(
         node=NODE,
         handle=agents,
         authenticate=token_check(settings),
         fallback_url=agents.fallback_url,
         record=RequestLog(records),
-        # Never shorter than the gateway's whole tool call, which waits for these answers.
-        stop_grace=max(STOP_GRACE, settings.agent_timeout_ms / 1000),
+        # Never shorter than what a caller waits for: the gateway's whole tool call, and a
+        # `TALK` turn, whose answer may report a write already made.
+        stop_grace=max(STOP_GRACE, settings.agent_timeout_ms / 1000, TURN_SECONDS),
     )
     await run(server, settings.batp_host, settings.batp_port, tls=tls, engines=(engine, records))
 
