@@ -2,8 +2,6 @@
 
 Issue [#25](https://github.com/MaxEntz/BaselHack2026/issues/25). This runbook covers the script, the checklist before going on stage, plan B and the jury's likely questions. How each piece is deployed and checked: [platform.md](platform.md) (Studio, the management site, the demo sites) and [connector.md](connector.md) (the gateway, the node, Claude.ai). Definition of done: AGENTS.md §11. The scenarios: AGENTS.md §9.
 
-⚠️ **The platform isn't deployed yet** ([platform.md](platform.md)). Until the team agrees to its server steps and runs `make deploy`, rehearse with [plan B](#plan-b), the local stack.
-
 ## Addresses
 
 | What | Address |
@@ -88,7 +86,7 @@ Write down in the [rehearsal log](#rehearsal-log) what the review flagged at the
 
 - The merchant's side ends on the management site (#127): blocking a time and the outage are done from its pages, not with `make outage`.
 - The Studio chat can still do everything. Before **Publish**, its chips include "Block 21:00 tonight". After it, they are "What bookings do I have tonight?" and "How busy are we tonight?".
-- **Only Le Petit Zinc is used for the fallback steps.** It is built live from its public host, so its booking page opens for the jury. The seeded merchants still point to `http://localhost:808x` ([platform.md](platform.md#possible-errors)).
+- **Only Le Petit Zinc is used for the fallback steps.** It is built live from its public host, so its booking page opens for the jury. The seeded merchants' links open their public hosts only with `DEMO_SITES_DOMAIN` set on the server ([platform.md](platform.md#possible-errors)).
 
 ### Optional: a management site with a history
 
