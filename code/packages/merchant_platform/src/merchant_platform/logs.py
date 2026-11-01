@@ -5,7 +5,7 @@ import logging
 import re
 import traceback
 
-from core.logs import json_handler
+from core.logs import use_json_logs
 
 # The secret link's token (`GET /login?token=`) and a chat session's id (`GET /session?
 # session_id=`), which acts for its merchant, must never reach a log line (#132): a session
@@ -50,9 +50,7 @@ def configure_logging(level: int = logging.INFO) -> None:
     the handlers of its own config and don't propagate, so its access log stays plain text, with
     the secret link's token masked.
     """
-    root = logging.getLogger()
-    root.handlers[:] = [json_handler()]
-    root.setLevel(level)
+    use_json_logs(level)
     # One INFO line per OpenAI request would drown the platform's own lines.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     access = logging.getLogger("uvicorn.access")

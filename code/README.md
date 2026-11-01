@@ -90,8 +90,8 @@ Shared tool and SSE contracts, fixtures and checks: [CONTRACTS.md](../documentat
 ```
 packages/
 ├── core/               models, DB access, availability rules, errors, settings
-├── agent/              AgentService + provisioning (templates/restaurant.json)
-├── gateway/            public MCP server: discovery, preference filters, fallback, BATP bridge
+├── agent/              AgentService, discovery + provisioning (templates/restaurant.json)
+├── gateway/            public MCP server: the user tools, fallback, BATP bridge
 ├── batp/               BATP library: messages, framing, status codes, client, generic node
 ├── merchant_node/      the BATP node that serves this backend's merchant agents
 ├── builder/            crawl (Playwright) + extraction (OpenAI API) -> MerchantProfile

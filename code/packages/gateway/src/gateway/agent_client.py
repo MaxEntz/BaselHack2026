@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent import discovery
 from agent.service import AgentService, PgAgentService
 from batp.client import BatpClient, parse_batp_url
 from batp.messages import AgentIdentity, Intent
@@ -33,7 +34,6 @@ from core.models import (
     Slot,
     UpdateReservationInput,
 )
-from gateway import discovery
 from gateway.fallback import batp_request
 
 GATEWAY_AGENT = AgentIdentity(

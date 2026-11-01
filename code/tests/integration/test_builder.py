@@ -16,6 +16,7 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.discovery import search
 from agent.provisioning import NotBuilding, SlugTaken, deprovision, set_status
 from agent.service import PgAgentService
 from batp.messages import AgentIdentity, Request
@@ -36,7 +37,6 @@ from core.config import Settings
 from core.db import merchants_t, schema_for
 from core.errors import AgentUnavailable, InvalidInput, NotFound
 from core.models import BuildAgentInput, BuildAgentOutput, FactBox, SitePageEvent, StepEvent
-from gateway.discovery import search
 from merchant_node.agents import MerchantAgents
 from merchant_platform.api import create_app
 from merchant_platform.assistant import Assistant

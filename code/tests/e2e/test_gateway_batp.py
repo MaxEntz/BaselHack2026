@@ -15,12 +15,12 @@ import pytest
 from mcp import Client
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.discovery import find_merchant, find_named_merchant
 from batp.client import BatpClient
 from core.config import Settings
 from core.models import SearchFilters, ToolError
 from gateway.agent_client import GATEWAY_AGENT as GATEWAY_IDENTITY
 from gateway.agent_client import BatpAgentClient, parse_batp_url
-from gateway.discovery import find_merchant, find_named_merchant
 from gateway.fallback import call_merchant, call_service
 from tests.e2e.conftest import BatpNode, running_gateway
 

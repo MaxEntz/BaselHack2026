@@ -1,14 +1,15 @@
-"""Merchant search with preference filters (tags, max price, city) and filter relaxation.
+"""Merchant search with preference filters (tags, max price, city) and filter relaxation, and
+which registry entries guests' calls may reach.
 
-The rules are pure functions over the `live` merchants, which `search` loads from the registry
-in one query: enough for the POC's handful of merchants (past ~100, filter in SQL with
+The gateway's MCP tools and the BATP node both call these rules, so the two modes agree by
+construction. They are pure functions over the `live` merchants, which `search` loads from the
+registry in one query: enough for the POC's handful of merchants (past ~100, filter in SQL with
 `tags @> :tags`). Preferences only arrive as filters on each call; nothing is stored
 (AGENTS.md §13).
 """
 
 import logging
 import re
-import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import date as Date
@@ -18,6 +19,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.guests import guest_key
 from core.db import merchants_t
 from core.errors import InvalidInput
 from core.models import (
@@ -29,7 +31,7 @@ from core.models import (
     Tag,
 )
 
-log = logging.getLogger("gateway.discovery")
+log = logging.getLogger("agent.discovery")
 
 PRICE_ORDER: tuple[PriceLevel, ...] = get_args(PriceLevel)
 
@@ -56,6 +58,8 @@ TAG_SPELLINGS: dict[str, Tag] = {tag: tag for tag in get_args(Tag)} | {
 
 # Letters NFKD does not decompose into a base letter plus accents.
 LIGATURES = str.maketrans({"œ": "oe", "æ": "ae", "ø": "o", "ł": "l", "đ": "d"})
+# What separates two words once text is folded.
+WORD_BREAK = re.compile(r"[^a-z0-9]+")
 
 # Shorter words never identify a restaurant: "le" or "la" would match half the names.
 MIN_QUERY_WORD = 3
@@ -94,6 +98,20 @@ class RegistryEntry:
     status: str
     fallback_url: str
 
+    @property
+    def paused(self) -> bool:
+        """A `down` merchant refuses guests' calls, with the link to its own booking page."""
+        return self.status == "down"
+
+
+def routable(entry: RegistryEntry | None) -> RegistryEntry | None:
+    """The entry a guest's call may address: None for an unknown merchant and for one still
+    `building`, which guests never see. A `paused` entry is routable: it answers with its
+    fallback URL, and each adapter words that refusal itself (a `ToolError`, a BATP 503)."""
+    if entry is None or entry.status == "building":
+        return None
+    return entry
+
 
 _ENTRY_COLUMNS = (
     merchants_t.c.slug,
@@ -113,21 +131,24 @@ class Criteria:
     query: str
 
 
-def _fold(text: str) -> str:
-    """How user text is compared: lowercase, without accents, single spaces."""
-    decomposed = unicodedata.normalize("NFKD", text.casefold().translate(LIGATURES))
-    without_accents = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return " ".join(without_accents.split())
+def fold(text: str) -> str:
+    """How user text is compared: case, accents and spacing ignored as in a guest's name
+    (`guests.guest_key`), and ligatures spelled out ("Œuf" is "oeuf")."""
+    return guest_key(text.casefold().translate(LIGATURES))
+
+
+def _tokens(text: str) -> list[str]:
+    """The folded words of `text`, in order."""
+    return [word for word in WORD_BREAK.split(fold(text)) if word]
 
 
 def _words(text: str, min_length: int = 1) -> set[str]:
-    return {word for word in re.split(r"[^a-z0-9]+", _fold(text)) if len(word) >= min_length}
+    return {word for word in _tokens(text) if len(word) >= min_length}
 
 
 def normalize_tag(raw: str) -> Tag | None:
     """`"Végétarien"` → `"vegetarian"`, `"gluten_free"` → `"gluten-free"`; None if unknown."""
-    canonical = "-".join(re.split(r"[^a-z0-9]+", _fold(raw))).strip("-")
-    return TAG_SPELLINGS.get(canonical)
+    return TAG_SPELLINGS.get("-".join(_tokens(raw)))
 
 
 def normalize_filters(
@@ -147,7 +168,7 @@ def normalize_filters(
     near_words = _words(near or "") - NEAR_NOISE
     city = " ".join(sorted(near_words)) if near_words else None
     max_price = raw.max_price if raw else None
-    return Criteria(frozenset(tags), max_price, city, _fold(query)), ignored
+    return Criteria(frozenset(tags), max_price, city, fold(query)), ignored
 
 
 def _in_city(merchant: MerchantSummary, city: str | None) -> bool:
@@ -166,7 +187,7 @@ def _within_price(merchant: MerchantSummary, max_price: PriceLevel | None) -> bo
     return PRICE_ORDER.index(merchant.price_level) <= PRICE_ORDER.index(max_price)
 
 
-def names(query: str, name: str, city: str | None) -> bool:
+def query_names(query: str, name: str, city: str | None) -> bool:
     """Whether `query` names the restaurant `name` in `city`.
 
     It must hold every distinctive word of the name: not a `NAME_NOISE` word, nor the
@@ -180,12 +201,8 @@ def names(query: str, name: str, city: str | None) -> bool:
     return bool(phrase) and f" {phrase} " in f" {' '.join(_tokens(query))} "
 
 
-def _tokens(text: str) -> list[str]:
-    return [word for word in re.split(r"[^a-z0-9]+", _fold(text)) if word]
-
-
 def _named_in(merchants: Sequence[MerchantSummary], query: str) -> list[MerchantSummary]:
-    return [m for m in merchants if names(query, m.name, m.city)]
+    return [m for m in merchants if query_names(query, m.name, m.city)]
 
 
 def filter_merchants(
@@ -204,7 +221,7 @@ def filter_merchants(
         and _within_price(merchant, criteria.max_price)
         and _in_city(merchant, criteria.city)
     ]
-    return sorted(found, key=lambda merchant: (_fold(merchant.name), merchant.slug))
+    return sorted(found, key=lambda merchant: (fold(merchant.name), merchant.slug))
 
 
 def suggest_relaxations(
@@ -282,13 +299,16 @@ async def _named_in_registry(query: str, engine: AsyncEngine) -> list[RegistryEn
     return [
         RegistryEntry(row["slug"], row["name"], row["status"], row["fallback_url"])
         for row in rows
-        if names(query, row["name"], row["city"])
+        if query_names(query, row["name"], row["city"])
     ]
 
 
 async def find_named_merchant(query: str, *, engine: AsyncEngine) -> RegistryEntry | None:
-    """The merchant the query names, live or `down`: when discovery itself fails, the link to
-    its own booking page is still something to give."""
+    """The merchant the query names, live or `down`; None if it names none.
+
+    When discovery itself fails, the link to that merchant's own booking page is still
+    something to give.
+    """
     named = await _named_in_registry(query, engine)
     return named[0] if named else None
 
@@ -307,6 +327,7 @@ async def find_named_down_merchant(query: str, *, engine: AsyncEngine) -> Regist
 
 
 def check_search_bounds(query: str, filters: SearchFilters | None) -> None:
+    """Refuse a search beyond `MAX_TAGS` or `MAX_QUERY` before it reads the registry."""
     tags = filters.tags if filters else ()
     if len(tags) > MAX_TAGS or len(query) > MAX_QUERY:
         raise InvalidInput(

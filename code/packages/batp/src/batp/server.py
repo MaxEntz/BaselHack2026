@@ -20,6 +20,7 @@ from batp.messages import (
     ADDRESSED,
     ALL_INTENTS,
     IN_FLIGHT_LIMIT,
+    MAX_REQUEST_ID,
     PROTOCOL_VERSION,
     AgentIdentity,
     ErrorBody,
@@ -33,7 +34,18 @@ from batp.messages import (
     Welcome,
     compatible,
 )
-from batp.status import TOO_MANY_REQUESTS, Refused, error_body, status_for
+from batp.status import (
+    BAD_REQUEST,
+    CONTENT_TOO_LARGE,
+    OK,
+    SERVICE_UNAVAILABLE,
+    TOO_MANY_REQUESTS,
+    UNAUTHORIZED,
+    UPGRADE_REQUIRED,
+    Refused,
+    error_body,
+    status_for,
+)
 from core.errors import AgentError
 
 log = logging.getLogger("batp.node")
@@ -55,6 +67,14 @@ FALLBACK_TIMEOUT = 1.0
 # How long a recorder may take, and how long `stop()` waits for the ones still running.
 RECORD_TIMEOUT = 5.0
 
+# Default limits of a node (PROTOCOL.md §10), in seconds where they are times.
+IDLE_TIMEOUT = 60.0  # no frame and no request in flight: the session ends
+HELLO_TIMEOUT = 10.0  # to say `hello` after connecting
+SEND_TIMEOUT = 10.0  # for a peer to read a frame: one that stops reading loses its session
+HANDLER_TIMEOUT = 10.0  # per request: past it, a 503
+MAX_SESSIONS = 64  # open at once: one more gets a `reject` 503
+MAX_MALFORMED = 10  # malformed frames in a row before the session is closed
+
 
 class NodeServer:
     def __init__(
@@ -64,13 +84,13 @@ class NodeServer:
         handle: Handler,
         authenticate: Authenticate,
         intents: Sequence[Intent] = ALL_INTENTS,
-        idle_timeout: float = 60.0,
-        hello_timeout: float = 10.0,
-        send_timeout: float = 10.0,
-        handler_timeout: float = 10.0,
+        idle_timeout: float = IDLE_TIMEOUT,
+        hello_timeout: float = HELLO_TIMEOUT,
+        send_timeout: float = SEND_TIMEOUT,
+        handler_timeout: float = HANDLER_TIMEOUT,
         max_in_flight: int = IN_FLIGHT_LIMIT,
-        max_sessions: int = 64,
-        max_malformed: int = 10,
+        max_sessions: int = MAX_SESSIONS,
+        max_malformed: int = MAX_MALFORMED,
         fallback_url: FallbackUrl | None = None,
         record: Recorder | None = None,
     ) -> None:
@@ -94,8 +114,7 @@ class NodeServer:
 
     @property
     def port(self) -> int:
-        assert self._server is not None, "start() first"
-        port: int = self._server.sockets[0].getsockname()[1]
+        port: int = self._listening().sockets[0].getsockname()[1]
         return port
 
     async def start(self, host: str, port: int, *, tls: ssl.SSLContext | None = None) -> None:
@@ -109,8 +128,12 @@ class NodeServer:
 
     async def serve(self, host: str, port: int, *, tls: ssl.SSLContext | None = None) -> None:
         await self.start(host, port, tls=tls)
-        assert self._server is not None
-        await self._server.serve_forever()
+        await self._listening().serve_forever()
+
+    def _listening(self) -> asyncio.Server:
+        if self._server is None:
+            raise RuntimeError("The node is not listening: call start() first")
+        return self._server
 
     async def stop(self) -> None:
         if self._server is None:
@@ -140,7 +163,7 @@ class NodeServer:
         try:
             if len(self._writers) >= self.max_sessions:
                 log.warning("session refused: node busy", extra={"peer": peer})
-                await send(Reject(status=503, message="Node busy, try again later"))
+                await send(Reject(status=SERVICE_UNAVAILABLE, message="Node busy, try again later"))
                 return
             self._writers.add(writer)
             caller = await self._handshake(reader, send, peer)
@@ -170,26 +193,28 @@ class NodeServer:
             log.warning("session rejected: no hello", extra={"peer": peer})
             return None
         except FrameTooLarge:
-            await reject(413, "Frame too large")
+            await reject(CONTENT_TOO_LARGE, "Frame too large")
             return None
         except FrameError:
-            await reject(400, "Malformed frame")
+            await reject(BAD_REQUEST, "Malformed frame")
             return None
         if frame is None:
             return None
         if frame.get("type") != "hello":
-            await reject(400, "Send hello first")
+            await reject(BAD_REQUEST, "Send hello first")
             return None
         try:
             hello = Hello.model_validate(frame)
         except ValidationError:
-            await reject(400, "Invalid hello")
+            await reject(BAD_REQUEST, "Invalid hello")
             return None
         if not compatible(hello.batp):
-            await reject(426, f"This node speaks BATP {PROTOCOL_VERSION}", hello.agent.id)
+            await reject(
+                UPGRADE_REQUIRED, f"This node speaks BATP {PROTOCOL_VERSION}", hello.agent.id
+            )
             return None
         if not self.authenticate(hello):
-            await reject(401, "Unknown agent or token", hello.agent.id)
+            await reject(UNAUTHORIZED, "Unknown agent or token", hello.agent.id)
             return None
         session = f"s-{secrets.token_hex(6)}"
         await send(Welcome(node=self.node, intents=self.intents, session=session))
@@ -221,24 +246,28 @@ class NodeServer:
                     continue  # not idle: answers are still on their way
                 return
             except FrameTooLarge:
-                await send(ErrorFrame(status=413, message="Frame too large"))
+                await send(ErrorFrame(status=CONTENT_TOO_LARGE, message="Frame too large"))
                 return
             except FrameError:
                 malformed += 1
-                await send(ErrorFrame(status=400, message="Malformed frame: not JSON"))
+                await send(ErrorFrame(status=BAD_REQUEST, message="Malformed frame: not JSON"))
                 continue
             if frame is None:
                 return
             raw_id = frame.get("id")
-            known_id = raw_id if isinstance(raw_id, str) and 0 < len(raw_id) <= 64 else None
+            known_id = (
+                raw_id if isinstance(raw_id, str) and 0 < len(raw_id) <= MAX_REQUEST_ID else None
+            )
             if frame.get("type") != "request" or known_id is None:
                 # No request id to answer: a session-level error frame (§6).
                 malformed += 1
-                await send(ErrorFrame(status=400, message="Not a request with a valid id"))
+                await send(ErrorFrame(status=BAD_REQUEST, message="Not a request with a valid id"))
                 continue
             if known_id in in_flight:
                 # Not carried out: two answers with one id couldn't be told apart (§6).
-                await send(ErrorFrame(status=400, message=f"Request {known_id} is in flight"))
+                await send(
+                    ErrorFrame(status=BAD_REQUEST, message=f"Request {known_id} is in flight")
+                )
                 continue
             try:
                 request = Request.model_validate(frame)
@@ -302,7 +331,7 @@ class NodeServer:
         try:
             async with asyncio.timeout(self.handler_timeout):
                 result = await self.handle(agent, request)
-            return Response(id=request.id, status=200, result=result)
+            return Response(id=request.id, status=OK, result=result)
         except Refused as refused:
             return Response(
                 id=request.id,
@@ -365,9 +394,9 @@ def _forget(ids: set[str], request_id: str) -> Callable[[asyncio.Task[None]], No
     return lambda _: ids.discard(request_id)
 
 
-def _invalid(request_id: str | None, message: str) -> Response:
+def _invalid(request_id: str, message: str) -> Response:
     return Response(
-        id=request_id, status=400, error=ErrorBody(code="invalid_input", message=message)
+        id=request_id, status=BAD_REQUEST, error=ErrorBody(code="invalid_input", message=message)
     )
 
 
@@ -378,4 +407,4 @@ def _too_many(request_id: str) -> Response:
 
 def _unavailable(request_id: str, message: str, fallback_url: str | None = None) -> Response:
     error = ErrorBody(code="agent_unavailable", message=message, fallback_url=fallback_url)
-    return Response(id=request_id, status=503, error=error)
+    return Response(id=request_id, status=SERVICE_UNAVAILABLE, error=error)

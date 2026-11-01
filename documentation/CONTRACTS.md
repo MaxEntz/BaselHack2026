@@ -4,7 +4,7 @@ The single source for tool fields, routes and validation rules. Issue [#2](https
 
 - `code/packages/core/src/core/models/`: tool inputs, outputs and shared values, in four modules (`base`, `tools`, `management`, `chat`) that `core.models` re-exports.
 - `code/packages/core/src/core/errors.py`: business exceptions and their error codes.
-- `code/packages/agent/src/agent/service.py`: the async `AgentService` protocol.
+- `code/packages/agent/src/agent/protocol.py`: the async `AgentService` protocol, re-exported by `agent.service`.
 - `code/web/src/types.ts`: chat and live-notification events.
 
 A contract change needs a dedicated PR and a message to the team, with Python and TypeScript changed together.
@@ -21,7 +21,7 @@ A contract change needs a dedicated PR and a message to the team, with Python an
 - `guest_name`, `idempotency_key` and `reservation_id` are stripped and must not be blank.
 - No `NonEmptyStr` holds a control character (Unicode `Cc`: NUL, tab, newline…). Spaces (non-breaking included) and letters of any script are kept.
 - Guest-side text (`GuestText`: guest names, keys, references) is at most 200 characters.
-- `search_merchants`: `query` at most 500 characters, at most 32 `filters.tags` (`gateway.discovery.MAX_QUERY`, `MAX_TAGS`, shared with BATP `DISCOVER`).
+- `search_merchants`: `query` at most 500 characters, at most 32 `filters.tags` (`agent.discovery.MAX_QUERY`, `MAX_TAGS`, shared with BATP `DISCOVER`).
 - Search filters accept unknown tag strings (reported back in `ignored_filters`) but reject unknown filter names.
 
 ### Dates and times
@@ -76,11 +76,11 @@ Each tool takes flat arguments (the fields of its `*Input` model) and returns `<
 `reservation` is `{id, merchant, starts_at, party_size, table_label, status, guest_name, via}`.
 
 - Arguments outside a tool's schema are rejected before it runs, as `invalid_input` (`gateway.fallback.RejectedArguments`).
-- **Naming a merchant:** a query names one when it holds every distinctive word of its name (not an article or connector in EN/FR/DE, a tag spelling, a generic word like "restaurant", or the merchant's city; `gateway.discovery.names`). A name made only of such words ("La Terrasse") needs the whole name. `search` then keeps only the merchants named.
+- **Naming a merchant:** a query names one when it holds every distinctive word of its name (not an article or connector in EN/FR/DE, a tag spelling, a generic word like "restaurant", or the merchant's city; `agent.discovery.query_names`). A name made only of such words ("La Terrasse") needs the whole name. `search` then keeps only the merchants named.
 - `search_merchants` never lists a `down` merchant. When the query names one and no live merchant, it answers `agent_unavailable` with that merchant's `fallback_url`.
 - **Deadline:** `AGENT_TIMEOUT_MS` (2 s) bounds the whole call, registry lookup included (`gateway.fallback.deadline_in`). After a `search_merchants` timeout, the named merchant's link lookup gets 10 % more (`LINK_LOOKUP_SHARE`): the call answers within 2.2 s ([#92](https://github.com/MaxEntz/BaselHack2026/issues/92)).
 - A timeout on a write may hit after the COMMIT: its message tells Claude to check `get_my_reservations` before retrying.
-- **Notices:** `get_my_reservations` returns a notice on every call for 24 real hours after the first call that returned it (`agent.service.NOTICE_WINDOW`), then never again ([#91](https://github.com/MaxEntz/BaselHack2026/issues/91)).
+- **Notices:** `get_my_reservations` returns a notice on every call for 24 real hours after the first call that returned it (`agent.notices.NOTICE_WINDOW`), then never again ([#91](https://github.com/MaxEntz/BaselHack2026/issues/91)).
 - **Bridge:** with `BATP_URL`, each tool is a BATP request to the node ([PROTOCOL.md §12](PROTOCOL.md#12-the-mcp-bridge)), inside the same 2 s. A lost or overloaded node or an unreadable answer is `agent_unavailable`; a refusal from the node keeps its own code. The gateway still reads the registry for the `down` status and the fallback URL.
 - **Log:** one JSON line per call, `{"event": "tool_call", "tool", "merchant", "latency_ms", "outcome"}` (`outcome` = `ok` or the error code), plus `batp_request` as a bridge. Guest names never appear at INFO.
 - `GET /health` (no MCP, no token): `200` or `503`, `{"status", "database"}`. It doesn't check the node.
@@ -293,7 +293,7 @@ for it in local development only.
 - `POST /reservations/{id}/cancel` answers `outcome`. A guest notice is stored only for a booking a guest made (through an agent or the website): one the merchant entered itself is `own_booking`, no notice.
 - `GET /slots`: the day's starts that haven't passed, each with the table `pick_table` would give (none when the party exceeds `max_party_size` or no table is free) and `blocked`. With `ignore` (a move), the table the move would give: its own first among equals, and no party limit for the booking's own party. `until` is computed in UTC, so it is right on clock-change nights.
 
-**The restaurant's forms (#133, `agent/admin.py`)**
+**The restaurant's forms (#133, `agent/site_forms.py`, hours and floor plan through `agent/admin.py`)**
 - Each save runs in one `merchant_conn` transaction and keeps the registry's columns and
   `profile` in step with the merchant's rows, so the gateway's discovery, the fallback link and
   the tool descriptions on `/m/<slug>/mcp` follow at the next call, with no restart.

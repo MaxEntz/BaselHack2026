@@ -18,6 +18,8 @@ from pydantic import (
     model_validator,
 )
 
+from core.time_of_day import to_minutes
+
 Tag = Literal["gluten-free", "vegetarian", "vegan", "halal", "kosher", "terrace", "kid-friendly"]
 PriceLevel = Literal["€", "€€", "€€€", "€€€€"]
 Via = Literal["claude", "merchant", "website"]
@@ -82,18 +84,13 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-def _minutes(value: str) -> int:
-    hours, minutes = value.split(":")
-    return int(hours) * 60 + int(minutes)
-
-
 class Service(_Model):
     start: HHMM
     end: HHMM
 
     @model_validator(mode="after")
     def validate_interval(self) -> Self:
-        if _minutes(self.end) - _minutes(self.start) < MIN_SERVICE_MINUTES:
+        if to_minutes(self.end) - to_minutes(self.start) < MIN_SERVICE_MINUTES:
             raise ValueError(
                 f"Service must last at least {MIN_SERVICE_MINUTES} minutes on the same day"
             )

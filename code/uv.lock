@@ -750,7 +750,6 @@ dependencies = [
     { name = "agent" },
     { name = "batp" },
     { name = "core" },
-    { name = "gateway" },
 ]
 
 [package.metadata]
@@ -758,7 +757,6 @@ requires-dist = [
     { name = "agent", editable = "packages/agent" },
     { name = "batp", editable = "packages/batp" },
     { name = "core", editable = "packages/core" },
-    { name = "gateway", editable = "packages/gateway" },
 ]
 
 [[package]]

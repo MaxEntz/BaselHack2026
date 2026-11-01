@@ -145,13 +145,14 @@ async def test_server_sends_its_rules_to_claude() -> None:
     async with make_client() as client:
         instructions = client.instructions or ""
 
-    assert "explicit yes" in instructions
-    assert "in advance" in instructions
+    flat = " ".join(instructions.split())
+    assert "explicit yes" in flat
+    assert "in advance" in flat
     # A check after the yes may come with the booking (#109).
-    assert "get_availability call\n  your summary is based on" in instructions
-    assert "availability again" in instructions
-    assert "don't book another one" in " ".join(instructions.split())
-    assert "fallback_url" in instructions
+    assert "get_availability call your summary is based on" in flat
+    assert "availability again" in flat
+    assert "don't book another one" in flat
+    assert "fallback_url" in flat
 
 
 @pytest.mark.parametrize(
@@ -274,10 +275,19 @@ def test_bearer_token_also_guards_each_merchants_endpoint() -> None:
     assert response.status_code == 401
 
 
-def test_a_malformed_merchant_endpoint_is_not_found_without_the_database() -> None:
+@pytest.mark.parametrize(
+    "slug",
+    [
+        "Not_A_Slug",
+        # `core.models.Slug`, not a regex whose `$` also matches before a final newline (#220).
+        "le-petit-zinc%0A",
+    ],
+    ids=["not-a-slug", "trailing-newline"],
+)
+def test_a_malformed_merchant_endpoint_is_not_found_without_the_database(slug: str) -> None:
     settings = make_settings(database_url="postgresql+psycopg://u:p@127.0.0.1:1/db")
     with TestClient(create_app(settings), base_url=LOCAL_URL) as client:
-        response = client.post("/m/Not_A_Slug/mcp", json=INITIALIZE, headers=MCP_HEADERS)
+        response = client.post(f"/m/{slug}/mcp", json=INITIALIZE, headers=MCP_HEADERS)
 
     assert response.status_code == 404
 
@@ -287,3 +297,29 @@ def test_bearer_token_accepts_non_ascii() -> None:
     headers = {"Authorization": "Bearer pässword".encode()}
 
     assert post_initialize(LOCAL_URL, settings, headers).status_code == 200
+
+
+async def test_the_app_releases_what_it_created_even_when_serving_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    released: list[str] = []
+
+    class Engine:
+        async def dispose(self) -> None:
+            released.append("engine")
+
+    class Agent:
+        async def close(self) -> None:
+            released.append("agent")
+
+    monkeypatch.setattr("gateway.server.make_engine", lambda url: Engine())
+    monkeypatch.setattr("gateway.server.make_agent_client", lambda settings, db: Agent())
+    app = create_app(make_settings())
+
+    # The MCP session manager's task group hands the failure on in an exception group.
+    with pytest.raises(ExceptionGroup) as raised:
+        async with app.router.lifespan_context(app):
+            raise RuntimeError("serving failed")
+
+    assert raised.group_contains(RuntimeError, match="serving failed")
+    assert released == ["agent", "engine"]

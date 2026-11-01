@@ -11,14 +11,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent.discovery import RegistryEntry, find_merchant, routable, search
 from agent.service import AgentService
 from batp.messages import AgentIdentity, Intent, Request
 from batp.server import FAILED
 from batp.status import WITH_FALLBACK, Refused
-from core.db import merchants_t
 from core.errors import AgentError, AgentUnavailable, InvalidInput, NotFound
 from core.models import (
     CancelReservationInput,
@@ -32,7 +31,6 @@ from core.models import (
     UpdateReservationInput,
     Via,
 )
-from gateway.discovery import search
 
 # Bookings over BATP come from guests' agents. The `kind` a caller declares is not trusted, and
 # `Via` has no value for agents other than Claude yet: every BATP booking is `claude`.
@@ -90,7 +88,7 @@ class MerchantAgents:
         slots = await self._refusing(
             slug, self.service.get_availability(slug, inp.date, inp.party_size, inp.time)
         )
-        return _dump(GetAvailabilityOutput(slots=tuple(slots[:3])))
+        return _dump(GetAvailabilityOutput(slots=tuple(slots)))
 
     async def _book(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
@@ -146,27 +144,23 @@ class MerchantAgents:
         """The addressed merchant, if it takes agent traffic, and its params for the contract."""
         if request.merchant is None:
             raise InvalidInput(f"{request.intent} needs a merchant")
-        status, fallback_url, name = await self._registry(request.merchant)
-        if status == "down":
+        merchant = await self._registry(request.merchant)
+        if merchant.paused:
             raise Refused(
-                AgentUnavailable(f"{name} is not taking bookings through agents right now"),
-                fallback_url,
+                AgentUnavailable(
+                    f"{merchant.name} is not taking bookings through agents right now"
+                ),
+                merchant.fallback_url,
             )
         # The request's merchant wins over any `merchant` inside the params.
         return request.merchant, {**request.params, "merchant": request.merchant}
 
-    async def _registry(self, slug: str) -> tuple[str, str, str]:
-        async with self.engine.connect() as conn:
-            row = (
-                await conn.execute(
-                    select(
-                        merchants_t.c.status, merchants_t.c.fallback_url, merchants_t.c.name
-                    ).where(merchants_t.c.slug == slug)
-                )
-            ).one_or_none()
-        if row is None or row.status == "building":
+    async def _registry(self, slug: str) -> RegistryEntry:
+        """The merchant's registry entry, if agents may address it (`discovery.routable`)."""
+        merchant = routable(await find_merchant(slug, engine=self.engine))
+        if merchant is None:
             raise NotFound(f"Unknown merchant: {slug!r}")
-        return row.status, row.fallback_url, row.name
+        return merchant
 
     async def fallback_url(self, request: Request) -> str | None:
         """For `NodeServer`: the addressed merchant's booking page, for a 503 it sends itself."""
@@ -176,7 +170,7 @@ class MerchantAgents:
         if slug is None:
             return None
         try:
-            _, fallback_url, _ = await self._registry(slug)
+            merchant = await self._registry(slug)
         except NotFound:
             # Unknown or not yet published: there is no booking page to send the guest to.
             log.debug("no fallback url: unknown merchant", extra={"merchant": slug})
@@ -184,7 +178,7 @@ class MerchantAgents:
         except Exception:
             log.warning("no fallback url", extra={"merchant": slug}, exc_info=True)
             return None
-        return fallback_url
+        return merchant.fallback_url
 
     async def _refusing[T](self, slug: str, call: Awaitable[T]) -> T:
         """Run a service call; a refusal that sends the guest elsewhere gets the fallback URL."""
@@ -193,8 +187,7 @@ class MerchantAgents:
         except AgentError as error:
             if error.code not in WITH_FALLBACK:
                 raise
-            _, fallback_url, _ = await self._registry(slug)
-            raise Refused(error, fallback_url) from None
+            raise Refused(error, (await self._registry(slug)).fallback_url) from None
 
 
 def _dump(model: BaseModel) -> Result:
