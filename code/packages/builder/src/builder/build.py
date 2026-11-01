@@ -18,12 +18,12 @@ from agent.provisioning import NotBuilding, deploy, deprovision, generated_tools
 from builder.cache import CACHE_ROOT, BuildCache, crawl_key, extraction_key
 from builder.crawl import CrawlResult, StepEmitter, crawl, pages_read
 from builder.extract import PROMPT_VERSION, ExtractionFailed, ExtractionResult, extract_profile
-from builder.llm import LLMClient, LLMUnavailable
 from builder.site import save_site, site_pages
 from builder.slugs import numbered
 from builder.urls import normalize_url
 from core.db import merchants_t
 from core.errors import AgentUnavailable, InvalidInput, NotFound
+from core.llm import LLMClient, LLMUnavailable
 from core.models import BuildAgentOutput, MerchantProfile, SitePageEvent, StepEvent
 
 log = logging.getLogger("builder.build")

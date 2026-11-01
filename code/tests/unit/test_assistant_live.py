@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 from openai import AsyncOpenAI
 
-from builder.llm import OpenAIClient
 from core.config import Settings
+from core.llm import OpenAIClient
 from merchant_platform.sessions import Session
 from tests.unit.assistant_fakes import SLUG, TODAY, TZ, FakeAgent, Harness, onboarded
 

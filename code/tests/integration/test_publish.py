@@ -12,10 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from builder.crawl import CrawlResult, Page, StepEmitter
-from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
 from builder.look import read_look
 from core.config import Settings
 from core.db import merchants_t
+from core.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
 from core.models import BuildAgentInput, BuildAgentOutput, ChatEvent, MerchantOverview
 from merchant_platform.accounts import Accounts, MemoryOwnerStore, Signer
 from merchant_platform.api import create_app

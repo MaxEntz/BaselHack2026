@@ -73,7 +73,7 @@ All code lives in `code/` (BaselHack template: `code/`, `documentation/`, `asset
 code/
 ├── Makefile, pyproject.toml (uv workspace), docker-compose.yml, alembic.ini, .env.example
 ├── packages/
-│   ├── core/src/core/             models/ (base, tools, management, chat), errors.py, forms.py, db.py, availability.py, time_of_day.py, text.py, config.py, logs.py
+│   ├── core/src/core/             models/ (base, tools, management, chat), errors.py, forms.py, db.py, availability.py, time_of_day.py, text.py, config.py, logs.py, llm.py
 │   ├── agent/src/agent/           protocol.py (AgentService), service.py (PgAgentService), writes.py, merchant.py, times.py,
 │   │                              admin.py, site_forms.py, notices.py, provisioning.py, management.py, dashboard.py,
 │   │                              activity.py, guests.py, requests.py, words.py, discovery.py, templates/restaurant.json
@@ -81,7 +81,7 @@ code/
 │   ├── batp/src/batp/             messages.py, codec.py, status.py, client.py, server.py
 │   ├── merchant_node/src/merchant_node/   agents.py (the BATP node), requests_log.py
 │   ├── builder/src/builder/       crawl.py, guard.py, probes.py, urls.py, extract.py, look.py, slugs.py,
-│   │                              words.py, site.py, build.py, cache.py, llm.py
+│   │                              words.py, site.py, build.py, cache.py
 │   └── merchant_platform/src/merchant_platform/   api.py, chat.py, live.py, public.py, errors.py,
 │                                  assistant.py, tools.py, tool_specs.py, booking_tools.py, look_tool.py, trial.py,
 │                                  agent_try.py, events.py, sessions.py, accounts.py, account_settings.py,
@@ -313,7 +313,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-10-31 | One Postgres schema per merchant, tables declared once in Core; no merchant-schema migrations | [ADR-0001](documentation/adr/0001-one-postgres-schema-per-merchant.md) |
 | 2026-10-31 | Gateway on the team server behind Caddy (`sslip.io`), bound to `127.0.0.1`; `GATEWAY_TOKEN` optional (required on the server since [ADR-0019](documentation/adr/0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md)); ngrok as alternative | [ADR-0009](documentation/adr/0009-serve-the-gateway-from-the-team-server-behind-caddy.md) |
 | 2026-10-31 | Platform assistant on the OpenAI Responses API behind `LLMClient`, provider-neutral history, `store=False`, effort `low` | #17 |
-| 2026-10-31 | `llm.py` lives in `builder`, shared with the assistant; `BUILDER_REASONING_EFFORT` defaults to `none` | #22 |
+| 2026-10-31 | `BUILDER_REASONING_EFFORT` defaults to `none` | #22 |
 | 2026-10-31 | Builder: the LLM fills `ProfileDraft`; the code sets slug, website, vertical, tags, `fallback_url` and the floor plan, each default announced as an assumption | #22 |
 | 2026-10-31 | `build_agent` refuses a website that already has an agent; a build stopped before `deploy` is deprovisioned; only `PLATFORM_MERCHANT` attaches a session to an existing agent (#22). **Superseded by #136 for the leftover:** a build now ends at `provision`, and only a build stopped *inside* `provision` is deprovisioned. One waiting to be published holds its website for 24 hours (its owner finishes it from their link), then another build replaces it | #22, #136 |
 | 2026-10-31 | Builder cache (`BUILDER_CACHE`) for a replayable demo | [ADR-0007](documentation/adr/0007-builder-cache-for-a-replayable-demo.md) |
@@ -383,6 +383,7 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-11-01 | Python safety pass (#220): log lines name a chat session by `session_tag` (8 hex digits of its id's SHA-256), never by its id; the platform refuses to start with `PLATFORM_DEV_ROUTES` beside an https web URL, a cookie secret or an invite code, as with `PLATFORM_MERCHANT`; `deploy` moves only a `building` merchant (`NotBuilding` otherwise), and `seed.py` puts a kept merchant back live with `set_status`; a model URL that doesn't parse is refused like a foreign one | The id alone claims the owner cookie for 5 minutes after a build; `/dev/reset-session` is unauthenticated and only `make deploy` refused it; a publish that read `building` overwrote a pause made since; `urlsplit` raises `ValueError`, which ended the build |
 | 2026-11-01 | Discovery and the registry routing rule (`routable`) move to `agent/discovery.py`; the BATP node no longer depends on `gateway`; what both MCP endpoints share goes to `gateway/tooling.py` (#220) | They are business rules, and the node reached them by importing the MCP package; the gateway, its merchant endpoint and the node each wrote the `building` / `down` rule themselves, and the two MCP servers repeated their hints, argument types and rule for writes |
 | 2026-11-01 | Platform and builder refactor (#220): `create_app` only composes routers (`chat`, `live`, `public`, `auth`, `management`) and `errors.py`; who a chat session acts for is `sessions.SessionGuard`'s; the assistant reads the registry row once per model call (`registry.registry_records`: profile and status); admin tools are dispatched by tool name, since `block_slot` and `unblock_slot` share `SlotInput`; the crawl and the extraction compare pages with one key (`urls.page_key`: no `www.`, no port that is its scheme's default, no trailing slash or fragment); `POST /chat`'s `409` keeps FastAPI's `{detail}` body | Session rules in the HTTP layer couldn't be tested without it, and `create_app` had grown to 282 lines; the extraction's key ignored a trailing slash and the crawl's a default port (whatever the scheme), so one site's pages compared two ways; a `409` with `{error, message}` would need a code the frozen §8.4 and management lists don't have, and the web reads only the status |
+| 2026-11-01 | The provider-neutral LLM client moves from `builder/llm.py` to `core/llm.py` (`core` gains `openai`), and the prompt's clock line (`clock_line`, `next_offset_change`) from the assistant to `agent/times.py` | The BATP node's merchant agents use both, and the node can't import the builder (Playwright, and `builder` depends on `agent`) or the platform (#246) |
 
 ## 15. Out of scope (POC)
 

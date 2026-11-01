@@ -26,8 +26,8 @@ from agent.provisioning import deprovision
 from builder.build import Builder, publish
 from builder.cache import BuildCache
 from builder.crawl import CrawlResult, Page, StepEmitter
-from builder.llm import OpenAIClient
 from core.config import Settings
+from core.llm import OpenAIClient
 from core.models import BuildAgentInput, BuildAgentOutput, StepEvent
 from merchant_platform.accounts import Accounts, IssuedLink, MemoryOwnerStore, Signer, issued
 from merchant_platform.api import create_app

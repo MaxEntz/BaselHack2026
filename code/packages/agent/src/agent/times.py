@@ -60,3 +60,38 @@ def day_bounds(day: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
     except OverflowError:
         raise InvalidInput(f"Date out of range: {day}") from None
     return midnight(day, tz), midnight(next_day, tz)
+
+
+# How far ahead a prompt looks for the next clock change.
+OFFSET_HORIZON_DAYS = 400
+
+
+def next_offset_change(now: datetime) -> datetime | None:
+    """Noon of the first local day, from today, whose UTC offset differs from `now`'s.
+
+    Today counts: before 03:00 on the night of a switch, tonight's services are already in
+    the new offset. None when the time zone keeps one offset over the horizon.
+    """
+    for days in range(OFFSET_HORIZON_DAYS + 1):
+        day = datetime.combine(now.date() + timedelta(days=days), time(12), now.tzinfo)
+        if day.utcoffset() != now.utcoffset():
+            return day
+    return None
+
+
+def clock_line(now: datetime) -> str:
+    """Today's date, time and UTC offset, and the next offset change (#83), for a model's prompt:
+    the platform assistant's, and the merchants' agents' (#246).
+
+    Tools take times with their offset; a model guessing it would send a summer offset after
+    the switch, and `block_slot` would block another hour without failing.
+    """
+    tz = str(now.tzinfo)
+    line = f"Today is {now:%A %Y-%m-%d}, it is {hhmm(now)} ({tz}, UTC{now:%:z})."
+    change = next_offset_change(now)
+    if change is not None:
+        line += (
+            f" The offset becomes UTC{change:%:z} on {change:%A %Y-%m-%d}: use it for times"
+            " from that date on."
+        )
+    return line + "\n"
