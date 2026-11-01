@@ -1,0 +1,52 @@
+{
+  "$comment": "Generated from core.models.TalkInput",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One message from the guest's agent to the merchant's agent.\n\n`confirm` names a `pending` proposal of this conversation, sent only after the guest's\nexplicit yes (#247): a proposal only exists in a conversation, so it needs `conversation`.",
+  "properties": {
+    "confirm": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confirm"
+    },
+    "conversation": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Conversation"
+    },
+    "idempotency_key": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "message": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "idempotency_key"
+  ],
+  "title": "BATP TALK params",
+  "type": "object"
+}

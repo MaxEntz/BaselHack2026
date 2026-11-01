@@ -4,30 +4,35 @@ Every frame is a JSON object with a `type`. Unknown fields are ignored (§13), s
 can talk to an older one within the same major version.
 """
 
+from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from core.models import Slug
 
-PROTOCOL_VERSION = "0.1"
+PROTOCOL_VERSION = "0.2"
 DEFAULT_PORT = 4710
 # Every node accepts at least this many requests in flight per session (§6): a client that
 # stays under it never gets a 429 from a node that follows the draft.
 IN_FLIGHT_LIMIT = 32
 
-Intent = Literal["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"]
+Intent = Literal["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "TALK", "RECALL", "PING"]
 ALL_INTENTS: tuple[Intent, ...] = (
     "DISCOVER",
     "AVAILABILITY",
     "BOOK",
     "AMEND",
     "CANCEL",
+    "TALK",
     "RECALL",
     "PING",
 )
 # The intents that address one merchant: `merchant` is required for them, absent otherwise (§6).
-ADDRESSED: frozenset[Intent] = frozenset({"AVAILABILITY", "BOOK", "AMEND", "CANCEL"})
+ADDRESSED: frozenset[Intent] = frozenset({"AVAILABILITY", "BOOK", "AMEND", "CANCEL", "TALK"})
+# The minor version that brought an intent (§14); the others are in every version. A session of
+# an older minor is neither offered nor served it.
+SINCE_MINOR: dict[Intent, int] = {"TALK": 2}
 AgentKind = Literal["user-agent", "merchant-agent"]
 
 MAX_REQUEST_ID = 64
@@ -119,3 +124,15 @@ def compatible(version: str) -> bool:
     major, _, minor = version.partition(".")
     numbers = all(part.isascii() and part.isdigit() for part in (major, minor))
     return numbers and major == PROTOCOL_VERSION.partition(".")[0]
+
+
+def negotiate(version: str) -> str:
+    """The session's version (§14): the highest minor both speak. `version` is `compatible`."""
+    major, _, minor = PROTOCOL_VERSION.partition(".")
+    return f"{major}.{min(int(minor), int(version.partition('.')[2]))}"
+
+
+def intents_of(version: str, intents: Sequence[Intent]) -> tuple[Intent, ...]:
+    """The `intents` that a session of `version` may use, in their order."""
+    minor = int(version.partition(".")[2])
+    return tuple(intent for intent in intents if SINCE_MINOR.get(intent, 0) <= minor)

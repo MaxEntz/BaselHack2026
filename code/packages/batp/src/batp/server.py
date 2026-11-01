@@ -12,7 +12,7 @@ import ssl
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ValidationError
 
@@ -34,6 +34,8 @@ from batp.messages import (
     Response,
     Welcome,
     compatible,
+    intents_of,
+    negotiate,
 )
 from batp.status import (
     BAD_REQUEST,
@@ -59,6 +61,16 @@ Authenticate = Callable[[Hello], bool]
 # Never awaited by the answer, so it can neither delay it nor fail it.
 Recorder = Callable[[AgentIdentity, Request, Response], Awaitable[None]]
 Send = Callable[[BaseModel], Awaitable[None]]
+
+
+class Caller(NamedTuple):
+    """A session's caller, once `welcome` went out."""
+
+    agent: AgentIdentity
+    session: str
+    # The intents offered in `welcome`: this node's, within the session's version (§14).
+    intents: tuple[Intent, ...]
+
 
 FAILED = "The merchant agent failed; try again later"
 TOO_SLOW = "The merchant agent took too long; try again later"
@@ -208,8 +220,8 @@ class NodeServer:
 
     async def _handshake(
         self, reader: asyncio.StreamReader, send: Send, peer: str
-    ) -> tuple[AgentIdentity, str] | None:
-        """The caller's identity and session id, or None after a `reject`."""
+    ) -> Caller | None:
+        """The caller, or None after a `reject`."""
 
         async def reject(status: int, message: str, agent: str | None = None) -> None:
             log.warning("session rejected", extra={"peer": peer, "agent": agent, "status": status})
@@ -245,15 +257,18 @@ class NodeServer:
             await reject(UNAUTHORIZED, "Unknown agent or token", hello.agent.id)
             return None
         session = f"s-{secrets.token_hex(6)}"
-        await send(Welcome(node=self.node, intents=self.intents, session=session))
+        version = negotiate(hello.batp)
+        intents = intents_of(version, self.intents)
+        await send(Welcome(batp=version, node=self.node, intents=intents, session=session))
         log.info(
-            "session opened", extra={"agent": hello.agent.id, "session": session, "peer": peer}
+            "session opened",
+            extra={"agent": hello.agent.id, "session": session, "peer": peer, "batp": version},
         )
-        return hello.agent, session
+        return Caller(hello.agent, session, intents)
 
     async def _requests(
         self,
-        caller: tuple[AgentIdentity, str],
+        caller: Caller,
         reader: asyncio.StreamReader,
         send: Send,
         tasks: set[asyncio.Task[None]],
@@ -264,7 +279,7 @@ class NodeServer:
         while True:
             if malformed >= self.max_malformed:
                 log.warning(
-                    "session closed: too many malformed frames", extra={"agent": caller[0].id}
+                    "session closed: too many malformed frames", extra={"agent": caller.agent.id}
                 )
                 return
             try:
@@ -282,7 +297,7 @@ class NodeServer:
                 continue
             if frame is None:
                 return
-            screened = self._screen(frame, in_flight)
+            screened = self._screen(frame, in_flight, caller.intents)
             if isinstance(screened, _Refusal):
                 malformed = _counted(malformed, screened.effect)
                 await send(screened.answer)
@@ -292,7 +307,7 @@ class NodeServer:
                 # Not carried out; the caller may send it again after an earlier answer (§6).
                 log.warning(
                     "request refused: too many in flight",
-                    extra={"agent": caller[0].id, "request": screened.id},
+                    extra={"agent": caller.agent.id, "request": screened.id},
                 )
                 await send(_too_many(screened.id))
                 continue
@@ -304,8 +319,13 @@ class NodeServer:
             task.add_done_callback(self._answers.discard)
             task.add_done_callback(_forget(in_flight, screened.id))
 
-    def _screen(self, frame: dict[str, Any], in_flight: set[str]) -> "Request | _Refusal":
-        """The request `frame` holds, if this node carries it out; else what to answer."""
+    def _screen(
+        self, frame: dict[str, Any], in_flight: set[str], intents: tuple[Intent, ...]
+    ) -> "Request | _Refusal":
+        """The request `frame` holds, if this node carries it out; else what to answer.
+
+        `intents` are the session's: this node's, within the session's version (§14).
+        """
         raw_id = frame.get("id")
         known_id = raw_id if isinstance(raw_id, str) and 0 < len(raw_id) <= MAX_REQUEST_ID else None
         if frame.get("type") != "request" or known_id is None:
@@ -321,7 +341,7 @@ class NodeServer:
         except ValidationError:
             message = "Invalid request: check intent, merchant and params"
             return _Refusal(_invalid(known_id, message), "malformed")
-        if request.intent not in self.intents:
+        if request.intent not in intents:
             message = f"{request.intent} is not served by this node"
             return _Refusal(_invalid(request.id, message), "readable")
         if (request.intent in ADDRESSED) != (request.merchant is not None):
@@ -329,10 +349,8 @@ class NodeServer:
             return _Refusal(_invalid(request.id, f"{request.intent} {needs}"), "readable")
         return request
 
-    async def _answer(
-        self, caller: tuple[AgentIdentity, str], request: Request, send: Send
-    ) -> None:
-        agent, session = caller
+    async def _answer(self, caller: Caller, request: Request, send: Send) -> None:
+        agent, session = caller.agent, caller.session
         started = time.monotonic()
         response = await self._respond(agent, request)
         try:

@@ -305,3 +305,56 @@ async def test_a_handler_timeout_gives_the_merchants_fallback_url(
 
     assert response["status"] == 503
     assert response["error"]["fallback_url"] == "http://localhost:8080/reservation.html"
+
+
+# `TALK` (#245): the frames are fixed; the merchant's agent behind them comes with #249.
+
+TALK = {"message": "Table for 4 tonight? Do you have vegetarian dishes?", "idempotency_key": "m-1"}
+
+
+async def test_talk_to_a_merchant_not_published_is_404(
+    client: BatpClient, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant(live=False)
+
+    _, response = await client.exchange("TALK", slug, TALK)
+
+    assert (response.status, response.error and response.error.code) == (404, "not_found")
+
+
+async def test_talk_to_a_down_merchant_is_503_with_its_fallback_url(
+    engine: AsyncEngine, client: BatpClient, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    await set_status(slug, "down", engine=engine)
+
+    _, response = await client.exchange("TALK", slug, TALK)
+
+    assert response.status == 503 and response.error is not None
+    assert response.error.code == "agent_unavailable"
+    assert response.error.fallback_url == "http://localhost:8080/reservation.html"
+
+
+async def test_talk_to_a_live_merchant_gives_its_fallback_url_until_its_agent_is_served(
+    client: BatpClient, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+
+    _, response = await client.exchange("TALK", slug, TALK)
+
+    assert client.welcome is not None and "TALK" in client.welcome.intents
+    assert response.status == 503 and response.error is not None
+    assert response.error.code == "agent_unavailable"
+    assert "can't talk yet" in response.error.message
+    assert response.error.fallback_url == "http://localhost:8080/reservation.html"
+
+
+async def test_talk_with_invalid_params_is_400(
+    client: BatpClient, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+
+    with pytest.raises(InvalidInput, match="message"):
+        await client.request("TALK", slug, {**TALK, "message": ""})
+    with pytest.raises(InvalidInput, match="Invalid params for TALK"):
+        await client.request("TALK", slug, {**TALK, "confirm": "p-1"})  # no conversation

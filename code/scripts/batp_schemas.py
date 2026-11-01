@@ -26,6 +26,8 @@ from core.models import (
     ReservationOutput,
     SearchMerchantsInput,
     SearchMerchantsOutput,
+    TalkInput,
+    TalkOutput,
     UpdateReservationInput,
 )
 
@@ -49,6 +51,7 @@ INTENTS: dict[str, tuple[type[BaseModel], type[BaseModel], bool]] = {
     "BOOK": (CreateReservationInput, ReservationOutput, True),
     "AMEND": (UpdateReservationInput, ReservationOutput, True),
     "CANCEL": (CancelReservationInput, ReservationOutput, True),
+    "TALK": (TalkInput, TalkOutput, True),
     "RECALL": (GetMyReservationsInput, GetMyReservationsOutput, False),
     "PING": (PingParams, PingResult, False),
 }

@@ -9,7 +9,7 @@ def test_committed_schemas_match_core_models() -> None:
     assert batp_schemas.main(["--check"]) == 0
 
 
-@pytest.mark.parametrize("intent", ["AVAILABILITY", "BOOK", "AMEND", "CANCEL"])
+@pytest.mark.parametrize("intent", ["AVAILABILITY", "BOOK", "AMEND", "CANCEL", "TALK"])
 def test_addressed_intents_take_the_merchant_outside_params(intent: str) -> None:
     params = batp_schemas.schemas()[f"{intent.lower()}.params.json"]
 

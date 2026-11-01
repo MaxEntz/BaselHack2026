@@ -1,10 +1,12 @@
 """The tools' contracts: the user tools (gateway), the admin and Studio tools (platform), the
 build's output, the tool errors and the platform's `GET /session`."""
 
+import unicodedata
 from datetime import date as Date
 from typing import Annotated, Literal, Self
 
 from pydantic import (
+    AfterValidator,
     AwareDatetime,
     Field,
     HttpUrl,
@@ -132,6 +134,75 @@ class GetMyReservationsInput(_Model):
 class GetMyReservationsOutput(_Model):
     reservations: tuple[Reservation, ...]
     notices: tuple[str, ...]
+
+
+# Talking to the merchant's agent: BATP `TALK` (PROTOCOL.md §7, #245)
+
+MAX_TALK_TEXT = 2000
+MAX_PENDING_SUMMARY = 500
+
+
+def _no_control_but_newline(value: str) -> str:
+    # A guest's message may span lines; any other control character is refused, as in
+    # `NonEmptyStr`, so nothing in it can pass for a frame or a log line.
+    if any(unicodedata.category(char) == "Cc" and char != "\n" for char in value):
+        raise ValueError("must not contain a control character other than a newline")
+    return value
+
+
+TalkMessage = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_TALK_TEXT),
+    AfterValidator(_no_control_but_newline),
+]
+# A conversation's or a proposal's id: opaque to the caller. The agent makes it random, with at
+# least 128 bits (`secrets.token_urlsafe(16)` or more), since it alone separates the guests
+# that a bridge carries on one session under one `agent.id`.
+OpaqueId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+ToolName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+PendingKind = Literal["book", "change", "cancel"]
+
+
+class TalkInput(_Model):
+    """One message from the guest's agent to the merchant's agent.
+
+    `confirm` names a `pending` proposal of this conversation, sent only after the guest's
+    explicit yes (#247): a proposal only exists in a conversation, so it needs `conversation`.
+    """
+
+    merchant: Slug
+    message: TalkMessage
+    idempotency_key: GuestText
+    conversation: OpaqueId | None = None
+    confirm: OpaqueId | None = None
+
+    @model_validator(mode="after")
+    def validate_confirm_has_conversation(self) -> Self:
+        if self.confirm is not None and self.conversation is None:
+            raise ValueError("confirm needs the conversation of its proposal")
+        return self
+
+
+class PendingAction(_Model):
+    """A write the agent proposes and won't run before a `confirm` that names it (#247)."""
+
+    id: OpaqueId
+    action: PendingKind
+    summary: Annotated[str, StringConstraints(min_length=1, max_length=MAX_PENDING_SUMMARY)]
+    expires_at: AwareDatetime
+
+
+class TalkOutput(_Model):
+    """The agent's answer. Only `reply` is the model's text; code builds every other field from
+    tool results (ADR-0003), so a guest's agent can rely on them."""
+
+    conversation: OpaqueId
+    reply: Annotated[str, StringConstraints(max_length=MAX_TALK_TEXT)]
+    slots: tuple[Slot, ...] = ()
+    pending: PendingAction | None = None
+    reservation: Reservation | None = None
+    fallback_url: HttpUrl | None = None
+    tools_called: tuple[ToolName, ...] = ()
 
 
 # Admin tools

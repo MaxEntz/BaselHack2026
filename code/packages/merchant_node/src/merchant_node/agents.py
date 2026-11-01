@@ -1,5 +1,8 @@
 """The merchant agents behind the BATP node: one handler per intent (PROTOCOL.md §7).
 
+`TALK` answers `503 agent_unavailable` with the fallback URL until the merchant's AI agent is
+served here (#249): the frames are fixed (#245), the agent behind them is not there yet.
+
 Params and results are the tool contracts of `core.models`, so BATP and the MCP tools agree by
 construction. A merchant marked `down` refuses agent traffic with its fallback URL, as the
 gateway does for Claude (#13); its own website keeps booking through the platform.
@@ -28,6 +31,7 @@ from core.models import (
     GetMyReservationsOutput,
     ReservationOutput,
     SearchMerchantsInput,
+    TalkInput,
     UpdateReservationInput,
     Via,
 )
@@ -35,6 +39,7 @@ from core.models import (
 # Bookings over BATP come from guests' agents. The `kind` a caller declares is not trusted, and
 # `Via` has no value for agents other than Claude yet: every BATP booking is `claude`.
 VIA: Via = "claude"
+NO_AGENT_YET = "{name}'s agent can't talk yet; book on its website"
 
 log = logging.getLogger("merchant_node")
 
@@ -55,6 +60,7 @@ class MerchantAgents:
             "BOOK": self._book,
             "AMEND": self._amend,
             "CANCEL": self._cancel,
+            "TALK": self._talk,
             "RECALL": self._recall,
         }
 
@@ -132,6 +138,14 @@ class MerchantAgents:
             ),
         )
         return _dump(ReservationOutput(reservation=reservation))
+
+    async def _talk(self, agent: AgentIdentity, request: Request) -> Result:
+        slug, params = await self._merchant(request)
+        TalkInput.model_validate(params)
+        merchant = await self._registry(slug)
+        raise Refused(
+            AgentUnavailable(NO_AGENT_YET.format(name=merchant.name)), merchant.fallback_url
+        )
 
     async def _recall(self, agent: AgentIdentity, request: Request) -> Result:
         inp = GetMyReservationsInput.model_validate(request.params)
