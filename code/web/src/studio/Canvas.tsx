@@ -187,7 +187,7 @@ function Dock({ moment, services, look, onMoment, onColour }: DockProps) {
 }
 
 type CanvasProps = {
-  client: Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent">;
+  client: Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent" | "talkToAgent">;
   // Null until the site is built: only the public tab has something to show.
   slug: string | null;
   live: boolean;

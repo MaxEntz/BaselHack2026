@@ -1,7 +1,7 @@
 """The management site's contracts (#129): the platform's `/merchants/{slug}` routes."""
 
 from datetime import date as Date
-from typing import Annotated, Literal, get_args
+from typing import Annotated, Literal, Self, get_args
 
 from pydantic import (
     AfterValidator,
@@ -11,6 +11,7 @@ from pydantic import (
     HttpUrl,
     PositiveInt,
     StringConstraints,
+    model_validator,
 )
 
 from core.models.base import (
@@ -31,7 +32,7 @@ from core.models.base import (
     _Model,
     _no_control_characters,
 )
-from core.models.tools import GeneratedTool
+from core.models.tools import GeneratedTool, OpaqueId, TalkMessage, TalkOutput
 
 # Management site (#129): the `/merchants/{slug}` routes of the platform. Keep in sync with
 # web/src/types.ts. Local days and times are the merchant's (`MerchantOverview.timezone`).
@@ -380,18 +381,38 @@ class PublicSite(_Model):
     pages: tuple[SitePage, ...]
 
 
+AgentTryIntent = Literal["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"]
+
+
 class AgentTryInput(_Model):
     """`POST /agent/try`: which frame to send; the platform fills in its params (#151)."""
 
-    intent: Literal["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"]
+    intent: AgentTryIntent
+
+
+class AgentTalkInput(_Model):
+    """`POST /agent/try` with a message: a real `TALK` to the merchant's agent (#253). `confirm`
+    names a `pending` proposal, which only exists in a conversation."""
+
+    message: TalkMessage
+    conversation: OpaqueId | None = None
+    confirm: OpaqueId | None = None
+
+    @model_validator(mode="after")
+    def validate_confirm_has_conversation(self) -> Self:
+        if self.confirm is not None and self.conversation is None:
+            raise ValueError("confirm needs the conversation of its proposal")
+        return self
 
 
 class AgentTryOutput(_Model):
-    """Both frames, as sent and answered. `status` is the node's answer: 404 until published."""
+    """Both frames, as sent and answered. `status` is the node's answer: 404 until published.
+    `talk` is a `TALK`'s `200` answer, read from its frame; None for anything else."""
 
     request: str
     response: str
     status: int
+    talk: TalkOutput | None = None
 
 
 class AgentRequest(_Model):

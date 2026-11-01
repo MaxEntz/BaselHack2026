@@ -1,17 +1,19 @@
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import type { ManagementClient } from "../management/client.ts";
 import { ASSISTANT } from "../strings.ts";
-import type { AgentIntent, AgentRequest, AgentTryOutput, DaySlots, GeneratedTool } from "../types.ts";
+import type { AgentIntent, AgentRequest, AgentTryOutput, DaySlots, GeneratedTool, PendingAction } from "../types.ts";
 import type { Addresses } from "./feed.tsx";
 
 const INTENTS: readonly AgentIntent[] = ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"];
 const PREVIEW_PARTY = 2;
 const PREVIEW_SLOTS = 3;
+const MAX_MESSAGE = 2000;
+const YES = "Yes, please go ahead.";
 
 // How a session opens (PROTOCOL.md §5). The token is the agent's own: it is never shown.
 const HELLO = JSON.stringify({
   type: "hello",
-  batp: "0.1",
+  batp: "0.2",
   agent: {
     id: "urn:batp:agent:claude-gateway",
     name: `${ASSISTANT} via the Sésame gateway`,
@@ -22,9 +24,9 @@ const HELLO = JSON.stringify({
 });
 const WELCOME = JSON.stringify({
   type: "welcome",
-  batp: "0.1",
+  batp: "0.2",
   node: { id: "urn:batp:node:merchant-agents", name: "Sésame" },
-  intents: INTENTS,
+  intents: [...INTENTS, "TALK"],
   session: "s-1",
 });
 
@@ -69,7 +71,7 @@ function previewFrames(slug: string, day: DaySlots): [string, string] {
 }
 
 type AgentSheetProps = {
-  client: Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent">;
+  client: Pick<ManagementClient, "agentRequests" | "slots" | "tryAgent" | "talkToAgent">;
   slug: string;
   live: boolean;
   // The merchant's today, from the platform's clock; null until it is known.
@@ -86,6 +88,9 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
   const [sent, setSent] = useState<readonly AgentTryOutput[]>([]);
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [conversation, setConversation] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
 
   useEffect(() => {
     if (!today) return;
@@ -125,6 +130,29 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
     }
   }
 
+  async function talk(message: string, confirm: string | null) {
+    setSending(true);
+    setProblem(null);
+    try {
+      const frames = await client.talkToAgent(slug, { message, conversation, confirm });
+      setSent((earlier) => [...earlier, frames]);
+      // A refusal has no conversation: the next message starts a new one.
+      setConversation(frames.talk?.conversation ?? null);
+      setPending(frames.talk?.pending ?? null);
+      if (!confirm) setDraft("");
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : "That message couldn't be sent.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function ask(event: FormEvent) {
+    event.preventDefault();
+    const message = draft.trim();
+    if (message) void talk(message, null);
+  }
+
   const previewed = !live && preview ? previewFrames(slug, preview) : null;
 
   return (
@@ -135,7 +163,8 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
       </div>
       <p className="st-w-note">
         No pages, no buttons, no design. Agents open a session on port 4710 and exchange one JSON frame
-        per line. This is the whole site.
+        per line, and an AI agent answers them in natural language, inside those frames. This is the
+        whole site.
       </p>
       {!live && (
         <p className="st-w-warn">
@@ -163,9 +192,43 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
             <div key={index} className="st-w-pair">
               <FrameLine out text={frames.request} />
               <FrameLine out={false} text={frames.response} />
+              {frames.talk && (
+                <div className="st-w-reply">
+                  <p>{frames.talk.reply}</p>
+                  {frames.talk.tools_called.length > 0 && (
+                    <small>
+                      Tools it called:{" "}
+                      {frames.talk.tools_called.map((tool) => (
+                        <code key={tool}>{tool}</code>
+                      ))}
+                    </small>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
+        {pending && (
+          <div className="st-w-confirm" role="group" aria-label="Your agent is waiting for a yes">
+            <p>{pending.summary}</p>
+            <button type="button" disabled={sending} onClick={() => void talk(YES, pending.id)}>
+              Confirm
+            </button>
+          </div>
+        )}
+        <form className="st-w-talk" onSubmit={ask}>
+          <label htmlFor="st-w-message">Ask your agent</label>
+          <input
+            id="st-w-message"
+            value={draft}
+            maxLength={MAX_MESSAGE}
+            placeholder="Do you have vegetarian dishes?"
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button type="submit" disabled={sending || !draft.trim()}>
+            Ask
+          </button>
+        </form>
         <div className="st-w-send" role="group" aria-label="Send a request">
           <span>Send</span>
           {INTENTS.map((intent) => (

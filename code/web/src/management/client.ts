@@ -1,6 +1,7 @@
 import { httpClient, type LiveHandlers } from "../chat/client.ts";
 import type {
   AgentIntent,
+  AgentTalkInput,
   AgentTryOutput,
   PublicSite,
   AgentRequests,
@@ -61,6 +62,7 @@ export type ManagementClient = {
   site: (slug: string, signal?: AbortSignal) => Promise<PublicSite>;
   // One real frame through the BATP node, as a test agent (#151).
   tryAgent: (slug: string, intent: AgentIntent) => Promise<AgentTryOutput>;
+  talkToAgent: (slug: string, input: AgentTalkInput) => Promise<AgentTryOutput>;
   // Goes live, from what a build left hidden (#136).
   publish: (slug: string) => Promise<MerchantOverview>;
   pauseAgent: (slug: string) => Promise<AgentStatusOutput>;
@@ -165,6 +167,7 @@ export const httpManagementClient: ManagementClient = {
     call("PUT", slug, `/blocked${query({ date })}`, { body: { times } }),
   site: (slug, signal) => call("GET", slug, "/site", { signal }),
   tryAgent: (slug, intent) => call("POST", slug, "/agent/try", { body: { intent } }),
+  talkToAgent: (slug, input) => call("POST", slug, "/agent/try", { body: input }),
   publish: (slug) => call("POST", slug, "/publish"),
   pauseAgent: (slug) => call("POST", slug, "/agent/pause"),
   resumeAgent: (slug) => call("POST", slug, "/agent/resume"),
