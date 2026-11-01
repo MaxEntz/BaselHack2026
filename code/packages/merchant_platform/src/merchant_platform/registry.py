@@ -5,6 +5,7 @@ status from it before every model call, the admin tools the status and the look,
 `GET /merchants/{slug}` the rest.
 """
 
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -13,8 +14,11 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from agent import discovery
 from core.db import merchants_t
 from core.models import Look, MerchantProfile, MerchantStatus, PriceLevel, Tag
+
+log = logging.getLogger("merchant_platform.registry")
 
 
 @dataclass(frozen=True)
@@ -79,14 +83,11 @@ def registry_records(engine: AsyncEngine) -> RegistryLookup:
 
 
 def registry_profiles(engine: AsyncEngine) -> ProfileLookup:
-    """The validated profile stored in the registry, or None for an unknown merchant."""
+    """The validated profile stored in the registry (`discovery.load_profile`), or None for an
+    unknown merchant."""
 
     async def lookup(slug: str) -> MerchantProfile | None:
-        async with engine.connect() as conn:
-            stored = await conn.scalar(
-                select(merchants_t.c.profile).where(merchants_t.c.slug == slug)
-            )
-        return None if stored is None else MerchantProfile.model_validate(stored)
+        return await discovery.load_profile(slug, engine=engine)
 
     return lookup
 
@@ -115,5 +116,9 @@ def stored_look(profile: Any) -> Look | None:
     look = profile.get("look") if isinstance(profile, dict) else None
     try:
         return Look.model_validate(look) if look is not None else None
-    except ValidationError:
+    except ValidationError as error:
+        log.warning(
+            "stored look skipped",
+            extra={"slug": profile.get("slug"), "errors": error.errors(include_input=False)},
+        )
         return None

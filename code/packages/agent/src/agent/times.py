@@ -4,7 +4,7 @@ Durations and comparisons of instants are done in UTC; days and times of day are
 local ones (see `core.availability`).
 """
 
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import overload
 from zoneinfo import ZoneInfo
 
@@ -29,9 +29,10 @@ def during(start: datetime, slot_length: timedelta) -> Range[datetime]:
     return Range(start, start + slot_length, bounds="[)")
 
 
-def hhmm(moment: datetime, tz: ZoneInfo) -> str:
-    """The local time of day, `HH:MM`."""
-    return f"{moment.astimezone(tz):%H:%M}"
+def hhmm(moment: datetime, tz: tzinfo | None = None) -> str:
+    """The time of day, `HH:MM`, in `tz`; without it, in `moment`'s own zone (a local time)."""
+    local = moment.astimezone(tz) if tz is not None else moment
+    return f"{local:%H:%M}"
 
 
 def day_and_time(moment: datetime, tz: ZoneInfo) -> str:
@@ -40,6 +41,7 @@ def day_and_time(moment: datetime, tz: ZoneInfo) -> str:
 
 
 def parse_hhmm(value: str) -> time:
+    """`"19:30"` as a time of day; anything else is `InvalidInput`."""
     try:
         return time.fromisoformat(value)
     except ValueError:
@@ -85,7 +87,7 @@ def clock_line(now: datetime) -> str:
     the switch, and `block_slot` would block another hour without failing.
     """
     tz = str(now.tzinfo)
-    line = f"Today is {now:%A %Y-%m-%d}, it is {now:%H:%M} ({tz}, UTC{now:%:z})."
+    line = f"Today is {now:%A %Y-%m-%d}, it is {hhmm(now)} ({tz}, UTC{now:%:z})."
     change = next_offset_change(now)
     if change is not None:
         line += (

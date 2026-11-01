@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, PositiveInt, ValidationError
 
-from agent.discovery import RegistryEntry
+from agent.discovery import MerchantPaused, RegistryEntry
 from core.config import Settings
 from core.errors import (
     AgentError,
@@ -22,7 +22,7 @@ from core.errors import (
 )
 from core.logs import JsonFormatter
 from core.models import ErrorCode, ToolError
-from gateway.fallback import call_agent, call_merchant, call_service
+from gateway.fallback import call_agent, call_merchant, call_service, unavailable
 
 URL = "https://le-petit-zinc.example/reservation"
 ZINC = RegistryEntry("le-petit-zinc", "Le Petit Zinc", "live", URL)
@@ -288,6 +288,25 @@ async def test_call_service_logs_a_tool_error_returned_by_the_operation(
 
     logged = [record for record in caplog.records if record.getMessage() == "tool_call"]
     assert [r.__dict__["outcome"] for r in logged] == ["agent_unavailable"]
+
+
+async def test_call_service_gives_a_paused_merchants_link_without_looking_it_up(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    paused = RegistryEntry("le-petit-zinc", "Le Petit Zinc", "down", URL)
+
+    async def named() -> RegistryEntry | None:
+        raise AssertionError("the paused merchant is already known")
+
+    with caplog.at_level(logging.INFO, logger="gateway.tools"):
+        result = await call_service(
+            "search_merchants", raising(MerchantPaused(paused)), settings=SETTINGS, named=named
+        )
+
+    assert result == unavailable(paused)
+    logged = [record for record in caplog.records if record.getMessage() == "tool_call"]
+    assert [r.__dict__["outcome"] for r in logged] == ["agent_unavailable"]
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
 
 
 @pytest.mark.parametrize("error", [RuntimeError("secret"), TimeoutError()])

@@ -1,4 +1,4 @@
-"""How the builder and the platform word lists for the merchant."""
+"""How the builder and the platform word lists for the merchant (`joined`)."""
 
 from collections.abc import Sequence
 

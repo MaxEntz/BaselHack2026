@@ -5,20 +5,26 @@ the merchant's history. Days are the merchant's local days (`timezone(tz, lower(
 """
 
 from collections.abc import Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, get_args
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Date, cast, func, select
-from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from agent import activity
 from agent.merchant import Merchant
-from agent.times import hhmm, midnight
+from agent.times import hhmm, midnight, parse_hhmm
 from core.availability import BusyInterval, bookable_starts, pick_table
-from core.db import blocked_slots_t, reservation_start, reservations_t
+from core.db import (
+    blocked_between,
+    busy_between,
+    reservation_confirmed,
+    reservation_start,
+    reservations_t,
+)
 from core.models import (
+    ACTIVITY_LINES,
     ActivityItem,
     ChannelCount,
     DayGuests,
@@ -31,13 +37,10 @@ from core.models import (
 
 HISTORY_DAYS = 30
 NEXT_DAYS = 7
-ACTIVITY_LINES = 6
 # The group "Next table for 4" is about, or the largest one when smaller.
 ROOM_PARTY = 4
 # Bookings "through an agent": every channel but the merchant itself and its website.
 OWN_CHANNELS = ("merchant", "website")
-
-_live = reservations_t.c.status == "confirmed"
 
 
 def _local_day(tz: ZoneInfo) -> Any:
@@ -52,12 +55,12 @@ async def days(
     end = today + timedelta(days=NEXT_DAYS)
     day = _local_day(tz).label("day")
     party = reservations_t.c.party_size
-    agent = _live & reservations_t.c.via.not_in(OWN_CHANNELS)
+    agent = reservation_confirmed & reservations_t.c.via.not_in(OWN_CHANNELS)
     rows = await conn.execute(
         select(
             day,
-            func.count().filter(_live).label("bookings"),
-            func.coalesce(func.sum(party).filter(_live), 0).label("guests"),
+            func.count().filter(reservation_confirmed).label("bookings"),
+            func.coalesce(func.sum(party).filter(reservation_confirmed), 0).label("guests"),
             func.coalesce(func.sum(party).filter(agent), 0).label("agent_guests"),
             func.count().filter(reservations_t.c.status == "cancelled").label("cancelled"),
         )
@@ -93,7 +96,7 @@ async def channels(conn: AsyncConnection, today: date, tz: ZoneInfo) -> list[Cha
     rows = await conn.execute(
         select(reservations_t.c.via, func.count().label("bookings"))
         .where(
-            _live,
+            reservation_confirmed,
             reservation_start >= midnight(first, tz),
             reservation_start < midnight(today + timedelta(days=1), tz),
         )
@@ -109,28 +112,14 @@ async def room(conn: AsyncConnection, merchant: Merchant, *, now: datetime, tz: 
     today = local.date()
     service = _service_of(merchant.services, local, tz)
     opens, closes = _window(service, today, tz)
-    rows = (
-        await conn.execute(
-            select(
-                reservations_t.c.table_id,
-                reservations_t.c.during,
-                reservations_t.c.party_size,
-            ).where(
-                _live,
-                reservations_t.c.during.overlaps(
-                    Range(midnight(today, tz), closes + merchant.slot_length)
-                ),
-            )
-        )
-    ).all()
-    in_service = [r for r in rows if opens <= r.during.lower < closes]
-    booked = {r.table_id for r in in_service}
+    busy = await busy_between(conn, midnight(today, tz), closes + merchant.slot_length)
+    in_service = [b for b in busy if opens <= b.start < closes]
+    booked = {b.table_id for b in in_service}
     party_size = min(ROOM_PARTY, merchant.largest_group)
-    busy = [BusyInterval(r.table_id, r.during.lower, r.during.upper) for r in rows]
     return Room(
         service=service,
         seats=sum(t.seats for t in merchant.tables),
-        guests=sum(r.party_size for r in in_service),
+        guests=sum(b.party_size for b in in_service),
         tables=tuple(
             RoomTable(label=t.label, seats=t.seats, booked=t.id in booked)
             for t in sorted(merchant.tables, key=lambda t: t.id)
@@ -145,7 +134,7 @@ def _service_of(services: Sequence[Service], local: datetime, tz: ZoneInfo) -> S
     """The service on now or next today, else the day's last (services are by start)."""
     today = local.date()
     return next(
-        (s for s in services if datetime.combine(today, time.fromisoformat(s.end), tz) > local),
+        (s for s in services if datetime.combine(today, parse_hhmm(s.end), tz) > local),
         services[-1],
     )
 
@@ -153,8 +142,8 @@ def _service_of(services: Sequence[Service], local: datetime, tz: ZoneInfo) -> S
 def _window(service: Service, day: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
     """When the service opens and closes on `day`, local time."""
     return (
-        datetime.combine(day, time.fromisoformat(service.start), tz),
-        datetime.combine(day, time.fromisoformat(service.end), tz),
+        datetime.combine(day, parse_hhmm(service.start), tz),
+        datetime.combine(day, parse_hhmm(service.end), tz),
     )
 
 
@@ -172,13 +161,7 @@ async def _next_free(
     `party_size`, which never exceeds the merchant's limit (`Merchant.largest_group`)."""
     today = now.astimezone(tz).date()
     opens, closes = _window(service, today, tz)
-    blocked = set(
-        await conn.scalars(
-            select(blocked_slots_t.c.starts_at).where(
-                blocked_slots_t.c.starts_at >= opens, blocked_slots_t.c.starts_at < closes
-            )
-        )
-    )
+    blocked = set(await blocked_between(conn, opens, closes))
     return next(
         (
             hhmm(start, tz)

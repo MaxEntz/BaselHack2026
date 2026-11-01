@@ -156,6 +156,40 @@ class Look(_Model):
     texture: Literal["leather", "none"]
 
 
+KnowledgeTopic = Literal[
+    "menu", "drinks", "dietary", "access", "practical", "about", "events", "other"
+]
+# All of it goes into the merchant's agent's prompt (#248).
+MAX_KNOWLEDGE_ITEMS = 60
+MAX_KNOWLEDGE_TEXT = 400
+MAX_KNOWLEDGE_QUOTE = 200
+MAX_KNOWLEDGE_BYTES = 12_000
+
+
+class KnowledgeItem(_Model):
+    """One thing a guest's agent may ask about, as the builder kept it. A site is untrusted
+    input (ADR-0003): the agent's prompt reads these, never the raw crawl."""
+
+    topic: KnowledgeTopic
+    text: Annotated[NonEmptyStr, StringConstraints(max_length=MAX_KNOWLEDGE_TEXT)]
+    # Both are absent when the owner said it, in their description or in a correction.
+    source_url: HttpUrl | None = None
+    quote: Annotated[NonEmptyStr, StringConstraints(max_length=MAX_KNOWLEDGE_QUOTE)] | None = None
+
+
+class SiteKnowledge(_Model):
+    """What the merchant's site says beyond booking: the menu, parking, dogs, the chef (#248)."""
+
+    items: Annotated[tuple[KnowledgeItem, ...], Field(max_length=MAX_KNOWLEDGE_ITEMS)]
+
+    @model_validator(mode="after")
+    def validate_size(self) -> Self:
+        size = sum(len(f"{item.text}{item.quote or ''}".encode()) for item in self.items)
+        if size > MAX_KNOWLEDGE_BYTES:
+            raise ValueError(f"Knowledge must fit in {MAX_KNOWLEDGE_BYTES} bytes")
+        return self
+
+
 class MerchantProfile(_Model):
     slug: Slug
     name: NonEmptyStr
@@ -172,6 +206,8 @@ class MerchantProfile(_Model):
     fallback_url: HttpUrl
     # Profiles stored before #149 have none: the management site then uses the default look.
     look: Look | None = None
+    # Profiles stored before #248 have none: the merchant's agent says it doesn't know.
+    knowledge: SiteKnowledge | None = None
 
 
 class Slot(_Model):

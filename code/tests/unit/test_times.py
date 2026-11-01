@@ -46,6 +46,9 @@ def test_local_wording_of_an_instant() -> None:
 
     assert times.hhmm(moment, TZ) == "20:30"
     assert times.day_and_time(moment, TZ) == "2026-11-02 20:30"
+    # Without a zone, an instant already local keeps its own.
+    assert times.hhmm(moment.astimezone(TZ)) == "20:30"
+    assert times.hhmm(moment) == "19:30"
 
 
 def test_parse_hhmm() -> None:

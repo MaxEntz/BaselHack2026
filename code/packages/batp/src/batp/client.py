@@ -66,6 +66,12 @@ def parse_batp_url(url: str) -> tuple[str, int]:
 
 
 class BatpClient:
+    """One BATP session with a node, opened by the first request and by the next one after a loss.
+
+    Requests are multiplexed on it (§6): each waits for the answer with its id. A node's refusal
+    of the session is `BatpRejected`, a connection lost under a request `SessionLost`.
+    """
+
     def __init__(
         self,
         host: str,
