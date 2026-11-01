@@ -102,7 +102,7 @@ demo-reset: ## Known demo state: all but Le Petit Zinc, built live by onboarding
 bookings: ## Tonight's bookings at Le Petit Zinc, e.g. after its live onboarding
 	uv run python scripts/seed.py --with-bookings
 
-demo-booking: ## The demo's live booking: Kim Weber, 20:00 for 2 at La Graine Verte, via the gateway
+demo-booking: ## The demo's live booking: Kim Weber, 20:00 for 2 at La Graine Verte, via its agent
 	uv run python scripts/demo_booking.py $(BOOKING)
 
 outage: ## Demo outage: SLUG goes down, Claude gets its fallback URL (SLUG=le-petit-zinc)
