@@ -22,6 +22,7 @@ from core.models.base import (
     FloorPlan,
     GuestText,
     Hex,
+    KnowledgeTopic,
     MerchantProfile,
     NonEmptyStr,
     PriceLevel,
@@ -261,16 +262,20 @@ class LinkPageInput(_Model):
     page: ManagePage
 
 
-FactKey = Literal[
-    "name",
-    "hours",
-    "tags",
-    "max_party_size",
-    "cancellation_policy",
-    "price_level",
-    "booking_page",
-    "look",
-]
+# A knowledge topic is one line of the card too (#248).
+FactKey = (
+    Literal[
+        "name",
+        "hours",
+        "tags",
+        "max_party_size",
+        "cancellation_policy",
+        "price_level",
+        "booking_page",
+        "look",
+    ]
+    | KnowledgeTopic
+)
 
 
 class FactBox(_Model):

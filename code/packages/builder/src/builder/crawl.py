@@ -86,7 +86,7 @@ async def crawl(
     url: str,
     on_event: StepEmitter,
     *,
-    max_pages: int = 5,
+    max_pages: int = 8,
     page_timeout_s: float = 10,
     max_chars_per_page: int = 8000,
     allow_private: bool | None = None,

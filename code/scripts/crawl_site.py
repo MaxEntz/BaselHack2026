@@ -24,7 +24,7 @@ async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("url")
     parser.add_argument("--allow-private", action="store_true", help="read local addresses")
-    parser.add_argument("--max-pages", type=int, default=5)
+    parser.add_argument("--max-pages", type=int, default=8)
     args = parser.parse_args()
     try:
         result = await crawl(

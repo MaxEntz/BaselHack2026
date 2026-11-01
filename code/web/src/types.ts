@@ -108,7 +108,8 @@ export type FactKey =
   | "cancellation_policy"
   | "price_level"
   | "booking_page"
-  | "look";
+  | "look"
+  | KnowledgeTopic;
 
 // One line of the review card (#136). `source`: a crawled page's path, "you" for the owner's
 // description, null for a default.

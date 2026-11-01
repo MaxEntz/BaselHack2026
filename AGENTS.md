@@ -171,8 +171,8 @@ Platform assistant only, never exposed to Claude users: `build_agent`, `publish_
 
 Streamed as events into the merchant chat:
 
-1. `crawl`: Playwright loads the homepage + up to 5 same-domain pages whose path or link text matches `menu|carte|karte|hours|horaires|zeiten|contact|kontakt|book|reserv` (accents ignored).
-2. `extract`: a forced strict function call fills `ProfileDraft` from the crawled text and the description (the description wins on conflicts).
+1. `crawl`: Playwright loads the homepage + up to 8 same-domain pages whose path or link text matches `menu|carte|karte|hours|horaires|zeiten|contact|kontakt|book|reserv|about|a-propos|histoire|ueber|uber uns|acces|anfahrt|faq|event|evenement` (accents ignored).
+2. `extract`: a forced strict function call fills `ProfileDraft` from the crawled text and the description (the description wins on conflicts). It includes the knowledge beyond booking (#248): code drops an item whose quote isn't in the sources or that is over its bounds, and the review card shows one line per topic.
 3. `validate`: Pydantic; one retry with the errors fed back, then a message to the merchant.
 4. `provision`: schema `m_<slug>`, tables, policy, registry row in `building`.
 5. `deploy`: waits for the owner ("Waiting for you.", #136). The merchant stays `building`, hidden from guests and agents, until `publish_agent` (or `POST /merchants/{slug}/publish`) sets `status = 'live'`.
