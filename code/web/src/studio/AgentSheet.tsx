@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import type { ManagementClient } from "../management/client.ts";
 import { ASSISTANT } from "../strings.ts";
-import type { AgentIntent, AgentRequest, AgentTryOutput, DaySlots, GeneratedTool, PendingAction } from "../types.ts";
+import type { AgentIntent, AgentRequest, AgentTryOutput, DaySlots, GeneratedTool, PendingAction, TalkOutput } from "../types.ts";
 import type { Addresses } from "./feed.tsx";
 
 const INTENTS: readonly AgentIntent[] = ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"];
@@ -153,17 +153,53 @@ function useTryAgent(client: Client, slug: string) {
   return { sent, sending, problem, pending, send, talk };
 }
 
+function TalkReply({ talk }: { talk: TalkOutput }) {
+  return (
+    <div className="st-w-reply">
+      <p>{talk.reply}</p>
+      {talk.tools_called.length > 0 && (
+        <small>
+          Tools it called:{" "}
+          {talk.tools_called.map((tool) => (
+            <code key={tool}>{tool}</code>
+          ))}
+        </small>
+      )}
+    </div>
+  );
+}
+
+// `ask` answers whether the message went: if not, the owner keeps what they typed.
+function AskBox({ sending, ask }: { sending: boolean; ask: (message: string) => Promise<boolean> }) {
+  const [draft, setDraft] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const message = draft.trim();
+    if (message && (await ask(message))) setDraft("");
+  }
+
+  return (
+    <form className="st-w-talk" onSubmit={(event) => void submit(event)}>
+      <label htmlFor="st-w-message">Ask your agent</label>
+      <input
+        id="st-w-message"
+        value={draft}
+        maxLength={MAX_MESSAGE}
+        placeholder="Do you have vegetarian dishes?"
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <button type="submit" disabled={sending || !draft.trim()}>
+        Ask
+      </button>
+    </form>
+  );
+}
+
 /** The agent site has no pages: this is what agents exchange with it (#151). */
 export function AgentSheet({ client, slug, live, today, addresses, tools, fallback }: AgentSheetProps) {
   const { logged, previewed } = useTodaysFrames(client, slug, live, today);
   const { sent, sending, problem, pending, send, talk } = useTryAgent(client, slug);
-  const [draft, setDraft] = useState("");
-
-  async function ask(event: FormEvent) {
-    event.preventDefault();
-    const message = draft.trim();
-    if (message && (await talk(message, null))) setDraft("");
-  }
 
   return (
     <div className="st-w">
@@ -202,19 +238,7 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
             <div key={index} className="st-w-pair">
               <FrameLine out text={frames.request} />
               <FrameLine out={false} text={frames.response} />
-              {frames.talk && (
-                <div className="st-w-reply">
-                  <p>{frames.talk.reply}</p>
-                  {frames.talk.tools_called.length > 0 && (
-                    <small>
-                      Tools it called:{" "}
-                      {frames.talk.tools_called.map((tool) => (
-                        <code key={tool}>{tool}</code>
-                      ))}
-                    </small>
-                  )}
-                </div>
-              )}
+              {frames.talk && <TalkReply talk={frames.talk} />}
             </div>
           ))}
         </div>
@@ -226,19 +250,7 @@ export function AgentSheet({ client, slug, live, today, addresses, tools, fallba
             </button>
           </div>
         )}
-        <form className="st-w-talk" onSubmit={(event) => void ask(event)}>
-          <label htmlFor="st-w-message">Ask your agent</label>
-          <input
-            id="st-w-message"
-            value={draft}
-            maxLength={MAX_MESSAGE}
-            placeholder="Do you have vegetarian dishes?"
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <button type="submit" disabled={sending || !draft.trim()}>
-            Ask
-          </button>
-        </form>
+        <AskBox sending={sending} ask={(message) => talk(message, null)} />
         <div className="st-w-send" role="group" aria-label="Send a request">
           <span>Send</span>
           {INTENTS.map((intent) => (
