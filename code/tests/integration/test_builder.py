@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from agent.discovery import search
 from agent.provisioning import NotBuilding, SlugTaken, deprovision, set_status
 from agent.service import PgAgentService
+from agent.talk import MerchantAgent, registry_merchants
 from batp.messages import AgentIdentity, Request
 from builder.build import (
     CHANGED,
@@ -42,6 +43,7 @@ from merchant_platform.api import create_app
 from merchant_platform.assistant import Assistant
 from merchant_platform.registry import registry_records
 from merchant_platform.tools import AdminTools
+from tests.integration.agent_fakes import ScriptedLLM, says
 
 pytestmark = pytest.mark.integration
 
@@ -181,7 +183,8 @@ async def test_a_build_stops_before_publishing_and_publish_puts_it_live(
     assert output.mcp_url == MCP_URL
     assert str(output.profile.website) == site
     assert str(output.profile.fallback_url) == f"{site}reservation.html"
-    assert {tool.name for tool in output.tools} >= {"get_availability", "create_reservation"}
+    # Agents read one tool: only the merchant's agent calls the booking tools (#254).
+    assert [tool.name for tool in output.tools] == ["talk_to_merchant"]
     assert [fact.key for fact in output.facts][-2:] == ["booking_page", "look"]
     saved = tmp_path / "generated" / f"{output.profile.slug}.json"
     assert json.loads(saved.read_text())["slug"] == output.profile.slug
@@ -204,24 +207,28 @@ async def test_guests_and_agents_only_see_a_merchant_once_published(
     output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
     slug = output.profile.slug
     slugs.append(slug)
-    node = MerchantAgents(engine, PgAgentService(engine, tz=ZoneInfo("Europe/Zurich")))
-    availability = Request(
+    tz = ZoneInfo("Europe/Zurich")
+    service = PgAgentService(engine, tz=tz)
+    # The agent's model is scripted: what matters here is whether the node lets agents reach it.
+    talker = MerchantAgent(ScriptedLLM(says("Hello.")), service, registry_merchants(engine), tz)
+    node = MerchantAgents(engine, service, talker)
+    talk = Request(
         id="r-1",
-        intent="AVAILABILITY",
+        intent="TALK",
         merchant=slug,
-        params={"date": date.today().isoformat(), "party_size": 2},
+        params={"message": "A table for 2 tonight?", "idempotency_key": "k-1"},
     )
 
     hidden = await search(name, None, None, None, engine=engine)
     with pytest.raises(NotFound):
-        await node(GATEWAY, availability)
+        await node(GATEWAY, talk)
 
     await publish(slug, Run().emit, engine=engine)
 
     shown = await search(name, None, None, None, engine=engine)
     assert [m.slug for m in hidden.merchants] == []
     assert [m.slug for m in shown.merchants] == [slug]
-    assert "slots" in await node(GATEWAY, availability)
+    assert (await node(GATEWAY, talk))["reply"] == "Hello."
 
 
 async def test_publish_keeps_a_live_agent_and_refuses_a_paused_one(

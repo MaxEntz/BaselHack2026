@@ -370,6 +370,6 @@ async def test_show_view_switches_studios_canvas() -> None:
 def test_the_prompt_answers_what_agents_read_and_refuses_to_touch_the_site() -> None:
     prompt = system_prompt(NOW, PROFILE)
 
-    assert "What agents read:\n- get_availability:" in prompt
+    assert "What agents read:\n- talk_to_merchant:" in prompt
     assert "No. Sésame only reads your public site." in prompt
     assert "Your agent site has no interface, so there's nothing to colour." in prompt

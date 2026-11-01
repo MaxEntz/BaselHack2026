@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from batp.client import BatpClient, BatpRejected, SessionLost
 from batp.codec import MAX_FRAME, encode, read_frame
 from batp.messages import IN_FLIGHT_LIMIT, AgentIdentity, Hello, NodeIdentity, Request, Response
+from batp.messages import PROTOCOL_VERSION as VERSION
 from batp.server import Caller, NodeServer
 from core.errors import AgentUnavailable, InvalidInput, SlotUnavailable
 
@@ -26,15 +27,15 @@ async def fake_backend(agent: AgentIdentity, request: Request) -> dict[str, Any]
     if request.intent == "PING":
         await asyncio.sleep(float(request.params.get("delay", 0)))
         return {"pong": True, "agent": agent.id}
-    if request.intent == "BOOK":
+    if request.intent == "TALK":  # the write: a booking, slow, refused or failing
+        if request.params.get("explode"):
+            raise RuntimeError("database exploded at line 42")
         if request.params.get("delay"):
             await asyncio.sleep(float(request.params["delay"]))
             return {"booked": True}
         raise SlotUnavailable("No table left at 20:00")
     if request.intent == "RECALL":
         return {"blob": "a" * (MAX_FRAME + 10)}
-    if request.intent == "AMEND":
-        raise RuntimeError("database exploded at line 42")
     raise InvalidInput(f"{request.intent} is not served here")
 
 
@@ -58,7 +59,7 @@ class Held:
         if self.running >= self.expected:
             self.started.set()
         await self.release.wait()
-        if request.intent == "BOOK":
+        if request.intent == "TALK":
             return {"booked": True}
         return {"pong": True, "agent": agent.id}
 
@@ -109,7 +110,7 @@ async def scripted_node(script: Script) -> AsyncIterator[tuple[int, list[str]]]:
     async def session(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         sessions.append(f"s-{len(sessions) + 1}")
         await read_frame(reader)
-        welcome = {"node": NODE.model_dump(), "intents": ["PING", "BOOK"], "session": sessions[-1]}
+        welcome = {"node": NODE.model_dump(), "intents": ["PING", "TALK"], "session": sessions[-1]}
         writer.write(encode({"type": "welcome", "batp": "0.1", **welcome}))
         requests: list[dict[str, Any]] = []
         while (frame := await read_frame(reader)) is not None:
@@ -211,13 +212,13 @@ async def test_responses_come_back_by_id_in_any_order(node: NodeServer) -> None:
 async def test_business_errors_reach_the_caller_as_agent_errors(node: NodeServer) -> None:
     async with client_for(node) as client:
         with pytest.raises(SlotUnavailable, match="No table left at 20:00"):
-            await client.request("BOOK", merchant="le-petit-zinc", params={})
+            await client.request("TALK", merchant="le-petit-zinc", params={})
 
 
 async def test_an_unexpected_failure_is_503_without_details(node: NodeServer) -> None:
     async with client_for(node) as client:
         with pytest.raises(AgentUnavailable) as raised:
-            await client.request("AMEND", merchant="le-petit-zinc", params={})
+            await client.request("TALK", merchant="le-petit-zinc", params={"explode": True})
 
     assert "line 42" not in str(raised.value)
     assert "exploded" not in str(raised.value)
@@ -329,7 +330,7 @@ async def test_a_429_on_one_request_leaves_the_others_on_the_session_answered() 
         scripted_node(script) as (port, sessions),
         BatpClient("127.0.0.1", port, CALLER) as client,
     ):
-        book = asyncio.create_task(client.request("BOOK", "le-petit-zinc"))
+        book = asyncio.create_task(client.request("TALK", "le-petit-zinc"))
         await book_arrived.wait()
         with pytest.raises(AgentUnavailable):
             await client.request("PING")
@@ -361,7 +362,7 @@ async def test_an_unknown_or_invalid_answer_fails_only_its_request(
         BatpClient("127.0.0.1", port, CALLER) as client,
     ):
         with pytest.raises(AgentUnavailable):
-            await client.request("BOOK", "le-petit-zinc")
+            await client.request("TALK", "le-petit-zinc")
         assert await client.request("PING") == {}
 
     assert sessions == ["s-1"]
@@ -378,7 +379,7 @@ async def test_an_unreadable_answer_without_an_id_drops_the_session() -> None:
         BatpClient("127.0.0.1", port, CALLER) as client,
     ):
         with pytest.raises(AgentUnavailable, match="closed before the answer"):
-            await client.request("BOOK", "le-petit-zinc")
+            await client.request("TALK", "le-petit-zinc")
 
 
 async def test_a_recall_lost_with_its_session_is_sent_again() -> None:
@@ -538,7 +539,7 @@ async def test_an_unreadable_frame_from_the_node_is_logged_and_drops_the_session
     # #220: the client's reader used to end on it without a word.
     async def session(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         await read_frame(reader)
-        welcome = {"node": NODE.model_dump(), "intents": ["BOOK"], "session": "s-1"}
+        welcome = {"node": NODE.model_dump(), "intents": ["TALK"], "session": "s-1"}
         writer.write(encode({"type": "welcome", "batp": "0.1", **welcome}))
         await read_frame(reader)
         writer.write(b"not json\n")
@@ -552,7 +553,7 @@ async def test_an_unreadable_frame_from_the_node_is_logged_and_drops_the_session
         with caplog.at_level(logging.WARNING, logger="batp"):
             async with BatpClient("127.0.0.1", port, CALLER) as client:
                 with pytest.raises(SessionLost):
-                    await client.request("BOOK", "le-petit-zinc", {})
+                    await client.request("TALK", "le-petit-zinc", {})
     finally:
         server.close()
 
@@ -610,7 +611,7 @@ async def test_a_read_survives_a_dropped_session_but_a_write_is_not_resent(
     try:
         async with asyncio.timeout(5):  # a regression must fail, not hang
             read = asyncio.create_task(client.request("PING", params={"hold": True}))
-            write = asyncio.create_task(client.request("BOOK", "le-petit-zinc", {"hold": True}))
+            write = asyncio.create_task(client.request("TALK", "le-petit-zinc", {"hold": True}))
             await held.started.wait()
             for writer in list(node._writers):  # the session drops, the node keeps listening
                 writer.close()
@@ -638,7 +639,7 @@ async def test_a_slow_answer_is_not_cut_by_the_idle_timeout() -> None:
 
 async def welcomed(node: NodeServer) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
     reader, writer = await raw_session(node)
-    hello = {"type": "hello", "batp": "0.1", "agent": CALLER.model_dump(), "token": "s3cret"}
+    hello = {"type": "hello", "batp": VERSION, "agent": CALLER.model_dump(), "token": "s3cret"}
     writer.write(encode(hello))
     assert (await read_json(reader))["type"] == "welcome"
     return reader, writer
@@ -677,7 +678,7 @@ async def test_an_id_in_flight_is_refused_without_being_run() -> None:
         ("PING", "le-petit-zinc", 400),
         ("DISCOVER", "le-petit-zinc", 400),
         ("RECALL", "le-petit-zinc", 400),
-        ("BOOK", None, 400),
+        ("TALK", None, 400),
         ("PING", None, 200),
     ],
 )
@@ -730,24 +731,24 @@ async def test_a_frame_without_a_request_id_gets_an_error_frame(
     writer.close()
 
 
-@pytest.mark.parametrize("intent", ["BOOK", "AMEND"])
-async def test_a_503_from_the_node_carries_the_merchants_fallback_url(intent: str) -> None:
+@pytest.mark.parametrize("params", [{"delay": 1}, {"explode": True}], ids=["slow", "failing"])
+async def test_the_node_s_own_503_carries_the_fallback_url(params: dict[str, Any]) -> None:
     async def fallback_url(request: Request) -> str:
         return f"https://{request.merchant}.example/book"
 
-    # BOOK with a delay times out, AMEND fails (fake_backend).
     server = NodeServer(
         node=NODE,
         handle=fake_backend,
         authenticate=accept_token,
-        handler_timeout=0.05,
         fallback_url=fallback_url,
+        handler_timeout=0.05,
+        intent_timeouts={},
     )
     await server.start("127.0.0.1", 0)
     try:
         reader, writer = await welcomed(server)
-        request = {"type": "request", "id": "r-1", "intent": intent, "merchant": "zinc"}
-        writer.write(encode(request | {"params": {"delay": 1}}))
+        request = {"type": "request", "id": "r-1", "intent": "TALK", "merchant": "zinc"}
+        writer.write(encode(request | {"params": params}))
 
         response = await read_json(reader)
         assert response["status"] == 503
@@ -767,8 +768,8 @@ async def test_a_broken_fallback_lookup_still_answers_503() -> None:
     await server.start("127.0.0.1", 0)
     try:
         reader, writer = await welcomed(server)
-        request = {"type": "request", "id": "r-1", "intent": "AMEND", "merchant": "zinc"}
-        writer.write(encode(request | {"params": {}}))
+        request = {"type": "request", "id": "r-1", "intent": "TALK", "merchant": "zinc"}
+        writer.write(encode(request | {"params": {"explode": True}}))
 
         response = await read_json(reader)
         assert (response["status"], response["error"].get("fallback_url")) == (503, None)

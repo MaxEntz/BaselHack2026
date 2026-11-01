@@ -20,6 +20,7 @@ from merchant_node.limits import TalkLimits
 from merchant_platform.events import LiveBus, LiveListener
 from tests.integration.agent_fakes import (
     FALLBACK,
+    GATEWAY,
     TOKEN,
     Node,
     ScriptedLLM,
@@ -220,11 +221,41 @@ async def test_without_a_key_talk_is_503_and_the_other_intents_answer(
     slug = await make_merchant()
     async with Node(engine, None) as client:
         _, response = await client.exchange("TALK", slug, talk("Table for 2?"))
-        slots = await client.request(
-            "AVAILABILITY", slug, {"date": DAY.isoformat(), "party_size": 2}
-        )
+        recalled = await client.request("RECALL", params={"guest_name": GUEST})
 
     assert isinstance(response, Response)
     assert response.status == 503 and response.error is not None
     assert (response.error.code, response.error.fallback_url) == ("agent_unavailable", FALLBACK)
-    assert slots["slots"]
+    assert recalled == {"reservations": [], "notices": []}
+
+
+async def test_a_declared_kind_does_not_change_who_booked(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    """A caller that claims to be a merchant's agent still books as a guest's agent (`claude`):
+    the declared `kind` is not trusted (PROTOCOL.md §15), and the agent only sees `agent.id`."""
+    slug = await make_merchant()
+    llm = ScriptedLLM(
+        calls(call("propose_booking", starts_at=at("20:00"), party_size=2, guest_name=GUEST)),
+        says("A table for 2 on Monday at 20:00, under Lena Koch. Shall I book it?"),
+        says("Booked."),
+    )
+    impostor = GATEWAY.model_copy(update={"kind": "merchant-agent"})
+    node = Node(engine, llm)
+    await node.server.start("127.0.0.1", 0)
+    try:
+        async with node.client(impostor) as client:
+            proposed = await client.request("TALK", slug, talk("20:00 for 2, Lena Koch"))
+            done = await client.request(
+                "TALK",
+                slug,
+                talk(
+                    "Yes",
+                    conversation=proposed["conversation"],
+                    confirm=proposed["pending"]["id"],
+                ),
+            )
+    finally:
+        await node.server.stop()
+
+    assert done["reservation"]["via"] == "claude"
