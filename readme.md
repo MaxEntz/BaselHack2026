@@ -52,8 +52,8 @@ All the commands are in [`code/README.md`](code/README.md). To connect Claude.ai
 | Path | Content |
 |---|---|
 | [`code/`](code) | uv workspace (`core`, `agent`, `gateway`, `batp`, `merchant_node`, `builder`, `merchant_platform`), the web app (Studio and the management site), demo sites, migrations, scripts, tests |
-| [`documentation/`](documentation) | Architecture, decision records, contracts, runbooks |
-| [`assets/`](assets) | Presentation material |
+| [`documentation/`](documentation) | Architecture, decision records, contracts, runbooks, the BATP draft, the mockups and the pitch deck ([`design/poc-v10/`](documentation/design/poc-v10/README.md)) |
+| [`assets/`](assets) | The Sésame logo |
 | [`AGENTS.md`](AGENTS.md) | Full spec, shared by Claude Code (`CLAUDE.md`) and opencode |
 
 ## Team

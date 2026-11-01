@@ -27,24 +27,6 @@ The data is generated with the rules of §6 and covers 7 days from Saturday 31 O
 
 Open [`la-graine-verte-public.html`](la-graine-verte-public.html) in a browser. It is the restaurant's public website from the demo video, in the look above, and also works offline. Its prices, hours, address, phone and group size are those of `code/sites/la-graine-verte`, in French, with the notice that the restaurant is fictional. It adds a menu bar and one line under "À la carte". #148 rebuilt the demo site from it, because a real build reads the public site.
 
-## Earlier management sites
-
-[`sesame-sites.html`](sesame-sites.html) came before that and looks like booking software, so `la-graine-verte.html` replaces it. It is one self-contained file with the management sites of the three demo restaurants. The menu on the restaurant's name switches between them, and `#le-petit-zinc`, `#la-graine-verte` or `#maison-albane` opens one directly.
-
-Each site has the same five pages, in the look of its public site:
-
-| Page | What it does | Reference |
-| --- | --- | --- |
-| Service | Bookings grouped by time, with the room beside them at the chosen time | The Service view shown on Resy's site, with our own design |
-| Timeline | Tables against time. A click on a free slot adds a booking | The timeline common to restaurant booking software |
-| Bookings | Every booking, with search and filters | Ordinary admin tables |
-| Agent | The address, a pause switch, and the log of requests with their raw frames. The agent site has no interface, so this is all a merchant sees of it | The request logs of developer dashboards |
-| Settings | Everything the builder read, editable, with a save bar | Ordinary admin settings |
-
-Le Petit Zinc has top tabs and a slate for the room, La Graine Verte a green sidebar and rounded cards, Maison Albane a masthead, near-black and gold, and no service switch because it has one service.
-
-The data is generated with the rules of §6 and covers 7 days from Saturday 31 October, with the clock fixed at 19:40. Six seconds after a site opens, a demo booking arrives through Claude. Nothing leaves the page and nothing is saved.
-
 ## The conversation
 
 Open [`sesame-studio.html`](sesame-studio.html) in a browser. It opens on the conversation. A merchant gives their website address and a few details, and the chat builds two sites from them. Add `#le-petit-zinc`, `#la-graine-verte` or `#maison-albane` to the address to open a restaurant that is already built.
@@ -65,11 +47,8 @@ Open [`sesame-studio.html`](sesame-studio.html) in a browser. It opens on the co
 | Tool descriptions, from `templates/restaurant.json` and `generated_tools` | The bookings shown before publishing, marked as samples |
 | Default floor plan, from `default_tables` | The management address, `<slug>.sesame.example`, which is invented (the real one is `/manage/<slug>`) |
 
-## What production would need
+## Still open
 
-- **Crawler:** it reads page text only today. Taking colours and fonts means reading computed styles from Playwright. Logos and photos would conflict with the rule that it never loads images (#21), so that needs its own decision.
-- **Profile:** a bounded `look` field on `MerchantProfile`, filled by the LLM and checked by code for contrast. It changes a frozen contract, so it needs a dedicated PR and a team announcement.
-- **`code/web`:** a management site built from fixed components that takes `look` and the time of day. The chat cards stay driven by typed tool results (ADR-0006).
 - **Port 4710:** the BATP node only listens on loopback. A public `batp://` address needs TLS and a firewall rule on the shared server, so ask first.
 
 ## Logo and colour
@@ -82,15 +61,6 @@ The BaselHack pitch. Each deck is one self-contained file that works offline. Ke
 
 - [`sesame-pitch-v6.html`](sesame-pitch-v6.html): the current deck. It starts from the text and notes of `Sesame_BaselHack_Pitch_v6.pptx`, in the layout of the neutral deck with the logo's orange for surfaces and rules. Slides 3 to 5 use pictograms and sell the idea without technical detail, and the text says "AI agent" rather than naming a product. Slide 2 goes from today's agent traffic over HTTP to protocols built for agents, slide 3 is the protocol, slide 4 shows Sésame generating, from a site, its agent and a control site, which so far exists only as the mockups above (building an agent by hand is only said aloud), and slide 5 is why: a guest with an agent and an owner who gets one. Slide 3 animates one-way jets, at random, from the Claude, Codex and Gemini logos (`@lobehub/icons-static-svg`) to a restaurant, a hotel and a shop (Material Icons, Apache-2.0); print and reduced motion show three still lines. It draws the model, not today's deployment: Claude goes through the gateway, the other agents are not connected, and only restaurants exist. Slide 6 is a full-screen 16:9 frame for the demo recording, `sesame-demo.mp4` next to the deck. Another one can be dropped on the frame. It plays on arrival, and a click or space pauses it. The video is the one file that stays outside the deck. Slides crossfade through the View Transitions API, the cover's logo travels to the footer, the seed travels between slides 4 and 5, and one step forward replays a slide's build. Going back, jumping, reduced motion and browsers without the API skip the build.
 
-The two earlier directions use the text of `Sesame_BaselHack_Pitch.pptx`:
-
-- [`sesame-pitch-neutral.html`](sesame-pitch-neutral.html): black and white, with product mockups as the only colour.
-- [`sesame-pitch-rust.html`](sesame-pitch-rust.html): colours measured on Rust's loot panel and HUD, except the orange, which is the game's interface orange. The hunger bar counts the pages.
-
-## Other files
-
-[`merchant-chat-v10.html`](merchant-chat-v10.html) is an earlier attempt, the v9 screen with the new logo and less text. The two pages above replace it.
-
 ## Limits
 
-`sesame-studio.html`, `sesame-sites.html` and `merchant-chat-v10.html` load Google Fonts. Offline they still open, with fallback fonts. Browser QA ran in Chromium only, at 1440 px and 390 px, in light and dark.
+`sesame-studio.html` loads Google Fonts. Offline it still opens, with fallback fonts. Browser QA ran in Chromium only, at 1440 px and 390 px, in light and dark.

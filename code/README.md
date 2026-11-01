@@ -81,7 +81,7 @@ npx @modelcontextprotocol/inspector   # manual MCP testing against :8001/mcp
 cd web && npm test && npm run lint && npm run test:e2e   # the web app: unit, lint, browser (web/README.md)
 ```
 
-Test markers: `integration` (needs Docker), `llm` (calls the OpenAI API, skipped when `OPENAI_API_KEY` is empty), `browser` (Playwright's Chromium, skipped when it isn't installed). `tests/e2e/test_web_stack.py` also needs `web/dist`: without it a local run skips it, and CI, which builds it, fails. The `llm` tests (the builder on the demo sites, the extraction bench on the 4 local sites, the onboarding conversation) run in the **LLM** workflow on pushes to `main` and by hand (Actions → LLM → Run workflow), with the repository secret `OPENAI_API_KEY`; without it the job is skipped with a notice. About 50 s and a few cents per run. `tests/fixtures/generated/` holds profiles generated from 3 real websites.
+Test markers: `integration` (needs Docker), `llm` (calls the OpenAI API, skipped when `OPENAI_API_KEY` is empty), `browser` (Playwright's Chromium, skipped when it isn't installed). `tests/e2e/test_web_stack.py` also needs `web/dist`: without it, or with one older than `web/src`, a local run skips it, and CI, which builds it, fails. The `llm` tests (the builder on the demo sites, the extraction bench on the 4 local sites, the onboarding conversation) run in the **LLM** workflow on pushes to `main` and by hand (Actions → LLM → Run workflow), with the repository secret `OPENAI_API_KEY`; without it the job is skipped with a notice. About 50 s and a few cents per run. `tests/fixtures/generated/` holds profiles generated from 3 real websites.
 
 Shared tool and SSE contracts, fixtures and checks: [CONTRACTS.md](../documentation/CONTRACTS.md).
 

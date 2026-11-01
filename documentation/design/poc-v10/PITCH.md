@@ -21,7 +21,7 @@ Open [`sesame-pitch-v6.html`](sesame-pitch-v6.html) in a browser. It is one self
 
 The deck rounds the video's corners in its CSS, and the file itself is square. Played outside the deck, it shows small black corners at the bottom, from the window it was recorded in.
 
-The recording shows the v10 mockups, not `code/web`: the merchant's chat and the management site run from a fixed script, and #127 tracks building them. Its public site is La Graine Verte restyled, while `code/sites` still has the green one (#148). Its chat with Claude is a replay and says so on screen: the three times it offers came from the real connector on 31 October 2026, but the window is not Claude.ai.
+The recording shows the v10 mockups, not `code/web`: the merchant's chat and the management site run from a fixed script there. `code/web` builds both from them since #127, and La Graine Verte's public site in `code/sites` has the same look (#148).
 
 ## Speaker notes
 
@@ -31,7 +31,7 @@ Each note opens with the team's script in French, followed by the English versio
 
 - **Slide 2:** "2035s" is the wording the team chose. The standard form for a decade would be "2030s".
 - **Slide 3:** it draws the model. Today Claude goes through the gateway over HTTPS, the other agents are not connected, and only restaurants exist.
-- **Slide 4:** the control site is being built ([ADR-0015](../../adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #127): some of its pages exist, and a build doesn't give it the merchant's look yet.
+- **Slide 4:** the control site is the management site ([ADR-0015](../../adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #127), in the merchant's own look, read from its homepage (#149, #150).
 - **Slide 7:** the cost claim comes from [Taalas](https://taalas.com/the-path-to-ubiquitous-ai/) alone, and the slide says so.
 
 ## Transitions
@@ -44,10 +44,3 @@ Slides crossfade through the View Transitions API. The cover's logo travels to t
 - **Icons:** Material Icons (Apache-2.0).
 - **Type:** Source Sans 3 (SIL OFL), embedded and subset.
 - **Wordmark:** traced from a screenshot of the logo. Replace it with the vector file once that exists.
-
-## Earlier directions
-
-These keep the text and slide order of the first draft of the pitch, and are not maintained:
-
-- [`sesame-pitch-neutral.html`](sesame-pitch-neutral.html): black and white, with product mockups as the only colour.
-- [`sesame-pitch-rust.html`](sesame-pitch-rust.html): colours measured on Rust's interface.

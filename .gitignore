@@ -1,4 +1,6 @@
 CLAUDE.local.md
+# Agents' git worktrees
+.claude/worktrees/
 
 # Secrets: copy code/.env.example to code/.env
 .env
