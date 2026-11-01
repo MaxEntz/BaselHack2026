@@ -1,5 +1,6 @@
 """The platform API's error bodies: a `ToolError` for the §8.4 codes, a `ManagementError` for
-the management site's own (a form's `problem`, the owner checks of #132)."""
+the management site's own (a form's `problem`, the owner checks of #132, the rate limits of
+#232)."""
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -8,6 +9,7 @@ from fastapi.responses import JSONResponse
 from core.errors import AgentError, FormProblem
 from core.models import ErrorCode, ManagementError, ManagementErrorCode, ToolError
 from merchant_platform.accounts import NeedsInvite, NotSignedIn, OtherMerchant
+from merchant_platform.limits import TooManyRequests
 
 HTTP_STATUS: dict[ErrorCode, int] = {
     "not_found": 404,
@@ -58,6 +60,12 @@ async def needs_invite(_: Request, error: NeedsInvite) -> JSONResponse:
     return management_error(403, "needs_invite", str(error))
 
 
+async def too_many_requests(_: Request, error: TooManyRequests) -> JSONResponse:
+    response = management_error(429, "too_many_requests", str(error))
+    response.headers["Retry-After"] = str(error.retry_after)
+    return response
+
+
 def add_error_handlers(app: FastAPI) -> None:
     """Every error answers its body, never a stack trace (§12)."""
     app.exception_handler(AgentError)(agent_error)
@@ -66,3 +74,4 @@ def add_error_handlers(app: FastAPI) -> None:
     app.exception_handler(NotSignedIn)(not_signed_in)
     app.exception_handler(OtherMerchant)(other_merchant)
     app.exception_handler(NeedsInvite)(needs_invite)
+    app.exception_handler(TooManyRequests)(too_many_requests)

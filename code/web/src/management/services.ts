@@ -13,20 +13,18 @@ export function toHHMM(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
-/** The last start of a service, or null when it is too short for one (or half filled in). */
-export function lastSeating({ start, end }: Service): string | null {
-  if (!start || !end) return null;
+/** Every bookable start of a service; none when it is too short for one (or half filled in). */
+export function startsOf({ start, end }: Service): string[] {
+  if (!start || !end) return [];
   const last = toMinutes(end) - LAST_SEATING_MIN;
-  return last >= toMinutes(start) ? toHHMM(last) : null;
+  const starts = [];
+  for (let at = toMinutes(start); at <= last; at += STEP_MIN) starts.push(toHHMM(at));
+  return starts;
 }
 
-/** Every bookable start of a service. */
-export function startsOf(service: Service): string[] {
-  const last = lastSeating(service);
-  if (last === null) return [];
-  const starts = [];
-  for (let at = toMinutes(service.start); at <= toMinutes(last); at += STEP_MIN) starts.push(toHHMM(at));
-  return starts;
+/** The last start of a service, on the starts' grid, or null when it has none. */
+export function lastSeating(service: Service): string | null {
+  return startsOf(service).at(-1) ?? null;
 }
 
 /** "Breakfast", "Lunch" or "Dinner" by start time; a second one of a kind is "Lunch 2". */

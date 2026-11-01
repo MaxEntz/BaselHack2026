@@ -152,16 +152,7 @@ function Room({ slug, version, today, clock, tables }: FloorBase & { slug: strin
   );
 }
 
-function RoomAt({
-  day,
-  tables,
-  at,
-  starts,
-  passed,
-  onAt,
-  onOpen,
-  onNew,
-}: {
+type RoomAtProps = {
   day: ReservationDay;
   tables: TableSpec[];
   at: string;
@@ -172,17 +163,11 @@ function RoomAt({
   onOpen: (id: string) => void;
   // A new booking at `at`, for that many guests.
   onNew: (party: number) => void;
-}) {
+};
+
+function RoomAt({ day, tables, at, starts, passed, onAt, onOpen, onNew }: RoomAtProps) {
   const toast = useToast();
-  const now = toMinutes(at);
-  const seated = new Map<string, ManagedReservation>();
-  const soon = new Set<string>();
-  for (const booking of day.reservations) {
-    if (booking.status !== "confirmed") continue;
-    const start = toMinutes(booking.time);
-    if (start <= now && now < start + day.slot_length_min) seated.set(booking.table_label, booking);
-    else if (start > now && start - now <= SOON_MIN) soon.add(booking.table_label);
-  }
+  const { seated, soon } = occupancy(day, at);
   const guests = [...seated.values()].reduce((sum, booking) => sum + booking.party_size, 0);
   const blocked = day.blocked.includes(at);
 
@@ -217,49 +202,94 @@ function RoomAt({
         ))}
       </div>
       <div className="floor">
-        {tables.map((table, index) => {
-          const booking = seated.get(table.label);
-          const state = booking ? "busy" : soon.has(table.label) ? "soon" : "";
-          return (
-            <button
-              key={table.label}
-              type="button"
-              className={["tb", table.seats >= 4 && "s4", state].filter(Boolean).join(" ")}
-              style={{ "--y": `${OFFSETS[index % OFFSETS.length]}px` } as CSSProperties}
-              aria-label={
-                booking
-                  ? `Table ${table.label}, ${surname(booking.guest_name)}, ${plural(booking.party_size, "guest")}`
-                  : `Table ${table.label}, ${table.seats} seats, free`
-              }
-              onClick={() => choose(table)}
-            >
-              <Blob index={index} />
-              {/* The name holds the words shown, in order, for voice control (WCAG 2.5.3, #153). */}
-              <span>
-                <b>{table.label}</b>{" "}
-                <small>
-                  {booking ? `${surname(booking.guest_name)}, ${booking.party_size}` : `${table.seats} seats`}
-                </small>
-              </span>
-            </button>
-          );
-        })}
+        {tables.map((table, index) => (
+          <TableButton
+            key={table.label}
+            table={table}
+            index={index}
+            booking={seated.get(table.label)}
+            soon={soon.has(table.label)}
+            onChoose={choose}
+          />
+        ))}
       </div>
-      <div className="lg">
-        <span>
-          <i className="f" />
-          Seated
-        </span>
-        <span>
-          <i className="d" />
-          Arriving within the hour
-        </span>
-        <span>
-          <i />
-          Free
-        </span>
-      </div>
+      <Legend />
     </>
+  );
+}
+
+type Occupancy = {
+  // The booking seated at each table, by label.
+  seated: Map<string, ManagedReservation>;
+  // The tables a booking arrives at within the hour.
+  soon: Set<string>;
+};
+
+// Who sits where at `at`, and which tables fill up within the hour.
+function occupancy(day: ReservationDay, at: string): Occupancy {
+  const now = toMinutes(at);
+  const seated = new Map<string, ManagedReservation>();
+  const soon = new Set<string>();
+  for (const booking of day.reservations) {
+    if (booking.status !== "confirmed") continue;
+    const start = toMinutes(booking.time);
+    if (start <= now && now < start + day.slot_length_min) seated.set(booking.table_label, booking);
+    else if (start > now && start - now <= SOON_MIN) soon.add(booking.table_label);
+  }
+  return { seated, soon };
+}
+
+type TableButtonProps = {
+  table: TableSpec;
+  index: number;
+  // The booking seated there, if any.
+  booking: ManagedReservation | undefined;
+  soon: boolean;
+  onChoose: (table: TableSpec) => void;
+};
+
+function TableButton({ table, index, booking, soon, onChoose }: TableButtonProps) {
+  const state = booking ? "busy" : soon ? "soon" : "";
+  return (
+    <button
+      type="button"
+      className={["tb", table.seats >= 4 && "s4", state].filter(Boolean).join(" ")}
+      style={{ "--y": `${OFFSETS[index % OFFSETS.length]}px` } as CSSProperties}
+      aria-label={
+        booking
+          ? `Table ${table.label}, ${surname(booking.guest_name)}, ${plural(booking.party_size, "guest")}`
+          : `Table ${table.label}, ${table.seats} seats, free`
+      }
+      onClick={() => onChoose(table)}
+    >
+      <Blob index={index} />
+      {/* The name holds the words shown, in order, for voice control (WCAG 2.5.3, #153). */}
+      <span>
+        <b>{table.label}</b>{" "}
+        <small>
+          {booking ? `${surname(booking.guest_name)}, ${booking.party_size}` : `${table.seats} seats`}
+        </small>
+      </span>
+    </button>
+  );
+}
+
+function Legend() {
+  return (
+    <div className="lg">
+      <span>
+        <i className="f" />
+        Seated
+      </span>
+      <span>
+        <i className="d" />
+        Arriving within the hour
+      </span>
+      <span>
+        <i />
+        Free
+      </span>
+    </div>
   );
 }
 

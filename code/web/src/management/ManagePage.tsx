@@ -1,6 +1,6 @@
 import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
-import { askedMoment } from "../moments.ts";
+import { MOMENT_READY, askedMoment } from "../moments.ts";
 import type { LiveEvent, MerchantOverview } from "../types.ts";
 import { announcingChanges, onChange } from "./changes.ts";
 import { ClientContext, useClient, useLoad } from "./data.ts";
@@ -75,6 +75,8 @@ function useMomentFromStudio(slug: string) {
       navigate({ pathname: pagePath(slug, "home"), search: moment ? `?moment=${moment}` : "" });
     };
     window.addEventListener("message", listen);
+    // Studio sends the moment it shows once this page listens (moments.ts `MOMENT_READY`).
+    window.parent.postMessage(MOMENT_READY, window.location.origin);
     return () => window.removeEventListener("message", listen);
   }, [navigate, slug]);
 }
@@ -116,35 +118,78 @@ function ManageShell({ slug, page }: { slug: string; page: PageId }) {
   );
 }
 
-function Shell({
-  slug,
-  page,
-  merchant,
-  store,
-  assistantShown,
-  setAssistantOpen,
-}: {
+type ShellProps = {
   slug: string;
   page: PageId;
   merchant: MerchantOverview | null;
   store: RefreshStore;
   assistantShown: boolean;
   setAssistantOpen: (open: boolean) => void;
-}) {
+};
+
+function Shell({ slug, page, merchant, store, assistantShown, setAssistantOpen }: ShellProps) {
+  const navigate = useNavigate();
+  const version = usePageVersion();
+  const full = page === "assistant";
+  const chat = useChatClient();
+  const { unseen, seen, listen } = useShellLive(slug, store, assistantShown);
+
+  const name = merchant?.name ?? nameFromSlug(slug);
+
+  useEffect(() => {
+    document.title = pageTitle(name, page);
+  }, [name, page]);
+  useEffect(() => {
+    document.scrollingElement?.scrollTo?.(0, 0);
+  }, [page]);
+
+  const home = () => navigate(pagePath(slug, "home"), { viewTransition: true });
+  return (
+    <div className="app">
+      <Sidebar slug={slug} page={page} name={name} merchant={merchant} />
+      {page !== "assistant" && (
+        <div className="mid">
+          <TopBar slug={slug} page={page} merchant={merchant} unseen={unseen} onSeen={seen} />
+          <main>
+            <PageView page={page} slug={slug} version={version} onAsk={() => setAssistantOpen(true)} />
+            <Footer merchant={merchant} />
+          </main>
+        </div>
+      )}
+      <AssistantPanel
+        shown={assistantShown}
+        full={full}
+        onResize={() => (full ? home() : navigate(pagePath(slug, "assistant"), { viewTransition: true }))}
+        onClose={() => {
+          setAssistantOpen(false);
+          if (full) home();
+        }}
+      >
+        <AssistantChat slug={slug} name={name} now={merchant?.now ?? null} chat={chat} live={listen} />
+      </AssistantPanel>
+    </div>
+  );
+}
+
+type ShellLive = {
+  // New bookings since the bell was last opened.
+  unseen: number;
+  seen: () => void;
+  // The panel's conversation takes the live events the shell receives (#140).
+  listen: (handler: ((event: LiveEvent) => void) | null) => void;
+};
+
+// The site's live events: every page reads again, the panel's conversation takes them, the bell
+// counts new bookings, and one through an agent shows a toast while the assistant is hidden.
+function useShellLive(slug: string, store: RefreshStore, assistantShown: boolean): ShellLive {
   const client = useClient();
   const navigate = useNavigate();
   const toast = useToast();
-  const version = usePageVersion();
   const [unseen, setUnseen] = useState(0);
-  const full = page === "assistant";
-  const chat = useChatClient();
-  // The panel's conversation takes the live events the shell receives (#140).
   const panelLive = useRef<((event: LiveEvent) => void) | null>(null);
   const listen = useCallback((handler: ((event: LiveEvent) => void) | null) => {
     panelLive.current = handler;
   }, []);
-
-  const name = merchant?.name ?? nameFromSlug(slug);
 
   // The live handler reads the latest render's state; the subscription itself stays open.
   const onLive = useRef<(event: LiveEvent) => void>(() => {});
@@ -174,38 +219,5 @@ function Shell({
     [client, slug],
   );
   useEffect(() => onChange(slug, store.bump), [slug, store]);
-
-  useEffect(() => {
-    document.title = pageTitle(name, page);
-  }, [name, page]);
-  useEffect(() => {
-    document.scrollingElement?.scrollTo?.(0, 0);
-  }, [page]);
-
-  const home = () => navigate(pagePath(slug, "home"), { viewTransition: true });
-  return (
-    <div className="app">
-      <Sidebar slug={slug} page={page} name={name} merchant={merchant} />
-      {page !== "assistant" && (
-        <div className="mid">
-          <TopBar slug={slug} page={page} merchant={merchant} unseen={unseen} onSeen={() => setUnseen(0)} />
-          <main>
-            <PageView page={page} slug={slug} version={version} onAsk={() => setAssistantOpen(true)} />
-            <Footer merchant={merchant} />
-          </main>
-        </div>
-      )}
-      <AssistantPanel
-        shown={assistantShown}
-        full={full}
-        onResize={() => (full ? home() : navigate(pagePath(slug, "assistant"), { viewTransition: true }))}
-        onClose={() => {
-          setAssistantOpen(false);
-          if (full) home();
-        }}
-      >
-        <AssistantChat slug={slug} name={name} now={merchant?.now ?? null} chat={chat} live={listen} />
-      </AssistantPanel>
-    </div>
-  );
+  return { unseen, seen: () => setUnseen(0), listen };
 }

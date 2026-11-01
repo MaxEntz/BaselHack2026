@@ -1,10 +1,11 @@
 """The crawler (#21) in a real Chromium, against the demo site (#16) and small local sites."""
 
+import asyncio
 import base64
 import json
 import logging
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -14,8 +15,10 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import pytest
+from playwright.async_api import async_playwright
 
 from builder.crawl import SHOT_MAX_HEIGHT, SHOT_WIDTH, CrawlResult, checked_boxes, crawl
+from builder.guard import BROWSER_ARGS
 from builder.look import read_look
 from core.config import get_settings
 from core.errors import InvalidInput
@@ -433,6 +436,104 @@ async def test_a_slow_page_is_skipped_within_the_page_timeout(
     # bound: a loaded machine takes longer to launch Chromium, whatever the timeout (#220).
     assert paths(result) == ["/"]
     assert logged(caplog, "crawl_page_skipped") == [f"{site.url}menu.html"]
+
+
+# WebRTC (#233): STUN, TURN and ICE open their own sockets, which the guard's routes never see.
+
+
+@dataclass(frozen=True)
+class Listeners:
+    """A UDP and a TCP port on 127.0.0.1, and what reached them."""
+
+    udp_port: int
+    tcp_port: int
+    hits: dict[str, int]
+    connected: asyncio.Event  # set by the first TCP connection
+
+
+@pytest.fixture
+async def listeners() -> AsyncIterator[Listeners]:
+    hits = {"udp": 0, "tcp": 0}
+    connected = asyncio.Event()
+
+    class Datagrams(asyncio.DatagramProtocol):
+        def datagram_received(self, data: bytes, addr: Any) -> None:
+            hits["udp"] += 1
+
+    async def accept(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        hits["tcp"] += 1
+        connected.set()
+        writer.close()
+
+    loop = asyncio.get_running_loop()
+    udp, _ = await loop.create_datagram_endpoint(Datagrams, local_addr=("127.0.0.1", 0))
+    tcp = await asyncio.start_server(accept, "127.0.0.1", 0)
+    udp_port = udp.get_extra_info("sockname")[1]
+    yield Listeners(udp_port, tcp.sockets[0].getsockname()[1], hits, connected)
+    tcp.close()
+    await tcp.wait_closed()
+    udp.close()
+
+
+def peer_connections(listeners: Listeners) -> str:
+    """A page that opens a peer connection toward the listeners from its own window and from a
+    new frame's (a frame its scripts reach before it loads anything), and writes whether it
+    could: STUN over UDP, TURN over TCP."""
+    servers = json.dumps(
+        [
+            {"urls": f"stun:127.0.0.1:{listeners.udp_port}"},
+            {
+                "urls": f"turn:127.0.0.1:{listeners.tcp_port}?transport=tcp",
+                "username": "u",
+                "credential": "p",
+            },
+        ]
+    )
+    return f"""<p>Bonjour</p><script>
+      const connect = (win) => {{
+        const Peer = win.RTCPeerConnection || win.webkitRTCPeerConnection;
+        if (!Peer) return "closed";
+        const peer = new Peer({{ iceServers: {servers} }});
+        peer.createDataChannel("probe");
+        peer.createOffer().then((offer) => peer.setLocalDescription(offer));
+        return "open";
+      }};
+      const frame = document.body.appendChild(document.createElement("iframe"));
+      document.body.append(`WebRTC ${{connect(window)}} ${{connect(frame.contentWindow)}}`);
+    </script>"""
+
+
+async def test_a_pages_webrtc_never_leaves_the_browser(
+    serve: Callable[[Path], Site], tmp_path: Path, listeners: Listeners
+) -> None:
+    write(tmp_path, {"index.html": peer_connections(listeners)})
+
+    result = await crawl(serve(tmp_path).url, Steps(), allow_private=True)
+
+    assert "WebRTC closed closed" in result.pages[0].text
+    assert listeners.hits == {"udp": 0, "tcp": 0}
+
+
+@pytest.mark.parametrize(
+    ("args", "sends_udp"), [((), True), (BROWSER_ARGS, False)], ids=["default", "browser-args"]
+)
+async def test_the_browser_itself_sends_webrtc_no_udp(
+    listeners: Listeners, args: tuple[str, ...], sends_udp: bool
+) -> None:
+    """The second layer, for a frame that would escape the guard's script: Chromium launched
+    with `BROWSER_ARGS` sends no STUN or TURN over UDP, where by default it does. TURN over TCP
+    still goes out, which is why the script is the first layer."""
+    async with (
+        async_playwright() as playwright,
+        await playwright.chromium.launch(args=args) as browser,
+    ):
+        page = await browser.new_page()
+        await page.set_content(peer_connections(listeners))
+        # TURN over TCP connecting: the candidates are being gathered, STUN with them if allowed.
+        await asyncio.wait_for(listeners.connected.wait(), 10)
+        await asyncio.sleep(1)
+
+    assert (listeners.hits["udp"] > 0) is sends_udp
 
 
 # The homepage's look (#149): read from computed styles, the demo sites to the issue's values.

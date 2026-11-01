@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { now, useNow } from "../../clock.ts";
 import type { ManagedReservation, MerchantOverview } from "../../types.ts";
@@ -85,52 +85,17 @@ type Hit = { kind: "page"; page: PageId } | { kind: "booking"; booking: ManagedR
 
 /** Pages by name, then up to 8 bookings of the next 7 days by guest or reference. */
 function Search({ slug }: { slug: string }) {
-  const client = useClient();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [answer, setAnswer] = useState<{ query: string; bookings: ManagedReservation[] } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const shortcut = useMemo(() => shortcutLabel(browserPlatform()), []);
   const wanted = query.trim();
+  const bookings = useBookingHits(slug, wanted);
+  useShortcut(input);
+  useClickOutside(box, open, setOpen);
 
-  useEffect(() => {
-    if (!wanted) return;
-    const abort = new AbortController();
-    client.search(slug, wanted, abort.signal).then(
-      (found) => setAnswer({ query: wanted, bookings: found.reservations.slice(0, BOOKING_HITS) }),
-      () => {
-        if (!abort.signal.aborted) setAnswer({ query: wanted, bookings: [] });
-      },
-    );
-    return () => abort.abort();
-  }, [client, slug, wanted]);
-
-  // Cmd+K (Ctrl+K outside macOS) from anywhere on the site.
-  useEffect(() => {
-    const focus = (event: globalThis.KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        input.current?.focus();
-        input.current?.select();
-      }
-    };
-    document.addEventListener("keydown", focus);
-    return () => document.removeEventListener("keydown", focus);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: MouseEvent) => {
-      if (!box.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("click", outside);
-    return () => document.removeEventListener("click", outside);
-  }, [open]);
-
-  // Bookings only once the platform answered this very query, so an older answer never shows.
-  const bookings = answer?.query === wanted ? answer.bookings : null;
   const hits: Hit[] = [
     ...pageHits(wanted).map((page): Hit => ({ kind: "page", page })),
     ...(bookings ?? []).map((booking): Hit => ({ kind: "booking", booking })),
@@ -175,34 +140,84 @@ function Search({ slug }: { slug: string }) {
         onKeyDown={keys}
       />
       <kbd>{shortcut}</kbd>
-      {shown && (
-        <div className="hits" role="group" aria-label="Search results">
-          {hits.map((hit) =>
-            hit.kind === "page" ? (
-              <button key={`page-${hit.page}`} type="button" onClick={() => choose(hit)}>
-                <span>{PAGES[hit.page]}</span>
-                <span>Page</span>
-              </button>
-            ) : (
-              <button
-                key={hit.booking.id}
-                type="button"
-                className={hit.booking.status === "cancelled" ? "off" : undefined}
-                onClick={() => choose(hit)}
-              >
-                <span>
-                  {hit.booking.guest_name}, {hit.booking.party_size}
-                  {hit.booking.status === "cancelled" && <em>, cancelled</em>}
-                </span>
-                <span className="num">
-                  {dayShort(hit.booking.date)} {hit.booking.time}
-                </span>
-              </button>
-            ),
-          )}
-          {empty && <p>{NOTHING_FOUND}</p>}
-        </div>
+      {shown && <Hits hits={hits} empty={empty} onChoose={choose} />}
+    </div>
+  );
+}
+
+// The bookings the platform found for `wanted`, only once it answered this very query, so an
+// older answer never shows; null until then.
+function useBookingHits(slug: string, wanted: string): ManagedReservation[] | null {
+  const client = useClient();
+  const [answer, setAnswer] = useState<{ query: string; bookings: ManagedReservation[] } | null>(null);
+  useEffect(() => {
+    if (!wanted) return;
+    const abort = new AbortController();
+    client.search(slug, wanted, abort.signal).then(
+      (found) => setAnswer({ query: wanted, bookings: found.reservations.slice(0, BOOKING_HITS) }),
+      () => {
+        if (!abort.signal.aborted) setAnswer({ query: wanted, bookings: [] });
+      },
+    );
+    return () => abort.abort();
+  }, [client, slug, wanted]);
+  return answer?.query === wanted ? answer.bookings : null;
+}
+
+// Cmd+K (Ctrl+K outside macOS) from anywhere on the site.
+function useShortcut(input: RefObject<HTMLInputElement | null>) {
+  useEffect(() => {
+    const focus = (event: globalThis.KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        input.current?.focus();
+        input.current?.select();
+      }
+    };
+    document.addEventListener("keydown", focus);
+    return () => document.removeEventListener("keydown", focus);
+  }, [input]);
+}
+
+// A click outside `box` closes what is open.
+function useClickOutside(box: RefObject<HTMLElement | null>, open: boolean, setOpen: (open: boolean) => void) {
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: MouseEvent) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("click", outside);
+    return () => document.removeEventListener("click", outside);
+  }, [box, open, setOpen]);
+}
+
+function Hits({ hits, empty, onChoose }: { hits: readonly Hit[]; empty: boolean; onChoose: (hit: Hit) => void }) {
+  return (
+    <div className="hits" role="group" aria-label="Search results">
+      {hits.map((hit) =>
+        hit.kind === "page" ? (
+          <button key={`page-${hit.page}`} type="button" onClick={() => onChoose(hit)}>
+            <span>{PAGES[hit.page]}</span>
+            <span>Page</span>
+          </button>
+        ) : (
+          <button
+            key={hit.booking.id}
+            type="button"
+            className={hit.booking.status === "cancelled" ? "off" : undefined}
+            onClick={() => onChoose(hit)}
+          >
+            <span>
+              {hit.booking.guest_name}, {hit.booking.party_size}
+              {hit.booking.status === "cancelled" && <em>, cancelled</em>}
+            </span>
+            <span className="num">
+              {dayShort(hit.booking.date)} {hit.booking.time}
+            </span>
+          </button>
+        ),
       )}
+      {empty && <p>{NOTHING_FOUND}</p>}
     </div>
   );
 }

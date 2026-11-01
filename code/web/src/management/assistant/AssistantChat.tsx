@@ -76,15 +76,7 @@ export function AssistantChat({
   );
 }
 
-function Conversation({
-  slug,
-  name,
-  now,
-  chat,
-  live,
-  sessionId,
-  restore,
-}: {
+type ConversationProps = {
   slug: string;
   name: string;
   now: string | null;
@@ -92,12 +84,12 @@ function Conversation({
   live: Listen;
   sessionId: string;
   restore: readonly ConversationItem[];
-}) {
+};
+
+function Conversation({ slug, name, now, chat, live, sessionId, restore }: ConversationProps) {
   const { state, send, notify } = useChat(chat, WELCOME, { slug, name }, { sessionId, restore, listen: false });
-  const [text, setText] = useState("");
   const asked = new Set(state.items.flatMap((item) => (item.type === "user" ? [item.text] : [])));
   const feed = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLTextAreaElement>(null);
 
   // The shell listens to the live events and hands them over.
   useEffect(() => {
@@ -110,6 +102,32 @@ function Conversation({
     if (node) node.scrollTop = node.scrollHeight;
   }, [state.items, state.activity]);
 
+  const today = now?.slice(0, 10) ?? null;
+  return (
+    <>
+      <div id="feed" ref={feed} role="log" aria-live="polite" aria-label="Conversation">
+        {state.items.map((item) => (
+          <Item key={item.id} item={item} slug={slug} today={today} />
+        ))}
+        {state.activity && <p className="msg bot asst-busy">{state.activity}</p>}
+      </div>
+      <AssistantComposer busy={state.busy} offered={now ? chips(now, asked) : []} onSend={(message) => void send(message)} />
+    </>
+  );
+}
+
+type AssistantComposerProps = {
+  busy: boolean;
+  // The chips: each one is sent as it reads.
+  offered: readonly string[];
+  onSend: (message: string) => void;
+};
+
+// The chips and the message box: Enter sends, Shift+Enter and an IME's Enter don't.
+function AssistantComposer({ busy, offered, onSend }: AssistantComposerProps) {
+  const [text, setText] = useState("");
+  const input = useRef<HTMLTextAreaElement>(null);
+
   const grow = () => {
     const node = input.current;
     if (!node) return;
@@ -120,9 +138,9 @@ function Conversation({
 
   const submit = (message: string) => {
     const trimmed = message.trim();
-    if (!trimmed || state.busy) return;
+    if (!trimmed || busy) return;
     setText("");
-    void send(trimmed);
+    onSend(trimmed);
   };
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -134,43 +152,33 @@ function Conversation({
     submit(text);
   };
 
-  const today = now?.slice(0, 10) ?? null;
-  const offered = now ? chips(now, asked) : [];
   return (
-    <>
-      <div id="feed" ref={feed} role="log" aria-live="polite" aria-label="Conversation">
-        {state.items.map((item) => (
-          <Item key={item.id} item={item} slug={slug} today={today} />
-        ))}
-        {state.activity && <p className="msg bot asst-busy">{state.activity}</p>}
-      </div>
-      <form className="composer" onSubmit={onSubmit}>
-        <div id="chips">
-          {offered.map((chip) => (
-            <button key={chip} type="button" className="pill sm" disabled={state.busy} onClick={() => submit(chip)}>
-              {chip}
-            </button>
-          ))}
-        </div>
-        <div className="box-in">
-          <label className="sr" htmlFor="asst-input">
-            {PLACEHOLDER}
-          </label>
-          <textarea
-            id="asst-input"
-            ref={input}
-            rows={1}
-            placeholder={PLACEHOLDER}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={onKeyDown}
-          />
-          <button className="send" type="submit" aria-label="Send" disabled={!text.trim() || state.busy}>
-            <Icon name="up" />
+    <form className="composer" onSubmit={onSubmit}>
+      <div id="chips">
+        {offered.map((chip) => (
+          <button key={chip} type="button" className="pill sm" disabled={busy} onClick={() => submit(chip)}>
+            {chip}
           </button>
-        </div>
-      </form>
-    </>
+        ))}
+      </div>
+      <div className="box-in">
+        <label className="sr" htmlFor="asst-input">
+          {PLACEHOLDER}
+        </label>
+        <textarea
+          id="asst-input"
+          ref={input}
+          rows={1}
+          placeholder={PLACEHOLDER}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        <button className="send" type="submit" aria-label="Send" disabled={!text.trim() || busy}>
+          <Icon name="up" />
+        </button>
+      </div>
+    </form>
   );
 }
 
