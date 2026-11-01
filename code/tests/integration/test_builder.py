@@ -237,6 +237,45 @@ async def test_publish_keeps_a_live_agent_and_refuses_a_paused_one(
         await publish(f"{slug}-unknown", Run().emit, engine=engine)
 
 
+@pytest.mark.parametrize(
+    ("since", "last"),
+    [(["live"], ("deploy", "done")), (["live", "down"], ("deploy", "error"))],
+    ids=["published", "paused"],
+)
+async def test_publish_never_undoes_a_change_made_after_it_read_the_status(
+    engine: AsyncEngine,
+    tmp_path: Path,
+    slugs: list[str],
+    since: list[Any],
+    last: tuple[str, str],
+) -> None:
+    # #220: publish read `building`, then another tab published and maybe the owner paused,
+    # before its deploy: an unconditional UPDATE put a paused agent back live.
+    site, name = unique_site()
+    output = await builder(engine, FakeLLM(draft(name)), tmp_path).build_agent(site, "", Run().emit)
+    slug = output.profile.slug
+    slugs.append(slug)
+    events: list[StepEvent | SitePageEvent] = []
+
+    async def meanwhile(event: StepEvent | SitePageEvent) -> None:
+        events.append(event)
+        if isinstance(event, StepEvent) and event.status == "running":
+            for status in since:
+                await set_status(slug, status, engine=engine)
+
+    if since[-1] == "down":
+        with pytest.raises(InvalidInput, match="paused"):
+            await publish(slug, meanwhile, engine=engine)
+    else:
+        await publish(slug, meanwhile, engine=engine)
+
+    assert await status_of(engine, slug) == since[-1]
+    assert [(e.step, e.status) for e in events if isinstance(e, StepEvent)] == [
+        ("deploy", "running"),
+        last,
+    ]
+
+
 async def test_a_taken_slug_gets_a_suffix_and_a_known_site_is_refused(
     engine: AsyncEngine, tmp_path: Path, slugs: list[str]
 ) -> None:

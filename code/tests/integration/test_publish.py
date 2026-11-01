@@ -1,5 +1,6 @@
 """Publishing an agent a build left waiting (#136), through `POST /merchants/{slug}/publish`."""
 
+import json
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import date
 from typing import Any
@@ -10,19 +11,23 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from builder.llm import LLMReply, Message, OnText, ToolSpec
+from builder.crawl import CrawlResult, Page, StepEmitter
+from builder.llm import LLMReply, Message, OnText, ToolCall, ToolSpec
+from builder.look import read_look
 from core.config import Settings
 from core.db import merchants_t
-from core.models import BuildAgentInput, BuildAgentOutput, MerchantOverview
+from core.models import BuildAgentInput, BuildAgentOutput, ChatEvent, MerchantOverview
 from merchant_platform.accounts import Accounts, MemoryOwnerStore, Signer
 from merchant_platform.api import create_app
 from merchant_platform.assistant import (
     STATUS_LINES,
     Assistant,
+    default_assistant,
     registry_profiles,
     registry_statuses,
 )
 from merchant_platform.overview import registry_records
+from merchant_platform.sessions import Session
 from merchant_platform.tools import AdminTools
 
 pytestmark = pytest.mark.integration
@@ -137,3 +142,63 @@ async def test_a_look_changed_in_studio_is_what_the_overview_reads(
     record = await registry_records(engine)(slug)
     assert record is not None
     assert record.look == look
+
+
+# The homepage's computed styles, as the crawl reads them (#149).
+SITE_STYLES = {
+    "bg": "rgb(237, 235, 226)",
+    "ink": "rgb(71, 82, 47)",
+    "heading": {"size": 150, "color": "rgb(114, 127, 85)", "font": '"Fraunces Soft", serif'},
+    "backgrounds": {"rgb(114, 127, 85)": 200_000.0, "rgb(248, 246, 239)": 130_000.0},
+    "page_area": 1_000_000.0,
+}
+
+
+class ResetsTheLook:
+    """A model that asks for the site's own look once, then says it's done."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def respond(
+        self,
+        *,
+        instructions: str,
+        tools: Sequence[ToolSpec],
+        history: Sequence[Message],
+        on_text: OnText,
+        tool_choice: str | None = None,
+    ) -> LLMReply:
+        self.calls += 1
+        if self.calls == 1:
+            reset = ToolCall("look", "update_look", json.dumps({"reset": True}))
+            return LLMReply(text="", tool_calls=(reset,))
+        await on_text("Done.")
+        return LLMReply(text="Done.")
+
+
+async def test_the_sites_look_is_read_again_through_the_injected_crawler(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    # #220: site_look called the module's crawl, so a fake crawler never covered this path.
+    slug = await make_merchant()
+    crawled: list[str] = []
+
+    async def fake_crawl(url: str, on_event: StepEmitter) -> CrawlResult:
+        crawled.append(url)
+        page = Page(url=url, title="Le Petit Zinc", text="", json_ld=[], look=SITE_STYLES)
+        return CrawlResult(website=url, pages=[page])
+
+    assistant = default_assistant(settings(), engine, llm=ResetsTheLook(), crawler=fake_crawl)
+    events: list[ChatEvent] = []
+
+    async def emit(event: ChatEvent) -> None:
+        events.append(event)
+
+    await assistant(Session(id="s", merchant_slug=slug), "Back to my site's look", emit)
+
+    record = await registry_records(engine)(slug)
+    assert record is not None
+    assert crawled == [record.website]
+    assert record.look == read_look(SITE_STYLES)[0]
+    assert not [event for event in events if event.type == "error"]

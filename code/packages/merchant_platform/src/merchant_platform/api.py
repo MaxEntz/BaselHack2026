@@ -22,7 +22,6 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 from agent.management import ManagementService
 from agent.service import AgentService, PgAgentService
 from builder.build import Crawl
-from builder.crawl import crawl
 from builder.llm import LLMClient
 from core.config import Settings, get_settings
 from core.db import make_engine
@@ -72,7 +71,7 @@ from merchant_platform.auth import (
 )
 from merchant_platform.auth import router as auth_router
 from merchant_platform.events import LiveBus, LiveListener
-from merchant_platform.logs import configure_logging
+from merchant_platform.logs import configure_logging, session_tag
 from merchant_platform.management import NotBuiltYet
 from merchant_platform.management import router as management_router
 from merchant_platform.overview import RegistryLookup, registry_records
@@ -429,14 +428,18 @@ async def _run(
     except Exception:
         outcome = "error"
         # The traceback goes to the logs, never to the merchant.
-        log.exception("chat_turn_failed", extra={"session": session.id})
+        log.exception("chat_turn_failed", extra={"session": session_tag(session.id)})
         await emit(ErrorEvent(message=TURN_FAILED))
     finally:
         session.lock.release()
         queue.put_nowait(DoneEvent())
         log.info(
             "chat_turn",
-            extra={"session": session.id, "latency_ms": _since(started), "outcome": outcome},
+            extra={
+                "session": session_tag(session.id),
+                "latency_ms": _since(started),
+                "outcome": outcome,
+            },
         )
 
 
@@ -465,8 +468,10 @@ MIN_COOKIE_SECRET = 32
 def check_account_settings(settings: Settings) -> None:
     """Refuse a platform that would open guest data or take a weak secret (#132).
 
-    PLATFORM_MERCHANT opens its merchant to anyone: it is for local development, so it can't
-    come with what only a deployment sets (an https web app, a cookie key, an invite code).
+    PLATFORM_MERCHANT opens its merchant to anyone, and PLATFORM_DEV_ROUTES an unauthenticated
+    `/dev/reset-session`: both are for local development, so neither can come with what only a
+    deployment sets (an https web app, a cookie key, an invite code). `make deploy` refuses
+    them too (`scripts/platform_env.py`); this check holds wherever the platform starts (#220).
     """
     secret = settings.platform_cookie_secret
     invite = settings.platform_invite_code
@@ -474,6 +479,11 @@ def check_account_settings(settings: Settings) -> None:
     if settings.platform_merchant and deployed:
         raise RuntimeError(
             "PLATFORM_MERCHANT is for local development only: unset it, or unset "
+            "PLATFORM_COOKIE_SECRET, PLATFORM_INVITE_CODE and the https PLATFORM_WEB_URL"
+        )
+    if settings.platform_dev_routes and deployed:
+        raise RuntimeError(
+            "PLATFORM_DEV_ROUTES is for local development only: set it to 0, or unset "
             "PLATFORM_COOKIE_SECRET, PLATFORM_INVITE_CODE and the https PLATFORM_WEB_URL"
         )
     if secret is not None and len(secret.get_secret_value()) < MIN_COOKIE_SECRET:
@@ -515,7 +525,7 @@ def _default_app() -> FastAPI:
 
 
 def default_app(
-    settings: Settings, *, llm: LLMClient | None = None, crawler: Crawl = crawl
+    settings: Settings, *, llm: LLMClient | None = None, crawler: Crawl | None = None
 ) -> FastAPI:
     """The platform as `make platform` runs it. `llm` and `crawler` stand in for OpenAI and
     the builder's crawl in the browser test of the whole stack (#153)."""

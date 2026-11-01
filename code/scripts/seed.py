@@ -110,11 +110,13 @@ def selected(args: argparse.Namespace) -> list[str]:
 async def seed_merchant(engine: AsyncEngine, profile: MerchantProfile) -> None:
     try:
         await provisioning.provision(profile, engine=engine)
-        done = "provisioned"
     except provisioning.SlugTaken as error:  # already in the registry: keep its data
-        done = f"kept ({error})"
+        # Live again whatever its status: `deploy` only publishes a `building` merchant (#220).
+        await provisioning.set_status(profile.slug, "live", engine=engine)
+        print(f"{profile.slug}: kept ({error}), live")
+        return
     await provisioning.deploy(profile.slug, engine=engine)
-    print(f"{profile.slug}: {done}, live")
+    print(f"{profile.slug}: provisioned, live")
 
 
 async def seed_bookings(engine: AsyncEngine, now: datetime) -> int:

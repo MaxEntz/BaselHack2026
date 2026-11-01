@@ -1,6 +1,7 @@
 """Claude-side bookings on a real Postgres 16: the exclusion constraint does the locking."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, time, timedelta
 from uuid import uuid4
@@ -203,6 +204,19 @@ async def test_availability_rejects_an_invalid_time(
 
 
 # create_reservation
+
+
+async def test_a_booking_never_logs_the_guests_name(
+    service: PgAgentService, make_merchant: MerchantFactory, caplog: pytest.LogCaptureFixture
+) -> None:
+    # §12, #220: not at INFO, and not in a debug line left over either.
+    slug = await make_merchant()
+
+    with caplog.at_level(logging.DEBUG):
+        await book(service, slug, at("20:00"))
+
+    assert [r for r in caplog.records if r.getMessage() == "reservation created"]
+    assert all(GUEST not in str(record.__dict__) for record in caplog.records)
 
 
 async def test_create_books_the_smallest_table_that_fits(

@@ -67,6 +67,16 @@ class SlugTaken(InvalidInput):
     """The slug already has a merchant (or a leftover schema): the builder picks another."""
 
 
+class NotBuilding(InvalidInput):
+    """`deploy` found the merchant published already: `live`, or `down` (paused by its owner).
+
+    Nothing changed: `status` is what the registry holds."""
+
+    def __init__(self, slug: str, status: RegistryStatus) -> None:
+        super().__init__(f"Merchant {slug!r} isn't waiting to be published: it is {status}")
+        self.status = status
+
+
 class _Frozen(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -285,8 +295,26 @@ async def set_status(
 
 
 async def deploy(slug: str, *, engine: AsyncEngine | None = None) -> None:
-    """Last builder step: the merchant becomes discoverable by the gateway."""
-    await set_status(slug, "live", engine=engine)
+    """Last builder step: a `building` merchant becomes `live`, discoverable by the gateway.
+
+    One conditional UPDATE, so that a merchant published and paused since the caller read its
+    status stays `down` (#220). Raises `NotBuilding` with the status found when it is no longer
+    `building`, `NotFound` for an unknown merchant. `set_status` switches a published one.
+    """
+    async with _engine(engine) as db, db.begin() as conn:
+        result = await conn.execute(
+            update(merchants_t)
+            .where(merchants_t.c.slug == slug, merchants_t.c.status == "building")
+            .values(status="live")
+        )
+        if result.rowcount == 1:
+            return
+        status: RegistryStatus | None = await conn.scalar(
+            select(merchants_t.c.status).where(merchants_t.c.slug == slug)
+        )
+    if status is None:
+        raise NotFound(f"Unknown merchant: {slug!r}")
+    raise NotBuilding(slug, status)
 
 
 async def deprovision(slug: str, *, engine: AsyncEngine | None = None) -> bool:

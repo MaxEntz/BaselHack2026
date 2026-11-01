@@ -195,6 +195,9 @@ async def test_a_reply_without_the_tool_call_is_retried() -> None:
         ("http://localhost:8080/reservations", "http://localhost:8080/reservation.html"),
         ("https://www.thefork.com/le-petit-zinc", "http://localhost:8080/reservation.html"),
         ("javascript:alert(1)", "http://localhost:8080/reservation.html"),
+        # Unparsable (#220): urlsplit and .port raise ValueError, which used to end the build.
+        ("http://[x", "http://localhost:8080/reservation.html"),
+        ("http://localhost:99999/reservation.html", "http://localhost:8080/reservation.html"),
         (None, "http://localhost:8080/reservation.html"),
     ],
 )
@@ -260,12 +263,29 @@ async def test_only_an_id_naming_a_booking_is_a_booking_section(anchor: str, sec
     assert str(result.profile.fallback_url) == (f"{SITE}#{anchor}" if section else SITE)
 
 
-async def test_without_a_booking_page_the_fallback_is_the_homepage() -> None:
+@pytest.mark.parametrize("proposed", [None, "http://[x", "http://localhost:99999/"])
+async def test_without_a_booking_page_the_fallback_is_the_homepage(proposed: str | None) -> None:
     crawl = CrawlResult(website=SITE, pages=CRAWL.pages[:1])
 
-    result = await extract_profile(crawl, "", FakeLLM(draft(fallback_url=None)))
+    result = await extract_profile(crawl, "", FakeLLM(draft(fallback_url=proposed)))
 
     assert str(result.profile.fallback_url) == SITE
+
+
+async def test_a_source_naming_an_unparsable_page_is_looked_for_in_every_page() -> None:
+    # The model's page is untrusted (#220): one urlsplit can't read names no page.
+    llm = FakeLLM(
+        draft(
+            max_party_size=8,
+            price_level="€€",
+            sources={"price_level": {"page": "http://[x", "quote": "Réservez votre table"}},
+        )
+    )
+
+    result = await extract_profile(CRAWL, "", llm)
+
+    [price] = [f for f in result.facts if f.key == "price_level"]
+    assert (price.source, price.quote) == ("/reservation.html", "Réservez votre table")
 
 
 def test_the_untrusted_website_text_cannot_close_its_tag() -> None:

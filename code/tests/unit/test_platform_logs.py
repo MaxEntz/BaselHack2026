@@ -6,9 +6,15 @@ import logging
 from collections.abc import Callable, Iterator
 from typing import Any
 
+import httpx
 import pytest
 
-from merchant_platform.logs import configure_logging
+from core.config import Settings
+from core.models import MerchantProfile, TextEvent
+from merchant_platform.api import create_app
+from merchant_platform.logs import configure_logging, session_tag
+from merchant_platform.sessions import Session
+from merchant_platform.tools import Emit
 
 
 @pytest.fixture
@@ -57,3 +63,49 @@ def test_each_line_is_written_once_and_httpx_requests_are_quiet(
     logging.getLogger("httpx").info("HTTP Request: POST https://api.openai.com/v1/responses")
 
     assert [line["event"] for line in written()] == ["admin_tool"]
+
+
+# A chat session's id claims its owner cookie after a build (#132): never in a log line (#220).
+SESSION_ID = "o-c2Vzc2lvbi1pZC1pbi1hLWxvZw"
+SLUG = "la-graine-verte"
+
+
+async def test_a_chat_turn_names_its_session_by_a_tag_never_by_its_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def assistant(session: Session, message: str, emit: Emit) -> None:
+        if message == "fail":
+            raise RuntimeError("the model broke")
+        await emit(TextEvent(delta="Noted."))
+
+    async def profiles(slug: str) -> MerchantProfile | None:
+        return MerchantProfile.model_construct(slug=SLUG, name="La Graine Verte")
+
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        database_url="postgresql+psycopg://u:p@localhost:5432/db",
+        platform_merchant=SLUG,
+    )
+    app = create_app(settings, assistant=assistant, profiles=profiles)
+    caplog.set_level(logging.DEBUG)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+        for message in ("Hello", "fail"):
+            reply = await http.post("/chat", json={"session_id": SESSION_ID, "message": message})
+            assert reply.status_code == 200
+
+    # The platform's own lines; httpx's are the test client's, which sent the id.
+    platform = [record for record in caplog.records if not record.name.startswith("httpx")]
+    turns = [r for r in platform if r.getMessage() in ("chat_turn", "chat_turn_failed")]
+    assert [r.getMessage() for r in turns] == ["chat_turn", "chat_turn_failed", "chat_turn"]
+    assert {r.__dict__["session"] for r in turns} == {session_tag(SESSION_ID)}
+    assert all(SESSION_ID not in str(record.__dict__) for record in platform)
+
+
+def test_a_session_tag_is_short_stable_and_distinct() -> None:
+    tag = session_tag(SESSION_ID)
+
+    assert tag == session_tag(SESSION_ID)
+    assert len(tag) == 8 and tag not in SESSION_ID
+    assert tag != session_tag(SESSION_ID + "x")

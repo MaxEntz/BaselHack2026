@@ -177,7 +177,12 @@ class MerchantAgents:
             return None
         try:
             _, fallback_url, _ = await self._registry(slug)
+        except NotFound:
+            # Unknown or not yet published: there is no booking page to send the guest to.
+            log.debug("no fallback url: unknown merchant", extra={"merchant": slug})
+            return None
         except Exception:
+            log.warning("no fallback url", extra={"merchant": slug}, exc_info=True)
             return None
         return fallback_url
 

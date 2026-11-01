@@ -338,7 +338,7 @@ def verified_sources(sources: Sources, crawl: CrawlResult, description: str) -> 
         wanted = _comparable(quote)
         if len(wanted) < MIN_QUOTE and name not in SHORT_QUOTE_FIELDS:
             continue
-        named = source.page and _page_key(source.page)
+        named = _named_page(source.page)
         ordered = sorted(pages, key=lambda url: _page_key(url) != named)
         where = next((url for url in ordered if wanted in pages[url]), None)
         if where is not None:
@@ -346,6 +346,18 @@ def verified_sources(sources: Sources, crawl: CrawlResult, description: str) -> 
         elif mine and wanted in mine:
             kept[name] = Verified("you", quote)
     return kept
+
+
+def _named_page(page: str | None) -> str | None:
+    """The key of the page a source names, or None: the model's URL is untrusted (ADR-0003),
+    and one that doesn't parse names no page (#220)."""
+    if not page:
+        return None
+    try:
+        return _page_key(page)
+    except ValueError:
+        log.info("source_page_unparsable")
+        return None
 
 
 def _path(url: str) -> str:
@@ -556,14 +568,25 @@ def fallback_url(proposed: str | None, crawl: CrawlResult) -> str:
 
 
 def _booking_page(proposed: str | None, crawl: CrawlResult) -> str:
-    if proposed and same_site(proposed, crawl.website):
-        crawled = {_page_key(page.url) for page in crawl.pages} | {_page_key(crawl.website)}
-        if _page_key(urldefrag(proposed).url) in crawled:
-            return proposed
+    if proposed and _was_crawled(proposed, crawl):
+        return proposed
     for page in crawl.pages[1:]:
         if BOOKING_PAGE.search(page.url) or BOOKING_PAGE.search(page.title):
             return page.url
     return crawl.website
+
+
+def _was_crawled(url: str, crawl: CrawlResult) -> bool:
+    """Whether `url` is a page of the site that the crawl read. The model's URL is untrusted
+    (ADR-0003): one that doesn't parse (`http://[x`, a port above 65535) is not (#220)."""
+    try:
+        if not same_site(url, crawl.website):
+            return False
+        crawled = {_page_key(page.url) for page in crawl.pages} | {_page_key(crawl.website)}
+        return _page_key(urldefrag(url).url) in crawled
+    except ValueError:
+        log.info("fallback_url_unparsable")
+        return False
 
 
 def _with_booking_section(url: str, crawl: CrawlResult) -> str:

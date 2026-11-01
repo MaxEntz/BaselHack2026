@@ -60,6 +60,7 @@ from merchant_platform.assistant import (
     default_assistant,
     system_prompt,
 )
+from merchant_platform.logs import session_tag
 from merchant_platform.sessions import Session
 from merchant_platform.tools import (
     CANCELLED,
@@ -322,6 +323,22 @@ async def test_the_loop_stops_after_8_iterations() -> None:
     assert len(llm.calls) == MAX_ITERATIONS
     assert kinds(events).count("stats") == MAX_ITERATIONS
     assert events[-1] == {"type": "error", "message": TOO_MANY_STEPS}
+
+
+async def test_the_iteration_limit_line_names_the_session_by_its_tag(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The id claims the owner cookie after a build (#132): never in a log line (#220).
+    harness = Harness(LoopingLLM(), agent=FakeAgent())
+    harness.provisioned.add(SLUG)
+    session = Session(id="o-aXRlcmF0aW9uLWxpbWl0LWlk", merchant_slug=SLUG)
+
+    with caplog.at_level(logging.WARNING, logger="merchant_platform.assistant"):
+        await harness.turn(session, "Stats please")
+
+    [line] = [r for r in caplog.records if r.getMessage() == "assistant_iteration_limit"]
+    assert line.__dict__["session"] == session_tag(session.id)
+    assert all(session.id not in str(record.__dict__) for record in caplog.records)
 
 
 async def test_a_tool_error_goes_back_to_the_model_and_the_loop_continues() -> None:

@@ -341,7 +341,6 @@ class PgAgentService:
                     "reservation created",
                     extra={"merchant": slug, "reservation": reservation_id, "via": via},
                 )
-                log.debug("reservation %s for %r", reservation_id, guest_name)
                 return self._reservation(
                     slug,
                     reservation_id,

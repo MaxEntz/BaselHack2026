@@ -231,8 +231,11 @@ class BatpClient:
                     self._settle(request_id, AgentUnavailable(UNREADABLE))
                     continue
                 self._settle(response.id, response)
-        except (ConnectionError, FrameError):
-            pass
+        except ConnectionError:
+            # The node restarted or closed the session: expected, the next request reconnects.
+            log.debug("batp session lost", exc_info=True)
+        except FrameError:
+            log.warning("batp frame unreadable: session dropped", exc_info=True)
         finally:
             self._drop(writer)
 

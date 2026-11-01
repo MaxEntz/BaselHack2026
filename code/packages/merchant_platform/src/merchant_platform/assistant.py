@@ -8,6 +8,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, time, timedelta
+from functools import partial
 from zoneinfo import ZoneInfo
 
 from openai import AsyncOpenAI, Timeout
@@ -34,6 +35,7 @@ from core.models import (
     TextEvent,
 )
 from merchant_platform.accounts import Accounts, IssuedLink, issued
+from merchant_platform.logs import session_tag
 from merchant_platform.overview import look_store, registry_records
 from merchant_platform.sessions import Session
 from merchant_platform.tools import SPECS, AdminTools, Emit
@@ -298,7 +300,7 @@ class Assistant:
                         "is_error": result.is_error,
                     }
                 )
-        log.warning("assistant_iteration_limit", extra={"session": session.id})
+        log.warning("assistant_iteration_limit", extra={"session": session_tag(session.id)})
         await emit(ErrorEvent(message=TOO_MANY_STEPS))
 
 
@@ -346,12 +348,14 @@ def default_assistant(
     accounts: Accounts | None = None,
     *,
     llm: LLMClient | None = None,
-    crawler: Crawl = crawl,
+    crawler: Crawl | None = None,
 ) -> RunTurn:
     """The assistant wired to OpenAI, the registry, the builder and the owners' links.
 
     `llm` stands in for OpenAI, in the conversation and the extraction alike, and `crawler`
-    for the builder's crawl: the browser test of the whole stack runs both as fakes (#153).
+    for the builder's crawl, in a build and in a look read again: the browser test of the
+    whole stack runs both as fakes (#153). Without `crawler`, the builder's checked crawl,
+    which reads the homepage only for a look.
     """
     if llm is not None:
         extractor = llm
@@ -376,7 +380,7 @@ def default_assistant(
         model=settings.openai_model,
         mcp_url=gateway_mcp_url(settings.gateway_public_url),
         cache=BuildCache(settings.builder_cache),
-        crawl=crawler,
+        crawl=crawler or crawl,
         tz=tz,
     )
 
@@ -391,14 +395,15 @@ def default_assistant(
         await publish(slug, emit, engine=engine)
 
     merchants = registry_records(engine)
+    homepage: Crawl = crawler or partial(crawl, max_pages=0)
 
     async def site_look(slug: str) -> Look | None:
         """The merchant website's own look, read again (#152's "back to the look from your
-        site"): the homepage only, through the builder's checked crawl."""
+        site"): the homepage only, through the builder's checked crawl or `crawler` (#220)."""
         record = await merchants(slug)
         if record is None:
             return None
-        crawled = await crawl(record.website, _no_steps, max_pages=0)
+        crawled = await homepage(record.website, _no_steps)
         return read_look(crawled.pages[0].look)[0]
 
     tools = AdminTools(

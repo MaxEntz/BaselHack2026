@@ -152,7 +152,7 @@ Run by `merchant_platform.tools` on the session's merchant, never exposed to gue
 | `POST /invite` | `{code: str}` | `204`, with the invite cookie (nothing when no code is set) | `403` `needs_invite` for a wrong code |
 | `POST /session/claim` | `{session_id: str}` | `204`, with the owner cookie | `401` `not_signed_in` unless a build in this process attached that session within 5 minutes, its link is current, and it wasn't claimed yet |
 | `POST /public/{slug}/reservations` | `{starts_at, party_size, guest_name, idempotency_key}` | `201` + `{reservation}`, `via="website"` | `ToolError` body: `404` `not_found`, `409` `slot_unavailable`, `422` `party_too_large` / `invalid_input`, `503` `agent_unavailable` |
-| `POST /dev/reset-session` | `{session_id: str \| null}` | Restarts onboarding | Disabled with `PLATFORM_DEV_ROUTES=0` |
+| `POST /dev/reset-session` | `{session_id: str \| null}` | Restarts onboarding | Disabled with `PLATFORM_DEV_ROUTES=0`; the platform refuses to start with it on beside an https `PLATFORM_WEB_URL`, a cookie secret or an invite code |
 | `GET /health` | — | Status | — |
 
 - Request validation errors on any route: `422` + `ToolError` (`invalid_input`).

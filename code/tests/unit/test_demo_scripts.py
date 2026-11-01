@@ -56,10 +56,16 @@ class FakeRegistry:
         self.statuses[profile.slug] = "building"
 
     async def deploy(self, slug: str, *, engine: object = None) -> None:
+        # Only from `building`, as the real one (#220).
         self.engines_used.add(engine)
+        if slug not in self.statuses:
+            raise NotFound(f"Unknown merchant: {slug!r}")
+        if self.statuses[slug] != "building":
+            raise provisioning.NotBuilding(slug, self.statuses[slug])  # type: ignore[arg-type]
         self.statuses[slug] = "live"
 
     async def set_status(self, slug: str, status: str, *, engine: object = None) -> None:
+        self.engines_used.add(engine)
         if slug not in self.statuses:
             raise NotFound(f"Unknown merchant: {slug!r}")
         self.statuses[slug] = status
