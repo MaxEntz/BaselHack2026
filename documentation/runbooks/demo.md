@@ -116,10 +116,11 @@ La Graine Verte holds the management mockup's 30 days of data (#131).
    claude mcp add --transport http merchant-agents https://191-96-88-152.sslip.io/mcp --header "Authorization: Bearer <token>"
    ```
 
-2. **No server:** everything on the demo laptop, from `code/`, with `.env` from `.env.example` and an `OPENAI_API_KEY`. Leave `PLATFORM_MERCHANT` empty and `CRAWL_ALLOW_PRIVATE=1`:
+2. **No server:** everything on the demo laptop, from `code/`, with `.env` from `.env.example`, an `OPENAI_API_KEY` and `BATP_URL=batp://127.0.0.1:4710` (Studio's Send buttons go through the node). Leave `PLATFORM_MERCHANT` empty and `CRAWL_ALLOW_PRIVATE=1`:
 
    ```bash
    make db && make demo-reset         # migrations, all but Le Petit Zinc, management data
+   make node                          # terminal 0: the BATP node, batp://127.0.0.1:4710
    make gateway                       # terminal 1: http://localhost:8001/mcp
    make platform                      # terminal 2: http://localhost:8002
    make web                           # terminal 3: Studio on http://localhost:5173

@@ -59,7 +59,7 @@ La Graine Verte's management data (`--with-management`, #131) is the management 
 
 | Command | What |
 |---|---|
-| `make deploy` | Ships the gateway, the BATP node, the platform and the web app (`make web-dist` first) to the team server, applies the migrations, installs the systemd units, and updates Caddy when `deploy/Caddyfile` changed ([connector.md](../documentation/runbooks/connector.md), [platform.md](../documentation/runbooks/platform.md)) |
+| `make deploy` | Builds `web/dist`, then ships the gateway, the BATP node, the platform and the web app to the team server, applies the migrations, installs the systemd units, and updates Caddy when `deploy/Caddyfile` changed ([connector.md](../documentation/runbooks/connector.md), [platform.md](../documentation/runbooks/platform.md)) |
 | `make web-dist` | Builds `web/dist`, the web app `make deploy` ships; refuses a mock build (`VITE_MOCK`) |
 | `make owner-link SLUG=…` | A new secret link for a merchant's owner (`NAME=…` optional); the old one stops working (#132) |
 | `make tunnel` | Exposes a local gateway on `GATEWAY_PUBLIC_URL` through ngrok, when the team server can't be used |

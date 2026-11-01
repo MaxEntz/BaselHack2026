@@ -10,7 +10,7 @@ Claude.ai calls connectors **from Anthropic's cloud** (`160.79.104.0/21`), not f
 
 ## Validation status
 
-Everything else in this runbook has been run end to end: deploy, HTTPS, Caddy's filter, the 6 tools and the BATP node on the server, Claude.ai and Claude Desktop through the connector, Claude Code locally. What is still open:
+Everything else in this runbook has been run end to end: deploy, HTTPS, Caddy's filter, the 6 tools and the BATP node on the server, Claude.ai and Claude Desktop through the connector, Claude Code locally. Status of the checks:
 
 | Check | Status | Issue |
 |---|---|---|

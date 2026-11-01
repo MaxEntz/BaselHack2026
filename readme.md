@@ -10,7 +10,7 @@ Built at BaselHack 2026. Issue [#26](https://github.com/MaxEntz/BaselHack2026/is
 
 ![Studio after a build: the chat with what went into the profile, beside the agent site and the management site it built](documentation/img/sesame-studio.png)
 
-![The management site's Home: tonight's bookings, the guests of the last 30 days, the room and the assistant](documentation/img/sesame-management-home.png)
+![The management site's Home: tonight's bookings, the guests of the last 30 days and the assistant](documentation/img/sesame-management-home.png)
 
 *Studio, where a merchant builds and publishes its sites by chatting, then the management site those sites come with. Shown on the demo data (`VITE_MOCK=1`): the restaurants and the guests are fictional. Claude.ai calling our MCP gateway is in [this screenshot](documentation/runbooks/img/connector-ping.png).*
 
@@ -34,14 +34,15 @@ make test                                # unit + integration tests (needs Docke
 VITE_MOCK=1 make web                     # Studio and the management site on mock data -> http://localhost:5173
 ```
 
-To run it for real on your machine, set `OPENAI_API_KEY` in `code/.env` (copied from `.env.example`, with `CRAWL_ALLOW_PRIVATE=1`), then:
+To run it for real on your machine, set `OPENAI_API_KEY` and `BATP_URL=batp://127.0.0.1:4710` in `code/.env` (`make setup` copied it from `.env.example`, which already lets the crawler read the local sites), then:
 
 ```bash
-make demo-reset   # the demo merchants and their data
-make gateway      # terminal 1: MCP server -> http://localhost:8001/mcp
-make platform     # terminal 2: platform API -> http://localhost:8002
-make web          # terminal 3: Studio -> http://localhost:5173, then build from http://localhost:8080
-make sites        # terminal 4: the 3 demo websites
+make demo-reset   # La Graine Verte and Maison Albane with their data (Le Petit Zinc is built live)
+make node         # terminal 1: the BATP node -> batp://127.0.0.1:4710
+make gateway      # terminal 2: MCP server -> http://localhost:8001/mcp
+make platform     # terminal 3: platform API -> http://localhost:8002
+make sites        # terminal 4: the 3 demo websites on :8080, :8081, :8082
+make web          # terminal 5: Studio -> http://localhost:5173, then build from http://localhost:8080
 ```
 
 All the commands are in [`code/README.md`](code/README.md). To connect Claude.ai to the gateway, see [`documentation/runbooks/connector.md`](documentation/runbooks/connector.md); the 5-minute demo is [`documentation/runbooks/demo.md`](documentation/runbooks/demo.md).
@@ -50,7 +51,7 @@ All the commands are in [`code/README.md`](code/README.md). To connect Claude.ai
 
 | Path | Content |
 |---|---|
-| [`code/`](code) | uv workspace (`core`, `agent`, `gateway`, `batp`, `merchant_node`, `builder`, `merchant_platform`), web chat, demo sites, migrations, scripts, tests |
+| [`code/`](code) | uv workspace (`core`, `agent`, `gateway`, `batp`, `merchant_node`, `builder`, `merchant_platform`), the web app (Studio and the management site), demo sites, migrations, scripts, tests |
 | [`documentation/`](documentation) | Architecture, decision records, contracts, runbooks |
 | [`assets/`](assets) | Presentation material |
 | [`AGENTS.md`](AGENTS.md) | Full spec, shared by Claude Code (`CLAUDE.md`) and opencode |
