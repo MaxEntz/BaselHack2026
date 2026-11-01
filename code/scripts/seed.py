@@ -19,9 +19,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, time
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 import demo_management
+from pydantic import HttpUrl
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -57,8 +59,23 @@ TONIGHT = (
 )
 
 
-def load_profile(slug: str) -> MerchantProfile:
-    return MerchantProfile.model_validate_json((FIXTURES / f"{slug}.json").read_text())
+def public_address(url: HttpUrl, slug: str, domain: str) -> HttpUrl:
+    parts = urlsplit(str(url))
+    return HttpUrl(
+        urlunsplit(("https", f"{slug}.{domain}", parts.path, parts.query, parts.fragment))
+    )
+
+
+def load_profile(slug: str, sites_domain: str | None = None) -> MerchantProfile:
+    profile = MerchantProfile.model_validate_json((FIXTURES / f"{slug}.json").read_text())
+    if sites_domain is None:
+        return profile
+    return profile.model_copy(
+        update={
+            "website": public_address(profile.website, slug, sites_domain),
+            "fallback_url": public_address(profile.fallback_url, slug, sites_domain),
+        }
+    )
 
 
 def parser() -> argparse.ArgumentParser:
@@ -133,7 +150,7 @@ async def run(args: argparse.Namespace) -> int:
     engine = make_engine()  # one pool for every call
     try:
         for slug in selected(args):
-            await seed_merchant(engine, load_profile(slug))
+            await seed_merchant(engine, load_profile(slug, get_settings().demo_sites_domain))
         if not (args.with_bookings or args.with_management):
             return 0
         now = datetime.now(ZoneInfo(get_settings().merchant_tz))

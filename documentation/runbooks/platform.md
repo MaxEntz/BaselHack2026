@@ -60,7 +60,7 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
 
    On top of the gateway and the node, it now ships `web/dist` (both copies readable by everyone, `--chmod=a+rX`, so `sesame` and Caddy can read them), creates the `sesame` user if needed, syncs the platform and the builder, installs Chromium under `/opt/merchant-agents/ms-playwright`, gives `sesame` a writable `.cache`, and installs and restarts `merchant-platform`.
 
-4. **Demo data** (optional): seed the server's database as in [connector.md](connector.md#2-check-it-on-the-server) §2, with `--with-management` for La Graine Verte's management data (#131).
+4. **Demo data** (optional): seed the server's database as in [connector.md](connector.md#2-check-it-on-the-server) §2, with `--with-management` for La Graine Verte's management data (#131). First add `DEMO_SITES_DOMAIN=191-96-88-152.sslip.io` to `code/.env`: the seeded merchants' links then open their public hosts. Studio refuses to rebuild a seeded site, since it already has an agent, so leave out the one to build live: `demo_reset.py`, without options, leaves out Le Petit Zinc.
 
 5. **Owner links** for the merchants built without one (seeded merchants), or when an owner lost theirs. Run it from `platform/`, so the link starts with the platform's `PLATFORM_WEB_URL`:
 
@@ -114,4 +114,4 @@ cd /opt/merchant-agents/code
 | The agent tab's Send buttons answer that the agent or token is unknown, or that the platform has no `BATP_URL` | Studio's agent isn't in the node's `BATP_TOKENS`, or `platform/.env` lacks its `BATP_URL` and `BATP_TOKEN` | Step 2, then restart `merchant-node` and `merchant-platform` |
 | An owner link starts with `http://localhost:5173` | `owner_link.py` ran from `code/`, whose `.env` has no `PLATFORM_WEB_URL` | Step 5: a new link, from `platform/` |
 | `make web-dist`: `VITE_MOCK is set` | `VITE_MOCK` in your environment or a `web/.env*` file: it would ship the mock app | Unset it for the deployment |
-| A seeded merchant's fallback link opens `localhost:8080` | The fixtures still hold local addresses | Build the merchant from its public host instead, or re-seed with the server's addresses (#25) |
+| A seeded merchant's fallback link opens `localhost:8080` | `DEMO_SITES_DOMAIN` is missing from `code/.env`, so the seed keeps the fixtures' local addresses | Add it (step 4), then reset the demo data, or build the merchant from its public host |
