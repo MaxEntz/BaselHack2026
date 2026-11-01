@@ -113,9 +113,8 @@ async def test_books_moves_and_cancels_without_naming_the_merchant(
 ) -> None:
     url, day, name = endpoint(talking_gateway, ZINC), day_ahead(), f"Alex {uuid4().hex[:8]}"
 
-    async def confirmed(proposal: dict[str, Any], done: str) -> dict[str, Any]:
+    async def confirmed(proposal: dict[str, Any]) -> dict[str, Any]:
         assert proposal["pending"], proposal
-        agent_llm.then(says(done))
         conversation, confirm = proposal["conversation"], proposal["pending"]["id"]
         return await talk(url, "Yes.", conversation=conversation, confirm=confirm)
 
@@ -135,9 +134,7 @@ async def test_books_moves_and_cancels_without_naming_the_merchant(
         ),
         says("Shall I book it?"),
     )
-    booked = await confirmed(
-        await talk(url, f"{name}.", conversation=slots["conversation"]), "Booked."
-    )
+    booked = await confirmed(await talk(url, f"{name}.", conversation=slots["conversation"]))
     reservation = booked["reservation"]
     agent_llm.then(
         calls(
@@ -150,12 +147,12 @@ async def test_books_moves_and_cancels_without_naming_the_merchant(
         ),
         says("Move it to 21:00?"),
     )
-    moved = await confirmed(await talk(url, f"Move it to 21:00, {name}."), "Moved.")
+    moved = await confirmed(await talk(url, f"Move it to 21:00, {name}."))
     agent_llm.then(
         calls(tool_call("propose_cancellation", reservation_id=reservation["id"], guest_name=name)),
         says("Cancel it?"),
     )
-    cancelled = await confirmed(await talk(url, f"Cancel it, {name}."), "Cancelled.")
+    cancelled = await confirmed(await talk(url, f"Cancel it, {name}."))
 
     assert "20:00" in local_times(slots)
     assert (reservation["merchant"], reservation["via"]) == (ZINC, "claude")

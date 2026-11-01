@@ -266,7 +266,6 @@ async def test_a_booking_is_stored_via_claude_and_a_resent_confirm_returns_it(
             )
         ),
         says("A table for 2 tomorrow at 19:00. Shall I book it?"),
-        says("Booked."),
     )
     proposed = await talk(url, f"Table for 2 tomorrow at 19:00, {name}.", merchant=ZINC)
     confirm = {
@@ -305,7 +304,6 @@ async def test_move_then_cancel_through_the_agent(
         agent_llm.then(calls(tool_call(tool, reservation_id=booking, **arguments)), says("Sure?"))
 
     proposes("propose_change", guest_name=name, starts_at=at(day, "21:00").isoformat())
-    agent_llm.then(says("Moved."))
     change = await talk(url, f"Move {booking} to 21:00, {name}.", merchant=ZINC)
     moved = await talk(
         url,
@@ -318,7 +316,6 @@ async def test_move_then_cancel_through_the_agent(
     wrong_name = await talk(url, f"Cancel {booking}, Someone Else.", merchant=ZINC)
     listed = await call(talking_gateway, "get_my_reservations", guest_name=name)
     proposes("propose_cancellation", guest_name=name)
-    agent_llm.then(says("Cancelled."))
     cancel = await talk(url, f"Cancel {booking}, {name}.", merchant=ZINC)
     cancelled = await talk(
         url,

@@ -79,7 +79,6 @@ async def test_books_kim_weber_through_the_agent_once(
 ) -> None:
     argv = ["--url", f"{talking_gateway}/mcp", "--date", tomorrow()]
     proposes(agent_llm, "20:00", "Kim Weber")
-    agent_llm.then(says("Booked: see you tomorrow."))
 
     assert await run(argv) == 0
     assert await run(argv) == 0  # listed: no model call, no booking
@@ -106,7 +105,6 @@ async def test_a_cancelled_booking_is_booked_again(
     argv += ["--guest", guest]
     for _ in range(2):
         proposes(agent_llm, "19:00", guest)
-        agent_llm.then(says("Booked."))
     assert await run(argv) == 0
     booked = capsys.readouterr().out.split(": ")[1].split(",")[0]
     await PgAgentService(e2e_engine, tz=TZ).cancel_reservation(GRAINE, booked, by="merchant")
