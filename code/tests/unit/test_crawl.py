@@ -148,6 +148,29 @@ def test_useful_links_keeps_same_site_pages_named_like_useful_ones() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("path", "text"),
+    [
+        ("/about", "Who we are"),
+        ("/a-propos", "Qui sommes-nous"),
+        ("/p/1", "À propos"),
+        ("/notre-histoire", "Nous"),
+        ("/ueber-uns", "Team"),
+        ("/p/2", "Über uns"),
+        ("/acces", "Venir"),
+        ("/p/3", "Accès"),
+        ("/anfahrt", "Weg"),
+        ("/faq", "Questions"),
+        ("/events", "Agenda"),
+        ("/p/4", "Événements"),
+    ],
+)
+def test_useful_links_also_finds_what_the_knowledge_needs(path: str, text: str) -> None:
+    url = f"https://www.bistrot.example{path}"
+
+    assert useful_links([(url, text)], HOME, 8) == [url]
+
+
 def test_a_trailing_slash_or_a_default_port_is_the_same_page() -> None:
     # One page key for the crawl and the extraction (#220).
     assert page_key(f"{HOME}menu/") == page_key("https://bistrot.example:443/menu#plats")

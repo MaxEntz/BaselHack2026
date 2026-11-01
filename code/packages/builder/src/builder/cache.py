@@ -26,7 +26,7 @@ CACHE_ROOT = Path(__file__).parents[4] / ".cache" / "builder"
 
 # Part of the crawl cache key: bump it when `Page` changes or a demo site is rewritten, so no
 # stale crawl is replayed (#136; `anchors` came with #74; La Graine Verte's new page, #148).
-CRAWL_VERSION = "c5"  # c5: `Page.shot` and `boxes` (#151)
+CRAWL_VERSION = "c6"  # c6: more pages, for the knowledge (#248); c5: `Page.shot`, `boxes` (#151)
 # What the crawl saw rather than read: a new screenshot doesn't change the extraction.
 NOT_READ = ("shot", "shot_width", "shot_height", "boxes")
 
