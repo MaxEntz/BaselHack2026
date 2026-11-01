@@ -47,6 +47,8 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
    ENV
    ```
 
+   `OPENAI_API_KEY` here is the builder's and the assistant's; the node reads the same key from `code/.env`, for the merchant's agent ([connector.md](connector.md), step 1).
+
    In `code/.env`, the node's `BATP_TOKENS` then needs a key `"urn:batp:agent:sesame-studio"` with that token; `sesame` can't read that file, and the gateway's token stays there. Without it, the agent tab's Send buttons show the node's refusal, and nothing else changes.
 
    `make deploy` refuses to go on without this file, before copying anything. Then, before restarting anything, it checks the settings the platform loads from it (`scripts/platform_env.py`, run from `platform/`: an empty value, or one that is only a comment, counts as unset, as for the platform): `PLATFORM_DEV_ROUTES` off, an `https://sesame.…` `PLATFORM_WEB_URL` (the start of the owners' secret links, and `Secure` cookies), a cookie secret of 32 characters or more (without it, every deploy logs every owner out) and an invite code of 8 or more (without it, anyone can start a build: an OpenAI call and a crawl from the shared server). It also refuses `PLATFORM_MERCHANT`, which is for local development. A refused deploy restarts nothing: the running services keep the previous code. Whatever this file says, Caddy answers `404` to `/api/dev/*`. Don't add a `log` directive to the `sesame.` block of the Caddyfile without filtering `token`: the secret links go through it.
@@ -106,6 +108,7 @@ cd /opt/merchant-agents/code
 | Symptom | Cause | Fix |
 |---|---|---|
 | `make deploy`: `/opt/merchant-agents/platform/.env is missing on the server`, `Set PLATFORM_…`, `PLATFORM_… must be …` or `… needs at least …` | The platform's settings file is missing, keeps the dev routes on, or lacks one of #132's settings, or gives it a value the platform reads as unset (empty, or only a comment) | Step 2 |
+| `make deploy`: `OPENAI_API_KEY is missing from …/code/.env` or `Set OPENAI_API_KEY in code/.env…` | The node has no key for the merchant's agent | Add the same key as `platform/.env` to `code/.env` ([connector.md](connector.md), step 1) |
 | `make deploy`: `PLATFORM_MERCHANT is for local development only…` | A development setting was copied to the server | Remove it from `platform/.env` |
 | The `crawl` step fails with "Something went wrong while reading the website" | Chromium's libraries are missing | Step 1, then `journalctl -u merchant-platform` |
 | The crawl says the address points to a private network, or that websites answer on ports 80 and 443 | `CRAWL_ALLOW_PRIVATE=0`: no private address, no port other than 80 and 443, so a build can't read the server's own services | Use the demo sites' public hosts, never `localhost` or a port |
