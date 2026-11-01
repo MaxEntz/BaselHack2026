@@ -68,16 +68,12 @@ Each tool takes flat arguments (the fields of its `*Input` model) and returns `<
 | Tool | Input (`core.models`) | Output | Errors (besides `invalid_input`, `agent_unavailable`) |
 |---|---|---|---|
 | `search_merchants` | `query`, `near?`, `date?`, `filters?: {tags?, max_price?}` | `merchants: [{slug, name, city, tags, price_level, website}]`, `suggestions: [{drop, matches}]`, `ignored_filters` | — |
-| `get_availability` | `merchant`, `date`, `time?` (`HH:MM`), `party_size` | `slots: [{starts_at, table_label}]` (≤ 3, `core.models.MAX_SLOTS`) | `not_found`, `party_too_large` |
-| `create_reservation` | `merchant`, `starts_at`, `party_size`, `guest_name`, `idempotency_key` | `reservation` | `not_found`, `party_too_large`, `slot_unavailable` |
-| `update_reservation` | `merchant`, `reservation_id`, `guest_name`, `starts_at?`, `party_size?`, `idempotency_key` | `reservation` | `not_found`, `party_too_large`, `slot_unavailable` |
-| `cancel_reservation` | `merchant`, `reservation_id`, `guest_name` | `status: "cancelled"` | `not_found`, `slot_unavailable` |
 | `get_my_reservations` | `guest_name` | `reservations`, `notices: [str]` | — |
 | `talk_to_merchant` | `merchant`, `message`, `idempotency_key` (a UUID), `conversation?`, `confirm?` (`TalkInput`) | `TalkOutput`: `conversation`, `reply`, `slots`, `pending?`, `reservation?`, `fallback_url?`, `tools_called` | `not_found` (unknown merchant, or unknown or expired conversation) |
 
 `reservation` is `{id, merchant, starts_at, party_size, table_label, status, guest_name, via}`.
 
-- **Booking path:** `GATEWAY_TALK` off (the default) lists the four booking tools and hides `talk_to_merchant`; on, the reverse, on `/mcp` and every `/m/<slug>/mcp`, with instructions to match: each server registers one path only (#251). `search_merchants` and `get_my_reservations` stay either way.
+- **Booking path:** `talk_to_merchant` is the only way to book, move or cancel (#254): the agent proposes (`pending`), and only a `confirm` after the user's yes lets it write. `/m/<slug>/mcp` has it alone.
 - **Talk:** `talk_to_merchant` relays the merchant agent's `TALK` answer as it is (#245). Its description tells Claude to write as the user would, relay `reply`, show `pending.summary` and stop, and send `confirm` only after an explicit yes to that summary, never in the reply that got the `pending` (the rule for writes of #14 and #109, `tooling.TALK_CONFIRM_RULE`). Without `BATP_URL` it answers `agent_unavailable` with the fallback URL: only the node runs the merchant's agent. Its `idempotency_key` must be a UUID, sent to the node in its canonical form: every Claude user reaches the node under the gateway's one agent id, and the node replays a key's stored answer, so two guests with the same naive key and first message would share a conversation.
 
 - Arguments outside a tool's schema are rejected before it runs, as `invalid_input` (`gateway.fallback.RejectedArguments`).
@@ -86,7 +82,7 @@ Each tool takes flat arguments (the fields of its `*Input` model) and returns `<
 - **Deadline:** `AGENT_TIMEOUT_MS` (2 s) bounds the whole call, registry lookup included (`gateway.fallback.deadline_in`). After a `search_merchants` timeout, the named merchant's link lookup gets 10 % more (`LINK_LOOKUP_SHARE`): the call answers within 2.2 s ([#92](https://github.com/MaxEntz/BaselHack2026/issues/92)). `talk_to_merchant` has its own budget, `AGENT_TALK_TIMEOUT_MS` (30 s, above the node's 25 s for `TALK`, #251).
 - A timeout on a write may hit after the COMMIT: its message tells Claude to check `get_my_reservations` before retrying. A `talk_to_merchant` counts as a write when it carries a `confirm`.
 - **Notices:** `get_my_reservations` returns a notice on every call for 24 real hours after the first call that returned it (`agent.notices.NOTICE_WINDOW`), then never again ([#91](https://github.com/MaxEntz/BaselHack2026/issues/91)).
-- **Bridge:** with `BATP_URL`, each tool is a BATP request to the node ([PROTOCOL.md §12](PROTOCOL.md#12-the-mcp-bridge)), inside the same 2 s. A lost or overloaded node or an unreadable answer is `agent_unavailable`; a refusal from the node keeps its own code. The gateway still reads the registry for the `down` status and the fallback URL.
+- **Bridge:** with `BATP_URL`, each tool is a BATP request to the node ([PROTOCOL.md §12](PROTOCOL.md#12-the-mcp-bridge)), inside its budget. A lost or overloaded node or an unreadable answer is `agent_unavailable`; a refusal from the node keeps its own code. The gateway still reads the registry for the `down` status and the fallback URL.
 - **Log:** one JSON line per call, `{"event": "tool_call", "tool", "merchant", "latency_ms", "outcome"}` (`outcome` = `ok` or the error code), plus `batp_request` as a bridge. Guest names never appear at INFO.
 - `GET /health` (no MCP, no token): `200` or `503`, `{"status", "database"}`. It doesn't check the node.
 
@@ -96,10 +92,9 @@ Same gateway, one restaurant (`gateway/merchant_server.py`, [ADR-0012](adr/0012-
 
 | Tool | Input | Output and errors |
 |---|---|---|
-| `get_availability`, `create_reservation`, `update_reservation`, `cancel_reservation` | As on `/mcp`, without `merchant` (taken from the path) | As on `/mcp`, same log line (`fallback.call_merchant`) |
-| `talk_to_merchant` (with `GATEWAY_TALK`, instead of the four) | As on `/mcp`, without `merchant` | As on `/mcp` |
+| `talk_to_merchant` | As on `/mcp`, without `merchant` (taken from the path) | As on `/mcp`, same log line (`fallback.call_merchant`) |
 
-- Each description starts with the merchant's sentence from `templates/restaurant.json` (`generated_tools(profile)`), re-read from the registry at each `tools/list`; generic descriptions if the profile can't be read. `talk_to_merchant` starts with "Talk to the agent of <name> (<city>)." (`merchant_server.talk_sentence`).
+- Its description starts with "Talk to the agent of <name> (<city>)." (`merchant_server.talk_sentence`), re-read from the registry at each `tools/list`; the generic description if the profile can't be read.
 - No free text from the website in a description: the cancellation policy never goes in, and name and city are cut to one line of at most 80 characters without control characters.
 - Unknown slug, invalid slug or `building` merchant: HTTP `404` before MCP. A `down` merchant keeps its endpoint and answers `agent_unavailable` with its fallback URL. A merchant deployed after startup has its endpoint at once.
 - The request's clock starts with the slug check and reaches the tool (and `tools/list`) through the ASGI scope's `state`; each counts its own budget from there.

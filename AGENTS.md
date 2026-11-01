@@ -158,13 +158,10 @@ Exact fields, bounds and error cases: [`documentation/CONTRACTS.md`](documentati
 Gateway, `/mcp` (the descriptions tell Claude to confirm writes, pass preferences as `filters`, and give any `fallback_url` to the user):
 
 - `search_merchants`: live merchants matching the query, tags and price, with `suggestions` of filters to drop and `ignored_filters`.
-- `get_availability`: up to 3 slots.
-- `create_reservation` / `update_reservation`: book or change, with `idempotency_key`.
-- `cancel_reservation`: cancel as the guest.
+- `talk_to_merchant`: a conversation with the merchant's agent over BATP `TALK`, the only way to book, move or cancel (#254); the agent writes only after a `confirm` sent once the user said yes to its `pending` summary (#247, #251).
 - `get_my_reservations`: a guest's bookings and notices.
-- `talk_to_merchant`: a conversation with the merchant's agent over BATP `TALK`; it books only after a `confirm` sent once the user said yes to its `pending` summary (#251).
 
-`GATEWAY_TALK` picks the booking path: off (default), the 4 booking tools; on, `talk_to_merchant` instead, never both. Each merchant also has `/m/<slug>/mcp` with the same booking path, without `merchant` ([ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md)).
+Each merchant also has `/m/<slug>/mcp` with `talk_to_merchant` alone, without `merchant` ([ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md)).
 
 ### 8.2 Admin tools
 
@@ -230,7 +227,7 @@ make demo-reset # known demo state; make outage / make restore SLUG=…
 make deploy     # gateway, node, platform and web app to the team server
 ```
 
-Main settings (with their defaults in `code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `AGENT_TALK_TIMEOUT_MS=30000`, `GATEWAY_TALK=false`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `GATEWAY_TOKEN`; the platform's `PLATFORM_COOKIE_SECRET`, `PLATFORM_INVITE_CODE`, `PLATFORM_WEB_URL`, and `PLATFORM_MERCHANT` (development only).
+Main settings (with their defaults in `code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `AGENT_TALK_TIMEOUT_MS=30000`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `GATEWAY_TOKEN`; the platform's `PLATFORM_COOKIE_SECRET`, `PLATFORM_INVITE_CODE`, `PLATFORM_WEB_URL`, and `PLATFORM_MERCHANT` (development only).
 
 ## 11. Milestones
 

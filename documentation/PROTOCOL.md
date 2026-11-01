@@ -224,33 +224,27 @@ The agent's tools only propose a write (#246). On `confirm`, code runs it before
 
 ## 12. The MCP bridge
 
-The gateway keeps its MCP tools and their descriptions. Behind them, an `AgentClient`
-implementation speaks BATP to the node instead of calling `PgAgentService` in-process:
+The gateway exposes three MCP tools. Behind them, an `AgentClient` implementation speaks BATP to
+the node instead of calling `PgAgentService` in-process:
 
 | MCP tool | BATP intent |
 |---|---|
 | `search_merchants` | `DISCOVER` |
-| `get_availability` | `AVAILABILITY` |
-| `create_reservation` | `BOOK` |
-| `update_reservation` | `AMEND` |
-| `cancel_reservation` | `CANCEL` |
-| `get_my_reservations` | `RECALL` |
 | `talk_to_merchant` | `TALK` |
+| `get_my_reservations` | `RECALL` |
 
-`GATEWAY_TALK` chooses how Claude books, on `/mcp` and on every `/m/<slug>/mcp` (#251). Off (the
-default), it gets the four booking tools. On, it gets `talk_to_merchant` instead: it writes to
-the merchant's agent in natural language, relays its `reply`, and sends `confirm` only after the
-user's explicit yes to the agent's `pending` summary. Never both at once, or Claude would pick.
-`search_merchants` and `get_my_reservations` stay either way: they address no merchant. Without
+Claude books only by talking to the merchant's agent (#254), on `/mcp` and on every
+`/m/<slug>/mcp`, which has `talk_to_merchant` alone. It writes to the agent in natural language,
+relays its `reply`, and sends `confirm` only after the user's explicit yes to the agent's
+`pending` summary. `search_merchants` and `get_my_reservations` address no merchant. Without
 `BATP_URL`, `talk_to_merchant` answers `agent_unavailable` with the fallback URL: the merchant's
-agent is an LLM that only the node runs (`make node`).
+agent is an LLM that only the node runs (`make node`), and the gateway says so at start.
 
 The gateway's fallback layer (`fallback.py`) serves both modes. Its 2 s budget
 (`AGENT_TIMEOUT_MS`) includes the hop to the node; `talk_to_merchant` has its own,
 `AGENT_TALK_TIMEOUT_MS` (30 s), above the node's 25 s for `TALK`, since a model turn doesn't fit
 in 2 s. A BATP `503` or a dropped session becomes `agent_unavailable` with the fallback URL; a
-`talk_to_merchant` that sent a `confirm` adds that the change may have gone through, as the
-booking tools do. A refusal from the node (`400`, `404`, `409`, `413`) keeps its own §8.4 code, also
+`talk_to_merchant` that sent a `confirm` adds that the change may have gone through. A refusal from the node (`400`, `404`, `409`, `413`) keeps its own §8.4 code, also
 on `search_merchants`: the node answered, so it is never reported as an outage (#90). A `404`
 for an unknown or expired conversation stays `not_found` too.
 
@@ -267,7 +261,8 @@ The gateway keeps reading the registry itself for the `down` status and the fall
 a dead node still gives the restaurant's link. For the same reason, when `DISCOVER` fails and the
 query names a merchant, `search_merchants` answers with that merchant's link. The gateway names
 each request (`BatpClient.request(request_id=…)`) and logs its id as `batp_request`, which the
-node logs as `request`. Without `BATP_URL`, the gateway calls the agent in its own process.
+node logs as `request`. Without `BATP_URL`, the gateway runs the search and the guest's bookings
+in its own process.
 
 ## 13. Implementation
 
