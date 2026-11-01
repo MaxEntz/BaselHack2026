@@ -73,12 +73,19 @@ the code once and removes it from the address bar.
 
 ## Layout
 
-- `src/studio/`: Studio (#141). `phase.ts` holds, as pure functions, what each conversation state
+- `src/studio/`: Studio (#141). `StudioPage.tsx` puts the page together from its parts and hooks.
+  `phase.ts` holds, as pure functions, what each conversation state
   shows: the phase, the feed, the chips and the top bar's pill. `feed.tsx` draws the feed and its
-  cards with the fixed sentences, `Canvas.tsx` the pasteboard and the public site as read,
+  cards with the fixed sentences, `Hello.tsx` the empty conversation's question, `TopBar.tsx` the
+  top bar, `Rail.tsx` the restaurants on the left, `PaneSwitch.tsx` the narrow layout's two panes,
+  `Composer.tsx` the chips and the message box, `Canvas.tsx` the pasteboard and the public site as read,
   `AgentSheet.tsx` the agent site's frames, `motion.ts` the split's opening (the crossfades are
   `src/management/motion.ts`'s), `publish.ts` the top bar's Publish (the route, with no model in
-  the way), `chatClient.ts` the chat's client, the mock's with `VITE_MOCK=1`.
+  the way), `chatClient.ts` the chat's client, the mock's with `VITE_MOCK=1`, and its welcome.
+  The hooks: `useCanvasView.ts`, what the canvas shows (view, lit fact, moment, pane in front) and
+  the assistant's view cards; `useReviewPlayback.ts`, the review's facts lighting up one by one;
+  `useOverview.ts`, what the platform knows of the merchant; `useTurns.ts`, what the messages,
+  chips and buttons start; `useCopy.ts`, the copy buttons' toast.
   `src/moments.ts` works out the moment of the day for Home's top and for Studio's dock; add
   `?moment=morning|before|during|after` to `/manage/<slug>` to preview one. Its classes start with `st-`, because `cards.css` is global.
 - `src/chat/state.ts`: `ChatItem` union and the pure reducer that turns `ChatEvent`
@@ -90,7 +97,12 @@ the code once and removes it from the address bar.
 - `src/chat/useChat.ts`: wires the client to the reducer.
 - `src/management/client.ts`: the management site's calls, one per `/api/merchants/<slug>` route
   (`ManagementClient`, #129); `src/mocks/managementClient.ts` is its mock twin, and
-  `src/management/index.ts` picks one of them.
+  `src/management/index.ts` picks one of them. The mock puts together the route groups of
+  `src/mocks/management/`, which share the one state `context.ts` makes: `reservations.ts`
+  (bookings, guests, blocked times), `forms.ts` and `tables.ts` (hours, floor plan, rules,
+  settings), `agent.ts` (the merchant, its agent and its requests), `home.ts` (Home's numbers)
+  and `live.ts` (the live booking). `bookings.ts` applies the booking rules, `input.ts` reads
+  the bodies as the platform does.
 - `src/cards/`: rich messages rendered from `step`/`card` events and live
   notifications, never from the assistant's Markdown; `Gallery.tsx` is `/?gallery`.
 - `src/router.tsx`, `src/Studio.tsx`: the routes; `src/RouteError.tsx`, what a page that fails to
