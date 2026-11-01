@@ -241,9 +241,12 @@ The gateway's fallback layer (`fallback.py`) serves both modes. Its 2 s budget
 (`AGENT_TIMEOUT_MS`) includes the hop to the node; `talk_to_merchant` has its own,
 `AGENT_TALK_TIMEOUT_MS` (30 s), above the node's 25 s for `TALK`, since a model turn doesn't fit
 in 2 s. A BATP `503` or a dropped session becomes `agent_unavailable` with the fallback URL; a
-`talk_to_merchant` that sent a `confirm` adds that the change may have gone through. A refusal from the node (`400`, `404`, `409`, `413`) keeps its own §8.4 code, also
-on `search_merchants`: the node answered, so it is never reported as an outage (#90). A `404`
-for an unknown or expired conversation stays `not_found` too.
+`talk_to_merchant` that sent a `confirm` adds that the change may have gone through. A refusal
+from the node (`400`, `404`) keeps its own §8.4 code, also on `search_merchants`: the node
+answered, so it is never reported as an outage (#90). A `404` for an unknown or expired
+conversation stays `not_found` too. A tool's refusal inside a talk (a party too large, a time
+taken) refuses nothing at the protocol level: the agent answers `200`, its `reply` says why, and
+code sets `fallback_url` when the guest should book on the website.
 
 `BatpClient` keeps at most 32 of the requests it waits on in flight, the minimum every node
 accepts; the others wait for a slot within the gateway's budget. A request the gateway gave up
