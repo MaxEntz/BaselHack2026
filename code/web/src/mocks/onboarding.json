@@ -144,7 +144,8 @@
           "corners": "organic",
           "radius_px": 30,
           "texture": "leather"
-        }
+        },
+        "knowledge": null
       },
       "status": "building",
       "assumptions": [],
