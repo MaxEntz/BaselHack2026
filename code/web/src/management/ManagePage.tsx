@@ -1,6 +1,6 @@
 import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
-import { isMoment } from "../moments.ts";
+import { askedMoment } from "../moments.ts";
 import type { LiveEvent, MerchantOverview } from "../types.ts";
 import { announcingChanges, onChange } from "./changes.ts";
 import { ClientContext, useClient, useLoad } from "./data.ts";
@@ -13,11 +13,10 @@ import { GuestsPage } from "./pages/GuestsPage.tsx";
 import { HoursPage } from "./pages/HoursPage.tsx";
 import { HomePage } from "./pages/home/HomePage.tsx";
 import { guests, throughAgent } from "./pages/home/format.ts";
-import { PageTitle } from "./pages/PageTitle.tsx";
 import { ReservationsPage } from "./pages/reservations/ReservationsPage.tsx";
 import { RulesPage } from "./pages/RulesPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
-import { type PageId, PAGES, bookingPath, isPage, nameFromSlug, pagePath, pageTitle } from "./pages.ts";
+import { type PageId, bookingPath, isPage, nameFromSlug, pagePath, pageTitle } from "./pages.ts";
 import { AssistantChat } from "./assistant/AssistantChat.tsx";
 import { useChatClient } from "./assistant/chatClient.ts";
 import { AssistantPanel } from "./shell/AssistantPanel.tsx";
@@ -28,8 +27,8 @@ import { useAssistantOpen } from "./shell/useAssistantOpen.ts";
 import "./shell/shell.css";
 import { ToastProvider, useToast } from "./ui/index.ts";
 
-// The pages built so far; the others come with their issues (#140).
-const VIEWS: Partial<Record<PageId, ComponentType<{ slug: string; version: number }>>> = {
+// Every page but Home, which takes the shell's assistant, and the assistant's own page.
+const VIEWS: Record<Exclude<PageId, "home" | "assistant">, ComponentType<{ slug: string; version: number }>> = {
   agent: AgentPage,
   guests: GuestsPage,
   floor: FloorPage,
@@ -38,6 +37,22 @@ const VIEWS: Partial<Record<PageId, ComponentType<{ slug: string; version: numbe
   rules: RulesPage,
   settings: SettingsPage,
 };
+
+function PageView({
+  page,
+  slug,
+  version,
+  onAsk,
+}: {
+  page: Exclude<PageId, "assistant">;
+  slug: string;
+  version: number;
+  onAsk: () => void;
+}) {
+  if (page === "home") return <HomePage slug={slug} version={version} onAsk={onAsk} />;
+  const View = VIEWS[page];
+  return <View slug={slug} version={version} />;
+}
 
 /** One management page, in the shell (#137). */
 export function ManagePage() {
@@ -53,11 +68,10 @@ function useMomentFromStudio(slug: string) {
   const navigate = useNavigate();
   useEffect(() => {
     if (window.parent === window) return;
-    const listen = (event: MessageEvent) => {
+    const listen = (event: MessageEvent<unknown>) => {
       if (event.origin !== window.location.origin || event.source !== window.parent) return;
-      if (event.data?.type !== "sesame:moment") return;
-      const { moment } = event.data as { moment: unknown };
-      if (moment !== null && !isMoment(moment)) return;
+      const moment = askedMoment(event.data);
+      if (moment === undefined) return;
       navigate({ pathname: pagePath(slug, "home"), search: moment ? `?moment=${moment}` : "" });
     };
     window.addEventListener("message", listen);
@@ -169,21 +183,14 @@ function Shell({
   }, [page]);
 
   const home = () => navigate(pagePath(slug, "home"), { viewTransition: true });
-  const View = VIEWS[page];
   return (
     <div className="app">
       <Sidebar slug={slug} page={page} name={name} merchant={merchant} />
-      {!full && (
+      {page !== "assistant" && (
         <div className="mid">
           <TopBar slug={slug} page={page} merchant={merchant} unseen={unseen} onSeen={() => setUnseen(0)} />
           <main>
-            {page === "home" ? (
-              <HomePage slug={slug} version={version} onAsk={() => setAssistantOpen(true)} />
-            ) : View ? (
-              <View slug={slug} version={version} />
-            ) : (
-              <PageTitle title={PAGES[page]} />
-            )}
+            <PageView page={page} slug={slug} version={version} onAsk={() => setAssistantOpen(true)} />
             <Footer merchant={merchant} />
           </main>
         </div>

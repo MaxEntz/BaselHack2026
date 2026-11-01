@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { copyText } from "../clipboard.ts";
 import type { BuildAgentOutput } from "../types.ts";
 import { strings } from "../strings.ts";
-import { plural } from "./format.ts";
+import { merchantMcpUrl, plural } from "./format.ts";
+
+// How long a copy button says "Copied".
+const COPIED_MS = 2000;
 
 type ProfileCardProps = { data: BuildAgentOutput; loginUrl?: string | null };
 
@@ -110,22 +114,17 @@ function ExternalLink({ href }: { href: string }) {
   );
 }
 
-// The gateway also serves each restaurant on its own: /m/<slug>/mcp next to /mcp (#23).
-function merchantMcpUrl(mcpUrl: string, slug: string): string {
-  return mcpUrl.replace(/\/mcp$/, `/m/${slug}/mcp`);
-}
-
 function McpUrl({ label, url }: { label: string; url: string }) {
   const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), COPIED_MS);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
 
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard needs a secure context; the URL stays selectable.
-    }
+    // Without a clipboard, the URL stays selectable next to the button.
+    if ((await copyText(url)).copied) setCopied(true);
   }
 
   return (

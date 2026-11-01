@@ -2,7 +2,12 @@ import { render, screen } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { DEMO_NOW, now, setClock } from "../clock.ts";
+import { ROUTE_ERROR } from "../RouteError.tsx";
 import { routes } from "../router.tsx";
+import type { Dashboard } from "../types.ts";
+import type { ManagementClient } from "./client.ts";
+import { ClientContext } from "./data.ts";
+import { managementClient } from "./index.ts";
 import { PAGES, type PageId, nameFromSlug } from "./pages.ts";
 
 // jsdom has no fetch target nor EventSource: the pages read the demo fixture.
@@ -56,6 +61,51 @@ describe("management routes", () => {
   it("sends an unknown path to Studio", () => {
     const router = at("/nowhere");
     expect(router.state.location.pathname).toBe("/");
+  });
+
+  it("shows its own page, not React Router's developer screen, when a page fails to draw (#220)", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    function Broken(): never {
+      throw new Error("a page that can't draw");
+    }
+    // The app's error page, with a page that throws in place of theirs.
+    const router = createMemoryRouter([
+      { errorElement: routes[0].errorElement, children: [{ path: "/", element: <Broken /> }] },
+    ]);
+    render(<RouterProvider router={router} />);
+
+    expect((await screen.findByRole("alert")).textContent).toContain(ROUTE_ERROR);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(ROUTE_ERROR);
+    expect(screen.getByRole("link", { name: "Back to Studio" }).getAttribute("href")).toBe("/");
+    expect(screen.getByRole("button", { name: "Reload the page" })).toBeTruthy();
+    expect(screen.queryByText(/Unexpected Application Error/)).toBeNull();
+    // React and React Router say why in the console: the page doesn't log it again.
+    expect(logged.mock.calls.flat()).toContainEqual(expect.objectContaining({ message: "a page that can't draw" }));
+    logged.mockRestore();
+  });
+
+  it("catches a management page that fails to draw, through the app's own routes (#220)", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    // A dashboard without its room: Home reads it while it draws.
+    const broken: ManagementClient = {
+      ...managementClient,
+      dashboard: async (slug, signal) => ({
+        ...(await managementClient.dashboard(slug, signal)),
+        room: undefined as unknown as Dashboard["room"],
+      }),
+    };
+    render(
+      <ClientContext.Provider value={broken}>
+        <RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/manage/la-graine-verte"] })} />
+      </ClientContext.Provider>,
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(ROUTE_ERROR);
+    // The whole shell gives way, not just Home.
+    expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
+    expect(screen.queryByText(/Unexpected Application Error/)).toBeNull();
+    expect(screen.getByRole("link", { name: "Back to Studio" })).toBeTruthy();
+    logged.mockRestore();
   });
 
   it("names the merchant from its slug until the API gives the name", () => {

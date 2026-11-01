@@ -8,6 +8,8 @@ test("fonts load with no external request", async ({ page, baseURL }) => {
     if (url.protocol.startsWith("http") && url.origin !== origin) external.push(request.url());
   });
   await page.goto("/?gallery");
+  // The galleries load on their own (#220): their text asks for the fonts once it is there.
+  await expect(page.getByRole("heading", { name: "Chat cards" })).toBeVisible();
   const loaded = await page.evaluate(async () => {
     await document.fonts.ready;
     return [...document.fonts].filter((face) => face.status === "loaded").map((face) => face.family.replaceAll('"', ""));

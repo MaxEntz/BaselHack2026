@@ -61,6 +61,8 @@ jobs:
       - run: npm run check:contracts
       - run: npm test
       - run: npm run build
+      # The production build ships no mock, fixture, demo restaurant or gallery (#220).
+      - run: npm run check:bundle
       # Chromium for the browser tests, cached per @playwright/test version (#130).
       - id: playwright
         run: echo "version=$(node -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"

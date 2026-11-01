@@ -1,10 +1,11 @@
-// "Nothing pops in" (#137): new content crossfades through the View Transitions
-// API. Without the API, or with reduced motion, it just appears.
+// "Nothing pops in" (#137): new content crossfades through the View Transitions API, on the
+// management site and in Studio, and named elements travel to their new place. Without the
+// API, or with reduced motion, it just appears.
 import { flushSync } from "react-dom";
 
 type WithTransitions = Document & { startViewTransition?: (update: () => void) => unknown };
 
-export function motionAllowed(): boolean {
+function motionAllowed(): boolean {
   const doc = document as WithTransitions;
   if (typeof doc.startViewTransition !== "function") return false;
   return !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;

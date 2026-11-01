@@ -1,21 +1,21 @@
 import type { ChatEvent, ConversationItem, LiveEvent, SitePage } from "../types.ts";
 
 export type CardEvent = Extract<ChatEvent, { type: "card" }>;
-export type StepEvent = Extract<ChatEvent, { type: "step" }>;
+type StepEvent = Extract<ChatEvent, { type: "step" }>;
 export type StepName = StepEvent["step"];
 export type StepState = Omit<StepEvent, "type" | "step">;
 export type AgentStatus = "building" | "live" | "down";
 
 type Base = { id: string; turn: number };
-export type UserText = Base & { type: "user"; text: string };
-export type AssistantText = Base & { type: "assistant"; text: string };
-export type Card = Base & { type: "card"; card: CardEvent };
+type UserText = Base & { type: "user"; text: string };
+type AssistantText = Base & { type: "assistant"; text: string };
+type Card = Base & { type: "card"; card: CardEvent };
 export type StepGroup = Base & {
   type: "steps";
   steps: Partial<Record<StepName, StepState>>;
 };
-export type Notification = Base & { type: "notification"; event: LiveEvent };
-export type ErrorItem = Base & { type: "error"; message: string };
+type Notification = Base & { type: "notification"; event: LiveEvent };
+type ErrorItem = Base & { type: "error"; message: string };
 
 export type ChatItem =
   | UserText

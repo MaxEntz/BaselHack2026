@@ -198,7 +198,6 @@ function Day({ slug, version, today, clock }: Base & { slug: string; version: nu
         after={isToday ? clock : null}
         open={params.get("block") === "1"}
         onClose={() => go({ block: null })}
-        onSaved={() => {}}
       />
     </>
   );

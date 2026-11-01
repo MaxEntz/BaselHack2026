@@ -1,21 +1,8 @@
-// Home's wording (sesame-management.html#home). Days are the merchant's local
-// YYYY-MM-DD, worded in English like the mockup.
+// Home's wording (sesame-management.html#home), in English like the mockup. Days are the
+// merchant's local YYYY-MM-DD, worded by ../../dates.ts.
 
 import type { ActivityKind, ChannelCount, Service, Via } from "../../../types.ts";
-
-const dayFormat = (date: string, options: Intl.DateTimeFormatOptions) =>
-  new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", ...options });
-
-/** "Saturday 31 October" */
-export const dayLong = (date: string) =>
-  dayFormat(date, { weekday: "long", day: "numeric", month: "long" }).replace(",", "");
-/** "Sat 31 Oct" */
-export const dayShort = (date: string) =>
-  dayFormat(date, { weekday: "short", day: "numeric", month: "short" }).replace(",", "");
-/** "Sat" */
-export const weekday = (date: string) => dayFormat(date, { weekday: "short" });
-/** "31 Oct" */
-export const dayMonth = (date: string) => dayFormat(date, { day: "numeric", month: "short" });
+import { dayLong } from "../../dates.ts";
 
 /** 982 → "982", 1204 → "1,204" */
 export const count = (n: number) => n.toLocaleString("en-GB");
