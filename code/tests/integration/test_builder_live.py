@@ -20,7 +20,7 @@ from agent.provisioning import deprovision
 from builder.build import Builder
 from builder.cache import BuildCache
 from builder.crawl import crawl
-from builder.llm import OpenAIClient
+from core.llm import OpenAIClient
 from core.models import SitePageEvent, StepEvent
 
 pytestmark = [pytest.mark.integration, pytest.mark.browser, pytest.mark.llm]
