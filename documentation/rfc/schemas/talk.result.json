@@ -3,7 +3,6 @@
   "$defs": {
     "PendingAction": {
       "additionalProperties": false,
-      "description": "A write the agent proposes and won't run before a `confirm` that names it (#247).",
       "properties": {
         "action": {
           "enum": [
@@ -124,7 +123,6 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "The agent's answer. Only `reply` is the model's text; code builds every other field from\ntool results (ADR-0003), so a guest's agent can rely on them.",
   "properties": {
     "conversation": {
       "pattern": "^[A-Za-z0-9_-]{1,64}$",

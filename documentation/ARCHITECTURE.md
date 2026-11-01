@@ -56,10 +56,11 @@ flowchart TB
 - **User side.** Claude calls our **gateway**, a remote MCP server added once as a connector. The gateway applies the user's preferences as filters, routes the call to the merchant's agent through the **BATP node** (our agent protocol, [PROTOCOL.md](PROTOCOL.md)), and returns the merchant's own booking page (`fallback_url`) when the agent cannot serve the request.
 - **Merchant side.** The merchant chats with the **platform assistant**. It builds the agent from the website (the **builder**), then runs day-to-day operations through admin tools: "What bookings do I have tonight?", "Block 21:00". New bookings from Claude appear live in the chat. A **management site** next to the chat offers ordinary pages and forms over the same operations, and shows the bookings live too (§3).
 
-**What "agent" means here.** The merchant's agent is not an AI and not a separate process. It is the restaurant's data (tables, hours, policy, bookings) in its own Postgres schema `m_<slug>`, plus the booking tools described for Claude, all served by one shared multi-tenant `AgentService` ([ADR-0001](adr/0001-one-postgres-schema-per-merchant.md)). The only LLMs are:
+**What "agent" means here.** The merchant's agent is not a separate process. It is the restaurant's data (tables, hours, policy, bookings) in its own Postgres schema `m_<slug>`, plus the booking tools, all served by one shared multi-tenant `AgentService` ([ADR-0001](adr/0001-one-postgres-schema-per-merchant.md)). From BATP 0.2 it is also an AI: guests' agents talk to it with `TALK`, and it is meant to become the only caller of the merchant's booking tools ([ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md), #244). That agent runs inside the BATP node, still one multi-tenant process, with the merchant's guest tools only and the merchant bound by code. Until #249 the node answers `TALK` with `503` and the fallback URL, and Claude books through the four direct tools. The LLMs are:
 - Claude, on the user side;
 - the builder's extraction step;
-- the merchant assistant.
+- the merchant assistant;
+- the merchant's agent, in the node, behind `TALK` (#246, #249).
 
 ## 3. Main flow: Claude books, the merchant sees it live
 
@@ -195,11 +196,11 @@ Every component above is built, merged and deployed (#142). Still open: the Clau
 Breaking one of these is a bug.
 
 1. **No double booking.** Two confirmed reservations never overlap on the same table. The database enforces it with `EXCLUDE USING gist (table_id WITH =, during WITH &&) WHERE (status = 'confirmed')`, and `during` must not be empty (`core/db.py`). A booking re-reads its table's seats under the table's lock, so a floor-plan change never leaves it on a removed or too small table.
-2. **Every write from Claude is confirmed; creations and updates are idempotent.** The tool descriptions tell Claude to confirm with the user before `create_reservation`, `update_reservation` or `cancel_reservation`. `create_reservation` and `update_reservation` carry an `idempotency_key`, unique per merchant and per operation; an update's key is stored with the change it applied, so a late retry never undoes a newer change. `cancel_reservation` has no key: cancelling an already cancelled booking must leave it cancelled. Through the merchant's AI agent (`TALK`), the rule is in code, not in a description: the model has no write tool, its `propose_*` tools only store a proposal, and the write runs when the caller's `confirm` names that live proposal, with its own arguments and its id as the key; a yes in the message alone writes nothing (#247).
+2. **Every write from Claude is confirmed; creations and updates are idempotent.** The tool descriptions tell Claude to confirm with the user before `create_reservation`, `update_reservation` or `cancel_reservation`. Through `TALK`, code enforces it instead: the merchant's agent only proposes a write (`pending`), which runs when a later `TALK` names it in `confirm` before it expires, and a `TALK` replay with the same key returns the stored answer without a model call or a write (#245, #247). `create_reservation` and `update_reservation` carry an `idempotency_key`, unique per merchant and per operation; an update's key is stored with the change it applied, so a late retry never undoes a newer change. `cancel_reservation` has no key: cancelling an already cancelled booking must leave it cancelled.
 3. **Blocking a slot never deletes a reservation.** It only stops new bookings at that start time.
 4. **Never a stack trace in a tool response.** Errors are `{error, message, fallback_url?}` with the codes of AGENTS.md §8.4. `fallback_url` is set for `agent_unavailable` and `party_too_large`. In process or over BATP, a refusal keeps its own code: only an outage or an overload is `agent_unavailable`.
 5. **Preferences are never stored server-side.** They only arrive as `filters` on `search_merchants`.
-6. **The LLM only produces validated data.** It fills `MerchantProfile`, which Pydantic validates. It never produces SQL, code or tool definitions ([ADR-0003](adr/0003-llm-fills-a-schema-never-generates-code.md)).
+6. **The LLM only produces validated data.** It fills `MerchantProfile`, which Pydantic validates. It never produces SQL, code or tool definitions ([ADR-0003](adr/0003-llm-fills-a-schema-never-generates-code.md)). The merchant's agent writes only `TalkOutput.reply` and tool calls whose arguments code validates; code builds every other field of the answer from tool results, and crawled website text never enters its prompt, only knowledge the owner reviewed ([ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md), #248).
 7. **Slugs are `^[a-z0-9-]{3,61}$`**, and the schema name is `m_` + slug with `-` → `_` (at most 63 bytes, the Postgres limit). Only `schema_for(slug)` turns a slug into an identifier.
 8. **Merchant queries go through `merchant_conn` with Core constructs**, never `text()`, which the schema translation does not rewrite.
 9. **Notifications follow commits.** `NOTIFY` is delivered at commit, so a rolled-back booking never reaches the merchant's chat. An `UPDATE` that changes nothing is skipped by a `BEFORE UPDATE` trigger, so a replay sends no notification.
@@ -227,7 +228,7 @@ Breaking one of these is a bug.
 | Term | Meaning |
 |---|---|
 | **Gateway** | Our public remote MCP server, which Claude connects to: discovery, preference filtering, routing, fallback. |
-| **Merchant agent** | One merchant's booking logic and data. Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's schema. |
+| **Merchant agent** | One merchant's booking logic and data, and from BATP 0.2 its AI agent that guests' agents talk to (`TALK`). Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's schema, served by the node. |
 | **Builder** | The pipeline that turns *website + description* into a validated `MerchantProfile`, then provisions the agent; publishing deploys it. |
 | **Platform assistant** | The LLM assistant merchants chat with; it acts through admin tools. |
 | **Studio** | The chat page where a merchant gives their website and gets their sites built. |
@@ -249,6 +250,9 @@ Breaking one of these is a bug.
 | **Idempotency key** | A client-chosen unique key sent with a write, so that retrying the same request has no extra effect. |
 | **BATP** | Broad Agent Transfer Protocol: our agent-only protocol (`documentation/PROTOCOL.md`, normative draft in `documentation/rfc/`). |
 | **Node** | A BATP server: it serves the merchant agents of one backend on port 4710. |
+| **`TALK`** | The BATP 0.2 intent by which a guest's agent talks with a merchant's agent in natural language; the answer's fields other than `reply` are built by code. |
+| **Conversation** | A `TALK` exchange, named by an unguessable id bound to the merchant and the caller's `agent.id`. |
+| **Proposal (`pending`)** | A write the merchant's agent offers in a `TALK` answer; it runs only when a later `TALK` names it in `confirm`. |
 
 ## 8. Further reading
 
@@ -279,4 +283,4 @@ In this order, to rebuild the project yourself:
 
 ---
 
-*Last updated: 2026-11-01, describing `main` at commit `f9a3b06` plus the second pass of #220's refactor.*
+*Last updated: 2026-11-01, describing `main` at commit `c1ce0d0` with BATP 0.2 (#245).*
