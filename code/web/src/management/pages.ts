@@ -41,7 +41,12 @@ export function pagePath(slug: string, page: PageId): string {
   return page === "home" ? base : `${base}/${page}`;
 }
 
+/** A day on the Reservations page; `block` opens its blocked times. */
+export function dayPath(slug: string, date: string, { block = false } = {}): string {
+  return `${pagePath(slug, "reservations")}?date=${date}${block ? "&block=1" : ""}`;
+}
+
 /** A booking, opened on the Reservations page of its day (#139). */
 export function bookingPath(slug: string, date: string, id: string): string {
-  return `${pagePath(slug, "reservations")}?date=${date}&booking=${encodeURIComponent(id)}`;
+  return `${dayPath(slug, date)}&booking=${encodeURIComponent(id)}`;
 }

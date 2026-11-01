@@ -1,13 +1,13 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import type { ManagementClient } from "../management/client.ts";
-import { MOMENTS, previewTime } from "../moments.ts";
+import { MOMENTS, type MomentMessage, previewTime } from "../moments.ts";
 import type { BuildFact, GeneratedTool, Look, Moment, Service, SitePage } from "../types.ts";
 import { AgentSheet } from "./AgentSheet.tsx";
 import type { Addresses, View } from "./feed.tsx";
+import { NARROW } from "./motion.ts";
 import { type Fit, type Space, fitOf } from "./phase.ts";
 
-const NARROW = 900;
 const NAME_ROW = 28;
 const STACKED_MANAGE_HEIGHT = 900;
 const MIN_MANAGE_HEIGHT = 560;
@@ -93,7 +93,7 @@ type PublicSheetProps = {
 };
 
 // The page as the crawl read it, and the fact's words outlined on it.
-export function PublicSheet({ pages, fact, width, onReveal }: PublicSheetProps) {
+function PublicSheet({ pages, fact, width, onReveal }: PublicSheetProps) {
   const [chosen, setChosen] = useState<string | null>(null);
   const wanted = fact?.box?.page ?? chosen;
   const page = pages.find((item) => item.path === wanted) ?? pages[0];
@@ -226,13 +226,15 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
   // The frame's page follows the moment; an earlier one reached no page while it loaded.
   const frame = useRef<HTMLIFrameElement>(null);
   const tellMoment = () => {
-    frame.current?.contentWindow?.postMessage({ type: "sesame:moment", moment }, window.location.origin);
+    const message: MomentMessage = { type: "sesame:moment", moment };
+    frame.current?.contentWindow?.postMessage(message, window.location.origin);
   };
   const moments = useRef(moment);
   useEffect(() => {
     if (moments.current === moment) return;
     moments.current = moment;
-    frame.current?.contentWindow?.postMessage({ type: "sesame:moment", moment }, window.location.origin);
+    const message: MomentMessage = { type: "sesame:moment", moment };
+    frame.current?.contentWindow?.postMessage(message, window.location.origin);
   }, [moment]);
 
   // Each tab starts at its top; a fact then scrolls to its words.
@@ -279,7 +281,13 @@ export const Canvas = forwardRef<HTMLDivElement, CanvasProps>(function Canvas(
         </div>
         <span className="st-zoom">{Math.round(fit.scale * 100)}%</span>
       </div>
-      <div ref={paste} className={fit.stacked ? "st-paste stack" : "st-paste"} tabIndex={0} aria-label="Site preview">
+      <div
+        ref={paste}
+        className={fit.stacked ? "st-paste stack" : "st-paste"}
+        tabIndex={0}
+        role="region"
+        aria-label="Site preview"
+      >
         {slug && (
           <Frame name={NAMES.agent} fit={fit} hidden={!shows("agent")}>
             <AgentSheet

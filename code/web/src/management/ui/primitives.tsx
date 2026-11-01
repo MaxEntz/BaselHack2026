@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 import { BLOB_PATHS, FORK_PATHS, ICON_PATHS, type IconName, SEED_PATH, blobNumber } from "./shapes.ts";
 
 function cx(...names: (string | false | null | undefined)[]): string {
@@ -12,16 +12,11 @@ export function Pill({ primary, small, className, type = "button", ...rest }: Pi
   return <button type={type} className={cx("pill", primary && "pri", small && "sm", className)} {...rest} />;
 }
 
-/** A link that looks like a Pill. */
-export function PillLink({ primary, small, className, ...rest }: PillLook & AnchorHTMLAttributes<HTMLAnchorElement>) {
-  return <a className={cx("pill", primary && "pri", small && "sm", className)} {...rest} />;
-}
-
 export function Tag({ className, ...rest }: HTMLAttributes<HTMLSpanElement>) {
   return <span className={cx("tag", className)} {...rest} />;
 }
 
-export type BoxTone = "olive" | "brick" | "cream" | "plain";
+type BoxTone = "olive" | "brick" | "cream" | "plain";
 
 /** Rounded panel. Olive and brick are dark: Pills and focus rings inside turn light. */
 export function Box({ tone = "plain", className, ...rest }: { tone?: BoxTone } & HTMLAttributes<HTMLElement>) {

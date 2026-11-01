@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { announceChange } from "../management/changes.ts";
+import { newKey } from "../management/keys.ts";
 import type { ChatEvent, ConversationItem, LiveEvent } from "../types.ts";
 import { changeWatcher } from "./changes.ts";
 import type { ChatClient } from "./client.ts";
@@ -37,8 +38,8 @@ export function useChat(
   const [liveConnected, setLiveConnected] = useState(false);
   // False from a build's card until this browser has the owner cookie (#132).
   const [claimed, setClaimed] = useState(true);
-  const session = useRef<string>(null);
-  session.current ??= sessionId ?? storedSessionId();
+  const [firstSession] = useState(() => sessionId ?? storedSessionId());
+  const session = useRef(firstSession);
   const busy = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const knownSlug = useRef(state.merchant?.slug ?? null);
@@ -50,7 +51,7 @@ export function useChat(
   // reload, or once a turn attached one without a profile card.
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
-      const { merchant } = await client.session(session.current as string, signal);
+      const { merchant } = await client.session(session.current, signal);
       if (merchant && !signal?.aborted) {
         dispatch({ type: "attached", merchant, welcome: welcome.operations });
       }
@@ -77,12 +78,14 @@ export function useChat(
       controller.current = abort;
       const changed = changeWatcher();
       try {
-        for await (const event of open(abort.signal, session.current as string)) {
+        for await (const event of open(abort.signal, session.current)) {
+          // A turn `reset` stopped says nothing more in the new conversation.
+          if (abort.signal.aborted) break;
           dispatch({ type: "chat", event });
           if (changed(event) && knownSlug.current) announceChange(knownSlug.current);
           if (event.type === "card" && event.kind === "profile" && event.login_url) {
             setClaimed(false);
-            void client.claim(session.current as string).finally(() => setClaimed(true));
+            void client.claim(session.current).finally(() => setClaimed(true));
           }
         }
       } catch (error) {
@@ -96,7 +99,8 @@ export function useChat(
           });
         }
       } finally {
-        busy.current = false;
+        // After a `reset`, a newer turn may already be running: it is the one that frees the chat.
+        if (controller.current === abort) busy.current = false;
       }
       if (!knownSlug.current && !abort.signal.aborted) void refresh();
     },
@@ -106,7 +110,7 @@ export function useChat(
   const send = useCallback(
     (text: string, { wire, site }: SendOptions = {}) =>
       stream(text, site, (signal) =>
-        client.send(wire ?? text, session.current as string, signal),
+        client.send(wire ?? text, session.current, signal),
       ),
     [client, stream],
   );
@@ -162,29 +166,17 @@ function storedSessionId(): string {
   } catch {
     // Storage blocked: a reload starts a new session.
   }
-  const id = newSessionId();
-  try {
-    window.sessionStorage.setItem(SESSION_KEY, id);
-  } catch {
-    // Same.
-  }
-  return id;
+  return replaceSessionId();
 }
 
 function replaceSessionId(): string {
-  const id = newSessionId();
+  // The id stands for the session's merchant (#132): a random UUID, never Math.random, which
+  // can be guessed. `newKey` builds one where randomUUID is missing too (a projector on a LAN IP).
+  const id = newKey();
   try {
     window.sessionStorage.setItem(SESSION_KEY, id);
   } catch {
     // Storage blocked: a reload starts a new session.
   }
   return id;
-}
-
-function newSessionId(): string {
-  // randomUUID needs a secure context; a projector on a LAN IP may not be one. The id
-  // stands for the session's merchant (#132): never Math.random, which can be guessed.
-  if (window.isSecureContext) return crypto.randomUUID();
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return `s-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }

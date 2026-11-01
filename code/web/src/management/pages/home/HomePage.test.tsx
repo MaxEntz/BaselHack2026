@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import fixtureJson from "../../../../../tests/fixtures/demo/la-graine-verte-management.json" with { type: "json" };
 import { DEMO_NOW, setClock } from "../../../clock.ts";
@@ -217,22 +217,53 @@ describe("Home with the demo fixture", () => {
     expect(screen.getByRole("button", { name: "Table" }).getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("hands its actions to the shell", async () => {
+  // Home on every path, so that a click shows where it went.
+  function routed(client: ManagementClient, props: Partial<HomeProps> = {}) {
+    const router = createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: (
+            <ClientContext.Provider value={client}>
+              <div className="mg">
+                <HomePage slug={SLUG} {...props} />
+              </div>
+            </ClientContext.Provider>
+          ),
+        },
+      ],
+      { initialEntries: [`/manage/${SLUG}`] },
+    );
+    render(<RouterProvider router={router} />);
+    return () => `${router.state.location.pathname}${router.state.location.search}`;
+  }
+
+  it("hands the assistant to the shell, and opens the Reservations page for the rest", async () => {
     setClock(DEMO_NOW);
     const onAsk = vi.fn();
-    const onBlock = vi.fn();
-    const onOpenBooking = vi.fn();
-    const onOpenDay = vi.fn();
-    show({ client: mock(), onAsk, onBlock, onOpenBooking, onOpenDay });
+    const at = routed(mock(), { onAsk });
     await screen.findByRole("region", { name: "Tonight" });
+
     await userEvent.click(screen.getByRole("button", { name: "Ask the assistant" }));
-    await userEvent.click(screen.getByRole("button", { name: "Block a time" }));
-    await userEvent.click(within(card("Tonight")).getAllByRole("button")[0]);
-    await userEvent.click(screen.getByRole("button", { name: "Sun 1 Nov, 20 guests" }));
     expect(onAsk).toHaveBeenCalledOnce();
-    expect(onBlock).toHaveBeenCalledWith("2026-10-31");
-    expect(onOpenBooking).toHaveBeenCalledWith("R-009", "2026-10-31");
-    expect(onOpenDay).toHaveBeenCalledWith("2026-11-01");
+    expect(at()).toBe(`/manage/${SLUG}`);
+    await userEvent.click(screen.getByRole("button", { name: "Block a time" }));
+    expect(at()).toBe(`/manage/${SLUG}/reservations?date=2026-10-31&block=1`);
+    await userEvent.click(within(card("Tonight")).getAllByRole("button")[0]);
+    expect(at()).toBe(`/manage/${SLUG}/reservations?date=2026-10-31&booking=R-009`);
+    await userEvent.click(screen.getByRole("button", { name: "Sun 1 Nov, 20 guests" }));
+    expect(at()).toBe(`/manage/${SLUG}/reservations?date=2026-11-01`);
+    await userEvent.click(within(card("Tonight")).getByRole("link", { name: "See all 6 bookings" }));
+    expect(at()).toBe(`/manage/${SLUG}/reservations?date=2026-10-31`);
+    await userEvent.click(screen.getByRole("link", { name: "See the floor plan" }));
+    expect(at()).toBe(`/manage/${SLUG}/floor`);
+  });
+
+  it("goes to the Assistant page without a shell", async () => {
+    setClock(DEMO_NOW);
+    const at = routed(mock());
+    await userEvent.click(await screen.findByRole("button", { name: "Ask the assistant" }));
+    expect(at()).toBe(`/manage/${SLUG}/assistant`);
   });
 
   it("moves the numbers and highlights the new rows after the live booking", async () => {

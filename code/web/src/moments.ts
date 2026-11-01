@@ -19,6 +19,17 @@ const LAST_MINUTE = 23 * 60 + 59;
 export const isMoment = (value: unknown): value is Moment =>
   MOMENTS.some((moment) => moment.id === value);
 
+/** What Studio's dock posts to the management site in its frame. */
+export type MomentMessage = { type: "sesame:moment"; moment: Moment | null };
+
+/** The moment a `MomentMessage` asks for, null for the clock's; undefined for any other message. */
+export function askedMoment(data: unknown): Moment | null | undefined {
+  if (typeof data !== "object" || data === null) return undefined;
+  if (!("type" in data) || data.type !== "sesame:moment" || !("moment" in data)) return undefined;
+  const { moment } = data;
+  return moment === null || isMoment(moment) ? moment : undefined;
+}
+
 const toMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 const toTime = (minutes: number) =>
   `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;

@@ -46,4 +46,52 @@ describe("useChat", () => {
     expect(heard[1]).toEqual({ slug: "la-graine-verte" });
     frame.close();
   });
+
+  it("keeps the chat busy for a turn sent right after a reset, when the old turn ends (#220)", async () => {
+    // Studio's examples reset the chat and send in the same tick.
+    const sent: string[] = [];
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const racing: ChatClient = {
+      ...client,
+      async *send(message, _session, signal) {
+        sent.push(message);
+        yield { type: "tool_start", tool: "list_reservations", label: "Checking tonight's bookings" };
+        if (message === "old") {
+          await new Promise((_, reject) =>
+            signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))),
+          );
+        }
+        if (message === "new") await held;
+        yield { type: "text", delta: `${message} done` };
+        yield { type: "done" };
+      },
+    };
+    const { result } = renderHook(() => useChat(racing, { onboarding: "", operations: "" }, null));
+
+    let old: Promise<void> = Promise.resolve();
+    act(() => {
+      old = result.current.send("old");
+    });
+    await vi.waitFor(() => expect(sent).toEqual(["old"]));
+    let next: Promise<void> = Promise.resolve();
+    act(() => {
+      result.current.reset("");
+      next = result.current.send("new");
+    });
+    await act(() => old);
+
+    // The old turn has ended, the new one still runs: a third message waits for it.
+    await act(() => result.current.send("third"));
+    expect(sent).toEqual(["old", "new"]);
+    expect(result.current.state.busy).toBe(true);
+
+    release();
+    await act(() => next);
+    expect(result.current.state.busy).toBe(false);
+    expect(JSON.stringify(result.current.state.items)).toContain("new done");
+    expect(JSON.stringify(result.current.state.items)).not.toContain("old done");
+    await act(() => result.current.send("third"));
+    expect(sent).toEqual(["old", "new", "third"]);
+  });
 });

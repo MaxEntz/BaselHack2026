@@ -90,6 +90,9 @@ function ServicesForm({
         <p>Open every day. Guests can book every 30 minutes, up to an hour before the end of a service.</p>
         <div className="svs">
           {form.value.map((service, index) => (
+            // A row is its place: the form never adds, removes or reorders a service, and its name
+            // (Lunch, Dinner) is the saved service's at that place. A key from the times would
+            // remount the inputs at each save and lose the focus.
             <div className="sv" key={index}>
               <b>{names[index]}</b>
               <div>

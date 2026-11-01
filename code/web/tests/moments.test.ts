@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isMoment, momentAt, momentSentence, previewTime, shownMoment } from "../src/moments.ts";
+import { askedMoment, isMoment, momentAt, momentSentence, previewTime, shownMoment } from "../src/moments.ts";
 
 const LUNCH = { start: "11:30", end: "14:30" };
 const DINNER = { start: "18:30", end: "21:30" };
@@ -57,4 +57,14 @@ test("only the four moments are moments", () => {
   assert.equal(isMoment("during"), true);
   assert.equal(isMoment("noon"), false);
   assert.equal(isMoment(null), false);
+});
+
+test("the management site reads a moment only from Studio's message (#220)", () => {
+  assert.equal(askedMoment({ type: "sesame:moment", moment: "after" }), "after");
+  assert.equal(askedMoment({ type: "sesame:moment", moment: null }), null);
+  assert.equal(askedMoment({ type: "sesame:moment", moment: "noon" }), undefined);
+  assert.equal(askedMoment({ type: "sesame:moment" }), undefined);
+  assert.equal(askedMoment({ type: "other", moment: "after" }), undefined);
+  assert.equal(askedMoment("sesame:moment"), undefined);
+  assert.equal(askedMoment(null), undefined);
 });

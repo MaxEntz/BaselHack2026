@@ -28,8 +28,8 @@ import type {
   SettingsInput,
 } from "../types.ts";
 
-export type SlotsQuery = { date: string; partySize: number; ignore?: string };
-export type RequestsQuery = { date: string; refused: boolean };
+type SlotsQuery = { date: string; partySize: number; ignore?: string };
+type RequestsQuery = { date: string; refused: boolean };
 
 // The management site's calls, one per /merchants/<slug> route (#129). Each
 // throws `ManagementRequestError` when the platform refuses or can't answer.

@@ -20,6 +20,18 @@ async function buildSite(page: Page) {
   await expect(page.getByRole("button", { name: "Publish", exact: true }).first()).toBeEnabled();
 }
 
+test("an Enter that ends an IME composition doesn't send (#220)", async ({ page }) => {
+  await page.goto("/");
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill(HOST);
+  // What the browser fires when Enter picks a word in a Japanese or Chinese input method.
+  await box.dispatchEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true });
+  await expect(box).toHaveValue(HOST);
+  await expect(page.getByRole("heading", { name: "What's your website's address?" })).toBeVisible();
+  await box.press("Enter");
+  await expect(box).toHaveValue("");
+});
+
 test.describe("at 1440 px", () => {
   test("builds, reviews and publishes a site", async ({ page }) => {
     await page.goto("/");

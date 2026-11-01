@@ -4,8 +4,7 @@ import "./ui.css";
 
 export { Dialog } from "./Dialog.tsx";
 export { Checkbox, Field } from "./Field.tsx";
-export { Blob, Box, Doodle, Icon, Pill, PillLink, Seed, Tag, Under } from "./primitives.tsx";
-export type { BoxTone } from "./primitives.tsx";
+export { Blob, Box, Doodle, Icon, Pill, Seed, Tag, Under } from "./primitives.tsx";
 export { SaveBar } from "./SaveBar.tsx";
 export { Source } from "./Source.tsx";
 export { blobNumber } from "./shapes.ts";

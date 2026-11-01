@@ -161,14 +161,15 @@ function parseEvent<T extends { type: string }>(data: string): T | null {
 }
 
 // `?invite=<code>`: lets this browser start a build (POST /invite sets a cookie, #132).
-// True when the platform took it, or asks for no invitation.
-export async function acceptInvite(code: string): Promise<boolean> {
+// True when the platform took it, or asks for no invitation; false once `signal` aborts it.
+export async function acceptInvite(code: string, signal?: AbortSignal): Promise<boolean> {
   try {
     const response = await fetch("/api/invite", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code }),
       credentials: "same-origin",
+      signal,
     });
     return response.ok;
   } catch {

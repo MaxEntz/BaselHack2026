@@ -1,15 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
-import { httpClient } from "../chat/client.ts";
-import type { Merchant } from "../chat/state.ts";
+import { merchantMcpUrl } from "../cards/format.ts";
 import { useChat, type Welcome } from "../chat/useChat.ts";
+import { copyText } from "../clipboard.ts";
 import { managementClient } from "../management/index.ts";
-import { createMockClient } from "../mocks/mockClient.ts";
+import { crossfade } from "../management/motion.ts";
 import type { BuildAgentOutput, BuildFact, MerchantOverview, Moment, Service, SitePage } from "../types.ts";
 import { Canvas } from "./Canvas.tsx";
+import { CHAT_CLIENT as CLIENT, DEMO_MERCHANT } from "./chatClient.ts";
 import { DEMO, EXAMPLES } from "./examples.ts";
 import { type Addresses, Feed, type View } from "./feed.tsx";
-import { calm, crossfade, useSplitOpening } from "./motion.ts";
+import { NARROW, calm, useSplitOpening } from "./motion.ts";
 import {
   FIRST_PLACEHOLDER,
   PLACEHOLDERS,
@@ -30,12 +31,6 @@ import {
 import { PUBLISH, publishing } from "./publish.ts";
 import "./studio.css";
 
-const env = import.meta.env;
-const DEMO_MERCHANT: Merchant | null = env.VITE_MERCHANT_SLUG
-  ? { slug: env.VITE_MERCHANT_SLUG, name: env.VITE_MERCHANT_NAME || env.VITE_MERCHANT_SLUG }
-  : null;
-const CLIENT = env.VITE_MOCK === "1" ? createMockClient(DEMO_MERCHANT !== null) : httpClient;
-
 const WELCOME: Welcome = {
   onboarding: "",
   operations:
@@ -45,7 +40,6 @@ const WELCOME: Welcome = {
 const COPIED_MS = 2200;
 // How long each fact stays lit during the review's playback.
 const FACT_MS = 520;
-const NARROW = 900;
 const MAX_INPUT = 150;
 
 type LastSend = { text: string; wire?: string; site?: string };
@@ -63,7 +57,7 @@ function addressesOf(
   const { origin, hostname } = window.location;
   return {
     agent: `batp://${hostname}/${slug}`,
-    mcp: `${new URL(mcpUrl).origin}/m/${slug}/mcp`,
+    mcp: merchantMcpUrl(mcpUrl, slug),
     management: `${origin}/manage/${slug}`,
   };
 }
@@ -325,12 +319,7 @@ export function StudioPage() {
   }, [toast]);
 
   async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setToast("Copied");
-    } catch {
-      setToast(`Copy this: ${text}`);
-    }
+    setToast((await copyText(text)).message);
   }
 
   function open(next: View, nextMoment?: Moment | null) {
@@ -360,7 +349,8 @@ export function StudioPage() {
     say(input);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    // An Enter that ends an IME composition picks the word: it doesn't send.
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       say(input);
     }

@@ -35,7 +35,13 @@ another, so these screenshots are taken and checked only in Playwright's image, 
 ([ADR-0020](../../documentation/adr/0020-check-accessibility-with-axe-and-screenshots-in-playwrights-image.md)).
 
 Open <http://localhost:5173/?gallery> to review every management primitive and every card and state (steps,
-profile, reservations incl. empty, stats, policy, notifications, errors).
+profile, reservations incl. empty, stats, policy, notifications, errors). It exists in development and with
+`VITE_MOCK=1` only.
+
+A production build (`npm run build`) holds no mock, demo fixture, demo restaurant or gallery (#220): they
+are read through `import.meta.env.VITE_MOCK` written in full, which Vite replaces at build time, and loaded
+with dynamic `import()`. The mock build inlines those imports (`vite.config.ts`), so that it ships one chunk
+and one stylesheet in the production order, as the screenshots need.
 
 ## Environment
 
@@ -67,7 +73,8 @@ the code once and removes it from the address bar.
 - `src/studio/`: Studio (#141). `phase.ts` holds, as pure functions, what each conversation state
   shows: the phase, the feed, the chips and the top bar's pill. `feed.tsx` draws the feed and its
   cards with the fixed sentences, `Canvas.tsx` the pasteboard and the public site as read,
-  `AgentSheet.tsx` the agent site's frames, `motion.ts` the crossfades and the split's opening.
+  `AgentSheet.tsx` the agent site's frames, `motion.ts` the split's opening (the crossfades are
+  `src/management/motion.ts`'s), `chatClient.ts` the chat's client, the mock's with `VITE_MOCK=1`.
   `src/moments.ts` works out the moment of the day for Home's top and for Studio's dock; add
   `?moment=morning|before|during|after` to `/manage/<slug>` to preview one. Its classes start with `st-`, because `cards.css` is global.
 - `src/chat/state.ts`: `ChatItem` union and the pure reducer that turns `ChatEvent`
@@ -81,7 +88,9 @@ the code once and removes it from the address bar.
 - `src/components/`: header, message list (auto-scroll), composer.
 - `src/cards/`: rich messages rendered from `step`/`card` events and live
   notifications, never from the assistant's Markdown; `Gallery.tsx` is `/?gallery`.
-- `src/router.tsx`, `src/Studio.tsx`: the routes.
+- `src/router.tsx`, `src/Studio.tsx`: the routes; `src/RouteError.tsx`, what a page that fails to
+  draw shows instead.
+- `src/clipboard.ts`: the copy buttons' clipboard, and the text to copy by hand without one.
 - `src/management/`: the management site. `tokens.css` (scoped to `.mg`, light only),
   `fonts.css` and `fonts/` (Fraunces Soft, Karla, self-hosted with their OFL licences),
   `ui/` (Pill, Tag, Box, Blob, Under, Doodle, Seed, Icon, Field, Dialog, Toast, SaveBar, Source),
