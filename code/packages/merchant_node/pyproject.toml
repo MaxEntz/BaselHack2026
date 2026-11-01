@@ -7,6 +7,7 @@ dependencies = [
     "core",
     "agent",
     "batp",
+    "openai>=3.42",
 ]
 
 [build-system]

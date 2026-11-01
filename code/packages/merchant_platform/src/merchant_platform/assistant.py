@@ -10,7 +10,7 @@ from datetime import datetime
 from functools import partial
 from zoneinfo import ZoneInfo
 
-from openai import AsyncOpenAI, Timeout
+from openai import Timeout
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import generated_tools
@@ -21,7 +21,7 @@ from builder.cache import BuildCache
 from builder.crawl import crawl
 from builder.look import read_look
 from core.config import Settings
-from core.llm import LLMClient, LLMUnavailable, Message, OpenAIClient
+from core.llm import LLMClient, LLMUnavailable, Message, OpenAIClient, openai_connection
 from core.models import (
     BuildAgentInput,
     BuildAgentOutput,
@@ -316,12 +316,9 @@ def default_assistant(
 def _openai_clients(settings: Settings) -> tuple[LLMClient, LLMClient] | None:
     """The conversation's client and the extraction's, on one OpenAI connection; None without
     OPENAI_API_KEY."""
-    if settings.openai_api_key is None:
+    openai = openai_connection(settings, LLM_TIMEOUT)
+    if openai is None:
         return None
-    # Retries are ours (one, before any text reached the merchant).
-    openai = AsyncOpenAI(
-        api_key=settings.openai_api_key.get_secret_value(), max_retries=0, timeout=LLM_TIMEOUT
-    )
     chat = OpenAIClient(
         openai, settings.openai_model, reasoning_effort=settings.openai_reasoning_effort
     )

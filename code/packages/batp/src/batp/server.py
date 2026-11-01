@@ -46,6 +46,7 @@ from batp.status import (
     UNAUTHORIZED,
     UPGRADE_REQUIRED,
     Refused,
+    TooManyRequests,
     error_body,
     status_for,
 )
@@ -398,6 +399,8 @@ class NodeServer:
             )
         except AgentError as error:
             return Response(id=request.id, status=status_for(error), error=error_body(error))
+        except TooManyRequests as busy:
+            return _too_many(request.id, str(busy))
         except TimeoutError:
             log.warning("request timed out", extra={"agent": agent.id, "intent": request.intent})
             return _unavailable(request.id, TOO_SLOW, await self._fallback(request))
@@ -479,8 +482,8 @@ def _invalid(request_id: str, message: str) -> Response:
     )
 
 
-def _too_many(request_id: str) -> Response:
-    error = ErrorBody(code="too_many_requests", message="Too many requests in flight")
+def _too_many(request_id: str, message: str = "Too many requests in flight") -> Response:
+    error = ErrorBody(code="too_many_requests", message=message)
     return Response(id=request_id, status=TOO_MANY_REQUESTS, error=error)
 
 
