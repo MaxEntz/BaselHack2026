@@ -5,12 +5,16 @@ import { describe, expect, it } from "vitest";
 import fixtureJson from "../../../../tests/fixtures/demo/la-graine-verte-management.json" with { type: "json" };
 import petitZinc from "../../../../tests/fixtures/le-petit-zinc.json" with { type: "json" };
 import { createMockManagementClient } from "../../mocks/managementClient.ts";
-import { routes } from "../../router.tsx";
+import { ManagePage } from "../ManagePage.tsx";
+import { routesWith } from "../../router.tsx";
 import type { Look, ManagementFixture } from "../../types.ts";
 import type { ManagementClient } from "../client.ts";
 import { announceChange } from "../changes.ts";
 import { ClientContext } from "../data.ts";
 import { NOTHING_FOUND } from "./TopBar.tsx";
+
+// The management site drawn at once: the app loads it on its first visit (router.tsx).
+const routes = routesWith(<ManagePage />);
 
 const fixture = fixtureJson as ManagementFixture;
 const SLUG = "la-graine-verte";

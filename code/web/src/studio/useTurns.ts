@@ -16,9 +16,9 @@ type TurnsInput = {
   chat: ReturnType<typeof useChat>;
   phase: Phase;
   canvas: CanvasState;
-  setInput: (text: string) => void;
   // Forgets what the platform said of the merchant.
   forget: () => void;
+  // The message box, which holds its own text.
   composer: RefObject<ComposerHandle | null>;
 };
 
@@ -35,9 +35,10 @@ export type Turns = {
 };
 
 /** What the merchant's messages, chips and buttons start in the conversation. */
-export function useTurns({ chat, phase, canvas, setInput, forget, composer }: TurnsInput): Turns {
+export function useTurns({ chat, phase, canvas, forget, composer }: TurnsInput): Turns {
   const { state, send, stream, reset } = chat;
   const last = useRef<LastSend | null>(null);
+  const setText = (text: string) => composer.current?.setText(text);
 
   function publish() {
     const merchant = state.merchant?.slug;
@@ -60,7 +61,7 @@ export function useTurns({ chat, phase, canvas, setInput, forget, composer }: Tu
       const found = parseAddress(text);
       // The text leaves the box inside the transition, so that it travels to its bubble.
       crossfade(() => {
-        setInput("");
+        setText("");
         if (found && !describesItself(found)) {
           chat.askDetails(text, found.address, found.host, askForDetails(found.host));
           return;
@@ -70,7 +71,7 @@ export function useTurns({ chat, phase, canvas, setInput, forget, composer }: Tu
       });
       return;
     }
-    setInput("");
+    setText("");
     if (phase === "describe" && state.address) {
       const wire = buildMessage(state.address, text);
       last.current = { text, wire };
@@ -113,14 +114,14 @@ export function useTurns({ chat, phase, canvas, setInput, forget, composer }: Tu
       if (state.busy || !mayLeaveSite(state.merchant)) return;
       crossfade(() => {
         reset(WELCOME.onboarding);
-        setInput("");
+        setText("");
         forget();
         canvas.clear();
       });
       composer.current?.focus({ preventScroll: true });
     },
     askForColour() {
-      setInput("Change the main colour to ");
+      setText("Change the main colour to ");
       canvas.setPane("chat");
       composer.current?.focus();
     },

@@ -29,7 +29,7 @@ function page(client: ManagementClient, version = 0) {
 const rows = () => document.querySelectorAll<HTMLDetailsElement>("details.item");
 const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
 
-describe("Agent", () => {
+describe("Agent, its requests", () => {
   it("shows the status, both addresses and today's 10 latest requests", async () => {
     render(page(mock()));
 
@@ -97,7 +97,9 @@ describe("Agent", () => {
     fireEvent(second, new Event("toggle"));
     await waitFor(() => expect(store.applied()).toBe(1));
   });
+});
 
+describe("Agent, its status and addresses", () => {
   it("pauses and resumes the agent", async () => {
     const client = mock();
     render(page(client));

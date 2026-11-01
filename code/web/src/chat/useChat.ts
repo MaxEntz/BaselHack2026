@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import type { ActionDispatch } from "react";
 import { announceChange } from "../management/changes.ts";
 import { newKey } from "../management/keys.ts";
 import type { ChatEvent, ConversationItem, LiveEvent } from "../types.ts";
@@ -6,11 +7,12 @@ import { changeWatcher } from "./changes.ts";
 import type { ChatClient } from "./client.ts";
 import { ChatError } from "./client.ts";
 import { chime } from "./chime.ts";
-import type { AgentStatus, Merchant } from "./state.ts";
+import type { AgentStatus, ChatAction, Merchant } from "./state.ts";
 import { chatReducer, initialChatState } from "./state.ts";
 
 // Kept across reloads (not across tabs) so the platform keeps the same session.
 const SESSION_KEY = "merchant-agents:session";
+const FAILED = "Something went wrong while answering.";
 
 export type Welcome = { onboarding: string; operations: string };
 
@@ -25,6 +27,9 @@ export type ChatOptions = {
   listen?: boolean;
 };
 
+type Dispatch = ActionDispatch<[action: ChatAction]>;
+type OpenTurn = (signal: AbortSignal, sessionId: string) => AsyncIterable<ChatEvent>;
+
 export function useChat(
   client: ChatClient,
   welcome: Welcome,
@@ -35,7 +40,6 @@ export function useChat(
     const initial = initialChatState(merchant ? welcome.operations : welcome.onboarding, merchant);
     return restore ? chatReducer(initial, { type: "restore", items: restore }) : initial;
   });
-  const [liveConnected, setLiveConnected] = useState(false);
   // False from a build's card until this browser has the owner cookie (#132).
   const [claimed, setClaimed] = useState(true);
   const [firstSession] = useState(() => sessionId ?? storedSessionId());
@@ -47,18 +51,18 @@ export function useChat(
     knownSlug.current = state.merchant?.slug ?? null;
   }, [state.merchant]);
 
-  // Ask the platform which merchant the session works on (#88): after a
-  // reload, or once a turn attached one without a profile card.
+  // Ask the platform which merchant the session works on (#88): after a reload, or once a turn
+  // attached one without a profile card. An answer about a session a reset left is dropped.
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
-      const { merchant } = await client.session(session.current, signal);
-      if (merchant && !signal?.aborted) {
+      const asked = session.current;
+      const { merchant } = await client.session(asked, signal);
+      if (merchant && !signal?.aborted && session.current === asked) {
         dispatch({ type: "attached", merchant, welcome: welcome.operations });
       }
     },
     [client, welcome.operations],
   );
-
   useEffect(() => {
     const abort = new AbortController();
     void refresh(abort.signal);
@@ -66,42 +70,22 @@ export function useChat(
   }, [refresh]);
 
   const stream = useCallback(
-    async (
-      text: string,
-      site: string | undefined,
-      open: (signal: AbortSignal, sessionId: string) => AsyncIterable<ChatEvent>,
-    ) => {
+    async (text: string, site: string | undefined, open: OpenTurn) => {
       if (busy.current) return;
       busy.current = true;
       dispatch({ type: "send", text, site });
       const abort = new AbortController();
       controller.current = abort;
       const changed = changeWatcher();
-      try {
-        for await (const event of open(abort.signal, session.current)) {
-          // A turn `reset` stopped says nothing more in the new conversation.
-          if (abort.signal.aborted) break;
-          dispatch({ type: "chat", event });
-          if (changed(event) && knownSlug.current) announceChange(knownSlug.current);
-          if (event.type === "card" && event.kind === "profile" && event.login_url) {
-            setClaimed(false);
-            void client.claim(session.current).finally(() => setClaimed(true));
-          }
+      await playTurn(() => open(abort.signal, session.current), abort.signal, dispatch, (event) => {
+        if (changed(event) && knownSlug.current) announceChange(knownSlug.current);
+        if (event.type === "card" && event.kind === "profile" && event.login_url) {
+          setClaimed(false);
+          void client.claim(session.current).finally(() => setClaimed(true));
         }
-      } catch (error) {
-        if (!abort.signal.aborted) {
-          dispatch({
-            type: "failed",
-            message:
-              error instanceof ChatError
-                ? error.message
-                : "Something went wrong while answering.",
-          });
-        }
-      } finally {
-        // After a `reset`, a newer turn may already be running: it is the one that frees the chat.
-        if (controller.current === abort) busy.current = false;
-      }
+      });
+      // After a `reset`, a newer turn may already be running: it is the one that frees the chat.
+      if (controller.current === abort) busy.current = false;
       if (!knownSlug.current && !abort.signal.aborted) void refresh();
     },
     [client, refresh],
@@ -109,9 +93,7 @@ export function useChat(
 
   const send = useCallback(
     (text: string, { wire, site }: SendOptions = {}) =>
-      stream(text, site, (signal) =>
-        client.send(wire ?? text, session.current, signal),
-      ),
+      stream(text, site, (signal) => client.send(wire ?? text, session.current, signal)),
     [client, stream],
   );
 
@@ -121,10 +103,7 @@ export function useChat(
     [],
   );
 
-  const setStatus = useCallback(
-    (status: AgentStatus) => dispatch({ type: "status", status }),
-    [],
-  );
+  const setStatus = useCallback((status: AgentStatus) => dispatch({ type: "status", status }), []);
 
   // A new conversation, on a new session: the old one stays with its merchant.
   const reset = useCallback((text: string) => {
@@ -140,23 +119,51 @@ export function useChat(
   // A live event the caller received itself.
   const notify = useCallback((event: LiveEvent) => dispatch({ type: "live", event }), []);
 
-  const slug = state.merchant?.slug;
+  const liveConnected = useLiveEvents(client, listen ? state.merchant?.slug : undefined, dispatch);
+
+  return { state, send, stream, askDetails, setStatus, reset, notify, claimed, liveConnected };
+}
+
+// One turn's events into the conversation, until it ends or `signal` stops it. Never throws:
+// a failure becomes the chat's error bubble.
+async function playTurn(
+  open: () => AsyncIterable<ChatEvent>,
+  signal: AbortSignal,
+  dispatch: Dispatch,
+  onEvent: (event: ChatEvent) => void,
+): Promise<void> {
+  try {
+    for await (const event of open()) {
+      // A turn `reset` stopped says nothing more in the new conversation.
+      if (signal.aborted) break;
+      dispatch({ type: "chat", event });
+      onEvent(event);
+    }
+  } catch (error) {
+    if (!signal.aborted) {
+      dispatch({ type: "failed", message: error instanceof ChatError ? error.message : FAILED });
+    }
+  }
+}
+
+// The merchant's live events, with a chime; no merchant, no subscription. True while connected.
+function useLiveEvents(client: ChatClient, slug: string | undefined, dispatch: Dispatch): boolean {
+  const [connected, setConnected] = useState(false);
   useEffect(() => {
-    if (!slug || !listen) return;
+    if (!slug) return;
     const unsubscribe = client.subscribe(slug, {
       onEvent: (event) => {
         dispatch({ type: "live", event });
         chime();
       },
-      onConnection: setLiveConnected,
+      onConnection: setConnected,
     });
     return () => {
       unsubscribe();
-      setLiveConnected(false);
+      setConnected(false);
     };
-  }, [client, slug, listen]);
-
-  return { state, send, stream, askDetails, setStatus, reset, notify, claimed, liveConnected };
+  }, [client, slug, dispatch]);
+  return connected;
 }
 
 function storedSessionId(): string {

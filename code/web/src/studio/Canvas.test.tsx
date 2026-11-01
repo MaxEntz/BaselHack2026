@@ -1,7 +1,8 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { AgentTryOutput, BuildFact, DaySlots, Look, SitePage } from "../types.ts";
+import { MOMENT_READY } from "../moments.ts";
+import type { AgentTryOutput, BuildFact, DaySlots, Look, Moment, SitePage } from "../types.ts";
 import { Canvas } from "./Canvas.tsx";
 
 const HOME: SitePage = { path: "/", width: 1000, height: 2000, image: "data:image/jpeg;base64,AA==" };
@@ -59,8 +60,8 @@ function client(frames?: AgentTryOutput) {
   };
 }
 
-function canvas(props: Partial<Parameters<typeof Canvas>[0]> = {}) {
-  return render(
+function CanvasWith(props: Partial<Parameters<typeof Canvas>[0]>) {
+  return (
     <Canvas
       client={client()}
       slug="la-graine-verte"
@@ -80,9 +81,11 @@ function canvas(props: Partial<Parameters<typeof Canvas>[0]> = {}) {
       onMoment={() => {}}
       onColour={() => {}}
       {...props}
-    />,
+    />
   );
 }
+
+const canvas = (props: Partial<Parameters<typeof Canvas>[0]> = {}) => render(<CanvasWith {...props} />);
 
 const tab = (name: string | RegExp) => screen.getByRole("button", { name });
 
@@ -100,6 +103,15 @@ describe("Studio's canvas", () => {
     expect(tab(/Management/).hasAttribute("disabled")).toBe(true);
     expect(tab("Both").hasAttribute("disabled")).toBe(true);
     expect(tab(/Your public site/).hasAttribute("disabled")).toBe(false);
+  });
+
+  // "Ag Agent site" read "AgAgent site" (#220): the letters are the tile's picture.
+  it("names its tabs without their tiles' letters", () => {
+    canvas();
+    const group = within(screen.getByRole("group", { name: "Which site to show" }));
+    for (const name of ["Agent site", "Management", "Both", "Your public site"]) {
+      expect(group.getByRole("button", { name })).toBeTruthy();
+    }
   });
 
   it("keeps the public tab disabled until a page was read, and opens the others once built", () => {
@@ -137,7 +149,49 @@ describe("Studio's canvas", () => {
     const { container } = canvas({ ready: false });
     expect(container.querySelector("iframe")).toBeNull();
   });
+});
 
+// The management site loads on its first visit (#220), after the frame's `load`: it says when it
+// listens, and the moment goes then.
+describe("Studio's canvas, the moment in its frame", () => {
+  function framed(moment: Moment | null) {
+    const view = canvas({ moment });
+    const frame = view.container.querySelector("iframe")!;
+    const posted = vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
+    const ready = () =>
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", { data: MOMENT_READY, origin: window.location.origin, source: frame.contentWindow }),
+        );
+      });
+    const shown = (next: Moment | null) => view.rerender(<CanvasWith moment={next} />);
+    return { posted, ready, shown };
+  }
+
+  it("holds a moment asked for before the page listens, and sends it once it does", () => {
+    const { posted, ready, shown } = framed(null);
+    shown("after");
+    expect(posted).not.toHaveBeenCalled();
+
+    ready();
+    expect(posted).toHaveBeenCalledExactlyOnceWith({ type: "sesame:moment", moment: "after" }, window.location.origin);
+
+    shown("during");
+    expect(posted).toHaveBeenLastCalledWith({ type: "sesame:moment", moment: "during" }, window.location.origin);
+  });
+
+  it("sends nothing to a page on the clock, nor twice the same moment", () => {
+    const { posted, ready } = framed(null);
+    ready();
+    expect(posted).not.toHaveBeenCalled();
+    const second = framed("morning");
+    second.ready();
+    second.ready();
+    expect(second.posted).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Studio's canvas, its agent site and its dock", () => {
   it("shows, unpublished, what an agent will get, and says it gets a 404 for now", async () => {
     const { container } = canvas({ view: "agent", addresses: { agent: "batp://h/la-graine-verte", mcp: "https://h/m/x/mcp", management: "https://h/manage/x" } });
     expect(screen.getByText(/Right now every agent gets a 404/)).toBeTruthy();

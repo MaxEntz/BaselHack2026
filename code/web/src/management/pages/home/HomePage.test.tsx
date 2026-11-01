@@ -206,7 +206,9 @@ describe("Home with the demo fixture", () => {
     expect(rows.find((row) => row.textContent?.includes("Marie Lang"))?.className).toBe("t-row off");
     expect(within(tonight).getByRole("link").textContent).toBe("See all 5 bookings");
   });
+});
 
+describe("Home with the demo fixture, its links and live changes", () => {
   it("switches the guests chart to a table, newest day first", async () => {
     setClock(DEMO_NOW);
     show({ client: mock() });

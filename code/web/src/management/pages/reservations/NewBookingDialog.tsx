@@ -54,15 +54,7 @@ export function NewBookingDialog({
   );
 }
 
-function NewBookingForm({
-  slug,
-  day,
-  limit,
-  service,
-  preset,
-  onCancel,
-  onAdded,
-}: {
+type NewBookingFormProps = {
   slug: string;
   day: string;
   limit: number;
@@ -70,13 +62,13 @@ function NewBookingForm({
   preset: NewBookingPreset;
   onCancel: () => void;
   onAdded: (booking: ManagedReservation) => void;
-}) {
+};
+
+function NewBookingForm({ slug, day, limit, service, preset, onCancel, onAdded }: NewBookingFormProps) {
   const client = useClient();
   const toast = useToast();
   const [guest, setGuest] = useState("");
   const [party, setParty] = useState(String(preset.party ?? 2));
-  const [slots, setSlots] = useState<DaySlot[] | null>(null);
-  const [time, setTime] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const name = useRef<HTMLInputElement>(null);
@@ -85,33 +77,11 @@ function NewBookingForm({
   const size = Number(party);
   // The starts don't depend on the party: an invalid one still lists them, for 1 guest.
   const asked = size >= 1 && Number.isInteger(size) ? Math.min(size, MAX_PARTY_QUERY) : 1;
+  const { slots, time, setTime } = useOfferedSlots({ slug, day, asked, service, preset: preset.time, setFailure });
 
   useEffect(() => {
     name.current?.focus();
   }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    client.slots(slug, { date: day, partySize: asked }, controller.signal).then(
-      (answer) => {
-        if (controller.signal.aborted) return;
-        const offered = answer.slots.filter((slot) => !slot.blocked);
-        setSlots(answer.slots);
-        setTime((current) => {
-          if (current && offered.some((slot) => slot.time === current)) return current;
-          const inService = offered.find(
-            (slot) => service !== null && service.start <= slot.time && slot.time < service.end,
-          );
-          const preferred = offered.find((slot) => slot.time === preset.time) ?? inService ?? offered[0];
-          return preferred?.time ?? null;
-        });
-      },
-      (error: unknown) => {
-        if (!controller.signal.aborted) setFailure(errorMessage(error));
-      },
-    );
-    return () => controller.abort();
-  }, [client, slug, day, asked, service, preset.time]);
 
   const note = newBookingNote({ slots, time, party: size, limit });
 
@@ -143,6 +113,11 @@ function NewBookingForm({
     }
   }
 
+  // Any change clears a failed save or a missing name.
+  const edit = (set: (value: string) => void) => (value: string) => {
+    set(value);
+    setFailure(null);
+  };
   // A failed save or a missing name, else the live note.
   const shown = failure ?? note.text;
   const bad = failure !== null || !note.ok;
@@ -157,42 +132,10 @@ function NewBookingForm({
           autoComplete="off"
           maxLength={200}
           value={guest}
-          onChange={(event) => {
-            setGuest(event.target.value);
-            setFailure(null);
-          }}
+          onChange={(event) => edit(setGuest)(event.target.value)}
         />
       </label>
-      <div className="two">
-        <label className="field">
-          Guests
-          <input
-            type="number"
-            min={1}
-            value={party}
-            onChange={(event) => {
-              setParty(event.target.value);
-              setFailure(null);
-            }}
-          />
-        </label>
-        <label className="field">
-          Time
-          <select
-            value={time ?? ""}
-            onChange={(event) => {
-              setTime(event.target.value);
-              setFailure(null);
-            }}
-          >
-            {slots
-              ?.filter((slot) => !slot.blocked)
-              .map((slot) => (
-                <option key={slot.time}>{slot.time}</option>
-              ))}
-          </select>
-        </label>
-      </div>
+      <PartyAndTime party={party} time={time} slots={slots} onParty={edit(setParty)} onTime={edit(setTime)} />
       <p className={bad ? "note bad" : "note"} role="status">
         {shown}
       </p>
@@ -205,5 +148,83 @@ function NewBookingForm({
         </Pill>
       </div>
     </form>
+  );
+}
+
+type OfferedSlotsInput = {
+  slug: string;
+  day: string;
+  // The party the starts are asked for.
+  asked: number;
+  service: Service | null;
+  // The time the dialog was opened on, if any.
+  preset: string | undefined;
+  setFailure: (failure: string) => void;
+};
+
+type OfferedSlots = {
+  // The day's starts, blocked ones included, as the server words them; null while they load.
+  slots: DaySlot[] | null;
+  time: string | null;
+  setTime: (time: string) => void;
+};
+
+// The day's starts, and the time chosen among those offered: the one kept, else the preset,
+// else the service's first, else the day's first.
+function useOfferedSlots({ slug, day, asked, service, preset, setFailure }: OfferedSlotsInput): OfferedSlots {
+  const client = useClient();
+  const [slots, setSlots] = useState<DaySlot[] | null>(null);
+  const [time, setTime] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    client.slots(slug, { date: day, partySize: asked }, controller.signal).then(
+      (answer) => {
+        if (controller.signal.aborted) return;
+        const offered = answer.slots.filter((slot) => !slot.blocked);
+        setSlots(answer.slots);
+        setTime((current) => {
+          if (current && offered.some((slot) => slot.time === current)) return current;
+          const inService = offered.find(
+            (slot) => service !== null && service.start <= slot.time && slot.time < service.end,
+          );
+          const preferred = offered.find((slot) => slot.time === preset) ?? inService ?? offered[0];
+          return preferred?.time ?? null;
+        });
+      },
+      (error: unknown) => {
+        if (!controller.signal.aborted) setFailure(errorMessage(error));
+      },
+    );
+    return () => controller.abort();
+  }, [client, slug, day, asked, service, preset, setFailure]);
+  return { slots, time, setTime };
+}
+
+type PartyAndTimeProps = {
+  party: string;
+  time: string | null;
+  slots: DaySlot[] | null;
+  onParty: (party: string) => void;
+  onTime: (time: string) => void;
+};
+
+function PartyAndTime({ party, time, slots, onParty, onTime }: PartyAndTimeProps) {
+  return (
+    <div className="two">
+      <label className="field">
+        Guests
+        <input type="number" min={1} value={party} onChange={(event) => onParty(event.target.value)} />
+      </label>
+      <label className="field">
+        Time
+        <select value={time ?? ""} onChange={(event) => onTime(event.target.value)}>
+          {slots
+            ?.filter((slot) => !slot.blocked)
+            .map((slot) => (
+              <option key={slot.time}>{slot.time}</option>
+            ))}
+        </select>
+      </label>
+    </div>
   );
 }

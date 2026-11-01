@@ -3,10 +3,14 @@ import { RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import fixture from "../../../../tests/fixtures/demo/la-graine-verte-management.json" with { type: "json" };
 import { createMockManagementClient } from "../../mocks/managementClient.ts";
-import { routes } from "../../router.tsx";
+import { ManagePage } from "../ManagePage.tsx";
+import { routesWith } from "../../router.tsx";
 import type { ManagementFixture } from "../../types.ts";
 import { announceChange } from "../changes.ts";
 import { ClientContext } from "../data.ts";
+
+// The management site drawn at once: the app loads it on its first visit (router.tsx).
+const routes = routesWith(<ManagePage />);
 
 const SLUG = "la-graine-verte";
 
@@ -160,10 +164,11 @@ describe("Guests", () => {
   });
 });
 
-describe("Floor plan", () => {
-  const table = (label: string) => screen.getByRole("button", { name: new RegExp(`^Table ${label},`) });
-  const at = () => screen.findByRole("heading", { name: /^The room at/ });
+// The floor plan's table buttons, and its heading once the room is drawn.
+const table = (label: string) => screen.getByRole("button", { name: new RegExp(`^Table ${label},`) });
+const at = () => screen.findByRole("heading", { name: /^The room at/ });
 
+describe("Floor plan", () => {
   it("shows the room at the latest start of the service under way", async () => {
     open("floor");
     expect((await at()).textContent).toBe("The room at 19:30");
@@ -239,7 +244,9 @@ describe("Floor plan", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await screen.findByRole("button", { name: /^Table T\d+, Roth, 2 guests$/ })).toBeTruthy();
   });
+});
 
+describe("Floor plan, refusals and tables", () => {
   it("says when the time has passed", async () => {
     const { router } = open("floor");
     await at();

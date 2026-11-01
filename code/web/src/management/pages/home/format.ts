@@ -1,13 +1,14 @@
 // Home's wording (sesame-management.html#home), in English like the mockup. Days are the
 // merchant's local YYYY-MM-DD, worded by ../../dates.ts.
 
+import { plural } from "../../../cards/format.ts";
 import type { ActivityKind, ChannelCount, Service, Via } from "../../../types.ts";
 import { dayLong } from "../../dates.ts";
 
 /** 982 → "982", 1204 → "1,204" */
 export const count = (n: number) => n.toLocaleString("en-GB");
-export const guests = (n: number) => `${count(n)} ${n === 1 ? "guest" : "guests"}`;
-export const bookings = (n: number) => `${count(n)} ${n === 1 ? "booking" : "bookings"}`;
+export const guests = (n: number) => plural(n, "guest");
+export const bookings = (n: number) => plural(n, "booking");
 
 /** "Good morning" before noon, "Good afternoon" before 18:00, else "Good evening". */
 export function greeting(hour: number): string {

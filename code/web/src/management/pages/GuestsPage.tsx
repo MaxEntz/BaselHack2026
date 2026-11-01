@@ -67,38 +67,7 @@ export function GuestsPage({ slug, version }: { slug: string; version: number })
         )}
         {data &&
           (data.guests.length ? (
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Guest</th>
-                    <th>Next visit</th>
-                    <th>Party</th>
-                    <th>Bookings</th>
-                    <th>Booked by</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.guests.map((guest) => (
-                    <tr key={guest.reservation_id}>
-                      <td>
-                        <button type="button" onClick={() => void open(guest)}>
-                          {guest.guest_name}
-                        </button>
-                      </td>
-                      <td>
-                        {dayShort(guest.date)}, {guest.time}
-                      </td>
-                      <td>{guest.party_size}</td>
-                      <td>{guest.bookings}</td>
-                      <td>
-                        <Source via={guest.via} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <GuestsTable guests={data.guests} onOpen={(guest) => void open(guest)} />
           ) : (
             <p className="none">Nobody by that name.</p>
           ))}
@@ -114,5 +83,42 @@ export function GuestsPage({ slug, version }: { slug: string; version: number })
         onCancelled={() => setOpened(null)}
       />
     </>
+  );
+}
+
+function GuestsTable({ guests, onOpen }: { guests: readonly GuestRow[]; onOpen: (guest: GuestRow) => void }) {
+  return (
+    <div className="tbl-wrap">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Guest</th>
+            <th>Next visit</th>
+            <th>Party</th>
+            <th>Bookings</th>
+            <th>Booked by</th>
+          </tr>
+        </thead>
+        <tbody>
+          {guests.map((guest) => (
+            <tr key={guest.reservation_id}>
+              <td>
+                <button type="button" onClick={() => onOpen(guest)}>
+                  {guest.guest_name}
+                </button>
+              </td>
+              <td>
+                {dayShort(guest.date)}, {guest.time}
+              </td>
+              <td>{guest.party_size}</td>
+              <td>{guest.bookings}</td>
+              <td>
+                <Source via={guest.via} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

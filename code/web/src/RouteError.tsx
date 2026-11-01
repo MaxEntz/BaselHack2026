@@ -1,12 +1,18 @@
+import { useEffect } from "react";
 import "./studio/studio.css";
 
 export const ROUTE_ERROR = "This page stopped working.";
+export const ROUTE_ERROR_TITLE = "Sésame · This page stopped working";
 
 /**
  * What a page that fails to draw shows instead of React Router's developer screen (#220). React
  * and React Router log the error themselves.
  */
 export function RouteError() {
+  // The tab says it too, not the title of the page that failed.
+  useEffect(() => {
+    document.title = ROUTE_ERROR_TITLE;
+  }, []);
   return (
     <section className="studio" aria-label="Sésame">
       <header className="st-top">

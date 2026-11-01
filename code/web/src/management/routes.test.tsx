@@ -2,13 +2,17 @@ import { render, screen } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { DEMO_NOW, now, setClock } from "../clock.ts";
-import { ROUTE_ERROR } from "../RouteError.tsx";
-import { routes } from "../router.tsx";
+import { ROUTE_ERROR, ROUTE_ERROR_TITLE } from "../RouteError.tsx";
+import { ManagePage } from "./ManagePage.tsx";
+import { routes as appRoutes, routesWith } from "../router.tsx";
 import type { Dashboard } from "../types.ts";
 import type { ManagementClient } from "./client.ts";
 import { ClientContext } from "./data.ts";
 import { managementClient } from "./index.ts";
 import { PAGES, type PageId, nameFromSlug } from "./pages.ts";
+
+// The management site drawn at once: the app loads it on its first visit (router.tsx).
+const routes = routesWith(<ManagePage />);
 
 // jsdom has no fetch target nor EventSource: the pages read the demo fixture.
 vi.mock("./index.ts", async () => {
@@ -79,6 +83,7 @@ describe("management routes", () => {
     expect(screen.getByRole("link", { name: "Back to Studio" }).getAttribute("href")).toBe("/");
     expect(screen.getByRole("button", { name: "Reload the page" })).toBeTruthy();
     expect(screen.queryByText(/Unexpected Application Error/)).toBeNull();
+    expect(document.title).toBe(ROUTE_ERROR_TITLE);
     // React and React Router say why in the console: the page doesn't log it again.
     expect(logged.mock.calls.flat()).toContainEqual(expect.objectContaining({ message: "a page that can't draw" }));
     logged.mockRestore();
@@ -96,7 +101,7 @@ describe("management routes", () => {
     };
     render(
       <ClientContext.Provider value={broken}>
-        <RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/manage/la-graine-verte"] })} />
+        <RouterProvider router={createMemoryRouter(appRoutes, { initialEntries: ["/manage/la-graine-verte"] })} />
       </ClientContext.Provider>,
     );
 
@@ -106,6 +111,11 @@ describe("management routes", () => {
     expect(screen.queryByText(/Unexpected Application Error/)).toBeNull();
     expect(screen.getByRole("link", { name: "Back to Studio" })).toBeTruthy();
     logged.mockRestore();
+  });
+
+  it("loads the management site on its first visit, through the app's own routes (#220)", async () => {
+    render(<RouterProvider router={createMemoryRouter(appRoutes, { initialEntries: ["/manage/la-graine-verte/hours"] })} />);
+    expect(await screen.findByRole("heading", { level: 1, name: PAGES.hours })).toBeTruthy();
   });
 
   it("names the merchant from its slug until the API gives the name", () => {

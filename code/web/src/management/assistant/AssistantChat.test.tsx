@@ -6,11 +6,15 @@ import opening from "../../../../tests/fixtures/demo/la-graine-verte-assistant.j
 import fixtureJson from "../../../../tests/fixtures/demo/la-graine-verte-management.json" with { type: "json" };
 import type { ChatClient } from "../../chat/client.ts";
 import { createMockManagementClient } from "../../mocks/managementClient.ts";
-import { routes } from "../../router.tsx";
+import { ManagePage } from "../ManagePage.tsx";
+import { routesWith } from "../../router.tsx";
 import type { ChatEvent, ConversationItem, ManagementFixture } from "../../types.ts";
 import type { ManagementClient } from "../client.ts";
 import { ClientContext } from "../data.ts";
 import { ChatClientContext } from "./chatClient.ts";
+
+// The management site drawn at once: the app loads it on its first visit (router.tsx).
+const routes = routesWith(<ManagePage />);
 
 const fixture = fixtureJson as ManagementFixture;
 const SLUG = "la-graine-verte";
@@ -114,7 +118,9 @@ describe("assistant panel", () => {
     expect((box() as HTMLTextAreaElement).value).toBe("");
     await within(panel()).findByText("Noted.");
   });
+});
 
+describe("assistant panel, links and changes", () => {
   it("links a reply to its page", async () => {
     const user = userEvent.setup();
     const { client } = scripted(() => [

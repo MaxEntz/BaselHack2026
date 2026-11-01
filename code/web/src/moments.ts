@@ -1,5 +1,6 @@
 // The four moments of a restaurant's day (#154): which one a time falls in, and the time each one
 // is previewed at. Pure, for Home and for Studio.
+import { toHHMM, toMinutes } from "./management/services.ts";
 import type { Moment, Service } from "./types.ts";
 
 export const MOMENTS: readonly { id: Moment; label: string }[] = [
@@ -22,6 +23,15 @@ export const isMoment = (value: unknown): value is Moment =>
 /** What Studio's dock posts to the management site in its frame. */
 export type MomentMessage = { type: "sesame:moment"; moment: Moment | null };
 
+/**
+ * What the management site in Studio's frame posts once it listens for `MomentMessage`s. It loads
+ * on its first visit (#220), after the frame's `load`: a moment posted before would be lost.
+ */
+export const MOMENT_READY = { type: "sesame:moment-ready" } as const;
+
+export const isMomentReady = (data: unknown): boolean =>
+  typeof data === "object" && data !== null && "type" in data && data.type === MOMENT_READY.type;
+
 /** The moment a `MomentMessage` asks for, null for the clock's; undefined for any other message. */
 export function askedMoment(data: unknown): Moment | null | undefined {
   if (typeof data !== "object" || data === null) return undefined;
@@ -30,9 +40,6 @@ export function askedMoment(data: unknown): Moment | null | undefined {
   return moment === null || isMoment(moment) ? moment : undefined;
 }
 
-const toMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
-const toTime = (minutes: number) =>
-  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
 const inOrder = (services: readonly Service[]) =>
   services.toSorted((a, b) => toMinutes(a.start) - toMinutes(b.start));
@@ -65,11 +72,11 @@ export function previewTime(moment: Moment, services: readonly Service[]): strin
     case "morning":
       return "10:00";
     case "before":
-      return toTime(toMinutes(last.start) - BEFORE_WINDOW_MIN);
+      return toHHMM(toMinutes(last.start) - BEFORE_WINDOW_MIN);
     case "during":
-      return toTime(toMinutes(last.start) + DURING_PREVIEW_MIN);
+      return toHHMM(toMinutes(last.start) + DURING_PREVIEW_MIN);
     case "after":
-      return toTime(Math.min(toMinutes(last.end) + AFTER_PREVIEW_MIN, LAST_MINUTE));
+      return toHHMM(Math.min(toMinutes(last.end) + AFTER_PREVIEW_MIN, LAST_MINUTE));
   }
 }
 
