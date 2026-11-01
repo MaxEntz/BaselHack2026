@@ -14,9 +14,10 @@ ZINC = Path(__file__).parents[1] / "fixtures" / "le-petit-zinc.json"
 
 
 def merchant(*items: KnowledgeItem) -> AgentMerchant:
+    # Whatever knowledge the fixture has (#267): the test gives its own, or none.
+    knowledge = SiteKnowledge(items=items) if items else None
     profile = MerchantProfile.model_validate_json(ZINC.read_text())
-    if items:
-        profile = profile.model_copy(update={"knowledge": SiteKnowledge(items=items)})
+    profile = profile.model_copy(update={"knowledge": knowledge})
     return AgentMerchant(profile.slug, profile.name, "live", str(profile.fallback_url), profile)
 
 
