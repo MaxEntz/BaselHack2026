@@ -47,9 +47,14 @@ def _chromium_installed() -> bool:
         return Path(playwright.chromium.executable_path).exists()
 
 
+@pytest.hookimpl(tryfirst=True)  # before `-m` deselects anything
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Skip `llm` tests when no OpenAI key is available (env or .env), `browser` tests when
-    Playwright's Chromium is missing."""
+    """Mark `integration` every test that starts Postgres, through any fixture; skip `llm`
+    tests when no OpenAI key is available (env or .env), `browser` tests when Playwright's
+    Chromium is missing."""
+    for item in items:
+        if "postgres" in getattr(item, "fixturenames", ()):
+            item.add_marker(pytest.mark.integration)
     skips: dict[str, pytest.MarkDecorator] = {}
     if not _LlmEnv().openai_api_key:
         skips["llm"] = pytest.mark.skip(reason="OPENAI_API_KEY not set")

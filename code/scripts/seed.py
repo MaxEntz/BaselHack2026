@@ -121,10 +121,12 @@ async def seed_merchant(engine: AsyncEngine, profile: MerchantProfile) -> None:
 
 async def seed_bookings(engine: AsyncEngine, now: datetime) -> int:
     """Book TONIGHT at Le Petit Zinc, skipping the times already past; returns the failures."""
-    agent = service.PgAgentService(engine, tz=now.tzinfo)
+    if not isinstance(tz := now.tzinfo, ZoneInfo):
+        raise ValueError(f"now must be in a ZoneInfo (MERCHANT_TZ), not {tz!r}")
+    agent = service.PgAgentService(engine, tz=tz)
     failures = 0
     for booking in TONIGHT:
-        starts_at = datetime.combine(now.date(), time.fromisoformat(booking.time), now.tzinfo)
+        starts_at = datetime.combine(now.date(), time.fromisoformat(booking.time), tz)
         if starts_at <= now:
             print(f"{BOOKINGS_AT} {booking.time}: skipped, already past")
             continue

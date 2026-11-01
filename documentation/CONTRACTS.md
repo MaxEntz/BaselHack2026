@@ -393,7 +393,7 @@ uv sync --locked
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy --strict packages/core packages/agent packages/gateway packages/batp packages/merchant_node
+uv run mypy --strict packages/core packages/agent packages/gateway packages/batp packages/merchant_node packages/builder packages/merchant_platform
 npm --prefix web ci
 npm --prefix web run check:contracts
 ```

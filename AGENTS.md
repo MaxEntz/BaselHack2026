@@ -106,7 +106,7 @@ code/
 | Live events | Postgres **LISTEN/NOTIFY → SSE** | Redis pub/sub, WebSockets |
 | Front | **Vite + React + TypeScript** | Next.js |
 | Tests | **pytest**, **pytest-asyncio**, **testcontainers** (Postgres); web: Node's test runner, **Vitest** + Testing Library, **Playwright** (e2e, **axe-core**, screenshots in Playwright's image) | Mocked DB |
-| Lint/format | **ruff**, **mypy --strict** on `core`, `agent`, `gateway`, `batp`, `merchant_node` | |
+| Lint/format | **ruff**, **mypy --strict** on every package: `core`, `agent`, `gateway`, `batp`, `merchant_node`, `builder`, `merchant_platform` | |
 
 Reasons for each choice: [ADR-0002](documentation/adr/0002-python-mcp-v2-fastapi-postgres-react-stack.md), [ADR-0004](documentation/adr/0004-openai-for-backend-llm-calls.md), [ADR-0011](documentation/adr/0011-our-own-agent-protocol-matp-with-mcp-as-bridge.md).
 
