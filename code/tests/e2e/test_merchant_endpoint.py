@@ -258,13 +258,19 @@ async def test_the_slug_check_and_the_tool_share_one_budget(
     e2e_database_url: str, e2e_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Each registry read takes 60 % of a 500 ms budget: the endpoint's slug check, then the
-    # tool's own lookup. With one budget each, the call answered after 600 ms or more (#92).
+    # tool's own lookup. With one budget each, the lookup finished and the call answered after
+    # 600 ms or more, with the slots (#92). With one shared budget, the deadline cuts the lookup.
     budget_s = 0.5
     find_merchant = discovery.find_merchant
+    cut: list[str] = []
 
     async def slow_find(slug: str, *, engine: AsyncEngine) -> discovery.RegistryEntry | None:
-        await asyncio.sleep(budget_s * 0.6)
-        return await find_merchant(slug, engine=engine)
+        try:
+            await asyncio.sleep(budget_s * 0.6)
+            return await find_merchant(slug, engine=engine)
+        except asyncio.CancelledError:
+            cut.append(slug)
+            raise
 
     monkeypatch.setattr(discovery, "find_merchant", slow_find)
     settings = Settings(
@@ -280,5 +286,8 @@ async def test_the_slug_check_and_the_tool_share_one_budget(
             )
             elapsed = time.perf_counter() - started
 
-    assert answer["error"] == "agent_unavailable"
-    assert elapsed < budget_s + 0.15
+    assert answer.get("error") == "agent_unavailable", answer
+    # Only the tool's lookup was cut: the slug checks of the other requests had a budget each.
+    assert cut == [ZINC]
+    # A backstop only: the client and the gateway's thread share one GIL, so time is loose here.
+    assert elapsed < 2 * budget_s

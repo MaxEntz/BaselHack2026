@@ -103,18 +103,25 @@ def confirm_rule(chosen: str, calls: str) -> str:
 async def availability(
     agent: AgentClient, merchant: str, day: date, party_size: int, time: str | None
 ) -> GetAvailabilityOutput:
+    """`get_availability`: up to 3 slots, as the agent found them."""
     slots = await agent.get_availability(merchant, day, party_size, time)
     return GetAvailabilityOutput(slots=tuple(slots))
 
 
+# The write helpers take keywords only: their arguments are mostly strings, which a positional
+# call could swap without any type error.
+
+
 async def book(
     agent: AgentClient,
+    *,
     merchant: str,
     starts_at: datetime,
     party_size: int,
     guest_name: str,
     idempotency_key: str,
 ) -> ReservationOutput:
+    """`create_reservation`: the booking the agent made, or the one this key already made."""
     reservation = await agent.create_reservation(
         merchant, starts_at, party_size, guest_name, idempotency_key
     )
@@ -123,6 +130,7 @@ async def book(
 
 async def update(
     agent: AgentClient,
+    *,
     merchant: str,
     reservation_id: str,
     guest_name: str,
@@ -130,8 +138,7 @@ async def update(
     starts_at: datetime | None,
     party_size: int | None,
 ) -> ReservationOutput:
-    """The contract checks the change before the agent sees it: one that changes nothing is
-    `invalid_input`."""
+    """`update_reservation`, once the contract has checked the change (a no-op is invalid)."""
     change = UpdateReservationInput(
         merchant=merchant,
         reservation_id=reservation_id,
@@ -152,7 +159,8 @@ async def update(
 
 
 async def cancel(
-    agent: AgentClient, merchant: str, reservation_id: str, guest_name: str
+    agent: AgentClient, *, merchant: str, reservation_id: str, guest_name: str
 ) -> CancelOutput:
+    """`cancel_reservation`, as the guest named."""
     await agent.cancel_reservation(merchant, reservation_id, guest_name)
     return CancelOutput(status="cancelled")

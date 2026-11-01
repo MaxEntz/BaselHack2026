@@ -205,7 +205,12 @@ def create_merchant_server(
             "create_reservation",
             ctx,
             lambda slug: tooling.book(
-                agent, slug, starts_at, party_size, guest_name, idempotency_key
+                agent,
+                merchant=slug,
+                starts_at=starts_at,
+                party_size=party_size,
+                guest_name=guest_name,
+                idempotency_key=idempotency_key,
             ),
         )
 
@@ -224,7 +229,13 @@ def create_merchant_server(
             "update_reservation",
             ctx,
             lambda slug: tooling.update(
-                agent, slug, reservation_id, guest_name, idempotency_key, starts_at, party_size
+                agent,
+                merchant=slug,
+                reservation_id=reservation_id,
+                guest_name=guest_name,
+                idempotency_key=idempotency_key,
+                starts_at=starts_at,
+                party_size=party_size,
             ),
         )
 
@@ -235,7 +246,9 @@ def create_merchant_server(
         return await routed(
             "cancel_reservation",
             ctx,
-            lambda slug: tooling.cancel(agent, slug, reservation_id, guest_name),
+            lambda slug: tooling.cancel(
+                agent, merchant=slug, reservation_id=reservation_id, guest_name=guest_name
+            ),
         )
 
     return mcp

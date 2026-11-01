@@ -275,10 +275,19 @@ def test_bearer_token_also_guards_each_merchants_endpoint() -> None:
     assert response.status_code == 401
 
 
-def test_a_malformed_merchant_endpoint_is_not_found_without_the_database() -> None:
+@pytest.mark.parametrize(
+    "slug",
+    [
+        "Not_A_Slug",
+        # `core.models.Slug`, not a regex whose `$` also matches before a final newline (#220).
+        "le-petit-zinc%0A",
+    ],
+    ids=["not-a-slug", "trailing-newline"],
+)
+def test_a_malformed_merchant_endpoint_is_not_found_without_the_database(slug: str) -> None:
     settings = make_settings(database_url="postgresql+psycopg://u:p@127.0.0.1:1/db")
     with TestClient(create_app(settings), base_url=LOCAL_URL) as client:
-        response = client.post("/m/Not_A_Slug/mcp", json=INITIALIZE, headers=MCP_HEADERS)
+        response = client.post(f"/m/{slug}/mcp", json=INITIALIZE, headers=MCP_HEADERS)
 
     assert response.status_code == 404
 
@@ -288,15 +297,6 @@ def test_bearer_token_accepts_non_ascii() -> None:
     headers = {"Authorization": "Bearer pässword".encode()}
 
     assert post_initialize(LOCAL_URL, settings, headers).status_code == 200
-
-
-def test_a_slug_with_a_trailing_newline_is_not_found_without_the_database() -> None:
-    # `core.models.Slug`, not a regex whose `$` also matches before a final newline (#220).
-    settings = make_settings(database_url="postgresql+psycopg://u:p@127.0.0.1:1/db")
-    with TestClient(create_app(settings), base_url=LOCAL_URL) as client:
-        response = client.post("/m/le-petit-zinc%0A/mcp", json=INITIALIZE, headers=MCP_HEADERS)
-
-    assert response.status_code == 404
 
 
 async def test_the_app_releases_what_it_created_even_when_serving_fails(

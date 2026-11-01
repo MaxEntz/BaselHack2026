@@ -175,7 +175,13 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         idempotency_key: IdempotencyKey,
     ) -> ReservationOutput | ToolError:
         op = partial(
-            tooling.book, agent, merchant, starts_at, party_size, guest_name, idempotency_key
+            tooling.book,
+            agent,
+            merchant=merchant,
+            starts_at=starts_at,
+            party_size=party_size,
+            guest_name=guest_name,
+            idempotency_key=idempotency_key,
         )
         return await routed("create_reservation", merchant, op)
 
@@ -193,12 +199,12 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
         op = partial(
             tooling.update,
             agent,
-            merchant,
-            reservation_id,
-            guest_name,
-            idempotency_key,
-            starts_at,
-            party_size,
+            merchant=merchant,
+            reservation_id=reservation_id,
+            guest_name=guest_name,
+            idempotency_key=idempotency_key,
+            starts_at=starts_at,
+            party_size=party_size,
         )
         return await routed("update_reservation", merchant, op)
 
@@ -206,7 +212,13 @@ def create_server(agent: AgentClient, engine: AsyncEngine, settings: Settings) -
     async def cancel_reservation(
         merchant: Merchant, reservation_id: ReservationId, guest_name: GuestName
     ) -> CancelOutput | ToolError:
-        op = partial(tooling.cancel, agent, merchant, reservation_id, guest_name)
+        op = partial(
+            tooling.cancel,
+            agent,
+            merchant=merchant,
+            reservation_id=reservation_id,
+            guest_name=guest_name,
+        )
         return await routed("cancel_reservation", merchant, op)
 
     @mcp.tool(title="My bookings", description=GET_MY_RESERVATIONS, annotations=READ_ONLY)
