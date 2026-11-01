@@ -1,30 +1,40 @@
-import { useImperativeHandle, useLayoutEffect, useRef } from "react";
+import { useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent, Ref } from "react";
 import { composing } from "../ime.ts";
 import { FIRST_PLACEHOLDER, PLACEHOLDERS, type Phase } from "./phase.ts";
 
 const MAX_INPUT = 150;
 
-/** What the page around the composer may do with it. */
-export type ComposerHandle = { focus: (options?: FocusOptions) => void };
+/**
+ * What the page around the composer may do with it. The text is the composer's own state, so
+ * that a keystroke re-renders the composer only, never the feed or the canvas (#220).
+ */
+export type ComposerHandle = {
+  focus: (options?: FocusOptions) => void;
+  setText: (text: string) => void;
+};
 
 type ComposerProps = {
   ref?: Ref<ComposerHandle>;
-  input: string;
-  setInput: (text: string) => void;
   chips: readonly string[];
   // The conversation hasn't started.
   empty: boolean;
   phase: Phase;
   busy: boolean;
+  // The text typed; the page clears it through `setText` once it takes it.
   onSay: (text: string) => void;
   onChip: (chip: string) => void;
 };
 
 /** The chips and the message box: Enter sends, Shift+Enter and an IME's Enter don't. */
-export function Composer({ ref, input, setInput, chips, empty, phase, busy, onSay, onChip }: ComposerProps) {
+export function Composer({ ref, chips, empty, phase, busy, onSay, onChip }: ComposerProps) {
+  const [input, setInput] = useState("");
   const textarea = useRef<HTMLTextAreaElement>(null);
-  useImperativeHandle(ref, () => ({ focus: (options) => textarea.current?.focus(options) }), []);
+  useImperativeHandle(
+    ref,
+    () => ({ focus: (options) => textarea.current?.focus(options), setText: setInput }),
+    [],
+  );
 
   // The box grows with its text, up to MAX_INPUT pixels.
   useLayoutEffect(() => {

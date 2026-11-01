@@ -156,3 +156,35 @@ test("after a build the session claims its owner cookie", async () => {
     [["/api/session/claim", "POST", '{"session_id":"builder"}']],
   );
 });
+
+// External JSON (#220): a frame this build doesn't know is skipped, not handed to the reducer.
+test("a turn skips events and cards of a type it doesn't know", async () => {
+  const { error, events } = await turn(async (write) => {
+    write('event: zzz\r\ndata: {"type": "zzz"}\r\n\r\n');
+    write('event: card\r\ndata: {"type": "card", "kind": "zzz", "data": {}}\r\n\r\n');
+    write('event: text\r\ndata: {"type": "text", "delta": "Hi"}\r\n\r\n');
+    write(DONE);
+    await settle();
+  });
+
+  assert.equal(error, null);
+  assert.deepEqual(events, ["text", "done"]);
+});
+
+test("a session answer without a merchant's slug and name names no merchant", async () => {
+  const answers = [
+    '{"merchant": "le-petit-zinc"}',
+    '{"merchant": {"slug": "le-petit-zinc"}}',
+    '{"merchant": {"slug": 3, "name": "Le Petit Zinc"}}',
+    "[]",
+  ];
+  for (const answer of answers) {
+    globalThis.fetch = async () => new Response(answer);
+    assert.deepEqual(await httpClient.session("s"), { merchant: null }, answer);
+  }
+  globalThis.fetch = async () =>
+    new Response('{"merchant": {"slug": "le-petit-zinc", "name": "Le Petit Zinc"}}');
+  assert.deepEqual(await httpClient.session("s"), {
+    merchant: { slug: "le-petit-zinc", name: "Le Petit Zinc" },
+  });
+});

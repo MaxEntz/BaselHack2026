@@ -58,6 +58,8 @@ jobs:
           cache-dependency-path: code/web/package-lock.json
       - run: npm ci
       - run: npm run lint
+      # No unused file, export or dependency (#220).
+      - run: npm run knip
       - run: npm run check:contracts
       - run: npm test
       - run: npm run build

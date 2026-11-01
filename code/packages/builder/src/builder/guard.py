@@ -4,8 +4,9 @@ The crawler loads an address the merchant typed, so every request the browser ma
 after DNS resolution: pages, redirect hops, scripts, fetches, frames. Only public addresses
 pass, on ports 80 and 443, plus private ones and other ports with `CRAWL_ALLOW_PRIVATE=1` (the
 demo sites run locally). Link-local addresses, such as the cloud metadata endpoint
-169.254.169.254, never do. Known limit: Chromium resolves the host again after the check, so
-DNS rebinding is not covered.
+169.254.169.254, never do. WebRTC, whose sockets the routes never see, is kept out of the pages
+(#233). Known limit: Chromium resolves the host again after the check, so DNS rebinding is not
+covered.
 """
 
 import asyncio
@@ -32,6 +33,13 @@ MAX_REDIRECTS = 5
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 # Only the text is read: skip what is heavy and never holds any.
 SKIPPED_RESOURCES = frozenset({"image", "media", "font"})
+# WebRTC opens its own sockets (STUN, TURN, ICE), which `route_request` never sees, so a page's
+# script could reach a private address with it (#233). First layer: every frame loses the API
+# before its own scripts run (the spec exposes it to windows only, never to workers). Second
+# layer, should a frame escape the script: Chromium sends WebRTC no UDP. TURN over TCP still
+# goes out with the flag alone.
+NO_WEBRTC = "delete window.RTCPeerConnection; delete window.webkitRTCPeerConnection;"
+BROWSER_ARGS = ("--force-webrtc-ip-handling-policy=disable_non_proxied_udp",)
 
 
 class Unreadable(Exception):
@@ -100,7 +108,9 @@ def is_refused(address: str, *, allow_private: bool) -> bool:
 
 
 async def guard_context(context: BrowserContext, guard: HostGuard, timeout_s: float) -> None:
-    """Route every request of `context` through the guard, and refuse its WebSockets."""
+    """Route every request of `context` through the guard, refuse its WebSockets and remove
+    WebRTC from its pages. Its browser must be launched with `BROWSER_ARGS`."""
+    await context.add_init_script(NO_WEBRTC)
     await context.route("**/*", partial(route_request, guard, timeout_s * 1000))
     await context.route_web_socket("**/*", _refuse_web_socket)
 

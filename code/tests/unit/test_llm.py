@@ -223,6 +223,65 @@ async def test_gives_up_as_unavailable(responses: tuple[int, ...], attempts: int
     assert len(api.requests) == attempts
 
 
+CREATED = {"type": "response.created", "response": BASE}
+FAILED = {
+    "type": "response.failed",
+    "response": {**BASE, "status": "failed", "error": {"code": "server_error", "message": "nope"}},
+}
+INCOMPLETE = {
+    "type": "response.incomplete",
+    "response": {
+        **BASE,
+        "status": "incomplete",
+        "incomplete_details": {"reason": "max_output_tokens"},
+    },
+}
+# The SDK raises a plain RuntimeError on these: seen on a real extraction (#248).
+UNFINISHED = [
+    pytest.param([CREATED, FAILED], "server_error", id="failed"),
+    pytest.param([CREATED, INCOMPLETE], "max_output_tokens", id="incomplete"),
+    pytest.param([CREATED], "closed", id="closed"),
+]
+
+
+@pytest.mark.parametrize(("events", "ended"), UNFINISHED)
+async def test_a_stream_that_ends_unfinished_is_retried_and_says_why(
+    events: list[dict[str, Any]], ended: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    api = Api(lambda: stream(events), stream)
+
+    with caplog.at_level("WARNING", logger="core.llm"):
+        reply = await respond(api.client(), [])
+
+    assert len(api.requests) == 2
+    assert reply.text == "Hello there"
+    [record] = [r for r in caplog.records if r.getMessage() == "llm_stream_not_completed"]
+    assert record.ended == ended  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(("events", "ended"), UNFINISHED)
+async def test_a_stream_unfinished_twice_is_unavailable(
+    events: list[dict[str, Any]], ended: str
+) -> None:
+    api = Api(lambda: stream(events), lambda: stream(events))
+
+    with pytest.raises(LLMUnavailable):
+        await respond(api.client(), [])
+
+    assert len(api.requests) == 2
+
+
+async def test_a_stream_unfinished_after_some_text_is_not_retried() -> None:
+    # A second answer would repeat what the merchant already read.
+    started = [event for event in EVENTS if event["type"] != "response.completed"]
+    api = Api(lambda: stream(started))
+
+    with pytest.raises(LLMUnavailable):
+        await respond(api.client(), [])
+
+    assert len(api.requests) == 1
+
+
 def test_history_becomes_responses_api_items() -> None:
     history: list[Message] = [
         {"role": "user", "content": "Cancel R-404"},

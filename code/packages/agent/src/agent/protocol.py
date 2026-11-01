@@ -15,6 +15,8 @@ from core.models import (
     AgentStatus,
     BlockedTime,
     GuestRow,
+    KnowledgeChange,
+    KnowledgeNote,
     MerchantCancelOutcome,
     MerchantSettings,
     Policy,
@@ -100,6 +102,12 @@ class AgentService(Protocol):
     ) -> Policy: ...
 
     async def update_tables(self, slug: str, tables: Sequence[TableSpec]) -> list[TableSpec]: ...
+
+    async def update_knowledge(
+        self, slug: str, remove: Sequence[str], add: Sequence[KnowledgeNote]
+    ) -> KnowledgeChange:
+        """Refused with `InvalidInput` when the result wouldn't fit `SiteKnowledge`'s bounds."""
+        ...
 
     async def set_status(self, slug: str, status: AgentStatus) -> None:
         """Pause (`down`) or resume (`live`) the merchant's agent (#146)."""

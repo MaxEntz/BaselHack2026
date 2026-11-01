@@ -178,6 +178,11 @@ function handleResponse(status, body, booking) {
     show("info", `Réservation en ligne bientôt disponible — appelez-nous au ${PHONE}.`);
   } else if (status === 409) {
     show("error", "Ce créneau n'est plus disponible, essayez une autre heure.");
+  } else if (status === 429) {
+    show(
+      "error",
+      `Trop de demandes depuis votre connexion. Réessayez plus tard ou appelez-nous au ${PHONE}.`,
+    );
   } else if (status === 422 && body.error === "party_too_large") {
     const max = maxPartySize(body.message, booking.party_size);
     show(

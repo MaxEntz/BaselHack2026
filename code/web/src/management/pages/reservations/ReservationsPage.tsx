@@ -1,7 +1,7 @@
 import "./reservations.css";
 import { useCallback, useState } from "react";
 import { useSearchParams } from "react-router";
-import type { ManagedReservation, ReservationDay, Via } from "../../../types.ts";
+import type { ManagedReservation, ReservationDay, Service, Via } from "../../../types.ts";
 import { BlockDialog } from "../../BlockDialog.tsx";
 import { DayBar } from "../../DayBar.tsx";
 import { useClient, useLoad } from "../../data.ts";
@@ -66,28 +66,28 @@ export function ReservationsPage({ slug, version }: { slug: string; version: num
   );
 }
 
-function Day({ slug, version, today, clock }: Base & { slug: string; version: number }) {
-  const client = useClient();
+type ChosenService = { day: string; index: number } | null;
+
+// The service shown: the one chosen on this day, else the linked time's, else the default one.
+function shownService(data: ReservationDay, chosen: ChosenService, linked: string, isToday: boolean, clock: string): number {
+  if (chosen?.day === data.date) return chosen.index;
+  // A link to a booking, or to a new one at a time, shows that time's service.
+  const index = serviceOf(data.services, linked);
+  return index >= 0 ? index : defaultService(data.services, isToday, clock);
+}
+
+type Go = (changes: Record<string, string | null>) => void;
+
+// The URL's day, past the 7 shown or not, and a way to change it and the dialogs beside it.
+function useDayParams(today: string) {
   const [params, setParams] = useSearchParams();
   const days = Array.from({ length: DAYS_AHEAD }, (_, i) => addDays(today, i));
   const asked = params.get("date");
   const day = asked && days.includes(asked) ? asked : today;
   // A link to a day past the 7 shown (a booking weeks ahead) opens today, and says so.
   const elsewhere = asked && asked !== day && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : null;
-  const [chosenService, setChosenService] = useState<{ day: string; index: number } | null>(null);
-  const [who, setWho] = useState<Who>("");
-  const [moved, setMoved] = useState<string | null>(null);
-
-  const load = useCallback(
-    (signal: AbortSignal) => client.reservations(slug, day, signal),
-    [client, slug, day],
-  );
-  const { data, error } = useLoad(load, version);
-  const current = data?.date === day ? data : null;
-  const fresh = useFresh(current ? current.reservations.map((b) => b.id) : null, day);
-
   // Every dialog lives in the URL, beside the day.
-  const go = (changes: Record<string, string | null>) =>
+  const go: Go = (changes) =>
     setParams(
       (now) => {
         const next = new URLSearchParams(now);
@@ -99,6 +99,23 @@ function Day({ slug, version, today, clock }: Base & { slug: string; version: nu
       },
       { replace: true },
     );
+  return { params, days, day, elsewhere, go };
+}
+
+function Day({ slug, version, today, clock }: Base & { slug: string; version: number }) {
+  const client = useClient();
+  const { params, days, day, elsewhere, go } = useDayParams(today);
+  const [chosenService, setChosenService] = useState<ChosenService>(null);
+  const [who, setWho] = useState<Who>("");
+  const [moved, setMoved] = useState<string | null>(null);
+
+  const load = useCallback(
+    (signal: AbortSignal) => client.reservations(slug, day, signal),
+    [client, slug, day],
+  );
+  const { data, error } = useLoad(load, version);
+  const current = data?.date === day ? data : null;
+  const fresh = useFresh(current ? current.reservations.map((b) => b.id) : null, day);
   const closeAll = { booking: null, new: null, guests: null, block: null };
 
   if (error) {
@@ -116,14 +133,7 @@ function Day({ slug, version, today, clock }: Base & { slug: string; version: nu
   const opened = openId ? (data.reservations.find((b) => b.id === openId) ?? null) : null;
   const newAt = params.get("new");
   const services = data.services;
-  // A link to a booking, or to a new one at a time, shows that time's service.
-  const linked = serviceOf(services, opened?.time ?? newAt ?? "");
-  const service =
-    chosenService?.day === data.date
-      ? chosenService.index
-      : linked >= 0
-        ? linked
-        : defaultService(services, isToday, clock);
+  const service = shownService(data, chosenService, opened?.time ?? newAt ?? "", isToday, clock);
   const names = serviceNames(services);
   const showService = (time: string) => {
     const index = serviceOf(services, time);
@@ -163,6 +173,47 @@ function Day({ slug, version, today, clock }: Base & { slug: string; version: nu
         onBlock={() => go({ block: "1" })}
         onNew={() => go({ new: "", guests: null })}
       />
+      <DayDialogs
+        slug={slug}
+        data={data}
+        today={today}
+        clock={clock}
+        service={services[service] ?? null}
+        opened={opened}
+        newAt={newAt}
+        guests={params.get("guests")}
+        block={params.get("block") === "1"}
+        go={go}
+        onMoved={(booking) => {
+          setMoved(booking.id);
+          showService(booking.time);
+        }}
+        onAdded={(booking) => showService(booking.time)}
+      />
+    </>
+  );
+}
+
+type DayDialogsProps = Base & {
+  slug: string;
+  data: ReservationDay;
+  service: Service | null;
+  // The booking the URL opens, if it is on this day.
+  opened: ManagedReservation | null;
+  // `&new=`: the new booking's time, "" for the default one; null when it is closed.
+  newAt: string | null;
+  guests: string | null;
+  block: boolean;
+  go: Go;
+  onMoved: (booking: ManagedReservation) => void;
+  onAdded: (booking: ManagedReservation) => void;
+};
+
+// The booking, new-booking and block dialogs, each opened and closed through the URL.
+function DayDialogs({ slug, data, today, clock, service, opened, newAt, guests, block, go, onMoved, onAdded }: DayDialogsProps) {
+  const isToday = data.date === today;
+  return (
+    <>
       <BookingDialog
         slug={slug}
         booking={opened}
@@ -171,8 +222,7 @@ function Day({ slug, version, today, clock }: Base & { slug: string; version: nu
         ended={opened !== null && hasEnded(opened, today, clock, data.slot_length_min)}
         onClose={() => go({ booking: null })}
         onMoved={(booking) => {
-          setMoved(booking.id);
-          showService(booking.time);
+          onMoved(booking);
           go({ booking: null });
         }}
         onCancelled={() => go({ booking: null })}
@@ -181,40 +231,29 @@ function Day({ slug, version, today, clock }: Base & { slug: string; version: nu
         slug={slug}
         day={data.date}
         limit={data.largest_group}
-        service={services[service] ?? null}
-        preset={{ time: newAt || undefined, party: Number(params.get("guests")) || undefined }}
+        service={service}
+        preset={{ time: newAt || undefined, party: Number(guests) || undefined }}
         open={newAt !== null}
         onClose={() => go({ new: null, guests: null })}
         onAdded={(booking) => {
-          showService(booking.time);
+          onAdded(booking);
           go({ new: null, guests: null });
         }}
       />
       <BlockDialog
         slug={slug}
         date={data.date}
-        services={services}
+        services={data.services}
         blocked={data.blocked}
         after={isToday ? clock : null}
-        open={params.get("block") === "1"}
+        open={block}
         onClose={() => go({ block: null })}
       />
     </>
   );
 }
 
-function Bookings({
-  data,
-  today,
-  service,
-  name,
-  who,
-  onWho,
-  fresh,
-  onOpen,
-  onBlock,
-  onNew,
-}: {
+type BookingsProps = {
   data: ReservationDay;
   today: string;
   service: number;
@@ -225,14 +264,15 @@ function Bookings({
   onOpen: (id: string) => void;
   onBlock: () => void;
   onNew: () => void;
-}) {
+};
+
+function Bookings({ data, today, service, name, who, onWho, fresh, onOpen, onBlock, onNew }: BookingsProps) {
   const { services } = data;
   const range = services[service];
   const shown = data.reservations.filter((b) => booked(who, b.via)).toSorted(byTime);
   const here = range ? shown.filter((b) => range.start <= b.time && b.time < range.end) : [];
   // After a change of hours, a booking may fall in no service: it stays listed, last.
   const outside = shown.filter((b) => serviceOf(services, b.time) < 0);
-  const times = [...new Set(here.map((b) => b.time))];
   const hasWebsite = data.reservations.some((b) => b.via === "website");
 
   return (
@@ -253,41 +293,55 @@ function Bookings({
           </Pill>
         </div>
       </div>
-      {times.length || outside.length ? (
-        <div className="cols">
-          {times.map((time, index) => {
-            const at = here.filter((b) => b.time === time);
-            const blocked = data.blocked.includes(time);
-            return (
-              <div className={blocked ? "col blocked" : "col"} key={time}>
-                <div className="time-blob">
-                  <Blob index={index} />
-                  <b className="num">{time}</b>
-                </div>
-                <h3 className="num">{columnTitle(at, blocked)}</h3>
-                <div>
-                  {at.map((booking) => (
-                    <Row key={booking.id} booking={booking} fresh={fresh(booking.id)} onOpen={onOpen} />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          {outside.length > 0 && (
-            <div className="col out">
-              <h3>Outside your opening hours</h3>
-              <div>
-                {outside.map((booking) => (
-                  <Row key={booking.id} booking={booking} fresh={fresh(booking.id)} onOpen={onOpen} withTime />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <p className="none">No bookings for this service.</p>
-      )}
+      <Columns here={here} outside={outside} blocked={data.blocked} fresh={fresh} onOpen={onOpen} />
     </>
+  );
+}
+
+type ColumnsProps = {
+  // The service's bookings, by time.
+  here: readonly ManagedReservation[];
+  outside: readonly ManagedReservation[];
+  blocked: readonly string[];
+  fresh: (id: string) => boolean;
+  onOpen: (id: string) => void;
+};
+
+// A column per start time of the service, then the bookings outside the opening hours.
+function Columns({ here, outside, blocked, fresh, onOpen }: ColumnsProps) {
+  const times = [...new Set(here.map((b) => b.time))];
+  if (!times.length && !outside.length) return <p className="none">No bookings for this service.</p>;
+  return (
+    <div className="cols">
+      {times.map((time, index) => {
+        const at = here.filter((b) => b.time === time);
+        const isBlocked = blocked.includes(time);
+        return (
+          <div className={isBlocked ? "col blocked" : "col"} key={time}>
+            <div className="time-blob">
+              <Blob index={index} />
+              <b className="num">{time}</b>
+            </div>
+            <h3 className="num">{columnTitle(at, isBlocked)}</h3>
+            <div>
+              {at.map((booking) => (
+                <Row key={booking.id} booking={booking} fresh={fresh(booking.id)} onOpen={onOpen} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {outside.length > 0 && (
+        <div className="col out">
+          <h3>Outside your opening hours</h3>
+          <div>
+            {outside.map((booking) => (
+              <Row key={booking.id} booking={booking} fresh={fresh(booking.id)} onOpen={onOpen} withTime />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -63,6 +63,7 @@ web-dist: ## Build the merchant web app (web/dist) for make deploy
 
 deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web app to the team server
 	$(DEPLOY_SSH) $(DEPLOY_HOST) 'test -f $(PLATFORM_ENV) || { echo "$(PLATFORM_ENV) is missing on the server (documentation/runbooks/platform.md, step 2)" >&2; exit 1; }'
+	$(DEPLOY_SSH) $(DEPLOY_HOST) 'grep -qs "^OPENAI_API_KEY=." $(DEPLOY_DIR)/.env || { echo "OPENAI_API_KEY is missing from $(DEPLOY_DIR)/.env on the server (documentation/runbooks/connector.md, step 1)" >&2; exit 1; }'
 	rsync -rlptz --chmod=a+rX --delete --exclude .venv --exclude '.env*' --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache --exclude .hypothesis --exclude '.coverage*' --exclude htmlcov --exclude .cache --exclude web -e "$(DEPLOY_SSH)" ./ $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	$(DEPLOY_SSH) $(DEPLOY_HOST) 'mkdir -p $(DEPLOY_DIR)/web/dist'
 	rsync -rlptz --chmod=a+rX --delete -e "$(DEPLOY_SSH)" web/dist/ $(DEPLOY_HOST):$(DEPLOY_DIR)/web/dist/
@@ -73,6 +74,7 @@ deploy: web-dist ## Ship the gateway, the BATP node, the platform and the web ap
 		chown -R root:sesame ../platform && chmod 750 ../platform && chmod 640 ../platform/.env && \
 		/opt/uv/bin/uv sync --frozen --no-dev --package gateway --package merchant_node --package merchant-platform --package builder -q && \
 		( cd ../platform && ../code/.venv/bin/python ../code/scripts/platform_env.py ) && \
+		.venv/bin/python scripts/node_env.py && \
 		{ ( umask 077 && .venv/bin/python scripts/caddy_env.py > ../caddy.env.new ) || { rm -f ../caddy.env.new; exit 1; }; } && \
 		{ cmp -s deploy/Caddyfile /etc/caddy/Caddyfile || caddy validate --adapter caddyfile --config deploy/Caddyfile; } && \
 		caddy_changed=0 && \

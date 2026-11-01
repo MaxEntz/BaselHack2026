@@ -95,14 +95,14 @@ Table of Contents
      8.4.  AMEND . . . . . . . . . . . . . . . . . . . . . . . . . .  16
      8.5.  CANCEL  . . . . . . . . . . . . . . . . . . . . . . . . .  17
      8.6.  TALK  . . . . . . . . . . . . . . . . . . . . . . . . . .  17
-       8.6.1.  Proposals and confirmation  . . . . . . . . . . . . .  18
+       8.6.1.  Proposals and confirmation  . . . . . . . . . . . . .  19
        8.6.2.  Conversations . . . . . . . . . . . . . . . . . . . .  19
        8.6.3.  Status  . . . . . . . . . . . . . . . . . . . . . . .  20
      8.7.  RECALL  . . . . . . . . . . . . . . . . . . . . . . . . .  20
      8.8.  PING  . . . . . . . . . . . . . . . . . . . . . . . . . .  21
    9.  Status Codes  . . . . . . . . . . . . . . . . . . . . . . . .  21
    10. Events  . . . . . . . . . . . . . . . . . . . . . . . . . . .  22
-   11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  22
+   11. Versioning and Extensibility  . . . . . . . . . . . . . . . .  23
    12. Security Considerations . . . . . . . . . . . . . . . . . . .  23
    13. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  25
    14. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  26
@@ -116,26 +116,26 @@ Internet-Draft                    BATP                     November 2026
 
    15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  27
      15.1.  Normative References . . . . . . . . . . . . . . . . . .  27
-     15.2.  Informative References . . . . . . . . . . . . . . . . .  27
-   Appendix A.  The MCP Bridge . . . . . . . . . . . . . . . . . . .  28
+     15.2.  Informative References . . . . . . . . . . . . . . . . .  28
+   Appendix A.  The MCP Bridge . . . . . . . . . . . . . . . . . . .  29
    Appendix B.  Example Session  . . . . . . . . . . . . . . . . . .  30
-   Appendix C.  JSON Schemas . . . . . . . . . . . . . . . . . . . .  33
-     C.1.  DISCOVER params . . . . . . . . . . . . . . . . . . . . .  33
-     C.2.  DISCOVER result . . . . . . . . . . . . . . . . . . . . .  35
-     C.3.  AVAILABILITY params . . . . . . . . . . . . . . . . . . .  38
-     C.4.  AVAILABILITY result . . . . . . . . . . . . . . . . . . .  38
-     C.5.  BOOK params . . . . . . . . . . . . . . . . . . . . . . .  39
-     C.6.  BOOK, AMEND and CANCEL result . . . . . . . . . . . . . .  40
-     C.7.  AMEND params  . . . . . . . . . . . . . . . . . . . . . .  42
-     C.8.  CANCEL params . . . . . . . . . . . . . . . . . . . . . .  43
-     C.9.  TALK params . . . . . . . . . . . . . . . . . . . . . . .  44
-     C.10. TALK result . . . . . . . . . . . . . . . . . . . . . . .  45
-     C.11. RECALL params . . . . . . . . . . . . . . . . . . . . . .  49
-     C.12. RECALL result . . . . . . . . . . . . . . . . . . . . . .  50
-     C.13. PING params and result  . . . . . . . . . . . . . . . . .  52
-   Appendix D.  Changes from Version 0.1 . . . . . . . . . . . . . .  53
-   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  54
-   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  54
+   Appendix C.  JSON Schemas . . . . . . . . . . . . . . . . . . . .  34
+     C.1.  DISCOVER params . . . . . . . . . . . . . . . . . . . . .  34
+     C.2.  DISCOVER result . . . . . . . . . . . . . . . . . . . . .  36
+     C.3.  AVAILABILITY params . . . . . . . . . . . . . . . . . . .  39
+     C.4.  AVAILABILITY result . . . . . . . . . . . . . . . . . . .  39
+     C.5.  BOOK params . . . . . . . . . . . . . . . . . . . . . . .  40
+     C.6.  BOOK, AMEND and CANCEL result . . . . . . . . . . . . . .  41
+     C.7.  AMEND params  . . . . . . . . . . . . . . . . . . . . . .  43
+     C.8.  CANCEL params . . . . . . . . . . . . . . . . . . . . . .  44
+     C.9.  TALK params . . . . . . . . . . . . . . . . . . . . . . .  45
+     C.10. TALK result . . . . . . . . . . . . . . . . . . . . . . .  46
+     C.11. RECALL params . . . . . . . . . . . . . . . . . . . . . .  50
+     C.12. RECALL result . . . . . . . . . . . . . . . . . . . . . .  51
+     C.13. PING params and result  . . . . . . . . . . . . . . . . .  53
+   Appendix D.  Changes from Version 0.1 . . . . . . . . . . . . . .  54
+   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  55
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  55
 
 1.  Introduction
 
@@ -989,17 +989,17 @@ Internet-Draft                    BATP                     November 2026
 
    *  tools_called: the names of the tools the agent called while
       answering, in the order of the calls, without their arguments or
-      results.  Each name is 1 to 64 characters: a lowercase ASCII
-      letter, then lowercase ASCII letters, digits and "_".
+      results.  When a confirm carried out a proposal, it also names the
+      write the node's code ran (for example "create_reservation"),
+      although the model has no tool that writes (Section 8.6.1).  Each
+      name is 1 to 64 characters: a lowercase ASCII letter, then
+      lowercase ASCII letters, digits and "_".
 
    conversation and reply are always present.  A caller handles an
    absent pending, reservation or fallback_url as null, and an absent
    slots or tools_called as an empty array.
 
-8.6.1.  Proposals and confirmation
 
-   The merchant's agent has no tool that writes: a booking, a change or
-   a cancellation is first a proposal, returned in pending.
 
 
 
@@ -1009,6 +1009,11 @@ Internet-Draft                    BATP                     November 2026
 
 Internet-Draft                    BATP                     November 2026
 
+
+8.6.1.  Proposals and confirmation
+
+   The merchant's agent has no tool that writes: a booking, a change or
+   a cancellation is first a proposal, returned in pending.
 
    *  A node MUST NOT carry out a write proposed in a conversation until
       a later TALK of the same conversation names the proposal's id in
@@ -1049,11 +1054,6 @@ Internet-Draft                    BATP                     November 2026
       TALK whose conversation is unknown, has expired, or was created
       for another merchant or another agent.id, without saying which.
 
-   *  A conversation is not tied to a BATP session: a caller MAY
-      continue it in a later session under the same agent.id, for
-      example after a lost session.  A bridge carries the conversations
-      of all its users on one session, under one agent.id (Appendix A),
-      so only the unguessable identifier separates them.
 
 
 
@@ -1065,6 +1065,12 @@ Internet-Draft                    BATP                     November 2026
 
 Internet-Draft                    BATP                     November 2026
 
+
+   *  A conversation is not tied to a BATP session: a caller MAY
+      continue it in a later session under the same agent.id, for
+      example after a lost session.  A bridge carries the conversations
+      of all its users on one session, under one agent.id (Appendix A),
+      so only the unguessable identifier separates them.
 
    *  A node MAY expire a conversation, for example after a period
       without messages, or lose it when it restarts.  A caller that gets
@@ -1108,12 +1114,6 @@ Internet-Draft                    BATP                     November 2026
    every live merchant of the node, and notices, messages for the guest
    (for example, that a merchant cancelled a booking).  A node MUST
    return a notice in every RECALL for the guest during 24 hours after
-   the first RECALL that returned it, and MUST NOT return it after that.
-   An answer lost on its way to the caller therefore loses no notice if
-   the next RECALL comes within those 24 hours, and a caller MAY send a
-   RECALL again.  A caller SHOULD NOT show the guest a notice it already
-   showed them.
-
 
 
 
@@ -1121,6 +1121,12 @@ Internet-Draft                    BATP                     November 2026
 
 Internet-Draft                    BATP                     November 2026
 
+
+   the first RECALL that returned it, and MUST NOT return it after that.
+   An answer lost on its way to the caller therefore loses no notice if
+   the next RECALL comes within those 24 hours, and a caller MAY send a
+   RECALL again.  A caller SHOULD NOT show the guest a notice it already
+   showed them.
 
    Errors: 400, 503.
 
@@ -1164,12 +1170,6 @@ Internet-Draft                    BATP                     November 2026
     |        |                   | offers             |              |
     +--------+-------------------+--------------------+--------------+
     | 413    | party_too_large   | The party is above | yes          |
-    |        |                   | the merchant's     |              |
-    |        |                   | online limit, or   |              |
-    |        |                   | no table fits it   |              |
-    +--------+-------------------+--------------------+--------------+
-    | 426    | none              | Unsupported major  | no           |
-    |        |                   | version (in reject |              |
 
 
 
@@ -1178,6 +1178,12 @@ Internet-Draft                    BATP                     November 2026
 Internet-Draft                    BATP                     November 2026
 
 
+    |        |                   | the merchant's     |              |
+    |        |                   | online limit, or   |              |
+    |        |                   | no table fits it   |              |
+    +--------+-------------------+--------------------+--------------+
+    | 426    | none              | Unsupported major  | no           |
+    |        |                   | version (in reject |              |
     |        |                   | only)              |              |
     +--------+-------------------+--------------------+--------------+
     | 429    | too_many_requests | Too many requests  | no           |
@@ -1218,6 +1224,16 @@ Internet-Draft                    BATP                     November 2026
    returned by RECALL.  A caller of version 0.1 or 0.2 ignores them
    (Section 7.6).
 
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 22]
+
+Internet-Draft                    BATP                     November 2026
+
+
 11.  Versioning and Extensibility
 
    A version is written major.minor:
@@ -1226,13 +1242,6 @@ Internet-Draft                    BATP                     November 2026
 
    This document defines version 0.2.  Version 0.2 adds TALK to version
    0.1, and changes nothing that version 0.1 defined.
-
-
-
-                           Expires 5 May 2027                  [Page 22]
-
-Internet-Draft                    BATP                     November 2026
-
 
    In hello, the caller sends the highest version it speaks.  If the
    node speaks the same major version, it answers welcome with the
@@ -1270,15 +1279,6 @@ Internet-Draft                    BATP                     November 2026
       strings that a node can revoke individually.
 
    Transport:  Without TLS, anyone on the path reads guest names,
-      bookings and tokens, and can change them.  Section 4 therefore
-      requires TLS 1.3 off the loopback interface.  A node bound to the
-      loopback interface is reachable by every local process:
-      deployments on shared hosts SHOULD still require tokens.
-
-   Limits and denial of service:  The frame size limit, the limit on
-
-
-
 
 
 
@@ -1290,6 +1290,12 @@ Internet-Draft                    BATP                     November 2026
 Internet-Draft                    BATP                     November 2026
 
 
+      bookings and tokens, and can change them.  Section 4 therefore
+      requires TLS 1.3 off the loopback interface.  A node bound to the
+      loopback interface is reachable by every local process:
+      deployments on shared hosts SHOULD still require tokens.
+
+   Limits and denial of service:  The frame size limit, the limit on
       requests in flight and the idle timeout bound what one session
       costs a node.  A node SHOULD also limit sessions per peer and per
       agent.  A node MUST stop reading a frame at the size limit instead
@@ -1332,12 +1338,6 @@ Internet-Draft                    BATP                     November 2026
       the guest-side operations of its own merchant (checking
       availability, finding the guest's bookings at that merchant, and
       proposing a booking, a change or a cancellation), never merchant-
-      side operations such as listing a day's bookings or blocking a
-      slot.  The merchant MUST be bound by the node's code, from the
-      request's merchant, and MUST NOT be an argument of any tool the
-      model fills in, so that one merchant's agent cannot read or change
-      another merchant's data, whatever the model is told.
-
 
 
 
@@ -1345,6 +1345,12 @@ Internet-Draft                    BATP                     November 2026
 
 Internet-Draft                    BATP                     November 2026
 
+
+      side operations such as listing a day's bookings or blocking a
+      slot.  The merchant MUST be bound by the node's code, from the
+      request's merchant, and MUST NOT be an argument of any tool the
+      model fills in, so that one merchant's agent cannot read or change
+      another merchant's data, whatever the model is told.
 
    Website content:  The text crawled from the merchant's website MUST
       NOT enter the agent's prompt as such.  Only data validated against
@@ -1385,14 +1391,8 @@ Internet-Draft                    BATP                     November 2026
 13.  Privacy Considerations
 
    Guest names:  Guest names and party sizes are personal data.  A node
-      SHOULD NOT write guest names to logs at a level enabled in
-      production.  The reference implementation logs, for each request,
-      the agent id, intent, merchant, status and latency, and nothing
-      that names the guest.
 
-   Preferences:  DISCOVER filters can reveal diet or religion (vegan,
-      halal, kosher).  A node MUST NOT store them beyond the request or
-      link them to a guest.
+
 
 
 
@@ -1401,6 +1401,15 @@ Internet-Draft                    BATP                     November 2026
 
 Internet-Draft                    BATP                     November 2026
 
+
+      SHOULD NOT write guest names to logs at a level enabled in
+      production.  The reference implementation logs, for each request,
+      the agent id, intent, merchant, status and latency, and nothing
+      that names the guest.
+
+   Preferences:  DISCOVER filters can reveal diet or religion (vegan,
+      halal, kosher).  A node MUST NOT store them beyond the request or
+      link them to a guest.
 
    Conversations:  TALK messages and replies are free text, and may
       carry guest names, preferences such as diet or religion, and
@@ -1440,6 +1449,15 @@ Internet-Draft                    BATP                     November 2026
 
       *  Status: Provisional
 
+
+
+
+
+                           Expires 5 May 2027                  [Page 26]
+
+Internet-Draft                    BATP                     November 2026
+
+
       *  Applications/protocols that use this scheme name: the Broad
          Agent Transfer Protocol (this document)
 
@@ -1450,14 +1468,6 @@ Internet-Draft                    BATP                     November 2026
       *  References: this document
 
    URN namespace:  The urn:batp: identifiers used in examples are not a
-
-
-
-                           Expires 5 May 2027                  [Page 26]
-
-Internet-Draft                    BATP                     November 2026
-
-
       registered URN namespace ([RFC8141]).
 
 15.  References
@@ -1496,6 +1506,14 @@ Internet-Draft                    BATP                     November 2026
               DOI 10.17487/RFC8259, December 2017,
               <https://www.rfc-editor.org/rfc/rfc8259>.
 
+
+
+
+                           Expires 5 May 2027                  [Page 27]
+
+Internet-Draft                    BATP                     November 2026
+
+
    [RFC9293]  Eddy, W., Ed., "Transmission Control Protocol (TCP)",
               STD 7, RFC 9293, DOI 10.17487/RFC9293, August 2022,
               <https://www.rfc-editor.org/rfc/rfc9293>.
@@ -1505,14 +1523,6 @@ Internet-Draft                    BATP                     November 2026
               <https://www.rfc-editor.org/rfc/rfc9846>.
 
 15.2.  Informative References
-
-
-
-
-                           Expires 5 May 2027                  [Page 27]
-
-Internet-Draft                    BATP                     November 2026
-
 
    [BATP-SCHEMAS]
               Sésame (BaselHack 2026), "BATP JSON Schemas (generated
@@ -1550,6 +1560,16 @@ Internet-Draft                    BATP                     November 2026
               RFC 7595, DOI 10.17487/RFC7595, June 2015,
               <https://www.rfc-editor.org/rfc/rfc7595>.
 
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 28]
+
+Internet-Draft                    BATP                     November 2026
+
+
    [RFC8141]  Saint-Andre, P. and J. Klensin, "Uniform Resource Names
               (URNs)", RFC 8141, DOI 10.17487/RFC8141, April 2017,
               <https://www.rfc-editor.org/rfc/rfc8141>.
@@ -1560,15 +1580,6 @@ Appendix A.  The MCP Bridge
    node.  The reference bridge opens one session with agent.id
    urn:batp:agent:claude-gateway and agent.kind user-agent, and maps its
    tools to intents:
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 28]
-
-Internet-Draft                    BATP                     November 2026
-
 
    +=====================+==============+=============================+
    | MCP tool            | BATP intent  | Notes                       |
@@ -1602,6 +1613,19 @@ Internet-Draft                    BATP                     November 2026
    later version closes the direct intents to guests' agents in favor of
    TALK.
 
+
+
+
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 29]
+
+Internet-Draft                    BATP                     November 2026
+
+
    *  The tool descriptions tell the assistant to confirm with the guest
       before create_reservation, update_reservation and
       cancel_reservation, which is how the bridge meets the confirmation
@@ -1616,15 +1640,6 @@ Internet-Draft                    BATP                     November 2026
       so that the node's 503 and its fallback_url arrive before the
       bridge gives up.  A timeout, a lost session or a 503 becomes an
       agent_unavailable tool error with the merchant's fallback_url.
-
-
-
-
-
-                           Expires 5 May 2027                  [Page 29]
-
-Internet-Draft                    BATP                     November 2026
-
 
    *  The bridge carries the conversations of all its users on its one
       session, under one agent.id: only the conversation identifier,
@@ -1645,6 +1660,27 @@ Appendix B.  Example Session
    caller to the node, and lines starting with "N:" from the node to the
    caller.  Long frames are wrapped here for readability: on the wire,
    each is one line.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 30]
+
+Internet-Draft                    BATP                     November 2026
+
 
 C: {"type": "hello", "batp": "0.2",
     "agent": {"id": "urn:batp:agent:claude-gateway",
@@ -1675,17 +1711,32 @@ N: {"type": "response", "id": "r-2", "status": 200,
       {"starts_at": "2026-11-02T20:00:00+01:00", "table_label": "T5"},
       {"starts_at": "2026-11-02T20:30:00+01:00", "table_label": "T5"}]}}
 
-
-
-                           Expires 5 May 2027                  [Page 30]
-
-Internet-Draft                    BATP                     November 2026
-
-
       Figure 3: Opening the session, discovery and availability
 
    The caller then books, and checks a larger party while the booking is
    in flight: the second answer arrives first.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 31]
+
+Internet-Draft                    BATP                     November 2026
+
 
 C: {"type": "request", "id": "r-3", "intent": "BOOK",
     "merchant": "le-petit-zinc",
@@ -1733,7 +1784,12 @@ N: {"type": "response", "id": "r-5", "status": 200,
 
 
 
-                           Expires 5 May 2027                  [Page 31]
+
+
+
+
+
+                           Expires 5 May 2027                  [Page 32]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -1789,7 +1845,7 @@ N: {"type": "response", "id": "r-7", "status": 200,
 
 
 
-                           Expires 5 May 2027                  [Page 32]
+                           Expires 5 May 2027                  [Page 33]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -1808,7 +1864,7 @@ Internet-Draft                    BATP                     November 2026
          "starts_at": "2026-11-03T19:30:00+01:00", "party_size": 2,
          "table_label": "T2", "status": "confirmed",
          "guest_name": "Noah Weber", "via": "claude"},
-       "fallback_url": null, "tools_called": []}}
+       "fallback_url": null, "tools_called": ["create_reservation"]}}
 
                    Figure 6: Confirming the proposal
 
@@ -1845,7 +1901,7 @@ C.1.  DISCOVER params
 
 
 
-                           Expires 5 May 2027                  [Page 33]
+                           Expires 5 May 2027                  [Page 34]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -1901,7 +1957,7 @@ Internet-Draft                    BATP                     November 2026
 
 
 
-                           Expires 5 May 2027                  [Page 34]
+                           Expires 5 May 2027                  [Page 35]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -1957,7 +2013,7 @@ C.2.  DISCOVER result
 
 
 
-                           Expires 5 May 2027                  [Page 35]
+                           Expires 5 May 2027                  [Page 36]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2013,7 +2069,7 @@ Internet-Draft                    BATP                     November 2026
 
 
 
-                           Expires 5 May 2027                  [Page 36]
+                           Expires 5 May 2027                  [Page 37]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2069,7 +2125,7 @@ Internet-Draft                    BATP                     November 2026
 
 
 
-                           Expires 5 May 2027                  [Page 37]
+                           Expires 5 May 2027                  [Page 38]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2125,7 +2181,7 @@ C.4.  AVAILABILITY result
 
 
 
-                           Expires 5 May 2027                  [Page 38]
+                           Expires 5 May 2027                  [Page 39]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2181,7 +2237,7 @@ C.5.  BOOK params
 
 
 
-                           Expires 5 May 2027                  [Page 39]
+                           Expires 5 May 2027                  [Page 40]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2237,7 +2293,7 @@ C.6.  BOOK, AMEND and CANCEL result
 
 
 
-                           Expires 5 May 2027                  [Page 40]
+                           Expires 5 May 2027                  [Page 41]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2293,7 +2349,7 @@ Internet-Draft                    BATP                     November 2026
 
 
 
-                           Expires 5 May 2027                  [Page 41]
+                           Expires 5 May 2027                  [Page 42]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2349,7 +2405,7 @@ C.7.  AMEND params
 
 
 
-                           Expires 5 May 2027                  [Page 42]
+                           Expires 5 May 2027                  [Page 43]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2405,7 +2461,7 @@ C.8.  CANCEL params
 
 
 
-                           Expires 5 May 2027                  [Page 43]
+                           Expires 5 May 2027                  [Page 44]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2461,7 +2517,7 @@ C.9.  TALK params
 
 
 
-                           Expires 5 May 2027                  [Page 44]
+                           Expires 5 May 2027                  [Page 45]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2517,7 +2573,7 @@ C.10.  TALK result
 
 
 
-                           Expires 5 May 2027                  [Page 45]
+                           Expires 5 May 2027                  [Page 46]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2573,7 +2629,7 @@ Internet-Draft                    BATP                     November 2026
 
 
 
-                           Expires 5 May 2027                  [Page 46]
+                           Expires 5 May 2027                  [Page 47]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2629,7 +2685,7 @@ Internet-Draft                    BATP                     November 2026
 
 
 
-                           Expires 5 May 2027                  [Page 47]
+                           Expires 5 May 2027                  [Page 48]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2685,7 +2741,7 @@ Internet-Draft                    BATP                     November 2026
 
 
 
-                           Expires 5 May 2027                  [Page 48]
+                           Expires 5 May 2027                  [Page 49]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2741,7 +2797,7 @@ C.11.  RECALL params
 
 
 
-                           Expires 5 May 2027                  [Page 49]
+                           Expires 5 May 2027                  [Page 50]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2797,7 +2853,7 @@ C.12.  RECALL result
 
 
 
-                           Expires 5 May 2027                  [Page 50]
+                           Expires 5 May 2027                  [Page 51]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2853,7 +2909,7 @@ Internet-Draft                    BATP                     November 2026
 
 
 
-                           Expires 5 May 2027                  [Page 51]
+                           Expires 5 May 2027                  [Page 52]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2909,7 +2965,7 @@ C.13.  PING params and result
 
 
 
-                           Expires 5 May 2027                  [Page 52]
+                           Expires 5 May 2027                  [Page 53]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -2965,7 +3021,7 @@ Appendix D.  Changes from Version 0.1
 
 
 
-                           Expires 5 May 2027                  [Page 53]
+                           Expires 5 May 2027                  [Page 54]
 
 Internet-Draft                    BATP                     November 2026
 
@@ -3021,4 +3077,4 @@ Author's Address
 
 
 
-                           Expires 5 May 2027                  [Page 54]
+                           Expires 5 May 2027                  [Page 55]

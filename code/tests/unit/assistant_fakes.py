@@ -27,6 +27,8 @@ from core.models import (
     BuildFlag,
     ChatEvent,
     GeneratedTool,
+    KnowledgeChange,
+    KnowledgeNote,
     MerchantCancelOutcome,
     MerchantProfile,
     MerchantStatus,
@@ -127,6 +129,11 @@ class FakeAgent:
 
     async def unblock_slot(self, slug: str, starts_at: datetime) -> None:
         self.blocked.remove(starts_at)
+
+    async def update_knowledge(
+        self, slug: str, remove: Sequence[str], add: Sequence[KnowledgeNote]
+    ) -> KnowledgeChange:
+        return KnowledgeChange(removed=tuple(remove), added=tuple(note.text for note in add))
 
     async def update_policy(
         self,

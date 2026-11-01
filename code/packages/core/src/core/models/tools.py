@@ -17,6 +17,7 @@ from pydantic import (
 
 from core.models.base import (
     HHMM,
+    MAX_KNOWLEDGE_TEXT,
     BookingDay,
     BookingTime,
     DisplayFont,
@@ -24,6 +25,7 @@ from core.models.base import (
     FloorPlan,
     GuestText,
     Hex,
+    KnowledgeTopic,
     MerchantProfile,
     NonEmptyStr,
     PriceLevel,
@@ -288,6 +290,35 @@ class UpdateRulesInput(_Model):
     cancellation_policy: Annotated[str, StringConstraints(max_length=300)]
 
 
+class KnowledgeNote(_Model):
+    """One thing the owner tells the merchant's agent."""
+
+    topic: KnowledgeTopic
+    text: Annotated[NonEmptyStr, StringConstraints(max_length=MAX_KNOWLEDGE_TEXT)]
+
+
+class UpdateKnowledgeInput(_Model):
+    """`update_knowledge`: correct what the merchant's agent knows beyond booking (#248).
+    `remove` takes out every item holding these words, whole or in part; `add` gives the owner's
+    own. Three letters at least, so that a stray "e" can't empty it."""
+
+    remove: tuple[Annotated[NonEmptyStr, StringConstraints(min_length=3, max_length=200)], ...] = ()
+    add: tuple[KnowledgeNote, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_change(self) -> Self:
+        if not self.remove and not self.add:
+            raise ValueError("Say what to remove or what to add")
+        return self
+
+
+class KnowledgeChange(_Model):
+    """What `update_knowledge` did: the items' texts, for the merchant to read."""
+
+    removed: tuple[str, ...]
+    added: tuple[str, ...]
+
+
 class TryRequestInput(_Model):
     """`try_request`: what an agent asking for this party would get."""
 
@@ -332,16 +363,20 @@ class LinkPageInput(_Model):
     page: ManagePage
 
 
-FactKey = Literal[
-    "name",
-    "hours",
-    "tags",
-    "max_party_size",
-    "cancellation_policy",
-    "price_level",
-    "booking_page",
-    "look",
-]
+# A knowledge topic is one line of the card too (#248).
+FactKey = (
+    Literal[
+        "name",
+        "hours",
+        "tags",
+        "max_party_size",
+        "cancellation_policy",
+        "price_level",
+        "booking_page",
+        "look",
+    ]
+    | KnowledgeTopic
+)
 
 
 class FactBox(_Model):

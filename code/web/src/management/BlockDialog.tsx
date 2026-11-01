@@ -7,17 +7,7 @@ import { errorMessage } from "./problems.ts";
 import { serviceNames, startsOf } from "./services.ts";
 import { Dialog, Pill, useToast } from "./ui/index.ts";
 
-/** Sets one day's blocked times: a checkbox pill per start, grouped by service. */
-export function BlockDialog({
-  slug,
-  date,
-  services,
-  blocked,
-  after = null,
-  open,
-  onClose,
-  onSaved,
-}: {
+type BlockDialogProps = {
   slug: string;
   date: string;
   services: readonly Service[];
@@ -31,11 +21,13 @@ export function BlockDialog({
   // The server's answer, for a page that shows the blocked times. Without it, the page reads
   // them again through the live refresh, like after any change (#137).
   onSaved?: (blocked: BlockedTimes) => void;
-}) {
+};
+
+/** Sets one day's blocked times: a checkbox pill per start, grouped by service. */
+export function BlockDialog({ slug, date, services, blocked, after = null, open, onClose, onSaved }: BlockDialogProps) {
   const client = useClient();
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
-  const names = serviceNames(services);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,21 +68,7 @@ export function BlockDialog({
         <p>
           {dayLong(date)}. Agents stop offering these times, and the guests already booked keep their table.
         </p>
-        {services.map((service, index) => (
-          <fieldset key={service.start}>
-            <legend>{names[index]}</legend>
-            <div className="pick">
-              {startsOf(service)
-                .filter((time) => after === null || time > after)
-                .map((time) => (
-                  <label key={time}>
-                    <input type="checkbox" name="time" value={time} defaultChecked={blocked.includes(time)} />
-                    <span>{time}</span>
-                  </label>
-                ))}
-            </div>
-          </fieldset>
-        ))}
+        <Starts services={services} blocked={blocked} after={after} />
         {error && (
           <p className="note bad" role="alert">
             {error}
@@ -107,4 +85,26 @@ export function BlockDialog({
       </form>
     </Dialog>
   );
+}
+
+type StartsProps = { services: readonly Service[]; blocked: readonly string[]; after: string | null };
+
+// A checkbox per start still to come, a fieldset per service.
+function Starts({ services, blocked, after }: StartsProps) {
+  const names = serviceNames(services);
+  return services.map((service, index) => (
+    <fieldset key={service.start}>
+      <legend>{names[index]}</legend>
+      <div className="pick">
+        {startsOf(service)
+          .filter((time) => after === null || time > after)
+          .map((time) => (
+            <label key={time}>
+              <input type="checkbox" name="time" value={time} defaultChecked={blocked.includes(time)} />
+              <span>{time}</span>
+            </label>
+          ))}
+      </div>
+    </fieldset>
+  ));
 }
