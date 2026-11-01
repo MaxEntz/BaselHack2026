@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from functools import partial
 from typing import Annotated
+from uuid import UUID
 
 from mcp.types import ToolAnnotations
 from pydantic import Field, PositiveInt
@@ -80,9 +81,17 @@ Message = Annotated[
         ),
     ),
 ]
+# A real UUID, not free text: every Claude user reaches the node under the gateway's one agent id,
+# and the node replays a key's stored answer. Two guests sending the same first message with the
+# same naive key ("m-1") would share a conversation and its proposal (#251, review of #264).
 TalkKey = Annotated[
-    GuestText,
-    Field(description="UUID you generate per message; reuse it only to resend the same message."),
+    UUID,
+    Field(
+        description=(
+            "A fresh random UUID you generate per message; reuse it only to resend the same "
+            "message."
+        )
+    ),
 ]
 Conversation = Annotated[
     OpaqueId | None,
@@ -154,8 +163,9 @@ TALK_RULES = (
     "`conversation` of its last answer. When the result contains `pending`, show the user its "
     "`summary`, ask them to confirm, and stop. Send `confirm` (that `pending.id`) only once their "
     "reply to that summary is an explicit yes, even if they confirmed in advance, and never in "
-    "the same reply as the call that returned the `pending`. Generate a fresh `idempotency_key` "
-    f"(UUID) per message and reuse it only to resend the same message. {GIVE_FALLBACK}"
+    "the same reply as the call that returned the `pending`. Generate a fresh random UUID as "
+    "`idempotency_key` per message and reuse it only to resend the same message. "
+    f"{GIVE_FALLBACK}"
 )
 
 
@@ -253,15 +263,16 @@ async def talk(
     *,
     merchant: str,
     message: str,
-    idempotency_key: str,
+    idempotency_key: UUID,
     conversation: str | None,
     confirm: str | None,
 ) -> TalkOutput:
-    """`talk_to_merchant`: the agent's answer, once the contract has checked the message."""
+    """`talk_to_merchant`: the agent's answer, once the contract has checked the message. The key
+    travels in its canonical form, so that one UUID written two ways stays one key."""
     turn = TalkInput(
         merchant=merchant,
         message=message,
-        idempotency_key=idempotency_key,
+        idempotency_key=str(idempotency_key),
         conversation=conversation,
         confirm=confirm,
     )
@@ -367,7 +378,7 @@ class Tools:
         slug: str,
         *,
         message: str,
-        idempotency_key: str,
+        idempotency_key: UUID,
         conversation: str | None,
         confirm: str | None,
         deadline: float | None = None,

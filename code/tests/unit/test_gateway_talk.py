@@ -48,7 +48,8 @@ ANSWER = {
     "slots": [{"starts_at": "2026-11-01T20:00:00+01:00", "table_label": "T5"}],
     "tools_called": ["get_availability"],
 }
-QUESTION = {"message": "Table for 4 tonight around 8pm?", "idempotency_key": "m-1"}
+KEY = "0b6c3e1a-5f7d-4c2e-9a8b-1d2e3f405162"
+QUESTION = {"message": "Table for 4 tonight around 8pm?", "idempotency_key": KEY}
 
 
 def make_settings(**overrides: Any) -> Settings:
@@ -208,6 +209,24 @@ async def test_a_message_reaches_the_agent_and_its_answer_comes_back() -> None:
     assert turn == TalkInput(merchant=ZINC, conversation="c-1", **QUESTION)
 
 
+async def test_one_uuid_written_two_ways_reaches_the_node_as_one_key() -> None:
+    agent = FakeAgent()
+
+    await talk(shared(agent), merchant=ZINC, **{**QUESTION, "idempotency_key": KEY.upper()})
+    await talk(
+        shared(agent), merchant=ZINC, **{**QUESTION, "idempotency_key": KEY.replace("-", "")}
+    )
+
+    assert [turn.idempotency_key for turn in agent.turns] == [KEY, KEY]
+
+
+async def test_the_key_is_asked_for_as_a_uuid() -> None:
+    async with shared(FakeAgent()) as client:
+        (tool,) = [t for t in (await client.list_tools()).tools if t.name == "talk_to_merchant"]
+
+    assert tool.input_schema["properties"]["idempotency_key"]["format"] == "uuid"
+
+
 async def test_the_merchant_s_endpoint_takes_its_merchant_from_the_path_only() -> None:
     mcp = create_merchant_server(FakeAgent(), NO_ENGINE, make_settings())
     async with Client(mcp) as client:
@@ -258,11 +277,17 @@ async def test_an_unknown_merchant_never_reaches_the_agent() -> None:
 @pytest.mark.parametrize(
     "arguments",
     [
-        {"message": "   ", "idempotency_key": "m-1"},
-        {"message": "Yes", "idempotency_key": "m-1", "confirm": "p-1"},
-        {"message": "Yes", "idempotency_key": "m-1", "conversation": "c 1"},
+        {"message": "   ", "idempotency_key": KEY},
+        {"message": "Yes", "idempotency_key": KEY, "confirm": "p-1"},
+        {"message": "Yes", "idempotency_key": KEY, "conversation": "c 1"},
+        {"message": "Yes", "idempotency_key": "m-1"},
     ],
-    ids=["blank message", "confirm without its conversation", "conversation outside its shape"],
+    ids=[
+        "blank message",
+        "confirm without its conversation",
+        "conversation outside its shape",
+        "a key that isn't a UUID",
+    ],
 )
 async def test_a_message_outside_the_contract_is_invalid_input(arguments: dict[str, Any]) -> None:
     agent = FakeAgent()
