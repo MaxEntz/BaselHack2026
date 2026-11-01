@@ -4,13 +4,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from agent.guests import same_guest
-from agent.service import (
-    NOTICE_WINDOW,
-    AgentService,
-    PgAgentService,
-    candidate_tables,
-    check_start,
-)
+from agent.notices import NOTICE_WINDOW
+from agent.service import AgentService, PgAgentService
+from agent.writes import candidate_tables, check_start
 from core.availability import TableRow
 from core.db import make_engine
 from core.errors import SlotUnavailable

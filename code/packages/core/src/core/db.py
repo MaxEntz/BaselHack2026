@@ -7,7 +7,7 @@ only rewrites Core constructs: never write a merchant query with `text()`.
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import get_args
+from typing import Any, get_args
 
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import (
@@ -20,6 +20,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Row,
     Sequence,
     Table,
     Text,
@@ -36,6 +37,10 @@ from core.errors import InvalidInput
 from core.models import ActivityKind, ReservationStatus, Slug, Via
 
 MERCHANT = "merchant"
+
+# A result row of any shape, as the services pass them around (SQLAlchemy 2.1 rows are
+# variadic generics).
+AnyRow = Row[*tuple[Any, ...]]
 
 _SLUG = TypeAdapter(Slug)
 
@@ -83,7 +88,7 @@ def _one_of(name: str, values: tuple[str, ...]) -> CheckConstraint:
     return CheckConstraint(f"{name} IN ({allowed})")
 
 
-# public: managed by Alembic (migrations 0001-0006), declared here to query it.
+# public: managed by Alembic (migrations 0001-0008), declared here to query it.
 
 public_metadata = MetaData(schema="public")
 
@@ -257,6 +262,9 @@ reservations_t = Table(
         where="status = 'confirmed'",
     ),
 )
+
+# A booking's start, the lower bound of `during`, as every query selects, filters and sorts it.
+reservation_start = func.lower(reservations_t.c.during)
 
 # Live events: every write on a merchant's reservations notifies the `reservations` channel
 # (function from migration 0001). `%(fullname)s` goes through the schema translation.

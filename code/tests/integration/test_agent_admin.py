@@ -11,6 +11,7 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from agent import service as agent_service
 from agent.service import PgAgentService
 from core.db import guest_notices_t, merchant_conn, merchants_t, policy_t, tables_t
 from core.db import reservations_t as reservations
@@ -509,19 +510,19 @@ async def test_a_booking_racing_a_floor_plan_change_takes_a_table_that_still_fit
         tables=[{"label": "T1", "seats": 4}, {"label": "T2", "seats": 4}], seats=8
     )
     other = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
-    original_load = PgAgentService._load
+    original_load = agent_service.load_merchant
     raced: list[bool] = []
 
     async def load_then_change_the_plan(
-        self: PgAgentService, conn: AsyncConnection, merchant_slug: str, **options: Any
+        conn: AsyncConnection, merchant_slug: str, **options: Any
     ) -> Any:
-        merchant = await original_load(self, conn, merchant_slug, **options)
+        merchant = await original_load(conn, merchant_slug, **options)
         if not raced:  # once: the floor plan changes right after the booking read it
             raced.append(True)
             await other.update_tables(slug, new_plan)
         return merchant
 
-    monkeypatch.setattr(PgAgentService, "_load", load_then_change_the_plan)
+    monkeypatch.setattr(agent_service, "load_merchant", load_then_change_the_plan)
 
     booking = await book(service, slug, "19:00", party_size=4)
 

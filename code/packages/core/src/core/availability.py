@@ -16,6 +16,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from core.models import MIN_SERVICE_MINUTES, Service
+from core.time_of_day import from_minutes, to_minutes
 
 STEP_MIN = 30
 # Same rule as service validation: the shortest valid service has exactly one start.
@@ -38,14 +39,9 @@ class TableRow:
     seats: int
 
 
-def _minutes(hhmm: str) -> int:
-    hours, minutes = hhmm.split(":")
-    return int(hours) * 60 + int(minutes)
-
-
 def _local(day: date, minute: int, tz: ZoneInfo) -> datetime | None:
     """`day` at `minute` past midnight in `tz`, or None when a clock change skips that time."""
-    wall = datetime.combine(day, time(minute // 60, minute % 60), tzinfo=tz)
+    wall = datetime.combine(day, from_minutes(minute), tzinfo=tz)
     # A skipped time (02:30 when summer time starts) does not survive a round trip.
     if wall.astimezone(UTC).astimezone(tz).replace(tzinfo=None) != wall.replace(tzinfo=None):
         return None
@@ -62,8 +58,8 @@ def bookable_starts(
     """Start times on `day`: every `step_min` from each service's start to its last seating."""
     starts: set[datetime] = set()
     for service in services:
-        last = _minutes(service.end) - last_seating_offset_min
-        for minute in range(_minutes(service.start), last + 1, step_min):
+        last = to_minutes(service.end) - last_seating_offset_min
+        for minute in range(to_minutes(service.start), last + 1, step_min):
             start = _local(day, minute, tz)
             if start is not None:
                 starts.add(start)

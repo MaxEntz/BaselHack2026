@@ -283,7 +283,13 @@ async def provision(
 async def set_status(
     slug: str, status: SwitchableStatus, *, engine: AsyncEngine | None = None
 ) -> None:
-    """Switch a provisioned merchant on (`live`) or off (`down`: the demo's outage switch)."""
+    """Switch a provisioned merchant on (`live`) or off (`down`: the demo's outage switch).
+
+    For scripts and tests (`make outage`, `make restore`, the seed): any provisioned merchant,
+    `building` included, and no activity line. The merchant's own pause is
+    `agent.admin.pause_or_resume` (`AgentService.set_status`): only a published agent, recorded
+    on Home.
+    """
     if status not in get_args(SwitchableStatus):
         raise InvalidInput(f"Status must be one of {get_args(SwitchableStatus)}, got {status!r}")
     async with _engine(engine) as db, db.begin() as conn:

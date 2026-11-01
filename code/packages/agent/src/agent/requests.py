@@ -6,11 +6,25 @@ come from our node, but a row it can't word still gets a plain title.
 """
 
 import json
+from dataclasses import dataclass
 from datetime import date, datetime, tzinfo
 from typing import Any
 
 from agent.words import short_day
 from core.errors import STARTED
+
+
+@dataclass(frozen=True)
+class _Request:
+    """What one request's frames say, read leniently: what they don't say is None or empty."""
+
+    agent: str
+    params: dict[str, Any]
+    answer: dict[str, Any]
+    booking: dict[str, Any]
+    guest: str
+    party: int | None
+    starts: datetime | None
 
 
 def describe(
@@ -24,30 +38,56 @@ def describe(
     tz: tzinfo,
 ) -> tuple[str, str]:
     """`(title, text)` for one answered request. `max_party_size` is the merchant's limit now."""
+    read = _read(agent, request, response, tz)
+    worded = (
+        _answered(read, intent)
+        if 200 <= status < 300
+        else _refused(read, intent, status, max_party_size)
+    )
+    return worded or (f"{agent}: {intent.lower()}, answered {status}", "")
+
+
+def _read(agent: str, request: str, response: str, tz: tzinfo) -> _Request:
     params = _object(_object(_load(request)).get("params"))
     answer = _object(_load(response))
     booking = _object(_object(answer.get("result")).get("reservation"))
-    guest = _text(booking.get("guest_name")) or _text(params.get("guest_name")) or "A guest"
-    party = _int(booking.get("party_size")) or _int(params.get("party_size"))
-    starts = _instant(booking.get("starts_at"), tz) or _instant(params.get("starts_at"), tz)
+    return _Request(
+        agent=agent,
+        params=params,
+        answer=answer,
+        booking=booking,
+        guest=_text(booking.get("guest_name")) or _text(params.get("guest_name")) or "A guest",
+        party=_int(booking.get("party_size")) or _int(params.get("party_size")),
+        starts=_instant(booking.get("starts_at"), tz) or _instant(params.get("starts_at"), tz),
+    )
 
-    if 200 <= status < 300:
-        match intent:
-            case "AVAILABILITY":
-                day = _day(params.get("date"))
-                time = _text(params.get("time"))
-                what = time or "free times"
-                title = f"{agent} checked {what}" + (f" for {_guests(party)}" if party else "")
-                text = f"{short_day(day)}. " if day else ""
-                return title, text + "Your agent offered the closest free times."
-            case "BOOK":
-                return f"{guest} booked through {agent}", _booking(starts, party, booking)
-            case "AMEND":
-                return f"{guest} changed their booking through {agent}", _booking(
-                    starts, party, booking
-                )
-            case "CANCEL":
-                return f"{guest} cancelled through {agent}", _booking(starts, party, {})
+
+def _answered(read: _Request, intent: str) -> tuple[str, str] | None:
+    """A request the merchant's agent served; None for an intent it doesn't word."""
+    agent, guest, party = read.agent, read.guest, read.party
+    match intent:
+        case "AVAILABILITY":
+            day = _day(read.params.get("date"))
+            what = _text(read.params.get("time")) or "free times"
+            title = f"{agent} checked {what}" + (f" for {_guests(party)}" if party else "")
+            text = f"{short_day(day)}. " if day else ""
+            return title, text + "Your agent offered the closest free times."
+        case "BOOK":
+            return f"{guest} booked through {agent}", _booking(read.starts, party, read.booking)
+        case "AMEND":
+            return f"{guest} changed their booking through {agent}", _booking(
+                read.starts, party, read.booking
+            )
+        case "CANCEL":
+            return f"{guest} cancelled through {agent}", _booking(read.starts, party, {})
+    return None
+
+
+def _refused(
+    read: _Request, intent: str, status: int, max_party_size: int
+) -> tuple[str, str] | None:
+    """A request the merchant's agent refused; None for a status it doesn't word."""
+    agent, party = read.agent, read.party
     match status:
         case 413 if party:
             if party > max_party_size:
@@ -58,29 +98,10 @@ def describe(
                 f"A group of {party} was sent to your booking page",
                 f"{limit}, so the guest got your link instead.",
             )
-        case 409 if intent == "CANCEL":
-            return (
-                f"{guest} tried to cancel a booking that had started",
-                "Bookings can only be changed before they start.",
-            )
-        case 409 if intent == "AMEND" and _started(answer):
-            return (
-                f"{guest} tried to change a booking that had started",
-                "Bookings can only be changed before they start.",
-            )
-        case 409 if intent == "AMEND" and params.get("starts_at") is None:
-            # Same time, more guests: no table was free for them then.
-            return (
-                f"{guest} asked for more seats than were free",
-                "Their booking stays as it was.",
-            )
         case 409:
-            return (
-                f"{guest} asked for a time that had just gone",
-                f"{agent} offered them another one.",
-            )
+            return _conflict(read, intent)
         case 404:
-            reference = _text(params.get("reservation_id"))
+            reference = _text(read.params.get("reservation_id"))
             known = f"Reference {reference}." if reference else "Nothing was changed."
             return f"{agent} asked about a booking you don't have", known
         case 503:
@@ -90,7 +111,26 @@ def describe(
             )
         case 400:
             return f"{agent} sent a request your agent couldn't read", "Nothing was changed."
-    return f"{agent}: {intent.lower()}, answered {status}", ""
+    return None
+
+
+def _conflict(read: _Request, intent: str) -> tuple[str, str]:
+    """A `409`: a booking that had started, no seats for more guests, or a time just gone."""
+    guest = read.guest
+    if intent == "CANCEL":
+        return (
+            f"{guest} tried to cancel a booking that had started",
+            "Bookings can only be changed before they start.",
+        )
+    if intent == "AMEND" and _started(read.answer):
+        return (
+            f"{guest} tried to change a booking that had started",
+            "Bookings can only be changed before they start.",
+        )
+    if intent == "AMEND" and read.params.get("starts_at") is None:
+        # Same time, more guests: no table was free for them then.
+        return f"{guest} asked for more seats than were free", "Their booking stays as it was."
+    return f"{guest} asked for a time that had just gone", f"{read.agent} offered them another one."
 
 
 def _booking(starts: datetime | None, party: int | None, booking: dict[str, Any]) -> str:

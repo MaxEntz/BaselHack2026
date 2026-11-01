@@ -12,8 +12,9 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.guests import same_guest
+from agent.notices import NOTICE_WINDOW
 from agent.provisioning import set_status
-from agent.service import NOTICE_WINDOW, PgAgentService
+from agent.service import PgAgentService
 from core.db import (
     blocked_slots_t,
     guest_notices_t,
