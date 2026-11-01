@@ -7,17 +7,13 @@ in the transaction of the change; never pushed to Claude.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Row, func, insert, or_, select, update
+from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from agent.guests import same_guest
-from core.db import guest_notices_t, merchants_t
-
-# Any row shape (SQLAlchemy 2.1 rows are variadic generics).
-_Row = Row[*tuple[Any, ...]]
+from core.db import AnyRow, guest_notices_t, merchants_t
 
 # A notice comes back on every lookup for this long after the first one that returned it, so
 # that an answer lost on its way to the guest doesn't lose the notice (#91).
@@ -25,7 +21,7 @@ NOTICE_WINDOW = timedelta(hours=24)
 
 
 async def notify_cancellation(
-    conn: AsyncConnection, slug: str, booking: _Row, tz: ZoneInfo
+    conn: AsyncConnection, slug: str, booking: AnyRow, tz: ZoneInfo
 ) -> None:
     """The merchant cancelled the guest's `booking` (a `reservations` row)."""
     merchant = await _merchant(conn, slug)
@@ -90,7 +86,7 @@ async def returned_to(conn: AsyncConnection, guest_name: str, now: datetime) -> 
     return [row.message for row in mine]
 
 
-async def _merchant(conn: AsyncConnection, slug: str) -> _Row:
+async def _merchant(conn: AsyncConnection, slug: str) -> AnyRow:
     return (
         await conn.execute(
             select(merchants_t.c.name, merchants_t.c.website).where(merchants_t.c.slug == slug)

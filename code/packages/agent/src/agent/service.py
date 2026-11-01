@@ -10,10 +10,10 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import Any, Literal, NoReturn, Self, overload
+from typing import Literal, NoReturn, Self, overload
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Row, insert, select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -36,6 +36,7 @@ from agent.writes import (
 from core.availability import BusyInterval, find_slots
 from core.config import get_settings
 from core.db import (
+    AnyRow,
     blocked_slots_t,
     merchant_conn,
     merchants_t,
@@ -68,8 +69,6 @@ from core.models import (
 log = logging.getLogger(__name__)
 
 Clock = Callable[[], datetime]
-# Any row shape: a reservation joined with its table label.
-_Row = Row[*tuple[Any, ...]]
 
 _RESERVATION_COLUMNS = (
     reservations_t.c.id,
@@ -97,7 +96,7 @@ class _Booking:
     via: Via
 
     @classmethod
-    def of(cls, row: _Row) -> Self:
+    def of(cls, row: AnyRow) -> Self:
         """From a reservation joined with its table label (`_RESERVATION_COLUMNS`)."""
         return cls(
             id=row.id,
@@ -535,7 +534,7 @@ class PgAgentService:
         if (utc(after.starts_at), after.party_size) != (utc(before.starts_at), before.party_size):
             await self._record(conn, slug, "moved", GUEST_SOURCE, after)
 
-    async def _by_key(self, conn: AsyncConnection, key: str) -> _Row | None:
+    async def _by_key(self, conn: AsyncConnection, key: str) -> AnyRow | None:
         return (
             await conn.execute(
                 select(*_RESERVATION_COLUMNS)
@@ -546,7 +545,7 @@ class PgAgentService:
 
     async def _own_booking(
         self, conn: AsyncConnection, reservation_id: str, guest_name: str
-    ) -> _Row:
+    ) -> AnyRow:
         """The booking, locked, if it exists under that name; `NotFound` otherwise.
 
         A wrong name looks exactly like a missing booking: it does not reveal that it exists.
@@ -564,14 +563,14 @@ class PgAgentService:
         return row
 
     def _replayed(
-        self, slug: str, row: _Row, starts_at: datetime, party_size: int, guest_name: str
+        self, slug: str, row: AnyRow, starts_at: datetime, party_size: int, guest_name: str
     ) -> Reservation:
         same = (utc(row.during.lower), row.party_size) == (utc(starts_at), party_size)
         if not same or not same_guest(guest_name, row.guest_name):
             raise InvalidInput("idempotency_key reused with different parameters")
         return self._from_row(slug, row)
 
-    def _from_row(self, slug: str, row: _Row) -> Reservation:
+    def _from_row(self, slug: str, row: AnyRow) -> Reservation:
         return self._reservation(slug, _Booking.of(row))
 
     def _reservation(self, slug: str, booking: _Booking) -> Reservation:

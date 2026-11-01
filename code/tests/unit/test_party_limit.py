@@ -2,9 +2,8 @@
 
 import pytest
 
-from agent.admin import check_party_limit
 from core.errors import FormProblem, InvalidInput
-from core.forms import MAX_SEATS, party_limit_problem
+from core.forms import MAX_SEATS, check_party_limit, party_limit_problem
 
 
 @pytest.mark.parametrize("limit", [1, 6, MAX_SEATS])

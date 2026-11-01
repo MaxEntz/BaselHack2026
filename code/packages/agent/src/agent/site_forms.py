@@ -12,17 +12,18 @@ from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Row, delete, select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from agent import activity
-from agent.admin import check_party_limit, update_profile
+from agent.admin import update_profile
 from agent.provisioning import described_tools, one_line
 from agent.times import day_bounds, hhmm
 from core.availability import bookable_starts
-from core.db import blocked_slots_t, merchants_t, policy_t, tables_t
+from core.db import AnyRow, blocked_slots_t, merchants_t, policy_t, tables_t
 from core.errors import FormProblem, InvalidInput, NotFound
+from core.forms import check_party_limit
 from core.models import (
     MAX_POLICY_TEXT,
     BlockedTime,
@@ -263,7 +264,7 @@ def _same_site(url: str, website: str) -> bool:
     return bool(site(url)[0]) and site(url) == site(website)
 
 
-async def _registry(conn: AsyncConnection, slug: str, *, lock: bool = False) -> Row[Any]:
+async def _registry(conn: AsyncConnection, slug: str, *, lock: bool = False) -> AnyRow:
     """The merchant's registry row; `lock` serializes the forms that save it."""
     query = select(merchants_t).where(merchants_t.c.slug == slug)
     if lock:

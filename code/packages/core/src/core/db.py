@@ -7,7 +7,7 @@ only rewrites Core constructs: never write a merchant query with `text()`.
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import get_args
+from typing import Any, get_args
 
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import (
@@ -20,6 +20,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Row,
     Sequence,
     Table,
     Text,
@@ -36,6 +37,10 @@ from core.errors import InvalidInput
 from core.models import ActivityKind, ReservationStatus, Slug, Via
 
 MERCHANT = "merchant"
+
+# A result row of any shape, as the services pass them around (SQLAlchemy 2.1 rows are
+# variadic generics).
+AnyRow = Row[*tuple[Any, ...]]
 
 _SLUG = TypeAdapter(Slug)
 

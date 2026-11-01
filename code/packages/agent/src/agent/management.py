@@ -10,10 +10,9 @@ so it sends no live event: the page that made it already shows it.
 import logging
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
-from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import ColumnElement, Row, select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.dialects.postgresql import Range
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -32,6 +31,7 @@ from agent.writes import (
 )
 from core.availability import BusyInterval, bookable_starts, pick_table
 from core.db import (
+    AnyRow,
     as_merchant,
     blocked_slots_t,
     merchant_conn,
@@ -268,7 +268,7 @@ class ManagementService:
 
     # Helpers
 
-    async def _locked(self, conn: AsyncConnection, reservation_id: str) -> Row[Any]:
+    async def _locked(self, conn: AsyncConnection, reservation_id: str) -> AnyRow:
         """The booking to move, locked; `NotFound` when there is none."""
         current = (
             await conn.execute(
@@ -281,7 +281,7 @@ class ManagementService:
             raise NotFound(f"No booking {reservation_id!r}")
         return current
 
-    def _check_movable(self, current: Row[Any], starts_at: datetime) -> None:
+    def _check_movable(self, current: AnyRow, starts_at: datetime) -> None:
         if current.status != "confirmed":
             raise SlotUnavailable(f"Booking {current.id} is cancelled")
         check_not_started(current.id, current.during.lower, now=self.clock())
@@ -289,7 +289,7 @@ class ManagementService:
             raise InvalidInput("A booking moves within its day")
 
     async def _tell_move(
-        self, conn: AsyncConnection, slug: str, current: Row[Any], starts_at: datetime
+        self, conn: AsyncConnection, slug: str, current: AnyRow, starts_at: datetime
     ) -> None:
         """The guest's notice, for a booking a guest made, and the move's activity line."""
         if current.via != "merchant":  # a guest made it: tell them

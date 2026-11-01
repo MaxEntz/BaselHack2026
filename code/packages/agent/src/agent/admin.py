@@ -19,7 +19,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import Row, delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -29,6 +29,7 @@ from agent.requests import describe
 from agent.times import day_and_time, day_bounds, hhmm
 from core.availability import bookable_starts, is_bookable_start
 from core.db import (
+    AnyRow,
     agent_requests_t,
     blocked_slots_t,
     merchants_t,
@@ -38,7 +39,7 @@ from core.db import (
     tables_t,
 )
 from core.errors import FormProblem, InvalidInput, NotFound
-from core.forms import MAX_SEATS, party_limit_problem
+from core.forms import MAX_SEATS, check_party_limit
 from core.models import (
     ActivityKind,
     AdminReservationRow,
@@ -53,9 +54,6 @@ from core.models import (
     Stats,
     TableSpec,
 )
-
-# Any row shape (SQLAlchemy 2.1 rows are variadic generics).
-_Row = Row[*tuple[Any, ...]]
 
 # What the Agent page shows of a day (`AgentRequests`).
 MAX_AGENT_REQUESTS = 10
@@ -140,7 +138,7 @@ async def list_guests(
         .order_by(reservation_start, reservations_t.c.id)
     )
     wanted = guest_key(query)
-    by_guest: dict[str, list[_Row]] = {}
+    by_guest: dict[str, list[AnyRow]] = {}
     for row in rows:
         key = guest_key(row.guest_name)
         if wanted in key:
@@ -286,15 +284,6 @@ async def update_profile(conn: AsyncConnection, slug: str, changes: dict[str, An
     )
 
 
-def check_party_limit(max_party_size: int) -> None:
-    """The group limit, as the tools word its refusal; the form words it its own way
-    (`core.forms.party_limit_problem`, the rule's one check)."""
-    if party_limit_problem(max_party_size) is not None:
-        raise InvalidInput(
-            f"max_party_size must be between 1 and {MAX_SEATS}, got {max_party_size}"
-        )
-
-
 async def update_policy(
     conn: AsyncConnection,
     slug: str,
@@ -398,7 +387,7 @@ async def update_tables(
 
 async def _check_plan_change(
     conn: AsyncConnection,
-    current: Sequence[_Row],
+    current: Sequence[AnyRow],
     wanted: dict[str, int],
     now: datetime,
     tz: ZoneInfo,
@@ -436,7 +425,7 @@ async def _check_plan_change(
         )
 
 
-async def _bookings_on(conn: AsyncConnection, table_ids: Sequence[int]) -> Sequence[_Row]:
+async def _bookings_on(conn: AsyncConnection, table_ids: Sequence[int]) -> Sequence[AnyRow]:
     """Every booking on these tables, past and cancelled included, by start."""
     rows = await conn.execute(
         select(
@@ -455,7 +444,7 @@ async def _bookings_on(conn: AsyncConnection, table_ids: Sequence[int]) -> Seque
 
 
 def _stranded(
-    booking: _Row, label: str, seats: int | None, tz: ZoneInfo
+    booking: AnyRow, label: str, seats: int | None, tz: ZoneInfo
 ) -> tuple[str, Problem] | None:
     """Why the new plan strands the upcoming `booking` on `label`, whose seats become `seats`
     (None: removed), if it does."""
@@ -476,7 +465,7 @@ def _stranded(
 
 async def cancel_by_merchant(
     conn: AsyncConnection, slug: str, reservation_id: str, tz: ZoneInfo, now: datetime
-) -> tuple[_Row, MerchantCancelOutcome]:
+) -> tuple[AnyRow, MerchantCancelOutcome]:
     """Cancel a booking and leave the guest a notice, in the same transaction.
 
     Cancelling an already cancelled booking changes nothing and adds no second notice; a

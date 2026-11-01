@@ -29,13 +29,15 @@ def test_utc_keeps_the_instant_and_none() -> None:
 
 
 def test_a_booking_holds_its_table_for_real_time_across_a_clock_change() -> None:
-    # 01:30 CEST on 2026-10-25, the night summer time ends (#80).
+    # 01:30 CEST on 2026-10-25 (23:30 UTC the day before), the night summer time ends (#80).
+    # In wall-clock time, 2 hours later would be 03:30 CET: 3 real hours. Subtracting two
+    # datetimes of one `ZoneInfo` compares their wall clocks too, so compare in UTC.
     start = datetime(2026, 10, 25, 1, 30, tzinfo=TZ)
     span = times.during(start, timedelta(minutes=120))
 
     assert span.lower == start
-    assert span.upper is not None and span.lower is not None
-    assert span.upper - span.lower == timedelta(minutes=120)
+    assert span.upper == datetime(2026, 10, 25, 1, 30, tzinfo=UTC)  # 02:30 CET
+    assert times.utc(span.upper) - times.utc(span.lower) == timedelta(minutes=120)
     assert span.bounds == "[)"
 
 

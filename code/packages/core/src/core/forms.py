@@ -8,7 +8,7 @@ row. Rules that need the merchant's bookings or website (`table_in_use`, `table_
 
 from itertools import combinations
 
-from core.errors import FormProblem
+from core.errors import FormProblem, InvalidInput
 from core.models import (
     MIN_SERVICE_MINUTES,
     FloorPlanInput,
@@ -21,9 +21,11 @@ from core.models import (
 )
 from core.time_of_day import to_minutes
 
-# The most seats a table, or a group, may have, well inside Postgres `integer`: the forms'
-# bound here, and the tools' in `agent.admin`, so a typo never reaches the database.
+# The most seats a table, or a group, may have, well inside Postgres `integer`, so a typo
+# never reaches the database.
 MAX_SEATS = 1000
+# The smallest group limit: with 0, no online booking would ever fit.
+MIN_PARTY_LIMIT = 1
 
 
 def checked_services(body: HoursInput) -> tuple[Service, ...]:
@@ -76,17 +78,28 @@ def checked_tables(body: FloorPlanInput) -> tuple[TableSpec, ...]:
 
 
 def party_limit_problem(max_party_size: int) -> FormProblem | None:
-    """The form's refusal of a group limit outside 1 to `MAX_SEATS`, naming the bound it
-    breaks; None within bounds. The only check of that rule: the tools word it their own way
-    (`agent.admin.check_party_limit`)."""
-    if max_party_size < 1:
-        return FormProblem("The largest group is at least 1.", Problem(code="group_too_small"))
+    """The form's refusal of a group limit outside `MIN_PARTY_LIMIT` to `MAX_SEATS`, naming
+    the bound it breaks; None within bounds."""
+    if max_party_size < MIN_PARTY_LIMIT:
+        return FormProblem(
+            f"The largest group is at least {MIN_PARTY_LIMIT}.", Problem(code="group_too_small")
+        )
     if max_party_size > MAX_SEATS:
         return FormProblem(
             f"The largest group is at most {MAX_SEATS}.",
             Problem(code="too_many_seats", seats=MAX_SEATS),
         )
     return None
+
+
+def check_party_limit(max_party_size: int) -> None:
+    """The same bounds as the tools word them (`update_policy`, and `update_rules` behind the
+    form): `InvalidInput` naming the range and the value."""
+    if not MIN_PARTY_LIMIT <= max_party_size <= MAX_SEATS:
+        raise InvalidInput(
+            f"max_party_size must be between {MIN_PARTY_LIMIT} and {MAX_SEATS}, "
+            f"got {max_party_size}"
+        )
 
 
 def checked_rules(body: RulesInput) -> RulesInput:
