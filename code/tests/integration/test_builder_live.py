@@ -97,5 +97,13 @@ async def test_builds_le_petit_zinc_from_its_website(
         # A quote, when there is one, really is on the page it names (ADR-0003).
         assert all(f.source is None or f.quote is None or f.source != "you" for f in facts.values())
         assert any("floor plan" in flag.title for flag in output.flags)
+        # What the site says beyond booking (#248): with no description, all from its pages.
+        assert profile.knowledge is not None
+        items = profile.knowledge.items
+        assert {"menu", "access"} <= {item.topic for item in items}
+        menu = " ".join(item.text for item in items if item.topic == "menu").lower()
+        assert any(dish in menu for dish in ("choucroute", "tarte", "spaetzle", "kougelhopf"))
+        assert all(item.source_url is not None and item.quote is not None for item in items)
+        assert facts["menu"].source is not None and facts["menu"].source.startswith("/")
     finally:
         await deprovision(output.profile.slug, engine=engine)

@@ -83,6 +83,15 @@ async def test_live_cancel_asks_for_confirmation_first() -> None:
 
 
 @pytest.mark.llm
+async def test_live_a_correction_goes_to_what_the_agent_knows() -> None:
+    """Facts, not wording: the right tool, and the words to take out (#248)."""
+    _, session = await live_turns("We no longer serve the tartare. Update what my agent knows.")
+    [(name, arguments)] = tools_called(session)
+    assert name == "update_knowledge"
+    assert any("tartare" in word.lower() for word in arguments.get("remove") or [])
+
+
+@pytest.mark.llm
 async def test_live_knows_a_publish_from_the_button() -> None:
     """The history says it's hidden; the Publish button has since put it live (#198)."""
     harness = Harness(real_llm(), agent=FakeAgent())
