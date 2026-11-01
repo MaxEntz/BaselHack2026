@@ -92,8 +92,9 @@ class ScriptedAgent:
             "conversation": "c-1",
             "reply": "Booked: R-042.",
             "reservation": reservation,
-            # A `confirm` is written by code before any model call (#247): no tool is called.
-            "tools_called": [],
+            # A `confirm` is written by code before any model call (#247), and named by the
+            # service call it made.
+            "tools_called": ["create_reservation"],
         }
 
 
