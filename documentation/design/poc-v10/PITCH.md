@@ -21,7 +21,7 @@ Open [`sesame-pitch-v6.html`](sesame-pitch-v6.html) in a browser. It is one self
 
 The deck rounds the video's corners in its CSS, and the file itself is square. Played outside the deck, it shows small black corners at the bottom, from the window it was recorded in.
 
-The recording shows the v10 mockups, not `code/web`: the merchant's chat and the management site run from a fixed script there. `code/web` builds both from them since #127, and La Graine Verte's public site in `code/sites` has the same look (#148).
+The recording shows the v10 mockups, not `code/web`: the merchant's chat and the management site run from a fixed script there, and `code/web` was built from them afterwards (#141 for Studio, #137 to #147 for the management site). Its public site is La Graine Verte restyled, which `code/sites` now has too (#148). Its chat with Claude is a replay and says so on screen: the three times it offers came from the real connector on 31 October 2026, but the window is not Claude.ai.
 
 ## Speaker notes
 
