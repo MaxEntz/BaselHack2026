@@ -36,8 +36,9 @@ export const EXAMPLES: readonly Example[] = DEMO
         name: "La Graine Verte",
         address: address("la-graine-verte", "lagraineverte.example", 8081),
         brief: "24 seats, 6 tables of 2 and 3 tables of 4. Lunch is the busy one.",
-        // Olive, not the mockup's green: this restaurant's look is olive and brick (#127).
-        colour: "#727f55",
+        // Olive, not the mockup's green: this restaurant's look is olive and brick (#127). The
+        // shade its management site draws, where white text reads (tokens.css, #153).
+        colour: "#616c48",
         ink: "#f4f2ea",
       },
       {

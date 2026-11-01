@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type Page, expect, test } from "@playwright/test";
+import { openMockup } from "./mockup.ts";
 
 // Each primitive in /?gallery against the same markup inside the v10 mockup, at 1440 px:
 // the computed styles that make up its look must match. SESAME_MOCKUP points to another copy;
@@ -75,7 +76,7 @@ test.describe("primitives match the mockup", () => {
       const mine = await styles(page, await ours(page));
 
       const mockup = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-      await mockup.goto(pathToFileURL(MOCKUP).href);
+      await openMockup(mockup, pathToFileURL(MOCKUP).href);
       await mockup.evaluate(
         ([html, where]) => {
           const holder = document.createElement("div");

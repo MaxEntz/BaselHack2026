@@ -173,11 +173,11 @@ describe("Floor plan", () => {
     );
 
     expect(table("T1").className).toBe("tb busy");
-    expect(table("T1").textContent).toBe("T1Muller, 2");
+    expect(table("T1").textContent).toBe("T1 Muller, 2");
     expect(table("T7").className).toBe("tb s4 busy");
     expect(table("T2").className).toBe("tb soon");
     expect(table("T4").className).toBe("tb");
-    expect(table("T4").textContent).toBe("T42 seats");
+    expect(table("T4").textContent).toBe("T4 2 seats");
     expect(table("T9").className).toBe("tb s4 soon");
   });
 
@@ -237,7 +237,7 @@ describe("Floor plan", () => {
     type(box.getByLabelText("Guest's name"), "Ana Roth");
     fireEvent.click(box.getByRole("button", { name: "Add the booking" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(await screen.findByRole("button", { name: /^Table T\d+, Ana Roth, 2 guests$/ })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /^Table T\d+, Roth, 2 guests$/ })).toBeTruthy();
   });
 
   it("says when the time has passed", async () => {

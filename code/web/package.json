@@ -13,7 +13,9 @@
     "check:contracts": "node scripts/check-mocks.mjs",
     "preview": "vite preview",
     "test": "node --test \"tests/*.test.ts\" && vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:visual": "SESAME_VISUAL=1 playwright test e2e/visual.spec.ts",
+    "test:visual:docker": "sh scripts/visual.sh"
   },
   "dependencies": {
     "react": "^19.3.1",
@@ -22,6 +24,7 @@
     "react-router": "^7.18.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.64.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
