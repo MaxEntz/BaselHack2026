@@ -1,72 +1,115 @@
-<p align="center"><img src="assets/logo/sesame-wordmark.png" alt="Sésame" width="380"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/sesame-wordmark-on-dark.png">
+    <img src="assets/logo/sesame-wordmark-transparent.png" alt="Sésame" width="300">
+  </picture>
+</p>
 
-# Sésame
+<h3 align="center">Create your AI from your site.</h3>
 
-> Let Claude book with any merchant, straight from their website.
+<p align="center">
+  Sésame turns a restaurant's website into an AI agent that other AIs can talk to:<br>
+  to ask about the menu, find a table and book it.
+</p>
 
-A restaurant owner gives us their website and describes how they work. We generate their AI agent, which understands the site and talks to guests' agents. Anyone can then book a table by asking Claude, through a single MCP server that applies their preferences and sends them back to the restaurant's own site whenever the agent can't help. The owner runs it by chatting with our platform, onboarding included, and sees bookings made through Claude appear live. Next to the chat, a management site (pages and forms, in the restaurant's own look) offers the same operations ([#127](https://github.com/MaxEntz/BaselHack2026/issues/127)). It all runs on our team server: [sesame.191-96-88-152.sslip.io](https://sesame.191-96-88-152.sslip.io) (building a new merchant there needs an invitation).
+<p align="center">
+  <a href="https://sesame.191-96-88-152.sslip.io">Live app</a> ·
+  <a href="#see-it">Screenshots</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#try-it">Try it</a>
+</p>
 
-Built at BaselHack 2026. Issue [#26](https://github.com/MaxEntz/BaselHack2026/issues/26) tracks the plan.
+<p align="center"><sub>Built at BaselHack 2026 for Adobe's challenge, <i>The Post-Website Business</i>.</sub></p>
 
-![Studio after a build: the chat with what went into the profile, beside the agent site and the management site it built](documentation/img/sesame-studio.png)
+## Why
+
+A restaurant's first visitor is often no longer a person: a guest asks an AI for a table and never opens a browser. Websites were made for people, and that AI has to find its way through pages and forms.
+
+Small restaurants already lost control once to the booking platforms. They shouldn't lose discovery a second time, or need a developer to be ready.
+
+## What it does
+
+**For the owner.** They give Sésame their website and a few sentences about how they work. Sésame reads the site, shows what it understood and where it read it, and waits for their check before anything goes public. They then run their restaurant by chatting, or from a management site in the restaurant's own look, and bookings arrive live.
+
+**For the guest.** They ask their AI: *"Table for 4 tonight at 8pm, do you have vegetarian dishes?"* Their AI talks to the restaurant's agent, which answers from what the site says, offers free times and prepares the booking. The agent's AI model can't book anything by itself: a booking only runs on a confirmation of what the agent proposed.
+
+**The website stays.** When the agent can't help, or the group is too large, the guest gets the link to the restaurant's own booking page.
+
+## See it
+
+![Studio after a build: what Sésame understood from the site, beside the agent site and the management site it built](documentation/img/sesame-studio.png)
+
+*Studio, where an owner builds and publishes by chatting. On the left, what Sésame understood from the site. On the right, the agent site: it has no pages, only what agents exchange with it.*
 
 ![The management site's Home: tonight's bookings, the guests of the last 30 days and the assistant](documentation/img/sesame-management-home.png)
 
-*Studio, where a merchant builds and publishes its sites by chatting, then the management site those sites come with. Shown on the demo data (`VITE_MOCK=1`): the restaurants and the guests are fictional. Claude.ai calling our MCP gateway is in [this screenshot](documentation/runbooks/img/connector-ping.png).*
+*The management site, in the restaurant's own look, with an assistant for the day's questions and changes.*
+
+*Both screenshots run on demo data: the restaurants and the guests are fictional.*
 
 ## How it works
 
-- **User side.** Claude.ai calls our **gateway**, a remote MCP server, which reaches the merchant's **agent**. Each merchant's data lives in its own Postgres schema, and the database itself makes double booking impossible. On failure, the gateway returns the merchant's own booking page.
-- **Merchant side.** The merchant uses **Studio**, a chat backed by the **platform API**, and a **management site** of ordinary pages over the same operations. There, an **assistant** answers through admin tools ("What bookings do I have tonight?", "Block 21:00"), and the **builder** turns the merchant's website into a validated profile, then provisions the agent. The LLM only fills that profile; it never writes code or SQL.
-- **The merchant's agent.** A real LLM agent, not a set of tools handed to Claude: guests' agents talk to it in natural language, and it answers from what the build kept of the site and calls the booking tools itself. Its model has no write tool: it only proposes, and code runs the write when a later message confirms that proposal ([ADR-0021](documentation/adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md)).
-- **Agent network.** Behind the gateway, the merchant agents form a network reserved for AI agents, with its own protocol: **BATP**, on TCP port 4710. Every session names the calling agent, and every request names its intent and merchant. Claude only speaks MCP, so the gateway is its bridge to BATP. The spec is an RFC-style Internet-Draft, [`draft-merchant-agents-batp-00`](documentation/rfc/draft-merchant-agents-batp-00.txt), summarized in [`documentation/PROTOCOL.md`](documentation/PROTOCOL.md). The BATP node runs on the team server, and the deployed gateway reaches the agents through it.
-- **Live.** A committed booking fires Postgres `NOTIFY`, which is pushed to the merchant's chat and management site over SSE, within 2 seconds (a test checks it).
+```mermaid
+flowchart TD
+    Site["The restaurant's website"] --> Sesame["Sésame"]
+    Owner["The owner"] -- "checks and publishes" --> Sesame
+    Sesame --> Agent["The restaurant's AI agent"]
+    Agent <-- "talk over BATP" --> AI["The guest's AI"]
+    Agent --> Bookings["Tables and bookings"]
+```
 
-➡️ **[documentation/ARCHITECTURE.md](documentation/ARCHITECTURE.md)** has the diagrams, the main flow step by step, every component and what it does *not* do, and the stack with its [decision records](documentation/adr/README.md).
+1. **Read.** Sésame reads the website and keeps the facts that matter, such as the hours, the menu, group sizes and how to get there, each with where it found them.
+2. **Review.** The owner sees those facts, corrects what's wrong, and publishes.
+3. **Talk.** Guests' AIs talk to the restaurant's agent in natural language. It answers, and calls its own booking tools.
+4. **Book.** Once confirmed, the booking appears on the management site within 2 seconds.
 
-## Quick start
+Agents talk through **BATP**, a small protocol of our own, made for agents talking to agents. Claude connects through our gateway, which carries its messages over BATP.
 
-Prerequisites: Python 3.12 with [uv](https://docs.astral.sh/uv/), Docker, Node.js (minimum version in [`code/README.md`](code/README.md#prerequisites)).
+## Today and next
+
+**What works today**
+
+- An agent built from a website, and checked by its owner before it goes public
+- One AI agent per restaurant, which answers other agents in natural language
+- The owner's chat and management site, with bookings arriving live
+- The restaurant's own booking page as the fallback
+
+**What doesn't, yet**
+
+- Only restaurants, in one city. More kinds of business come next.
+- Outside agents can't connect to BATP directly yet: they go through our gateway.
+- Anyone can onboard a website: proving they own it comes next.
+- A guest is only a name, with no account.
+- No payments, and no ranking between restaurants that match: fair discovery comes next.
+
+## Try it
+
+**Online:** [sesame.191-96-88-152.sslip.io](https://sesame.191-96-88-152.sslip.io). Building a new restaurant there needs an invitation.
+
+**On your machine, with demo data:** you need [uv](https://docs.astral.sh/uv/) and Node.js ([versions](code/README.md#prerequisites)).
 
 ```bash
 cd code
-make setup && make db && make migrate   # dependencies, Postgres 16, migrations
-make test                                # unit + integration tests (needs Docker)
-VITE_MOCK=1 make web                     # Studio and the management site on mock data -> http://localhost:5173
+make setup
+VITE_MOCK=1 make web   # http://localhost:5173
 ```
 
-To run it for real on your machine, set `OPENAI_API_KEY` and `BATP_URL=batp://127.0.0.1:4710` in `code/.env` (`make setup` copied it from `.env.example`, which already lets the crawler read the local sites), then:
+To run it for real, with the agent and a model, see [`code/README.md`](code/README.md#run-it-for-real).
 
-```bash
-make demo-reset   # La Graine Verte and Maison Albane with their data (Le Petit Zinc is built live)
-make node         # terminal 1: the BATP node -> batp://127.0.0.1:4710
-make gateway      # terminal 2: MCP server -> http://localhost:8001/mcp
-make platform     # terminal 3: platform API -> http://localhost:8002
-make sites        # terminal 4: the 3 demo websites on :8080, :8081, :8082
-make web          # terminal 5: Studio -> http://localhost:5173, then build from http://localhost:8080
-```
+## Go deeper
 
-All the commands are in [`code/README.md`](code/README.md). To connect Claude.ai to the gateway, see [`documentation/runbooks/connector.md`](documentation/runbooks/connector.md); the 5-minute demo is [`documentation/runbooks/demo.md`](documentation/runbooks/demo.md).
-
-## Repository layout
-
-| Path | Content |
+| | |
 |---|---|
-| [`code/`](code) | uv workspace (`core`, `agent`, `gateway`, `batp`, `merchant_node`, `builder`, `merchant_platform`), the web app (Studio and the management site), demo sites, migrations, scripts, tests |
-| [`documentation/`](documentation) | Architecture, decision records, contracts, runbooks, the BATP draft, the mockups and the pitch deck ([`design/poc-v10/`](documentation/design/poc-v10/README.md)) |
-| [`assets/`](assets) | The Sésame logo |
-| [`AGENTS.md`](AGENTS.md) | Full spec, shared by Claude Code (`CLAUDE.md`) and opencode |
+| [Architecture](documentation/ARCHITECTURE.md) | The components, the main flow, and what each one does not do |
+| [Protocol](documentation/PROTOCOL.md) | BATP in short, and its [RFC-style draft](documentation/rfc/draft-merchant-agents-batp-00.txt) |
+| [Decisions](documentation/adr/README.md) | Why it is built this way, such as [giving each merchant an AI agent](documentation/adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md) |
+| [Code](code/README.md) | Every command, the services and the layout |
+| [Runbooks](documentation/runbooks/demo.md) | The demo, and [connecting Claude](documentation/runbooks/connector.md) |
+| [Mockups](documentation/design/poc-v10/README.md) | The design the web app was built from |
+| [`AGENTS.md`](AGENTS.md) | The full spec, for people and coding agents |
 
 ## Team
 
-| Name | GitHub |
-|---|---|
-| Enzo Laugel | [@Boz0o0](https://github.com/Boz0o0) |
-| Maxime Entz | [@MaxEntz](https://github.com/MaxEntz) |
-| Matteo Tutti | [@matteoepitech](https://github.com/matteoepitech) |
-| Matthias Yildirim | [@Rimapus](https://github.com/Rimapus) |
-| Nicolas Bach | [@TheNotSoChosen0ne](https://github.com/TheNotSoChosen0ne) |
-| Valentino Zarrillo | [@Chrystoval1](https://github.com/Chrystoval1) |
-| Yann Toison-Chabane | [@Yann-TC](https://github.com/Yann-TC) |
+[Enzo Laugel](https://github.com/Boz0o0) · [Maxime Entz](https://github.com/MaxEntz) · [Matteo Tutti](https://github.com/matteoepitech) · [Matthias Yildirim](https://github.com/Rimapus) · [Nicolas Bach](https://github.com/TheNotSoChosen0ne) · [Valentino Zarrillo](https://github.com/Chrystoval1) · [Yann Toison-Chabane](https://github.com/Yann-TC)
 
 MIT licensed, see [`license.txt`](license.txt).
