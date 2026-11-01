@@ -1,7 +1,8 @@
 /* Management site tokens, from documentation/design/poc-v10/sesame-management.html (#130).
    Light only. Scoped to .mg so the chat at / keeps its own --bg and --mono.
    --olive and --olive-band are the mockup's #727f55 and #6c744d made darker until the text on
-   them, and small titles in olive, read at 4.5:1 (#153): look.ts's `readable` gives #616c48. */
+   them, and small titles in olive, read at 4.5:1 (#153): #616c48, La Graine Verte's olive as the
+   builder now reads it (#209). */
 .mg {
   color-scheme: light;
   --bg: #edebe2; --cream: #f8f6ef; --line: #d5d2c3; --line-2: #bfbcab;

@@ -7,21 +7,23 @@ review card (#136).
 """
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from typing import Any
 
 from core.models import BodyFont, BuildFlag, DisplayFont, Look
 
 RGB = tuple[int, int, int]
 
-# #150: no look means La Graine Verte's, the management mockup's own tokens.
+# #150: no look means La Graine Verte's, the management mockup's own tokens. Its olive is the
+# mockup's #727f55 made darker until its button text reads at 4.5:1 (#209), as `read_look`
+# gives it from the site and the management site's tokens.css has it (#153).
 DEFAULT_LOOK = Look(
     bg="#edebe2",
     surface="#f8f6ef",
     line="#d5d2c3",
     ink="#47522f",
     muted="#5f6a45",
-    accent="#727f55",
+    accent="#616c48",
     accent_2="#935046",
     on_accent="#f4f2ea",
     display_font="Fraunces Soft",
@@ -44,6 +46,13 @@ SURFACE_SHARE = 0.02
 BLOB_SHARE = 0.05
 ACCENT_CONTRAST = 3.0
 TEXT_CONTRAST = 4.5
+# Under this luminance a page is dark, and a colour lightens to read on it (look.ts's `isDark`).
+DARK = 0.18
+# The management site also sets text on each accent made this much darker (--olive-band,
+# --brick-deep, #150).
+SHADE = 0.08
+# Button text when the site's own doesn't read: white or near-black.
+TEXT_ON: tuple[RGB, RGB] = ((255, 255, 255), (17, 17, 17))
 MAX_RADIUS = 32
 
 FONTS_BUNDLED: dict[str, str] = {"fraunces soft": "Fraunces Soft", "fraunces": "Fraunces Soft"}
@@ -139,6 +148,109 @@ def readable(colour: RGB, bg: RGB, minimum: float) -> RGB:
             break
         c = tuple(round(v + (towards - v) * 0.08) for v in c)  # type: ignore[assignment]
     return c
+
+
+def shades(colour: RGB) -> tuple[RGB, RGB]:
+    """`colour` and the darker shade the management site also sets text on."""
+    return colour, mix(colour, (0, 0, 0), SHADE)
+
+
+def reads_on(text: RGB, accents: Iterable[RGB]) -> bool:
+    """Whether `text` reads at 4.5:1 on each accent and on its darker shade (#209)."""
+    return all(contrast(text, shade) >= TEXT_CONTRAST for a in accents for shade in shades(a))
+
+
+def titled(accent: RGB, bg: RGB, surface: RGB) -> RGB:
+    """The main accent as the management site draws its small titles: 8 % a step away from the
+    page (lighter on a dark one) until it reads at 4.5:1 on the page and the cards, else black or
+    white, whichever reads better. The same steps as the web's `readable` (look.ts, #153), so the
+    site draws the stored accent as it is."""
+    page = (bg, surface)
+    towards = 255 if luminance(bg) < DARK else 0
+    c = accent
+    for _ in range(40):
+        if all(contrast(c, b) >= TEXT_CONTRAST for b in page):
+            return c
+        c = tuple(round(v + (towards - v) * 0.08) for v in c)  # type: ignore[assignment]
+    black, white = (0, 0, 0), (255, 255, 255)
+    return max((white, black), key=lambda t: min(contrast(t, b) for b in page))
+
+
+def under(accent: RGB, text: RGB, margin: Callable[[RGB], float]) -> RGB:
+    """`accent` moved away from `text`, 8 % a step, until `text` reads on it and its shade; then
+    on in that direction while that brings it closer to holding on the page (`margin` up to 1)."""
+    towards = 0 if luminance(text) > luminance(accent) else 255
+
+    def step(c: RGB) -> RGB:
+        return tuple(round(v + (towards - v) * 0.08) for v in c)  # type: ignore[return-value]
+
+    c = accent
+    for _ in range(40):
+        if reads_on(text, [c]):
+            break
+        c = step(c)
+    for _ in range(40):
+        after = step(c)
+        if margin(c) >= 1 or margin(after) <= margin(c) or after == c:
+            break
+        c = after
+    return c
+
+
+def holds(role: str, colour: RGB, bg: RGB, surface: RGB) -> float:
+    """How far `colour` clears what its role needs on the page (1 or more: it does): the main
+    accent is also the small titles' colour, at 4.5:1 on the page and the cards; the second
+    accent 3:1 on the page."""
+    if role == "accent":
+        return min(contrast(colour, b) for b in (bg, surface)) / TEXT_CONTRAST
+    return contrast(colour, bg) / ACCENT_CONTRAST
+
+
+def fit_text(
+    accents: Mapping[str, RGB],
+    bg: RGB,
+    surface: RGB,
+    preferred: RGB | None,
+    movable: Collection[str],
+) -> tuple[RGB, dict[str, RGB]]:
+    """The text for buttons on both accents, and the accents moved for it (#209).
+
+    `preferred` (the site's own, or the merchant's current one) if it reads at 4.5:1 on each
+    accent and its darker shade, else white or near-black, the better first. If none does, the
+    first of them that the `movable` accents can be moved under, away from it, while they still
+    hold on the page (`holds`); then the same with every accent movable, so that a colour the
+    merchant just picked stays as picked when another one can give way. When nothing holds, the
+    try that comes closest.
+    """
+
+    def worst(text: RGB) -> float:
+        return min(contrast(text, s) for a in accents.values() for s in shades(a))
+
+    def page_margin(role: str) -> Callable[[RGB], float]:
+        return lambda colour: holds(role, colour, bg, surface)
+
+    candidates = ([preferred] if preferred else []) + sorted(TEXT_ON, key=worst, reverse=True)
+    for text in candidates:
+        if reads_on(text, accents.values()):
+            return text, {}
+    closest: tuple[float, RGB, dict[str, RGB]] | None = None
+    for allowed in (set(movable), set(accents)):
+        for text in candidates:
+            if not reads_on(text, (c for name, c in accents.items() if name not in allowed)):
+                continue
+            moved = {
+                name: under(c, text, page_margin(name))
+                for name, c in accents.items()
+                if name in allowed and not reads_on(text, [c])
+            }
+            if not reads_on(text, moved.values()):
+                continue
+            margin = min((holds(n, c, bg, surface) for n, c in moved.items()), default=1.0)
+            if margin >= 1:
+                return text, moved
+            if closest is None or margin > closest[0]:
+                closest = (margin, text, moved)
+    return (closest[1], closest[2]) if closest else (candidates[0], {})
 
 
 def mix(colour: RGB, other: RGB, share: float) -> RGB:
@@ -290,29 +402,35 @@ def read_look(sample: Mapping[str, Any] | None) -> tuple[Look | None, list[Build
     for rgb, behind, chars in texts:
         if behind in (accent, accent_2):
             on_counts[rgb] = on_counts.get(rgb, 0) + chars
-    on_accent = _most(on_counts.items())
-    if on_accent is None or contrast(on_accent, accent) < ACCENT_CONTRAST:
-        white, dark = (255, 255, 255), (17, 17, 17)
-        on_accent = white if contrast(white, accent) >= contrast(dark, accent) else dark
+    own_on = _most(on_counts.items())
 
     flags: list[BuildFlag] = []
-    adjusted: list[tuple[str, RGB, RGB]] = []
-    checked = {}
-    for role, colour, minimum in (
-        ("accent", accent, ACCENT_CONTRAST),
-        ("accent_2", accent_2, ACCENT_CONTRAST),
-        ("ink", ink_read, TEXT_CONTRAST),
-        ("muted", muted, TEXT_CONTRAST),
-    ):
-        fixed = readable(colour, bg, minimum)
-        checked[role] = fixed
-        if fixed != colour:
-            adjusted.append((role, colour, fixed))
-    for role, before, after in adjusted:
+    # Each colour as the management site can use it: the main accent as the titles' colour
+    # (`titled`), the second one at 3:1, text at 4.5:1; then the buttons' text on both accents,
+    # which may move them further (`fit_text`). One flag per colour, with its final value.
+    checked = {
+        "accent": titled(accent, bg, surface),
+        "accent_2": readable(accent_2, bg, ACCENT_CONTRAST),
+        "ink": readable(ink_read, bg, TEXT_CONTRAST),
+        "muted": readable(muted, bg, TEXT_CONTRAST),
+    }
+    own = {"accent": accent, "accent_2": accent_2, "ink": ink_read, "muted": muted}
+    accents = {"accent": checked["accent"], "accent_2": checked["accent_2"]}
+    on_accent, moved = fit_text(accents, bg, surface, own_on, movable=accents)
+    checked |= moved
+    for role, before in own.items():
+        after = checked[role]
+        if after == before:
+            continue
         what = "text" if role in ("ink", "muted") else name_of(before)
+        where = (
+            "under your buttons' text"
+            if role in moved and accents[role] == before
+            else ("on your background")
+        )
         flags.append(
             BuildFlag(
-                title=f"Your {what} ({hex_of(before)}) is hard to read on your background.",
+                title=f"Your {what} ({hex_of(before)}) is hard to read {where}.",
                 detail=f"The management site uses {hex_of(after)} instead, which reads well.",
             )
         )

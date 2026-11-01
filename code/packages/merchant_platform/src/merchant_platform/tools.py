@@ -25,10 +25,12 @@ from builder.look import (
     CORNER_WORDS,
     DEFAULT_LOOK,
     FONT_WORDS,
-    contrast,
+    TEXT_ON,
+    fit_text,
     hex_of,
     readable,
     rgb_of,
+    titled,
 )
 from builder.look import describe as describe_look
 from core.errors import AgentError, AgentUnavailable, InvalidInput, PartyTooLarge
@@ -99,6 +101,7 @@ UNREVIEWED = (
     "Not yet: show the review card and wait for the merchant to say it's right before publishing."
 )
 LOOK_RESET = "Back to the look from your site."
+ACCENT_LABELS = {"accent": "Main colour", "accent_2": "Second colour"}
 NO_SITE_LOOK = "I couldn't read your site's look again, so I kept this one."
 # What the merchant sees under the link card (web: PageLink), for the model to stay in step.
 PAGE_LINKS = {
@@ -561,27 +564,13 @@ class AdminTools:
         changes: dict[str, Any] = {}
         texts: list[str] = []
         cards: list[DiffCard] = []
-        bg = rgb_of(current.bg)
-        for field, label in (("accent", "Main colour"), ("accent_2", "Second colour")):
-            wanted = getattr(arguments, field)
-            if wanted is None:
-                continue
-            used = hex_of(readable(rgb_of(wanted), bg, ACCENT_CONTRAST))
-            changes[field] = used
-            role = "main" if field == "accent" else "second"
-            texts.append(
-                f"{used} is your {role} colour now on the management site."
-                if used == wanted
-                else f"{wanted} is too faint on your background, so I adjusted it to {used}."
-            )
-            cards.append(_diff(label, getattr(current, field), used, view="manage"))
-        if "accent" in changes:
-            accent = rgb_of(changes["accent"])
-            if contrast(rgb_of(current.on_accent), accent) < ACCENT_CONTRAST:
-                white, dark = (255, 255, 255), (17, 17, 17)
-                changes["on_accent"] = hex_of(
-                    white if contrast(white, accent) >= contrast(dark, accent) else dark
-                )
+        wanted = {
+            field: getattr(arguments, field)
+            for field in ACCENT_LABELS
+            if getattr(arguments, field) is not None
+        }
+        if wanted:
+            self._colours(current, wanted, changes, texts, cards)
         if arguments.display_font is not None:
             changes["display_font"] = arguments.display_font
             texts.append(f"Your headings use {FONT_WORDS[arguments.display_font].lower()} now.")
@@ -602,6 +591,65 @@ class AdminTools:
             {"shown_to_merchant": "change", "text": " ".join(texts), "look": updated.model_dump()},
             cards[-1],
         )
+
+    @staticmethod
+    def _colours(
+        current: Look,
+        wanted: dict[str, str],
+        changes: dict[str, Any],
+        texts: list[str],
+        cards: list[DiffCard],
+    ) -> None:
+        """The accents the merchant asked for: the main one reads as the titles' colour (4.5:1 on
+        the page and the cards), the second at 3:1, and the buttons' text at 4.5:1 on both
+        accents and their darker shades (#209). The text changes, or a
+        colour moves away from it, only when it doesn't read: the colour just picked first, the
+        other one when that alone can't do it. Each change is said."""
+        bg, surface = rgb_of(current.bg), rgb_of(current.surface)
+        on_page = {
+            f: titled(rgb_of(hex_), bg, surface)
+            if f == "accent"
+            else readable(rgb_of(hex_), bg, ACCENT_CONTRAST)
+            for f, hex_ in wanted.items()
+        }
+        accents = {f: on_page.get(f, rgb_of(getattr(current, f))) for f in ACCENT_LABELS}
+        # A main colour stored before #209 may not read as titles yet: as the site draws it.
+        accents["accent"] = on_page.get("accent", titled(accents["accent"], bg, surface))
+        on, moved = fit_text(accents, bg, surface, rgb_of(current.on_accent), movable=wanted)
+        for field, asked in wanted.items():
+            used = hex_of(moved.get(field, on_page[field]))
+            changes[field] = used
+            role = "main" if field == "accent" else "second"
+            if used == asked:
+                texts.append(f"{used} is your {role} colour now on the management site.")
+            elif hex_of(on_page[field]) != asked:
+                texts.append(
+                    f"{asked} is too faint on your background, so I adjusted it to {used}."
+                )
+            else:
+                texts.append(
+                    f"{asked} would make your buttons' text hard to read, "
+                    f"so I adjusted it to {used}."
+                )
+            cards.append(_diff(ACCENT_LABELS[field], getattr(current, field), used, view="manage"))
+        for field in ACCENT_LABELS:
+            after = hex_of(moved.get(field, accents[field]))
+            if field in wanted or after == getattr(current, field):
+                continue
+            changes[field] = after
+            role = "main" if field == "accent" else "second"
+            why = (
+                "your buttons' text reads on it too"
+                if field in moved
+                else "your titles read on your background"
+            )
+            texts.append(f"Your {role} colour is {after} now, so {why}.")
+            cards.append(_diff(ACCENT_LABELS[field], getattr(current, field), after, view="manage"))
+        if hex_of(on) != current.on_accent:
+            changes["on_accent"] = hex_of(on)
+            colour = "white" if on == TEXT_ON[0] else "near-black"
+            texts.append(f"Your buttons' text is {colour} now, so it reads on both colours.")
+            cards.append(_diff("Buttons' text", current.on_accent, hex_of(on), view="manage"))
 
     def _when_time(self, at: datetime) -> str:
         return at.astimezone(self._tz).strftime("%H:%M")
