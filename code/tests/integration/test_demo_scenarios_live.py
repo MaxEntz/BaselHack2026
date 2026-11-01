@@ -152,7 +152,7 @@ async def stack(
 
 
 async def book(stack: Stack, slug: str, guest: str, at: datetime = MONDAY_EVENING) -> None:
-    await stack.service.create_reservation(slug, at, 2, guest, str(uuid4()))
+    await stack.service.create_reservation(slug, at, 2, guest, str(uuid4()), "website")
 
 
 async def test_1_a_table_then_a_yes(stack: Stack, make_merchant: MerchantFactory) -> None:
@@ -174,6 +174,8 @@ async def test_1_a_table_then_a_yes(stack: Stack, make_merchant: MerchantFactory
 
     assert done.reservation is not None, done.reply
     assert (done.reservation.party_size, done.reservation.guest_name) == (4, "Emma Roth")
+    assert done.pending is None
+    assert "Booked" in done.reply  # code's words: a model once offered a second table here
     assert await stack.bookings(slug) == 1
 
 
@@ -200,7 +202,7 @@ async def test_3_what_the_site_doesnt_say_isnt_invented(
 
     answer = await stack.talk(slug, "What is the name of the chef's dog?")
 
-    reply = answer.reply.casefold()
+    reply = answer.reply.casefold().replace("\u2019", "'")
     words = ("don't", "do not", "no information", "not sure", "can't", "cannot", "unable")
     assert any(word in reply for word in words), answer.reply
     assert answer.pending is None

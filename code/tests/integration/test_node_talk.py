@@ -166,10 +166,11 @@ async def test_a_model_outage_is_503_with_the_fallback_url(
     assert (response.error.code, response.error.fallback_url) == ("agent_unavailable", FALLBACK)
 
 
-async def test_a_confirm_past_the_node_deadline_replays_its_booking(
+async def test_a_confirm_needs_no_model_so_a_hung_one_cant_cut_it_short(
     engine: AsyncEngine, make_merchant: MerchantFactory
 ) -> None:
-    # The node cancels a turn past its deadline after the write: the retry gets the booking.
+    # Code says the booking is done (#255): a hung model can't take the turn past its deadline,
+    # and a retry gets the same booking.
     slug = await make_merchant()
     llm = HangingLLM()
     llm.then(
@@ -180,13 +181,11 @@ async def test_a_confirm_past_the_node_deadline_replays_its_booking(
         proposed = await client.request("TALK", slug, talk("Monday 20:00 for 2, Lena Koch"))
         yes = talk("Yes", conversation=proposed["conversation"], confirm=proposed["pending"]["id"])
         llm.hang()
-        _, cut = await client.exchange("TALK", slug, yes)
-        assert cut.status == 503 and cut.error is not None
-        assert (cut.error.code, cut.error.fallback_url) == ("agent_unavailable", FALLBACK)
-
         calls_before = len(llm.calls)
+        done = await client.request("TALK", slug, yes)
         retried = await client.request("TALK", slug, yes)
 
+    assert retried == done
     assert retried["reservation"]["status"] == "confirmed"
     assert retried["reply"].startswith(f"Booked: booking {retried['reservation']['id']}, ")
     assert len(llm.calls) == calls_before

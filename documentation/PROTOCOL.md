@@ -159,7 +159,7 @@ offered nor served `TALK` (§14).
 ```
 
 - `params`: `message` (1 to 2000 characters after trimming, no control character except a newline), `idempotency_key` (required), `conversation` (absent on the first message), `confirm` (the `id` of a `pending` proposal of that conversation, sent only after the guest's explicit yes, #247; it needs `conversation`). Ids are opaque tokens of 1 to 64 characters `[A-Za-z0-9_-]`.
-- `result`: `reply` (at most 2000 characters) is the model's text. Every other field is **built by code from tool results**, never written by the model: `slots`, `pending` (`id`, `action` `book`/`change`/`cancel`, `summary`, `expires_at`), `reservation`, `fallback_url`, `tools_called` (tool names only).
+- `result`: `reply` (at most 2000 characters) is the model's text, or code's once a `confirm` has written. Every other field is **built by code from tool results**, never written by the model: `slots`, `pending` (`id`, `action` `book`/`change`/`cancel`, `summary`, `expires_at`), `reservation`, `fallback_url`, `tools_called` (tool names only).
 - **`200` means the agent answered**, even "we're full". A tool's refusal (`party_too_large`, `slot_unavailable`) goes to the model, and code sets `fallback_url`.
 - Any other status means the agent could not answer: `400 invalid_input`, `404 not_found` (unknown or not live merchant, unknown or expired conversation), `429 too_many_requests`, `503 agent_unavailable` with the fallback URL.
 - `conversation` is random, with at least 128 bits, and bound to the merchant and the session's `agent.id`. It can't be tied to a BATP session: the gateway carries all its users on one session under one `agent.id`, so the unguessable id is what separates them.

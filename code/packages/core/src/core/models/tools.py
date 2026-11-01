@@ -194,8 +194,9 @@ class PendingAction(_Model):
 
 
 class TalkOutput(_Model):
-    # The merchant agent's answer. Only `reply` is the model's text: code builds every other
-    # field from tool results (ADR-0003, ADR-0021), so a guest's agent can rely on them.
+    # The merchant agent's answer. Only `reply` can be the model's text, and code writes it too
+    # once a `confirm` has written (#255). Code builds every other field from tool results
+    # (ADR-0003, ADR-0021), so a guest's agent can rely on them.
     conversation: OpaqueId
     reply: Annotated[str, StringConstraints(max_length=MAX_TALK_TEXT)]
     slots: tuple[Slot, ...] = ()

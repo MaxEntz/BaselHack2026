@@ -153,7 +153,7 @@ export type PendingAction = {
   expires_at: string;
 };
 
-// Only `reply` is the model's text; code builds every other field from tool results.
+// Only `reply` can be the model's text; code builds every other field from tool results.
 export type TalkOutput = {
   conversation: string;
   reply: string;
