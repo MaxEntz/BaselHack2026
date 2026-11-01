@@ -14,6 +14,9 @@ from agent.times import hhmm
 from agent.words import short_day
 from core.errors import STARTED
 
+# How much of a guest's agent's message a row of the Agent page quotes.
+MAX_QUOTED = 120
+
 
 @dataclass(frozen=True)
 class _Request:
@@ -22,6 +25,7 @@ class _Request:
     agent: str
     params: dict[str, Any]
     answer: dict[str, Any]
+    result: dict[str, Any]
     booking: dict[str, Any]
     guest: str
     party: int | None
@@ -51,11 +55,13 @@ def describe(
 def _read(agent: str, request: str, response: str, tz: tzinfo) -> _Request:
     params = _object(_object(_load(request)).get("params"))
     answer = _object(_load(response))
-    booking = _object(_object(answer.get("result")).get("reservation"))
+    result = _object(answer.get("result"))
+    booking = _object(result.get("reservation"))
     return _Request(
         agent=agent,
         params=params,
         answer=answer,
+        result=result,
         booking=booking,
         guest=_text(booking.get("guest_name")) or _text(params.get("guest_name")) or "A guest",
         party=_int(booking.get("party_size")) or _int(params.get("party_size")),
@@ -81,7 +87,47 @@ def _answered(read: _Request, intent: str) -> tuple[str, str] | None:
             )
         case "CANCEL":
             return f"{guest} cancelled through {agent}", _booking(read.starts, party, {})
+        case "TALK":
+            return _talked(read)
     return None
+
+
+def _talked(read: _Request) -> tuple[str, str]:
+    """A turn with the merchant's agent (#253), from the fields code wrote in the frame. Never
+    from `reply`: that is the model's text, and this page states what happened."""
+    agent, guest, party = read.agent, read.guest, read.party
+    tools = read.result.get("tools_called")
+    called = tools if isinstance(tools, list) else []
+    if read.booking and read.booking.get("status") == "cancelled":
+        return f"{guest} cancelled through {agent}", _booking(read.starts, party, {})
+    if read.booking and "update_reservation" in called:
+        return f"{guest} changed their booking through {agent}", _booking(
+            read.starts, party, read.booking
+        )
+    if read.booking:
+        return f"{guest} booked through {agent}", _booking(read.starts, party, read.booking)
+    pending = _object(read.result.get("pending"))
+    if pending:
+        summary = _text(pending.get("summary"))
+        return (
+            f"{agent} is waiting for its guest's yes",
+            f"{summary} Nothing changes before they say yes." if summary else "Nothing changed.",
+        )
+    asked = _quoted(read.params.get("message"))
+    if read.result.get("fallback_url"):
+        return f"{agent} was sent to your booking page", f"{asked} The guest got your link."
+    slots = read.result.get("slots")
+    offered = " Your agent offered free times." if slots else ""
+    return f"{agent} asked your agent", f"{asked}{offered}".strip()
+
+
+def _quoted(message: Any) -> str:
+    """The guest's agent's own words, on one line and cut to fit the page's row."""
+    text = _text(message)
+    if text is None:
+        return ""
+    line = " ".join(text.split())
+    return f'"{line[: MAX_QUOTED - 1].rstrip()}…"' if len(line) > MAX_QUOTED else f'"{line}"'
 
 
 def _refused(
@@ -101,6 +147,8 @@ def _refused(
             )
         case 409:
             return _conflict(read, intent)
+        case 404 if intent == "TALK":
+            return f"{agent} wrote in a conversation that had ended", "Nothing was changed."
         case 404:
             reference = _text(read.params.get("reservation_id"))
             known = f"Reference {reference}." if reference else "Nothing was changed."

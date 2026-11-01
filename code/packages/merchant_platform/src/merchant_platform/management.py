@@ -22,6 +22,7 @@ from core.forms import checked_rules, checked_services, checked_settings, checke
 from core.models import (
     AgentRequests,
     AgentStatusOutput,
+    AgentTalkInput,
     AgentTryInput,
     AgentTryOutput,
     AssistantConversation,
@@ -53,7 +54,7 @@ from core.models import (
     StepEvent,
 )
 from merchant_platform.accounts import Owner
-from merchant_platform.agent_try import try_intent
+from merchant_platform.agent_try import try_intent, try_talk
 from merchant_platform.auth import owner_of_path
 from merchant_platform.overview import merchant_overview
 from merchant_platform.registry import RegistryLookup
@@ -270,8 +271,12 @@ async def public_site(request: Request, slug: SlugPath) -> PublicSite:
 
 
 @router.post("/agent/try")
-async def try_agent(request: Request, slug: SlugPath, body: AgentTryInput) -> AgentTryOutput:
+async def try_agent(
+    request: Request, slug: SlugPath, body: AgentTryInput | AgentTalkInput
+) -> AgentTryOutput:
     settings: Settings = request.app.state.settings
+    if isinstance(body, AgentTalkInput):
+        return await try_talk(settings, slug, body)
     return await try_intent(settings, _agent(request), slug, body.intent)
 
 
