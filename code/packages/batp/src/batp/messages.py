@@ -11,25 +11,19 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from core.models import Slug
 
-PROTOCOL_VERSION = "0.2"
+PROTOCOL_VERSION = "0.3"
 DEFAULT_PORT = 4710
 # Every node accepts at least this many requests in flight per session (§6): a client that
 # stays under it never gets a 429 from a node that follows the draft.
 IN_FLIGHT_LIMIT = 32
 
-Intent = Literal["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "TALK", "RECALL", "PING"]
-ALL_INTENTS: tuple[Intent, ...] = (
-    "DISCOVER",
-    "AVAILABILITY",
-    "BOOK",
-    "AMEND",
-    "CANCEL",
-    "TALK",
-    "RECALL",
-    "PING",
-)
+# 0.3 closed `AVAILABILITY`, `BOOK`, `AMEND` and `CANCEL` (#254): only the merchant's agent calls
+# the booking tools, so a guest's agent books by talking to it. An old intent is an unknown one,
+# `400 invalid_input`, in a session of any version.
+Intent = Literal["DISCOVER", "TALK", "RECALL", "PING"]
+ALL_INTENTS: tuple[Intent, ...] = ("DISCOVER", "TALK", "RECALL", "PING")
 # The intents that address one merchant: `merchant` is required for them, absent otherwise (§6).
-ADDRESSED: frozenset[Intent] = frozenset({"AVAILABILITY", "BOOK", "AMEND", "CANCEL", "TALK"})
+ADDRESSED: frozenset[Intent] = frozenset({"TALK"})
 # The minor version that brought an intent (§14); the others are in every version. A session of
 # an older minor is neither offered nor served it.
 SINCE_MINOR: dict[Intent, int] = {"TALK": 2}

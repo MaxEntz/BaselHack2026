@@ -47,21 +47,18 @@ test("the mock answers Studio's public site and its frames", async () => {
   const page = { path: "/", width: 1000, height: 900, image: "data:image/jpeg;base64,AA==" };
   const withPages = createMockManagementClient(data, { latencyMs: 0, liveBookingDelayMs: 0, sitePages: [page] });
   assert.deepEqual((await withPages.site(SLUG)).pages, [page]);
-  const live = await withPages.tryAgent(SLUG, "AVAILABILITY");
+  const live = await withPages.tryAgent(SLUG, "DISCOVER");
   assert.equal(live.status, 200);
-  assert.equal(JSON.parse(live.request).intent, "AVAILABILITY");
+  assert.equal(JSON.parse(live.request).intent, "DISCOVER");
+  assert.equal(JSON.parse(live.request).merchant, undefined);
   assert.equal(JSON.parse(live.response).status, 200);
+  // The buttons' intents address no merchant: unpublished or paused, the node answers them (#254).
   const hidden = createMockManagementClient(
     { ...data, merchant: { ...data.merchant, status: "building" } },
     { latencyMs: 0, liveBookingDelayMs: 0 },
   );
-  assert.equal((await hidden.tryAgent(SLUG, "BOOK")).status, 404);
+  assert.equal((await hidden.tryAgent(SLUG, "RECALL")).status, 200);
   assert.equal((await hidden.tryAgent(SLUG, "PING")).status, 200);
-  const paused = createMockManagementClient(
-    { ...data, merchant: { ...data.merchant, status: "down" } },
-    { latencyMs: 0, liveBookingDelayMs: 0 },
-  );
-  assert.equal((await paused.tryAgent(SLUG, "AVAILABILITY")).status, 503);
 });
 
 test("the dashboard shows tonight's room and the 30 days ending today", async () => {

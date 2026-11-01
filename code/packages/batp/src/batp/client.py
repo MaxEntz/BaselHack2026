@@ -42,7 +42,7 @@ UNREACHABLE = "The BATP node is unreachable"
 CLOSED = "The BATP session was closed before the answer"
 UNREADABLE = "The BATP node sent an answer this client can't read"
 # RECALL marks notices delivered, but returns them again for a day: resending it loses none (#91).
-SAFE_TO_RESEND: frozenset[Intent] = frozenset({"PING", "DISCOVER", "AVAILABILITY", "RECALL"})
+SAFE_TO_RESEND: frozenset[Intent] = frozenset({"PING", "DISCOVER", "RECALL"})
 
 
 class SessionLost(AgentUnavailable):

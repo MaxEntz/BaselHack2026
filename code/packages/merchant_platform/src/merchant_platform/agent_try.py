@@ -2,27 +2,23 @@
 a test agent.
 
 The platform opens a session of its own, so the merchant sees what any agent gets: a `404` until
-they publish. BOOK makes a real booking under `TEST_GUEST`, like the assistant's
-`send_test_booking`; AMEND and CANCEL act on that guest's latest booking here. A `TALK` has no
-guest field: the merchant's agent asks for a name, as it would ask anyone, and a yes the owner
-confirms makes a real booking under that name.
+they publish. The buttons send the intents that address no merchant (`DISCOVER`, `RECALL`,
+`PING`); booking goes through the message box, since only the merchant's agent calls the booking
+tools (#254). A `TALK` has no guest field: the merchant's agent asks for a name, as it would ask
+anyone, and a yes the owner confirms makes a real booking under that name.
 """
 
 import asyncio
-from collections.abc import Callable
-from datetime import date, datetime, time, timedelta
 from typing import Any
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
-from agent.service import AgentService
 from batp.client import BatpClient, parse_batp_url
 from batp.codec import encode
 from batp.messages import AgentIdentity, Intent
 from core.config import Settings
-from core.errors import AgentError, AgentUnavailable
+from core.errors import AgentUnavailable
 from core.models import AgentTalkInput, AgentTryIntent, AgentTryOutput, TalkOutput
-from merchant_platform.trial import TEST_GUEST, TEST_PARTY, first_free_slot
+from merchant_platform.trial import TEST_GUEST
 
 # Needs an entry in the node's BATP_TOKENS when it has any, with this platform's BATP_TOKEN.
 STUDIO_AGENT = AgentIdentity(
@@ -35,33 +31,14 @@ NO_NODE = "Sending frames needs the BATP node, and this platform has no BATP_URL
 NO_ANSWER = "Your agent took too long to answer. Try again."
 # The node gives a model turn 25 s (PROTOCOL.md): this only covers a node that never answers.
 TALK_WAIT_S = 30
-# The first number no booking has: the node answers what it answers to any unknown booking.
-NO_BOOKING = "R-000"
-# Asked for when the merchant is hidden and has no slot to offer: the node refuses it anyway.
-NOON = time(12)
-
-Clock = Callable[[], datetime]
 
 
-async def try_intent(
-    settings: Settings,
-    agent: AgentService,
-    slug: str,
-    intent: AgentTryIntent,
-    *,
-    clock: Clock | None = None,
-) -> AgentTryOutput:
-    """The frames as sent and answered; the node's refusals are answers, not errors.
-
-    `clock` returns the current time (tests inject a fixed one), whose local day the frames ask
-    about.
-    """
+async def try_intent(settings: Settings, slug: str, intent: AgentTryIntent) -> AgentTryOutput:
+    """The frames as sent and answered; the node's refusals are answers, not errors."""
     if not settings.batp_url:
         raise AgentUnavailable(NO_NODE)
-    tz = ZoneInfo(settings.merchant_tz)
-    now = clock() if clock is not None else datetime.now(tz)
-    merchant, params = await _frame_for(agent, slug, intent, now.astimezone(tz).date(), tz)
-    return await _exchange(settings, settings.batp_url, intent, merchant, params)
+    params = _params_for(slug, intent)
+    return await _exchange(settings, settings.batp_url, intent, None, params)
 
 
 async def try_talk(settings: Settings, slug: str, body: AgentTalkInput) -> AgentTryOutput:
@@ -108,56 +85,13 @@ async def _exchange(
     )
 
 
-async def _frame_for(
-    agent: AgentService, slug: str, intent: AgentTryIntent, today: date, tz: ZoneInfo
-) -> tuple[str | None, dict[str, Any]]:
+def _params_for(slug: str, intent: AgentTryIntent) -> dict[str, Any]:
+    """The params of a button's frame; none of these intents addresses a merchant."""
     match intent:
         case "PING":
-            return None, {}
+            return {}
         case "DISCOVER":
             # The slug's words name the merchant, the way a guest would.
-            return None, {"query": slug.replace("-", " ")}
+            return {"query": slug.replace("-", " ")}
         case "RECALL":
-            return None, {"guest_name": TEST_GUEST}
-        case "AVAILABILITY":
-            return slug, {"date": today.isoformat(), "party_size": TEST_PARTY}
-        case "BOOK":
-            return slug, {
-                "starts_at": (await _free_start(agent, slug, today, tz)).isoformat(),
-                "party_size": TEST_PARTY,
-                "guest_name": TEST_GUEST,
-                "idempotency_key": f"studio-try-{uuid4()}",
-            }
-        case "AMEND":
-            reservation_id, party = await _test_booking(agent, slug)
-            return slug, {
-                "reservation_id": reservation_id,
-                "guest_name": TEST_GUEST,
-                "party_size": 1 if party == TEST_PARTY else TEST_PARTY,
-                "idempotency_key": f"studio-try-{uuid4()}",
-            }
-        case "CANCEL":
-            reservation_id, _ = await _test_booking(agent, slug)
-            return slug, {"reservation_id": reservation_id, "guest_name": TEST_GUEST}
-
-
-async def _free_start(agent: AgentService, slug: str, today: date, tz: ZoneInfo) -> datetime:
-    try:
-        slot = await first_free_slot(agent, slug, today)
-    except AgentError:
-        slot = None  # Hidden from guests, or too small: the node gives the real answer.
-    return slot.starts_at if slot else datetime.combine(today + timedelta(days=1), NOON, tz)
-
-
-async def _test_booking(agent: AgentService, slug: str) -> tuple[str, int]:
-    """The latest booking the test guest holds here that hasn't started, and its party."""
-    reservations, _ = await agent.find_guest_reservations(TEST_GUEST)
-    mine = [
-        reservation
-        for reservation in reservations
-        if reservation.merchant == slug and reservation.status == "confirmed"
-    ]
-    if not mine:
-        return NO_BOOKING, TEST_PARTY
-    latest = max(mine, key=lambda reservation: reservation.starts_at)
-    return latest.id, latest.party_size
+            return {"guest_name": TEST_GUEST}

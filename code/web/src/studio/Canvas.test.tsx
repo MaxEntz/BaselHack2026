@@ -143,23 +143,23 @@ describe("Studio's canvas", () => {
     const { container } = canvas({ view: "agent", addresses: { agent: "batp://h/la-graine-verte", mcp: "https://h/m/x/mcp", management: "https://h/manage/x" } });
     expect(screen.getByText(/Right now every agent gets a 404/)).toBeTruthy();
     expect(screen.getByText("Not live")).toBeTruthy();
-    await waitFor(() => expect(container.querySelector(".st-w-log")?.textContent).toContain('"intent":"AVAILABILITY"'));
+    await waitFor(() => expect(container.querySelector(".st-w-log")?.textContent).toContain('"intent":"TALK"'));
     expect(container.querySelector(".st-w-log")?.textContent).toContain('"table_label":"T8"');
   });
 
   it("sends a real frame from its button, and shows both frames with the status coloured", async () => {
     const frames = {
-      request: '{"type":"request","id":"r-1","intent":"BOOK","merchant":"la-graine-verte"}',
-      response: '{"type":"response","id":"r-1","status":404,"error":{"code":"not_found"}}',
-      status: 404,
+      request: '{"type":"request","id":"r-1","intent":"RECALL","params":{"guest_name":"Test guest"}}',
+      response: '{"type":"response","id":"r-1","status":503,"error":{"code":"agent_unavailable"}}',
+      status: 503,
     };
     const fake = client(frames);
     const { container } = canvas({ view: "agent", client: fake });
-    await userEvent.click(screen.getByRole("button", { name: "BOOK" }));
-    expect(fake.tryAgent).toHaveBeenCalledWith("la-graine-verte", "BOOK");
-    await waitFor(() => expect(container.querySelector(".st-w-log")?.textContent).toContain('"intent":"BOOK"'));
+    await userEvent.click(screen.getByRole("button", { name: "RECALL" }));
+    expect(fake.tryAgent).toHaveBeenCalledWith("la-graine-verte", "RECALL");
+    await waitFor(() => expect(container.querySelector(".st-w-log")?.textContent).toContain('"intent":"RECALL"'));
     const statuses = [...container.querySelectorAll(".st-w-s.bad")].map((item) => item.textContent);
-    expect(statuses).toEqual(["404"]);
+    expect(statuses).toEqual(["503"]);
   });
 
   describe("asking the merchant's agent", () => {

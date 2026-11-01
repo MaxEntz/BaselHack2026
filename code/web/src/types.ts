@@ -132,7 +132,8 @@ export type SitePage = { path: string; width: number; height: number; image: str
 // GET /merchants/<slug>/site
 export type PublicSite = { pages: SitePage[] };
 // POST /merchants/<slug>/agent/try: both frames, and the node's answer (404 until published).
-export type AgentIntent = "DISCOVER" | "AVAILABILITY" | "BOOK" | "AMEND" | "CANCEL" | "RECALL" | "PING";
+// The Send buttons: the intents that address no merchant; booking is a TALK (#254).
+export type AgentIntent = "DISCOVER" | "RECALL" | "PING";
 export type AgentTryOutput = {
   request: string;
   response: string;
