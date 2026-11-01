@@ -25,12 +25,12 @@ The recording predates the merchant's AI agent (#244), so it shows the booking f
 
 ## Speaker notes
 
-Each note opens with the team's script in French, followed by the English version. The French is an exception to the English-only rule of AGENTS.md §12, kept at the team's request.
+Each note opens with the team's script in French, followed by the English version. The French is an exception to the English-only rule of AGENTS.md §12, kept at the team's request. They describe the flow on the merchant's AI agent: slide 5's guest talks to the restaurant's agent, which books only after a yes, and slide 6's steps are the [demo runbook](../../runbooks/demo.md)'s, in short.
 
 ## Where the slides go beyond the code
 
 - **Slide 2:** "2035s" is the wording the team chose. The standard form for a decade would be "2030s".
-- **Slide 3:** the agent talking to an agent is real: Claude goes through the gateway over HTTPS, the gateway speaks BATP to the merchant's AI agent, and a guest agent of ours speaks BATP itself (#252). The rest it draws as the model: outside agents can't connect yet, since port 4710 stays closed (#256), and only restaurants exist.
+- **Slide 3:** the agent talking to an agent is real: Claude goes through the gateway over HTTPS, the gateway speaks BATP (`TALK`) to the merchant's AI agent, and a guest agent of ours speaks BATP itself (#252). That agent is the only one that books, and its code runs a booking only on the guest's confirm, after the yes: a model reading the guest's text can propose, never write (#247, #254). The rest it draws as the model: outside agents can't connect yet, since port 4710 stays closed (#256), and only restaurants exist.
 - **Slide 4:** the control site is the management site ([ADR-0015](../../adr/0015-give-merchants-a-management-site-next-to-the-chat.md), #127), in the merchant's own look, read from its homepage (#149, #150).
 - **Slide 7:** the cost claim comes from [Taalas](https://taalas.com/the-path-to-ubiquitous-ai/) alone, and the slide says so.
 
