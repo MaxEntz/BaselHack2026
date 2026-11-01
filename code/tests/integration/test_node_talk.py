@@ -9,7 +9,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent.provisioning import set_status
@@ -17,15 +17,21 @@ from agent.service import PgAgentService
 from agent.talk import MerchantAgent, registry_merchants
 from batp.client import BatpClient
 from batp.messages import AgentIdentity, Response
-from batp.server import NodeServer
-from core.db import agent_requests_t, merchant_activity_t, merchant_conn, reservations_t
+from batp.server import TALK_TIMEOUT, NodeServer
+from core.db import (
+    agent_requests_t,
+    merchant_activity_t,
+    merchant_conn,
+    merchants_t,
+    reservations_t,
+)
 from core.llm import LLMReply
 from merchant_node.__main__ import NODE
 from merchant_node.agents import MerchantAgents
 from merchant_node.limits import TalkLimits
 from merchant_node.requests_log import RequestLog
 from merchant_platform.events import LiveBus, LiveListener
-from tests.integration.agent_fakes import ScriptedLLM, call, calls, says
+from tests.integration.agent_fakes import HangingLLM, ScriptedLLM, call, calls, says
 
 pytestmark = pytest.mark.integration
 
@@ -58,7 +64,11 @@ class Node:
     """A node serving `MerchantAgents` with the agent on `llm` (none: no OPENAI_API_KEY)."""
 
     def __init__(
-        self, engine: AsyncEngine, llm: ScriptedLLM | None, limits: TalkLimits | None = None
+        self,
+        engine: AsyncEngine,
+        llm: ScriptedLLM | None,
+        limits: TalkLimits | None = None,
+        talk_seconds: float = TALK_TIMEOUT,
     ) -> None:
         service = PgAgentService(engine, tz=TZ, clock=lambda: NOW)
         talker = None
@@ -71,6 +81,7 @@ class Node:
             authenticate=lambda hello: hello.token == TOKEN,
             fallback_url=agents.fallback_url,
             record=RequestLog(engine),
+            intent_timeouts={"TALK": talk_seconds},
         )
 
     async def __aenter__(self) -> BatpClient:
@@ -193,6 +204,58 @@ async def test_a_model_outage_is_503_with_the_fallback_url(
 
     assert response.status == 503 and response.error is not None
     assert (response.error.code, response.error.fallback_url) == ("agent_unavailable", FALLBACK)
+
+
+async def test_a_confirm_past_the_node_deadline_replays_its_booking(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    # The node cancels a turn past its deadline after the write: the retry gets the booking.
+    slug = await make_merchant()
+    llm = HangingLLM()
+    llm.then(
+        calls(call("propose_booking", starts_at=at("20:00"), party_size=2, guest_name=GUEST)),
+        says("A table for 2 on Monday at 20:00, under Lena Koch. Shall I book it?"),
+    )
+    async with Node(engine, llm, talk_seconds=0.5) as client:
+        proposed = await client.request("TALK", slug, talk("Monday 20:00 for 2, Lena Koch"))
+        yes = talk("Yes", conversation=proposed["conversation"], confirm=proposed["pending"]["id"])
+        llm.hang()
+        _, cut = await client.exchange("TALK", slug, yes)
+        assert cut.status == 503 and cut.error is not None
+        assert (cut.error.code, cut.error.fallback_url) == ("agent_unavailable", FALLBACK)
+
+        calls_before = len(llm.calls)
+        retried = await client.request("TALK", slug, yes)
+
+    assert retried["reservation"]["status"] == "confirmed"
+    assert retried["reply"].startswith(f"Booked: booking {retried['reservation']['id']}, ")
+    assert len(llm.calls) == calls_before
+    async with merchant_conn(engine, slug) as conn:
+        booked = list(await conn.execute(select(reservations_t.c.id)))
+    assert booked == [(retried["reservation"]["id"],)]
+
+
+async def test_a_stored_profile_that_no_longer_validates_is_503_not_invalid_input(
+    engine: AsyncEngine, make_merchant: MerchantFactory
+) -> None:
+    slug = await make_merchant()
+    async with engine.begin() as conn:
+        await conn.execute(
+            update(merchants_t)
+            .where(merchants_t.c.slug == slug)
+            .values(profile={"name": "half a profile"})
+        )
+    llm = ScriptedLLM()
+    async with Node(engine, llm) as client:
+        _, response = await client.exchange("TALK", slug, talk("Table for 2?"))
+        # The caller's own invalid params are still its error.
+        _, invalid = await client.exchange("TALK", slug, {"message": ""})
+
+    assert response.status == 503 and response.error is not None
+    assert (response.error.code, response.error.fallback_url) == ("agent_unavailable", FALLBACK)
+    assert llm.calls == []
+    assert invalid.status == 400 and invalid.error is not None
+    assert invalid.error.code == "invalid_input"
 
 
 async def test_an_expired_conversation_is_404(

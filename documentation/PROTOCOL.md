@@ -2,7 +2,8 @@
 
 > This page is a readable summary of BATP 0.2 (§13). 0.2 adds the `TALK` intent: guests' agents
 > talk to the merchant's AI agent ([ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md)).
-> Until #249 serves that agent, the node answers `TALK` with `503` and the fallback URL.
+> The node serves it with the merchant's AI agent (#249); without `OPENAI_API_KEY`, `TALK` answers
+> `503` with the fallback URL.
 > The **normative** spec is the Internet-Draft
 > [`rfc/draft-merchant-agents-batp-00`](rfc/draft-merchant-agents-batp-00.md)
 > ([text](rfc/draft-merchant-agents-batp-00.txt), [HTML](rfc/draft-merchant-agents-batp-00.html)):
@@ -127,7 +128,7 @@ lists what the node serves in that version, so a `0.1` caller isn't offered `TAL
 | `BOOK` | required | `CreateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.create_reservation` with `via = claude`: BATP bookings come from guests' agents, and the `kind` a caller declares is not trusted |
 | `AMEND` | required | `UpdateReservationInput` without `merchant` | `ReservationOutput` | `AgentService.update_reservation` |
 | `CANCEL` | required | `CancelReservationInput` without `merchant` | `ReservationOutput` | `AgentService.cancel_reservation(by="guest")` |
-| `TALK` (0.2) | required | `TalkInput` without `merchant` | `TalkOutput` | the merchant's AI agent (#249); until then the node answers `503 agent_unavailable` with the fallback URL |
+| `TALK` (0.2) | required | `TalkInput` without `merchant` | `TalkOutput` | the merchant's AI agent (#249); without `OPENAI_API_KEY`, `503 agent_unavailable` with the fallback URL |
 | `RECALL` | — | `GetMyReservationsInput` | `GetMyReservationsOutput` | `AgentService.find_guest_reservations` |
 | `PING` | — | `{}` | `{"pong": true, "server_time": …}` | the node |
 
@@ -176,7 +177,7 @@ offered nor served `TALK` (§14).
 | 409 | `slot_unavailable` | Slot taken or blocked | no |
 | 413 | `party_too_large` | Party above the limit or no table fits (a frame above 64 KiB gets an `error` frame with `413` instead) | yes |
 | 426 | — | Unsupported `batp` version | no |
-| 429 | `too_many_requests` | Too many requests in flight; retry after an earlier response | no |
+| 429 | `too_many_requests` | Too many requests in flight, or a `TALK` beyond the node's limits (§10); retry after an earlier response, or later | no |
 | 503 | `agent_unavailable` | Merchant `down`, agent error or timeout (10 s, 25 s for `TALK`) | yes |
 
 ## 9. Events (reserved)
@@ -197,7 +198,7 @@ merchant cancelled their booking. Today that goes through the guest notice retur
   - 10 s per request on the node, 25 s for a `TALK` (`503` past that): a model turn with its tool calls doesn't fit in 10 s;
   - at least 32 requests in flight per session: beyond the node's limit, extra requests get `429 too_many_requests` and may be sent again once earlier ones are answered;
   - 64 sessions per node, the next one gets a `503` reject;
-  - `TALK`, a model turn on the shared OpenAI key, is bounded before any model call: 8 turns at once on the node, and 30 `TALK` per merchant per minute (`merchant_node.limits`). Past them, `429 too_many_requests`, and the request is not carried out (#249);
+  - `TALK`, a model turn on the shared OpenAI key, is bounded before any model call: 8 turns at once on the node and 3 per merchant, and 30 `TALK` per merchant per minute (`merchant_node.limits`). Past them, `429 too_many_requests`, and the request is not carried out (#249);
   - a session closes after 10 malformed frames in a row, or when its peer stops reading for 10 s.
 - **Bounded work:** a `DISCOVER` takes at most 32 tags and a 500-character query (`agent.discovery.MAX_TAGS`, `MAX_QUERY`, shared with the gateway's `search_merchants`).
 - **Logging:** refused sessions are logged at WARNING with the peer address and the agent they claimed, never the token. Database errors never carry query parameters (guest names).
@@ -283,12 +284,8 @@ ignored; because `params` are strict, a caller only sends the params of the sess
 ## 15. Where the reference node still differs from the draft
 
 The Internet-Draft is the normative text. The node in `code/packages/merchant_node/` differs
-from it on two points:
+from it on one point:
 
-- **`TALK` has no agent behind it yet.** Until #249, the node checks the merchant (`404` while
-  it isn't live, `503` with the fallback URL when it is `down`) and the params (`400`), then
-  answers `503 agent_unavailable` with the fallback URL. Conversations, proposals and replays
-  come with the agent (#246, #247).
 - **`via`:** the node records every `BOOK` as `claude`, whatever `kind` the caller declares
   (`merchant_node.agents.VIA`, §7; pinned by
   `tests/integration/test_batp_node.py`). The draft's BOOK section says a node MUST record

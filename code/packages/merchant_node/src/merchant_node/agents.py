@@ -79,10 +79,6 @@ class MerchantAgents:
     async def __call__(self, agent: AgentIdentity, request: Request) -> Result:
         try:
             return await self._handlers[request.intent](agent, request)
-        except ValidationError as error:
-            fields = sorted({".".join(map(str, e["loc"]))[:60] for e in error.errors()})
-            listed = ", ".join(fields[:5]) or "params"
-            raise InvalidInput(f"Invalid params for {request.intent}: {listed}") from None
         except (Refused, AgentError, TooManyRequests):
             raise
         except Exception:
@@ -95,14 +91,14 @@ class MerchantAgents:
         return {"pong": True, "server_time": datetime.now(UTC).isoformat()}
 
     async def _discover(self, agent: AgentIdentity, request: Request) -> Result:
-        inp = SearchMerchantsInput.model_validate(request.params)
+        inp = _params(SearchMerchantsInput, request, request.params)
         # `search` refuses a query or filters beyond its bounds before reading the registry.
         found = await search(inp.query, inp.near, inp.date, inp.filters, engine=self.engine)
         return _dump(found)
 
     async def _availability(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        inp = GetAvailabilityInput.model_validate(params)
+        inp = _params(GetAvailabilityInput, request, params)
         slots = await self._refusing(
             slug, self.service.get_availability(slug, inp.date, inp.party_size, inp.time)
         )
@@ -110,7 +106,7 @@ class MerchantAgents:
 
     async def _book(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        inp = CreateReservationInput.model_validate(params)
+        inp = _params(CreateReservationInput, request, params)
         reservation = await self._refusing(
             slug,
             self.service.create_reservation(
@@ -126,7 +122,7 @@ class MerchantAgents:
 
     async def _amend(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        inp = UpdateReservationInput.model_validate(params)
+        inp = _params(UpdateReservationInput, request, params)
         reservation = await self._refusing(
             slug,
             self.service.update_reservation(
@@ -142,7 +138,7 @@ class MerchantAgents:
 
     async def _cancel(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        inp = CancelReservationInput.model_validate(params)
+        inp = _params(CancelReservationInput, request, params)
         reservation = await self._refusing(
             slug,
             self.service.cancel_reservation(
@@ -153,7 +149,7 @@ class MerchantAgents:
 
     async def _talk(self, agent: AgentIdentity, request: Request) -> Result:
         slug, params = await self._merchant(request)
-        inp = TalkInput.model_validate(params)
+        inp = _params(TalkInput, request, params)
         if self.talker is None:
             merchant = await self._registry(slug)
             raise Refused(
@@ -164,7 +160,7 @@ class MerchantAgents:
         return _dump(output)
 
     async def _recall(self, agent: AgentIdentity, request: Request) -> Result:
-        inp = GetMyReservationsInput.model_validate(request.params)
+        inp = _params(GetMyReservationsInput, request, request.params)
         reservations, notices = await self.service.find_guest_reservations(inp.guest_name)
         return _dump(
             GetMyReservationsOutput(reservations=tuple(reservations), notices=tuple(notices))
@@ -218,6 +214,18 @@ class MerchantAgents:
             if error.code not in WITH_FALLBACK:
                 raise
             raise Refused(error, (await self._registry(slug)).fallback_url) from None
+
+
+def _params[M: BaseModel](model: type[M], request: Request, params: dict[str, Any]) -> M:
+    """The request's params for the contract; `InvalidInput` naming the fields that fail. Only
+    these are the caller's error: any other `ValidationError` (a stored profile that no longer
+    validates) is the node's, answered `503` with the fallback URL (§8)."""
+    try:
+        return model.model_validate(params)
+    except ValidationError as error:
+        fields = sorted({".".join(map(str, e["loc"]))[:60] for e in error.errors()})
+        listed = ", ".join(fields[:5]) or "params"
+        raise InvalidInput(f"Invalid params for {request.intent}: {listed}") from None
 
 
 def _dump(model: BaseModel) -> Result:

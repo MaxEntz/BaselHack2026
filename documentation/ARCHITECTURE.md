@@ -33,6 +33,9 @@ flowchart TB
   GW -->|"BATP: one intent per user tool"| NODE
   NODE -->|"AVAILABILITY, BOOK, AMEND, CANCEL, RECALL"| AG
   NODE -->|"DISCOVER: registry"| DB
+  NODE -->|"TALK"| MA["Merchant's AI agent<br/>OpenAI tool-use loop, guest tools"]
+  MA -->|"guest tools, writes on confirm"| AG
+  MA -->|"model turns"| OAI
   AG --> DB
   GW -.->|"down status, fallback URL"| DB
   GW -.->|"agent error or timeout: fallback_url"| SITE["Merchant's own website"]
@@ -56,7 +59,7 @@ flowchart TB
 - **User side.** Claude calls our **gateway**, a remote MCP server added once as a connector. The gateway applies the user's preferences as filters, routes the call to the merchant's agent through the **BATP node** (our agent protocol, [PROTOCOL.md](PROTOCOL.md)), and returns the merchant's own booking page (`fallback_url`) when the agent cannot serve the request.
 - **Merchant side.** The merchant chats with the **platform assistant**. It builds the agent from the website (the **builder**), then runs day-to-day operations through admin tools: "What bookings do I have tonight?", "Block 21:00". New bookings from Claude appear live in the chat. A **management site** next to the chat offers ordinary pages and forms over the same operations, and shows the bookings live too (§3).
 
-**What "agent" means here.** The merchant's agent is not a separate process. It is the restaurant's data (tables, hours, policy, bookings) in its own Postgres schema `m_<slug>`, plus the booking tools, all served by one shared multi-tenant `AgentService` ([ADR-0001](adr/0001-one-postgres-schema-per-merchant.md)). From BATP 0.2 it is also an AI: guests' agents talk to it with `TALK`, and it is meant to become the only caller of the merchant's booking tools ([ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md), #244). That agent runs inside the BATP node, still one multi-tenant process, with the merchant's guest tools only and the merchant bound by code. Until #249 the node answers `TALK` with `503` and the fallback URL, and Claude books through the four direct tools. The LLMs are:
+**What "agent" means here.** The merchant's agent is not a separate process. It is the restaurant's data (tables, hours, policy, bookings) in its own Postgres schema `m_<slug>`, plus the booking tools, all served by one shared multi-tenant `AgentService` ([ADR-0001](adr/0001-one-postgres-schema-per-merchant.md)). From BATP 0.2 it is also an AI: guests' agents talk to it with `TALK`, and it is meant to become the only caller of the merchant's booking tools ([ADR-0021](adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md), #244). That agent runs inside the BATP node, still one multi-tenant process, with the merchant's guest tools only and the merchant bound by code. The node serves it since #249 (without `OPENAI_API_KEY`, `TALK` answers `503` with the fallback URL), while Claude still books through the four direct tools until the gateway's `talk_to_merchant` (#251). The LLMs are:
 - Claude, on the user side;
 - the builder's extraction step;
 - the merchant assistant;
