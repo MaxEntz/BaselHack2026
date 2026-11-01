@@ -281,12 +281,14 @@ async def test_an_unknown_merchant_never_reaches_the_agent() -> None:
         {"message": "Yes", "idempotency_key": KEY, "confirm": "p-1"},
         {"message": "Yes", "idempotency_key": KEY, "conversation": "c 1"},
         {"message": "Yes", "idempotency_key": "m-1"},
+        {"message": "Yes", "idempotency_key": "00000000-0000-0000-0000-000000000000"},
     ],
     ids=[
         "blank message",
         "confirm without its conversation",
         "conversation outside its shape",
         "a key that isn't a UUID",
+        "the nil UUID",
     ],
 )
 async def test_a_message_outside_the_contract_is_invalid_input(arguments: dict[str, Any]) -> None:

@@ -15,7 +15,7 @@ from typing import Annotated
 from uuid import UUID
 
 from mcp.types import ToolAnnotations
-from pydantic import Field, PositiveInt
+from pydantic import AfterValidator, Field, PositiveInt
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent import discovery
@@ -81,11 +81,21 @@ Message = Annotated[
         ),
     ),
 ]
+
+
 # A real UUID, not free text: every Claude user reaches the node under the gateway's one agent id,
 # and the node replays a key's stored answer. Two guests sending the same first message with the
 # same naive key ("m-1") would share a conversation and its proposal (#251, review of #264).
+def _not_nil(key: UUID) -> UUID:
+    # The nil UUID is the example a model is likeliest to copy instead of generating one.
+    if key.int == 0:
+        raise ValueError("generate a random UUID, not the nil one")
+    return key
+
+
 TalkKey = Annotated[
     UUID,
+    AfterValidator(_not_nil),
     Field(
         description=(
             "A fresh random UUID you generate per message; reuse it only to resend the same "
