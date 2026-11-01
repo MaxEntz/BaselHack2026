@@ -2,7 +2,7 @@
 
 Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-team-server.md). The gateway and the BATP node are in [connector.md](connector.md).
 
-⚠️ **Not deployed yet.** Merchant accounts (#132) are merged, and `make deploy` refuses a platform without their settings (step 2). Deploy it only after the team agreed to the server changes below.
+**Deployed** (#142): `main` runs on the team server. `make deploy` refuses a platform without its account settings (step 2). The first deployment's server changes below are done; they stay here for a new server.
 
 ⚠️ **The server is shared.** Ask before rebooting it, stopping a service or changing anything outside `/opt/merchant-agents`. When `code/deploy/Caddyfile` changes, `make deploy` validates it, overwrites `/etc/caddy/Caddyfile` and restarts Caddy: every other site must be declared in it.
 
@@ -14,7 +14,7 @@ Issue #142, [ADR-0016](../adr/0016-serve-the-web-app-and-the-platform-from-the-t
 | `https://sesame.191-96-88-152.sslip.io/manage/<slug>` | A merchant's management site (#127) |
 | `https://le-petit-zinc.191-96-88-152.sslip.io` | Demo site Le Petit Zinc, with its booking form |
 | `https://la-graine-verte.191-96-88-152.sslip.io`, `https://maison-albane.191-96-88-152.sslip.io` | The other demo sites |
-| `https://191-96-88-152.sslip.io/mcp` | The gateway, unchanged: Anthropic's range only |
+| `https://191-96-88-152.sslip.io/mcp` | The gateway: a token for every caller, added by Caddy for Anthropic's range ([ADR-0019](../adr/0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md)) |
 
 ## First deployment (once)
 

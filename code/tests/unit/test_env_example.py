@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from core.config import LEGACY_PREFIX, Settings
+from core.config import Settings
 
 ENV_EXAMPLE = Path(__file__).parents[2] / ".env.example"
 # `KEY=…`, or commented out as `# KEY=…`.
@@ -27,8 +27,7 @@ def test_every_setting_is_in_the_env_example() -> None:
 
 
 def test_every_key_of_the_env_example_is_read() -> None:
-    # `Settings` ignores unknown keys: a misspelt or renamed one would do nothing, silently.
+    # `Settings` ignores unknown keys: a misspelt or renamed one (MATP_URL, #231) does nothing.
     unread = example_keys() - setting_keys() - NOT_SETTINGS.keys()
 
     assert sorted(unread) == []
-    assert not any(key.startswith(LEGACY_PREFIX) for key in example_keys())
