@@ -50,14 +50,12 @@ Small restaurants already lost control once to the booking platforms. They shoul
 ## How it works
 
 ```mermaid
-flowchart LR
-    Site["Restaurant's website"] --> Sesame["Sésame"]
-    Owner["Owner"] -- "checks and publishes" --> Sesame
+flowchart TD
+    Site["The restaurant's website"] --> Sesame["Sésame"]
+    Owner["The owner"] -- "checks and publishes" --> Sesame
     Sesame --> Agent["The restaurant's AI agent"]
-    Guest["Guest"] --> AI["The guest's AI"]
-    AI <-- "BATP, a protocol for agents" --> Agent
+    Agent <-- "talk over BATP" --> AI["The guest's AI"]
     Agent --> Bookings["Tables and bookings"]
-    Agent -. "can't help" .-> Site
 ```
 
 1. **Read.** Sésame reads the website and keeps the facts that matter, such as the hours, the menu, group sizes and how to get there, each with where it found them.
