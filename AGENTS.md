@@ -24,10 +24,10 @@ Guests have no page of ours: their agent reaches the merchant through the protoc
 | Term | Meaning |
 |---|---|
 | **Gateway** | The public remote MCP server Claude connects to: discovery, preference filtering, routing, fallback. Deployed, it is a bridge to the BATP node. |
-| **BATP** | Broad Agent Transfer Protocol, our agent-only protocol: TCP port 4710, one JSON frame per line, version 0.2 ([ADR-0011](documentation/adr/0011-our-own-agent-protocol-matp-with-mcp-as-bridge.md), [ADR-0014](documentation/adr/0014-rename-matp-to-batp.md), [ADR-0021](documentation/adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md)). |
+| **BATP** | Broad Agent Transfer Protocol, our agent-only protocol: TCP port 4710, one JSON frame per line, version 0.3 ([ADR-0011](documentation/adr/0011-our-own-agent-protocol-matp-with-mcp-as-bridge.md), [ADR-0014](documentation/adr/0014-rename-matp-to-batp.md), [ADR-0021](documentation/adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md)). |
 | **`TALK`** | The BATP 0.2 intent by which a guest's agent talks with the merchant's AI agent in natural language (#245); only its `reply` is the model's text. A write it proposes (`pending`) runs only on a later `confirm` (#247). |
 | **Node** | The BATP server that serves this backend's merchant agents (`merchant_node`). |
-| **Merchant agent** | One merchant's booking logic and data, and from BATP 0.2 its AI agent that guests' agents talk to (`TALK`, served by the node from #249). Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's Postgres schema. |
+| **Merchant agent** | One merchant's booking logic and data, and its AI agent that guests' agents talk to (`TALK`), the only caller of the booking tools (#254). Logically one per merchant; physically one multi-tenant `AgentService` plus the merchant's Postgres schema. |
 | **Builder** | Pipeline that turns *website + description* into a validated `MerchantProfile`, then provisions the agent. |
 | **Platform assistant** | The LLM assistant merchants chat with on our platform. Uses admin tools on the merchant's agent. |
 | **MerchantProfile** | Validated JSON describing a merchant (`core.models.MerchantProfile`). Single input to provisioning. |
@@ -123,7 +123,7 @@ Reasons for each choice: [ADR-0002](documentation/adr/0002-python-mcp-v2-fastapi
 - Table assignment: smallest table with `seats >= party_size` that has **no overlapping reservation** and whose start time is **not blocked**.
 - `party_size > max_party_size`, or no table that fits → `party_too_large` + `fallback_url`.
 - Availability search returns up to **3 slots**, closest to the requested time, sorted by time.
-- **Every write initiated from Claude requires explicit user confirmation** in the conversation, after Claude has shown what it will book. A confirmation given before that summary doesn't count, and a write never goes in the same reply as the `search_merchants` or `get_availability` call the summary is based on. A re-check of availability after the yes may go with the booking, unless it no longer offers the confirmed time: then Claude shows the new times and asks again. Enforced by the tool descriptions and by `idempotency_key` on writes (#14, #109). Through the merchant's AI agent (`TALK`), code enforces it: the agent can only propose a write, and it runs when the caller's `confirm` names that proposal, sent after the guest's yes; a yes in words writes nothing (#247).
+- **Every write requires the guest's explicit confirmation**, after they've seen what will be booked. Only the merchant's AI agent calls the booking tools, and it can only propose a write (`pending`, with a summary written by code). The write runs when a later `talk_to_merchant` names it in `confirm`, which Claude sends only after the user's explicit yes to that summary, never in the same reply as the talk that brought the proposal; a yes in words writes nothing, and a yes given before the summary doesn't count. Enforced in code (#247, #254) and by `talk_to_merchant`'s description (#14, #109, #251).
 - A guest can move or cancel a booking only before it starts; updates and cancellations also need `guest_name`.
 - A merchant cancelling a booking a guest made **notifies the guest**: a stored notice, returned by `get_my_reservations` for 24 hours after it is first returned. A booking the merchant entered itself sends no notice; moving a guest's booking from the management site sends one too (#134).
 - Blocking a slot never removes existing bookings; it only prevents new ones at that start time.
@@ -158,13 +158,10 @@ Exact fields, bounds and error cases: [`documentation/CONTRACTS.md`](documentati
 Gateway, `/mcp` (the descriptions tell Claude to confirm writes, pass preferences as `filters`, and give any `fallback_url` to the user):
 
 - `search_merchants`: live merchants matching the query, tags and price, with `suggestions` of filters to drop and `ignored_filters`.
-- `get_availability`: up to 3 slots.
-- `create_reservation` / `update_reservation`: book or change, with `idempotency_key`.
-- `cancel_reservation`: cancel as the guest.
+- `talk_to_merchant`: a conversation with the merchant's agent over BATP `TALK`, the only way to book, move or cancel (#254); the agent writes only after a `confirm` sent once the user said yes to its `pending` summary (#247, #251).
 - `get_my_reservations`: a guest's bookings and notices.
-- `talk_to_merchant`: a conversation with the merchant's agent over BATP `TALK`; it books only after a `confirm` sent once the user said yes to its `pending` summary (#251).
 
-`GATEWAY_TALK` picks the booking path: off (default), the 4 booking tools; on, `talk_to_merchant` instead, never both. Each merchant also has `/m/<slug>/mcp` with the same booking path, without `merchant` ([ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md)).
+Each merchant also has `/m/<slug>/mcp` with `talk_to_merchant` alone, without `merchant` ([ADR-0012](documentation/adr/0012-one-mcp-server-for-every-merchant-endpoint.md)).
 
 ### 8.2 Admin tools
 
@@ -187,18 +184,18 @@ Every tool error is `{ "error": <code>, "message": str, "fallback_url"?: str }`.
 | Code | When | `fallback_url` |
 |---|---|---|
 | `agent_unavailable` | Agent or node timeout (> **2 s** for the whole call; a `TALK` gets 25 s on the node and `AGENT_TALK_TIMEOUT_MS`, 30 s, at the gateway, #251), exception, or merchant `down` | yes |
-| `party_too_large` | Party above `max_party_size`, or no table fits | yes |
-| `slot_unavailable` | Slot taken or blocked, or booking already started | no |
+| `party_too_large` | Party above `max_party_size`, or no table fits. Through `TALK`, the agent's tool refuses and the answer is a `200` whose `fallback_url` code sets | yes |
+| `slot_unavailable` | Slot taken or blocked, or booking already started. Through `TALK`, the agent words it in a `200` | no |
 | `not_found` | Unknown merchant or reservation | no |
 | `invalid_input` | Validation error | no |
 
 ## 9. Conversations to support (acceptance scenarios)
 
 **User ↔ Claude (via the gateway)**
-- "Table for 4 tonight at 8pm" → `search_merchants` with preference filters → `get_availability` → Claude proposes slots → user picks → Claude asks to confirm → `create_reservation` → booking card.
-- "Move it to 9pm" → `update_reservation`. "Cancel my booking" → `cancel_reservation`.
+- "Table for 4 tonight at 8pm" → `search_merchants` with preference filters → `talk_to_merchant` → the merchant's agent offers times and proposes a booking → Claude shows its summary and asks to confirm → user says yes → `talk_to_merchant` with `confirm` → booking card.
+- "Move it to 9pm", "Cancel my booking" → `talk_to_merchant` → the agent proposes the change or the cancellation → Claude asks → `confirm`.
 - Vegan preference on, merchant not tagged vegan → no match, Claude offers to drop the filter.
-- "Table for 8" when max is 6 → `party_too_large` → Claude gives the fallback link.
+- "Table for 8" when max is 6 → the agent says it can't, and its answer carries the `fallback_url` → Claude gives the fallback link.
 - Agent down → `agent_unavailable` → Claude gives the fallback link.
 
 **Merchant ↔ platform assistant**
@@ -230,7 +227,7 @@ make demo-reset # known demo state; make outage / make restore SLUG=…
 make deploy     # gateway, node, platform and web app to the team server
 ```
 
-Main settings (with their defaults in `code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AGENT_REASONING_EFFORT=low` (the node's merchant agents), `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `AGENT_TALK_TIMEOUT_MS=30000`, `GATEWAY_TALK=false`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `GATEWAY_TOKEN`; the platform's `PLATFORM_COOKIE_SECRET`, `PLATFORM_INVITE_CODE`, `PLATFORM_WEB_URL`, and `PLATFORM_MERCHANT` (development only).
+Main settings (with their defaults in `code/.env.example`): `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AGENT_REASONING_EFFORT=low` (the node's merchant agents), `MERCHANT_TZ=Europe/Zurich`, `AGENT_TIMEOUT_MS=2000`, `AGENT_TALK_TIMEOUT_MS=30000`, `GATEWAY_PUBLIC_URL`, `BATP_URL`, `BATP_TOKEN`, `BATP_TOKENS`, `GATEWAY_TOKEN`; the platform's `PLATFORM_COOKIE_SECRET`, `PLATFORM_INVITE_CODE`, `PLATFORM_WEB_URL`, and `PLATFORM_MERCHANT` (development only).
 
 ## 11. Milestones
 
@@ -286,7 +283,7 @@ We have a server: use it to test anything Claude.ai must reach, instead of openi
 ## 13. Default decisions (apply without asking)
 
 - **One agent per merchant** is a logical boundary: one multi-tenant `AgentService` keyed by slug, data isolated by Postgres schema. No per-merchant processes.
-- **Gateway and agents**: separate processes through BATP when deployed; the same process without `BATP_URL`.
+- **Gateway and agents**: separate processes through BATP when deployed. Without `BATP_URL`, the gateway runs discovery and `get_my_reservations` in process, and `talk_to_merchant` answers with the fallback URL: run `make node`.
 - **Auth:** every call to the public gateway carries `GATEWAY_TOKEN`, added by Caddy for Anthropic's range, sent by any other assistant ([ADR-0019](documentation/adr/0019-a-token-for-every-caller-added-by-caddy-for-claude-ai.md)); locally it stays optional. Merchant platform: a secret link per merchant sets its owner's cookie (#132); `PLATFORM_MERCHANT` stands in for it in local development only.
 - **Guest identity:** the `guest_name` Claude passes; no accounts.
 - **Guest notices** (a merchant's cancellation or move of a booking a guest made): stored per guest name and returned by `get_my_reservations`; no push to Claude.
@@ -395,8 +392,9 @@ Superseded rows are removed; the reasons are in the linked ADR, issue or PR.
 | 2026-11-01 | BATP 0.2 (#245): the `TALK` intent (`TalkInput`, `TalkOutput`, `PendingAction` in `core.models`: a message of 1 to 2000 characters with newlines, opaque ids, a `confirm` that needs its `conversation`; only `reply` is the model's text); the session speaks the highest minor both sides speak, and a `0.1` session is neither offered nor served `TALK`; the node gives `TALK` 25 s, the other intents keep 10 s; `BatpClient` never resends a `TALK` | [ADR-0021](documentation/adr/0021-give-each-merchant-an-ai-agent-that-guests-talk-to-over-batp.md). A `0.1` caller's `Welcome` model doesn't know `TALK`, and §14 already said the node answers with the highest minor both speak; a model turn with its tool calls doesn't fit in 10 s, and the gateway's 30 s stays above it so the node's `503` with the fallback URL comes first; a `TALK` isn't read-only |
 | 2026-11-01 | The merchant's AI agent (#246, #247): `agent.talk.MerchantAgent`, a tool-use loop of at most 5 model calls on `core.llm`, with guest tools only (`agent.guest_tools`), bound by code to one merchant; `propose_*` store one proposal per conversation (10 minutes) whose summary code writes, and the write runs only on a `confirm` naming it, before any model call, with the proposal's id as its idempotency key; a write that succeeded is reported by a fixed sentence when the model fails after it, and its answer is kept before the model is called, so a turn the node cancels after the write still replays it. Conversations in memory (`agent.conversations`: 30 minutes idle, 20 messages, 1000 kept), bound to the merchant and the caller; a key replays its answer only with the message it came with, else `invalid_input`; the profile's `knowledge` goes in the prompt between markers its text can't close; `AGENT_REASONING_EFFORT` (default `low`) | Prompt injection must not be able to book, move or cancel: a tool description is not enough once a model reads guests' text and the website's. Behind the gateway, every guest has one `agent.id` and picks its own keys: a key alone would let one guest land in another's conversation. `find_my_bookings` gives no notices, since `find_guest_reservations` returns every merchant's, as text; the lookup still starts their 24-hour window |
 | 2026-11-01 | The BATP node serves `TALK` with the merchants' AI agent (#249): it reads `OPENAI_API_KEY`, `OPENAI_MODEL` and `AGENT_REASONING_EFFORT` (one connection through `core.llm.openai_connection`, shared with the platform's wiring, 20 s read timeout, no SDK retries); before any model call, 8 turns at once on the node, 3 per merchant, and 30 `TALK` per merchant per minute, else `429 too_many_requests` (`batp.status.TooManyRequests`, which a backend raises); without a key the node starts and `TALK` answers `503` with the fallback URL; a stop waits for the `TALK` turns in flight (`stop_grace` at least each intent's deadline, 25 s for `TALK`); a stored profile that no longer validates is the node's failure (`503` with the fallback URL), only the request's params answer `400` | Each conversation spends the shared key, and a guest's agent could loop; a backend had no way to answer `429` itself, only the session's in-flight limit did; a turn's answer may report a write already made, and its conversation doesn't survive the restart; one busy merchant mustn't take every turn |
-| 2026-11-01 | `talk_to_merchant` (#251): `GATEWAY_TALK` (default off) shows it and hides the 4 booking tools on both MCP endpoints, or the reverse; its deadline is `AGENT_TALK_TIMEOUT_MS` (30 s), the other tools keep `AGENT_TIMEOUT_MS`; without `BATP_URL` it answers `agent_unavailable` with the fallback URL; it counts as a write, for the timeout message, only with a `confirm`; `/m/<slug>/mcp` counts each tool's budget from the request's start | Both paths at once would let Claude pick, and the 10:30 checkpoint of #244 needs a switch back; a model turn doesn't fit in 2 s, and the node gives `TALK` 25 s; the gateway has no LLM; a question that timed out changed nothing |
+| 2026-11-01 | `talk_to_merchant` (#251): its deadline is `AGENT_TALK_TIMEOUT_MS` (30 s), the other tools keep `AGENT_TIMEOUT_MS`; its `idempotency_key` is a real UUID; without `BATP_URL` it answers `agent_unavailable` with the fallback URL, and the gateway says so at start; it counts as a write, for the timeout message, only with a `confirm`; `/m/<slug>/mcp` counts each tool's budget from the request's start | A model turn doesn't fit in 2 s, and the node gives `TALK` 25 s; the gateway has no LLM; a question that timed out changed nothing |
 | 2026-11-01 | A guest's own AI agent speaks BATP for the demo (`scripts/batp_guest.py`, `make guest`, #252): identity `urn:batp:agent:sesame-guest` with its own `BATP_TOKENS` entry, sent only to a node on loopback; the model has `discover` and `talk(merchant, message)` only, and code sends `confirm` after the person's yes at the terminal; one key per `TALK`, resent once with the same key after a lost session; the fallback URL printed by code; on the team server it runs on the server itself, since port 4710 stays on loopback; its bookings are `via = claude` (PROTOCOL.md §15) | Two AIs talking in BATP, frame by frame, without the gateway. A model that could confirm would make the person's yes a prompt rule again (#247). `batp://` has no TLS, so a token sent off the machine would travel in clear. A `TALK` lost after its write must not book twice |
+| 2026-11-01 | BATP 0.3 closes `AVAILABILITY`, `BOOK`, `AMEND` and `CANCEL` (#254): a closed intent is `400 invalid_input` in a session of any version; the gateway keeps `search_merchants`, `talk_to_merchant` and `get_my_reservations`, and `GATEWAY_TALK` goes; Studio's Send buttons keep `DISCOVER`, `RECALL` and `PING`; the template has one tool, `talk_to_merchant`, which Studio, the Booking rules page and the assistant show as what agents read; `agent.requests` still words the closed intents, for the 7 days of old rows and the demo fixture | ADR-0021's end state: no client books, moves or cancels except through a conversation with the merchant's agent, so the guest's yes is checked by code for every caller. While the major is 0, a minor version may remove intents. The log keeps its rows 7 days, and the demo's Agent page shows rows from before |
 
 ## 15. Out of scope (POC)
 

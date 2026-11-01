@@ -187,19 +187,14 @@ function tools(mock: Mock): GeneratedTool[] {
     .map((s) => `${s.start}-${s.end}`)
     .join(", ");
   const groups = mock.data.rules.max_party_size;
+  // Only the merchant's agent calls the booking tools: agents read one tool, to talk to it (#254).
   return [
     {
-      name: "get_availability",
-      description: `Check free tables at ${name} (${city ?? "unknown city"}). Services: ${hours}. Groups up to ${groups}.`,
-    },
-    {
-      name: "create_reservation",
-      description: `Book a table at ${name}. Always confirm with the guest first.`,
-    },
-    { name: "update_reservation", description: `Move or resize a booking at ${name}.` },
-    {
-      name: "cancel_reservation",
-      description: `Cancel a booking at ${name}. Policy: ${POLICY_ELSEWHERE}.`,
+      name: "talk_to_merchant",
+      description:
+        `Talk to the agent of ${name} (${city ?? "unknown city"}) in natural language: it answers about the restaurant, ` +
+        `offers free tables and books once the guest says yes. Services: ${hours}. Groups up to ${groups}. ` +
+        `Policy: ${POLICY_ELSEWHERE}.`,
     },
   ];
 }

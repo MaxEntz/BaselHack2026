@@ -491,7 +491,7 @@ async def test_saving_the_settings_updates_the_registry_and_the_descriptions(
     assert row.profile["location"] == {"city": "Basel", "lat": 47.75, "lng": 7.34}
     assert row.profile["tags"] == ["vegan", "terrace"]
     rules = await service.get_rules(slug)
-    assert rules.tools[0].description.startswith("Check free tables at Zinc & Co (Basel).")
+    assert rules.tools[0].description.startswith("Talk to the agent of Zinc & Co (Basel)")
     assert await service.get_settings(slug) == settings
 
 
@@ -510,7 +510,7 @@ async def test_a_blank_city_is_none(
     assert (
         (await service.get_rules(slug))
         .tools[0]
-        .description.startswith("Check free tables at Le Petit Zinc (unknown city).")
+        .description.startswith("Talk to the agent of Le Petit Zinc (unknown city)")
     )
 
 

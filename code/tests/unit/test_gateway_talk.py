@@ -1,7 +1,6 @@
-"""`talk_to_merchant` (#251): Claude talks to the merchant's agent, on both MCP endpoints.
-
-`GATEWAY_TALK` picks the booking path: the agent's conversation, or the 4 booking tools, never
-both. The registry is patched here; the e2e tests run the same calls over a real BATP node.
+"""`talk_to_merchant` (#251): Claude talks to the merchant's agent, on both MCP endpoints, and
+it is the only way to book (#254). The registry is patched here; the e2e tests run the same calls
+over a real BATP node.
 """
 
 import asyncio
@@ -35,13 +34,6 @@ ZINC = "le-petit-zinc"
 URL = "https://le-petit-zinc.example/reservation"
 ENTRY = RegistryEntry(ZINC, "Le Petit Zinc", "live", URL)
 NO_ENGINE: Any = object()
-SHARED_TOOLS = {"search_merchants", "get_my_reservations"}
-BOOKING_TOOLS = {
-    "get_availability",
-    "create_reservation",
-    "update_reservation",
-    "cancel_reservation",
-}
 ANSWER = {
     "conversation": "c-1",
     "reply": "I can do 20:00 or 20:30. Which name?",
@@ -55,7 +47,6 @@ QUESTION = {"message": "Table for 4 tonight around 8pm?", "idempotency_key": KEY
 def make_settings(**overrides: Any) -> Settings:
     values = {
         "database_url": "postgresql+psycopg://u:p@localhost:5432/db",
-        "gateway_talk": True,
         "agent_timeout_ms": 50,
         "agent_talk_timeout_ms": 400,
     }
@@ -105,35 +96,13 @@ async def talk(client: Client, **arguments: Any) -> dict[str, Any]:
     return content
 
 
-# The switch
-
-
-async def test_with_the_switch_on_the_agent_replaces_the_booking_tools() -> None:
-    assert await tool_names(shared(FakeAgent())) == SHARED_TOOLS | {"talk_to_merchant"}
-
-
-async def test_with_the_switch_off_only_the_booking_tools_are_offered() -> None:
-    assert await tool_names(shared(FakeAgent(), gateway_talk=False)) == SHARED_TOOLS | BOOKING_TOOLS
-
-
-@pytest.mark.parametrize(("on", "expected"), [(True, {"talk_to_merchant"}), (False, BOOKING_TOOLS)])
-async def test_each_merchant_s_endpoint_follows_the_switch(on: bool, expected: set[str]) -> None:
-    mcp = create_merchant_server(FakeAgent(), NO_ENGINE, make_settings(gateway_talk=on))
-
-    assert await tool_names(Client(mcp)) == expected
-
-
-async def test_the_instructions_follow_the_switch() -> None:
-    async with shared(FakeAgent()) as client:
-        on = client.instructions
-    async with shared(FakeAgent(), gateway_talk=False) as client:
-        off = client.instructions
-
-    assert on == server.TALK_INSTRUCTIONS
-    assert off == server.INSTRUCTIONS
-
-
 # What Claude reads
+
+
+async def test_each_merchant_s_endpoint_offers_only_the_talk() -> None:
+    mcp = create_merchant_server(FakeAgent(), NO_ENGINE, make_settings())
+
+    assert await tool_names(Client(mcp)) == {"talk_to_merchant"}
 
 
 async def test_the_tool_s_arguments_are_the_contract_s() -> None:
@@ -166,8 +135,8 @@ def test_the_description_relays_the_agent_and_waits_for_a_yes(description: str) 
 @pytest.mark.parametrize(
     ("instructions", "chosen"),
     [
-        (server.TALK_INSTRUCTIONS, "a restaurant or a time"),
-        (merchant_server.TALK_INSTRUCTIONS, "a time"),
+        (server.INSTRUCTIONS, "a restaurant or a time"),
+        (merchant_server.INSTRUCTIONS, "a time"),
     ],
     ids=["shared", "own"],
 )
@@ -175,9 +144,7 @@ def test_the_instructions_keep_the_rule_for_writes(instructions: str, chosen: st
     flat = " ".join(instructions.split())
 
     assert tooling.TALK_CONFIRM_RULE.format(chosen=chosen) in flat
-    assert tooling.NOT_A_YES.format(chosen=chosen) in tooling.CONFIRM_RULE.format(
-        chosen=chosen, calls="get_availability"
-    )
+    assert tooling.NOT_A_YES.format(chosen=chosen) in flat
 
 
 def test_each_merchant_s_talk_opens_with_its_name_and_city() -> None:
@@ -321,7 +288,6 @@ def test_the_talk_budget_is_above_the_node_s_by_default() -> None:
     settings = Settings(_env_file=None, database_url="postgresql+psycopg://u:p@h/db")
 
     assert settings.agent_talk_timeout_ms == 30000
-    assert settings.gateway_talk is False
 
 
 async def test_in_process_there_is_no_agent_to_talk_to() -> None:
@@ -338,7 +304,7 @@ def test_talking_without_a_node_is_said_at_start(caplog: pytest.LogCaptureFixtur
     with caplog.at_level(logging.WARNING, logger="gateway.agent_client"):
         make_agent_client(settings, engine)
 
-    assert "GATEWAY_TALK without BATP_URL" in caplog.text
+    assert "no BATP_URL: talk_to_merchant gets the fallback URL" in caplog.text
 
 
 async def test_over_batp_a_talk_is_a_talk_with_only_what_is_set() -> None:

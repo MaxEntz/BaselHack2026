@@ -1,4 +1,10 @@
-"""AGENTS.md §9 user scenarios, through a real MCP client over Streamable HTTP (#14)."""
+"""AGENTS.md §9 user scenarios, through a real MCP client over Streamable HTTP (#14).
+
+Only the merchant's agent books, moves and cancels (#254): those scenarios run on
+`talking_gateway`, bridged to a real node whose agent runs on a scripted model. What the
+gateway decides on its own (its tools, the search, the guest's bookings, the refusals before
+any agent) runs in both of `gateway_base_url`'s modes.
+"""
 
 import logging
 import time
@@ -17,26 +23,23 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from agent.discovery import find_merchant
 from agent.provisioning import set_status
 from agent.service import PgAgentService
+from batp.client import BatpClient, parse_batp_url
 from core.config import Settings
 from core.db import merchant_conn, reservations_t
 from core.models import ToolError
-from gateway.agent_client import LocalAgentClient
-from gateway.fallback import call_agent
+from gateway.agent_client import GATEWAY_AGENT, BatpAgentClient
+from gateway.fallback import TALK_TOOL, call_agent
 from gateway.server import create_server
+from tests.e2e.conftest import TalkingNode, book, call, call_at, offered, talk
+from tests.integration.agent_fakes import TOKEN, ScriptedLLM, calls, says
+from tests.integration.agent_fakes import call as tool_call
 
 pytestmark = pytest.mark.integration
 
 ZINC = "le-petit-zinc"
 ZINC_FALLBACK = "http://localhost:8080/reservation.html"
 TZ = ZoneInfo("Europe/Zurich")
-TOOLS = {
-    "search_merchants",
-    "get_availability",
-    "create_reservation",
-    "update_reservation",
-    "cancel_reservation",
-    "get_my_reservations",
-}
+TOOLS = {"search_merchants", "talk_to_merchant", "get_my_reservations"}
 
 
 def day_ahead(days: int = 1) -> date:
@@ -44,8 +47,8 @@ def day_ahead(days: int = 1) -> date:
     return datetime.now(TZ).date() + timedelta(days=days)
 
 
-def at(day: date, hhmm: str) -> str:
-    return datetime.combine(day, datetime.strptime(hhmm, "%H:%M").time(), TZ).isoformat()
+def at(day: date, hhmm: str) -> datetime:
+    return datetime.combine(day, datetime.strptime(hhmm, "%H:%M").time(), TZ)
 
 
 def guest() -> str:
@@ -53,38 +56,15 @@ def guest() -> str:
     return f"Alex {uuid4().hex[:8]}"
 
 
-async def call(client: Client, tool: str, **arguments: Any) -> dict[str, Any]:
-    """The tool's result. Failures are results too, so that Claude can read them."""
-    result = await client.call_tool(tool, arguments)
-    assert not result.is_error
-    assert result.structured_content is not None
-    content: dict[str, Any] = result.structured_content["result"]
-    return content
-
-
-async def book(
-    client: Client, day: date, hhmm: str = "20:00", party_size: int = 2
-) -> dict[str, Any]:
-    name = guest()
-    booked = await call(
-        client,
-        "create_reservation",
-        merchant=ZINC,
-        starts_at=at(day, hhmm),
-        party_size=party_size,
-        guest_name=name,
-        idempotency_key=str(uuid4()),
-    )
-    reservation: dict[str, Any] = booked["reservation"]
-    return reservation
-
-
-def merchant_side(engine: AsyncEngine) -> PgAgentService:
-    """The service the platform assistant calls: the gateway never exposes these operations."""
+def service(engine: AsyncEngine) -> PgAgentService:
+    """The service behind the agent and the platform: the gateway never exposes its writes."""
     return PgAgentService(engine, tz=TZ)
 
 
-async def test_lists_the_six_tools_with_their_schemas(gateway_base_url: str) -> None:
+# What the gateway answers on its own, with or without a node
+
+
+async def test_lists_the_three_tools_with_their_schemas(gateway_base_url: str) -> None:
     async with Client(f"{gateway_base_url}/mcp") as client:
         tools = (await client.list_tools()).tools
 
@@ -93,23 +73,21 @@ async def test_lists_the_six_tools_with_their_schemas(gateway_base_url: str) -> 
 
 
 async def test_search_applies_the_preferences(gateway_base_url: str) -> None:
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        found = await call(
-            client,
-            "search_merchants",
-            query="table for 4 tonight",
-            near="Mulhouse",
-            filters={"tags": ["vegetarian"], "max_price": "€€"},
-        )
+    found = await call(
+        gateway_base_url,
+        "search_merchants",
+        query="table for 4 tonight",
+        near="Mulhouse",
+        filters={"tags": ["vegetarian"], "max_price": "€€"},
+    )
 
     assert [merchant["slug"] for merchant in found["merchants"]] == ["la-graine-verte", ZINC]
 
 
 async def test_search_with_no_match_suggests_which_filter_to_drop(gateway_base_url: str) -> None:
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        found = await call(
-            client, "search_merchants", query="dinner", filters={"tags": ["vegan", "terrace"]}
-        )
+    found = await call(
+        gateway_base_url, "search_merchants", query="dinner", filters={"tags": ["vegan", "terrace"]}
+    )
 
     assert found["merchants"] == []
     assert found["suggestions"] == [
@@ -118,141 +96,39 @@ async def test_search_with_no_match_suggests_which_filter_to_drop(gateway_base_u
     ]
 
 
-async def test_availability_returns_at_most_3_sorted_slots(gateway_base_url: str) -> None:
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        found = await call(
-            client,
-            "get_availability",
-            merchant=ZINC,
-            date=day_ahead().isoformat(),
-            time="20:00",
-            party_size=4,
-        )
-
-    starts = [slot["starts_at"] for slot in found["slots"]]
-    assert 1 <= len(starts) <= 3
-    assert starts == sorted(starts)
-
-
-async def test_booking_is_stored_via_claude_and_replay_returns_it(
-    gateway_base_url: str, e2e_engine: AsyncEngine
+async def test_without_the_merchant_s_agent_a_talk_gets_the_fallback_url(
+    gateway_base_url: str,
 ) -> None:
-    arguments = {
-        "merchant": ZINC,
-        "starts_at": at(day_ahead(), "19:00"),
-        "party_size": 2,
-        "guest_name": guest(),
-        "idempotency_key": str(uuid4()),
-    }
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        first = await call(client, "create_reservation", **arguments)
-        replay = await call(client, "create_reservation", **arguments)
+    # In process the gateway has no model; `python -m merchant_node` here has no key (#249).
+    answer = await talk(f"{gateway_base_url}/mcp", "Table for 2 tonight?", merchant=ZINC)
 
-    assert first["reservation"]["id"].startswith("R-")
-    assert replay == first
-    async with merchant_conn(e2e_engine, ZINC) as conn:
-        via = await conn.scalar(
-            select(reservations_t.c.via).where(reservations_t.c.id == first["reservation"]["id"])
-        )
-    assert via == "claude"
-
-
-async def test_move_then_cancel_a_booking(gateway_base_url: str) -> None:
-    day = day_ahead()
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        booked = await book(client, day)
-        name, booking = booked["guest_name"], booked["id"]
-
-        moved = await call(
-            client,
-            "update_reservation",
-            merchant=ZINC,
-            reservation_id=booking,
-            guest_name=name,
-            idempotency_key=str(uuid4()),
-            starts_at=at(day, "21:00"),
-        )
-        wrong_name = await call(
-            client,
-            "cancel_reservation",
-            merchant=ZINC,
-            reservation_id=booking,
-            guest_name="Someone Else",
-        )
-        listed = await call(client, "get_my_reservations", guest_name=name)
-        cancelled = await call(
-            client, "cancel_reservation", merchant=ZINC, reservation_id=booking, guest_name=name
-        )
-        after = await call(client, "get_my_reservations", guest_name=name)
-
-    assert datetime.fromisoformat(moved["reservation"]["starts_at"]).astimezone(TZ).hour == 21
-    assert wrong_name["error"] == "not_found"
-    assert wrong_name["fallback_url"] is None
-    assert [reservation["id"] for reservation in listed["reservations"]] == [booking]
-    assert cancelled == {"status": "cancelled"}
-    assert after["reservations"] == []
-
-
-async def test_update_without_change_is_invalid_input(gateway_base_url: str) -> None:
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        booked = await book(client, day_ahead())
-        result = await call(
-            client,
-            "update_reservation",
-            merchant=ZINC,
-            reservation_id=booked["id"],
-            guest_name=booked["guest_name"],
-            idempotency_key=str(uuid4()),
-        )
-
-    assert result["error"] == "invalid_input"
-
-
-async def test_party_too_large_gives_the_fallback_url(gateway_base_url: str) -> None:
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        result = await call(
-            client, "get_availability", merchant=ZINC, date=day_ahead().isoformat(), party_size=8
-        )
-
-    assert result["error"] == "party_too_large"
-    assert result["fallback_url"] == ZINC_FALLBACK
-    assert ZINC_FALLBACK in result["message"]
+    assert answer["error"] == "agent_unavailable"
+    assert answer["fallback_url"] == ZINC_FALLBACK
 
 
 async def test_outage_gives_the_fallback_url_and_restoring_needs_no_restart(
     gateway_base_url: str, e2e_engine: AsyncEngine
 ) -> None:
     search = {"query": "a table at Le Petit Zinc", "filters": {"tags": ["vegetarian"]}}
-    availability = {"merchant": ZINC, "date": day_ahead().isoformat(), "party_size": 2}
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        await set_status(ZINC, "down", engine=e2e_engine)
-        try:
-            direct = await call(client, "get_availability", **availability)
-            named = await call(client, "search_merchants", **search)
-            generic = await call(client, "search_merchants", query="restaurant tonight")
-        finally:
-            await set_status(ZINC, "live", engine=e2e_engine)
-        restored = await call(client, "get_availability", **availability)
-        visible = await call(client, "search_merchants", **search)
+    await set_status(ZINC, "down", engine=e2e_engine)
+    try:
+        direct = await talk(f"{gateway_base_url}/mcp", "Table for 2?", merchant=ZINC)
+        named = await call(gateway_base_url, "search_merchants", **search)
+        generic = await call(gateway_base_url, "search_merchants", query="restaurant tonight")
+    finally:
+        await set_status(ZINC, "live", engine=e2e_engine)
+    visible = await call(gateway_base_url, "search_merchants", **search)
 
     assert direct["error"] == "agent_unavailable"
     assert direct["fallback_url"] == ZINC_FALLBACK
     assert named["error"] == "agent_unavailable"
     assert named["fallback_url"] == ZINC_FALLBACK
     assert ZINC not in [merchant["slug"] for merchant in generic["merchants"]]
-    assert restored["slots"]
     assert [merchant["slug"] for merchant in visible["merchants"]] == [ZINC]
 
 
 async def test_unknown_merchant_is_not_found(gateway_base_url: str) -> None:
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        result = await call(
-            client,
-            "get_availability",
-            merchant="chez-personne",
-            date=day_ahead().isoformat(),
-            party_size=2,
-        )
+    result = await talk(f"{gateway_base_url}/mcp", "Table for 2?", merchant="chez-personne")
 
     assert result["error"] == "not_found"
     assert result["fallback_url"] is None
@@ -261,53 +137,31 @@ async def test_unknown_merchant_is_not_found(gateway_base_url: str) -> None:
 async def test_merchant_cancellation_notice_comes_back_on_the_next_call(
     gateway_base_url: str, e2e_engine: AsyncEngine
 ) -> None:
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        booked = await book(client, day_ahead(2))
-        await merchant_side(e2e_engine).cancel_reservation(ZINC, booked["id"], by="merchant")
+    name = guest()
+    booked = await service(e2e_engine).create_reservation(
+        ZINC, at(day_ahead(2), "20:00"), 2, name, str(uuid4()), via="claude"
+    )
+    await service(e2e_engine).cancel_reservation(ZINC, booked.id, by="merchant")
 
-        first = await call(client, "get_my_reservations", guest_name=booked["guest_name"])
-        second = await call(client, "get_my_reservations", guest_name=booked["guest_name"])
+    first = await call(gateway_base_url, "get_my_reservations", guest_name=name)
+    second = await call(gateway_base_url, "get_my_reservations", guest_name=name)
 
     assert first["reservations"] == []
     assert len(first["notices"]) == 1
-    assert booked["id"] in first["notices"][0]
+    assert booked.id in first["notices"][0]
     assert second["notices"] == first["notices"]
 
 
-async def test_blocked_start_is_no_longer_offered(
-    gateway_base_url: str, e2e_engine: AsyncEngine
-) -> None:
-    day = day_ahead(3)
-    blocked = datetime.fromisoformat(at(day, "21:00"))
-    availability = {
-        "merchant": ZINC,
-        "date": day.isoformat(),
-        "time": "21:00",
-        "party_size": 2,
-    }
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        before = await call(client, "get_availability", **availability)
-        await merchant_side(e2e_engine).block_slot(ZINC, blocked)
-        try:
-            after = await call(client, "get_availability", **availability)
-        finally:
-            await merchant_side(e2e_engine).unblock_slot(ZINC, blocked)
-
-    def starts(result: dict[str, Any]) -> set[datetime]:
-        return {datetime.fromisoformat(slot["starts_at"]) for slot in result["slots"]}
-
-    assert blocked in starts(before)
-    assert blocked not in starts(after)
-
-
 async def test_arguments_outside_the_schema_answer_invalid_input(gateway_base_url: str) -> None:
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        result = await call(
-            client, "get_availability", merchant="Le Petit Zinc", date="tonight", party_size=0
-        )
+    result = await call_at(
+        f"{gateway_base_url}/mcp",
+        "talk_to_merchant",
+        {"merchant": "Le Petit Zinc", "message": "Table?", "idempotency_key": "tonight"},
+    )
 
     assert result["error"] == "invalid_input"
     assert "merchant" in result["message"]
+    assert "idempotency_key" in result["message"]
     assert "Traceback" not in result["message"]
 
 
@@ -322,61 +176,35 @@ async def test_a_search_beyond_the_node_s_bounds_is_invalid_input_in_both_modes(
     gateway_base_url: str, search: dict[str, Any]
 ) -> None:
     # Over BATP, the node refuses it: a refusal, never an outage with a restaurant's link (#90).
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        result = await call(client, "search_merchants", **search)
+    result = await call(gateway_base_url, "search_merchants", **search)
 
     assert result["error"] == "invalid_input"
     assert result["fallback_url"] is None
+
+
+def a_talk(message: str, **arguments: str) -> dict[str, str]:
+    return {"merchant": ZINC, "message": message, "idempotency_key": str(uuid4()), **arguments}
 
 
 @pytest.mark.parametrize(
     ("tool", "arguments"),
     [
         ("get_my_reservations", {"guest_name": "Ada\x00Lovelace"}),
-        ("get_availability", {"merchant": ZINC, "date": "9999-12-31", "party_size": 2}),
-        (
-            "create_reservation",
-            {
-                "merchant": ZINC,
-                "starts_at": "0001-01-01T00:00:00+01:00",
-                "party_size": 2,
-                "guest_name": "Ada Lovelace",
-                "idempotency_key": "far-past",
-            },
-        ),
-        (
-            "cancel_reservation",
-            {"merchant": ZINC, "reservation_id": "R-\x00", "guest_name": "Ada Lovelace"},
-        ),
-        (
-            "update_reservation",
-            {
-                "merchant": ZINC,
-                "reservation_id": "R-001",
-                "guest_name": "Ada Lovelace",
-                "starts_at": "9999-12-31T23:30:00-05:00",
-                "idempotency_key": "far-future",
-            },
-        ),
-        (
-            "create_reservation",
-            {
-                "merchant": ZINC,
-                "starts_at": at(day_ahead(), "20:00"),
-                "party_size": 2,
-                "guest_name": "Ada Lovelace",
-                "idempotency_key": "k" * 8000,
-            },
-        ),
+        ("talk_to_merchant", a_talk("Table\x00?")),
+        ("talk_to_merchant", a_talk("Hi", idempotency_key="00000000-0000-0000-0000-000000000000")),
+        ("talk_to_merchant", a_talk("x" * 2001)),
+        ("talk_to_merchant", a_talk("Hi", conversation="c-\x00")),
+        ("talk_to_merchant", a_talk("Yes", confirm="p-1")),  # a confirm needs its conversation
     ],
+    ids=["guest-nul", "message-nul", "nil-key", "long-message", "conversation-nul", "lone-confirm"],
 )
-async def test_inputs_postgres_or_dates_cannot_hold_are_invalid_input_not_an_outage(
+async def test_inputs_the_contracts_refuse_are_invalid_input_not_an_outage(
     gateway_base_url: str, tool: str, arguments: dict[str, Any], caplog: pytest.LogCaptureFixture
 ) -> None:
-    # They used to reach Postgres or date arithmetic and come back as an outage (#79).
+    # They used to reach Postgres or date arithmetic and come back as an outage (#79); none of
+    # them reaches the merchant's agent either.
     with caplog.at_level(logging.ERROR, logger="gateway.tools"):
-        async with Client(f"{gateway_base_url}/mcp") as client:
-            result = await call(client, tool, **arguments)
+        result = await call_at(f"{gateway_base_url}/mcp", tool, arguments)
 
     assert result["error"] == "invalid_input"
     assert result["fallback_url"] is None
@@ -386,25 +214,19 @@ async def test_inputs_postgres_or_dates_cannot_hold_are_invalid_input_not_an_out
 async def test_calls_are_logged_fast_and_without_guest_names(
     gateway_base_url: str, caplog: pytest.LogCaptureFixture
 ) -> None:
+    name = guest()
     with caplog.at_level(logging.INFO):
+        await talk(f"{gateway_base_url}/mcp", f"Table for 2 under {name}?", merchant=ZINC)
         async with Client(f"{gateway_base_url}/mcp") as client:
-            booked = await book(client, day_ahead(4))
             for _ in range(5):
-                await call(
-                    client,
-                    "get_availability",
-                    merchant=ZINC,
-                    date=day_ahead(4).isoformat(),
-                    party_size=2,
-                )
-            await call(client, "get_my_reservations", guest_name=booked["guest_name"])
+                await client.call_tool("get_my_reservations", {"guest_name": name})
 
-    assert booked["guest_name"] not in caplog.text
-    calls = [record.__dict__ for record in caplog.records if record.getMessage() == "tool_call"]
-    assert {call["tool"] for call in calls} >= {"create_reservation", "get_availability"}
-    assert all(call["outcome"] == "ok" for call in calls)
+    assert name not in caplog.text
+    lines = [record.__dict__ for record in caplog.records if record.getMessage() == "tool_call"]
+    outcomes = {(line["tool"], line["outcome"]) for line in lines}
+    assert outcomes == {("talk_to_merchant", "agent_unavailable"), ("get_my_reservations", "ok")}
     # AGENTS.md: < 300 ms server-side. The first call may open a connection.
-    latencies = [call["latency_ms"] for call in calls if call["tool"] == "get_availability"]
+    latencies = [line["latency_ms"] for line in lines if line["tool"] == "get_my_reservations"]
     assert max(latencies[1:]) < 300
 
 
@@ -416,8 +238,9 @@ async def test_seeded_bookings_go_through_the_real_service(
 
     assert await seed.seed_bookings(e2e_engine, now) == 0
 
-    async with Client(f"{gateway_base_url}/mcp") as client:
-        booked = await call(client, "get_my_reservations", guest_name=seed.TONIGHT[0].guest_name)
+    booked = await call(
+        gateway_base_url, "get_my_reservations", guest_name=seed.TONIGHT[0].guest_name
+    )
     assert [reservation["via"] for reservation in booked["reservations"]] == [seed.TONIGHT[0].via]
 
 
@@ -429,35 +252,164 @@ async def test_health_reports_the_database(gateway_base_url: str) -> None:
     assert response.json() == {"status": "ok", "database": "ok"}
 
 
-async def test_slow_agent_gets_the_fallback_url_within_the_timeout(
-    e2e_database_url: str, e2e_engine: AsyncEngine
+# What only the merchant's agent does: a real node, its agent on a scripted model
+
+
+async def test_a_booking_is_stored_via_claude_and_a_resent_confirm_returns_it(
+    talking_gateway: str, agent_llm: ScriptedLLM, e2e_engine: AsyncEngine
+) -> None:
+    url, name, starts_at = f"{talking_gateway}/mcp", guest(), at(day_ahead(), "19:00")
+    agent_llm.then(
+        calls(
+            tool_call(
+                "propose_booking", starts_at=starts_at.isoformat(), party_size=2, guest_name=name
+            )
+        ),
+        says("A table for 2 tomorrow at 19:00. Shall I book it?"),
+        says("Booked."),
+    )
+    proposed = await talk(url, f"Table for 2 tomorrow at 19:00, {name}.", merchant=ZINC)
+    confirm = {
+        "merchant": ZINC,
+        "message": "Yes, book it.",
+        "idempotency_key": str(uuid4()),
+        "conversation": proposed["conversation"],
+        "confirm": proposed["pending"]["id"],
+    }
+    first = await call_at(url, "talk_to_merchant", confirm)
+    resent = await call_at(url, "talk_to_merchant", confirm)  # a retry: no model call, no write
+
+    assert proposed["pending"]["action"] == "book"
+    assert proposed["reservation"] is None
+    assert first["reservation"]["id"].startswith("R-")
+    assert first["tools_called"] == ["create_reservation"]
+    assert resent == first
+    async with merchant_conn(e2e_engine, ZINC) as conn:
+        rows = list(
+            await conn.execute(
+                select(reservations_t.c.id, reservations_t.c.via).where(
+                    reservations_t.c.guest_name == name
+                )
+            )
+        )
+    assert rows == [(first["reservation"]["id"], "claude")]
+
+
+async def test_move_then_cancel_through_the_agent(
+    talking_gateway: str, agent_llm: ScriptedLLM
+) -> None:
+    url, day, name = f"{talking_gateway}/mcp", day_ahead(), guest()
+    booking = (await book(talking_gateway, agent_llm, ZINC, at(day, "20:00"), name))["id"]
+
+    def proposes(tool: str, **arguments: Any) -> None:
+        agent_llm.then(calls(tool_call(tool, reservation_id=booking, **arguments)), says("Sure?"))
+
+    proposes("propose_change", guest_name=name, starts_at=at(day, "21:00").isoformat())
+    agent_llm.then(says("Moved."))
+    change = await talk(url, f"Move {booking} to 21:00, {name}.", merchant=ZINC)
+    moved = await talk(
+        url,
+        "Yes.",
+        merchant=ZINC,
+        conversation=change["conversation"],
+        confirm=change["pending"]["id"],
+    )
+    proposes("propose_cancellation", guest_name="Someone Else")
+    wrong_name = await talk(url, f"Cancel {booking}, Someone Else.", merchant=ZINC)
+    listed = await call(talking_gateway, "get_my_reservations", guest_name=name)
+    proposes("propose_cancellation", guest_name=name)
+    agent_llm.then(says("Cancelled."))
+    cancel = await talk(url, f"Cancel {booking}, {name}.", merchant=ZINC)
+    cancelled = await talk(
+        url,
+        "Yes.",
+        merchant=ZINC,
+        conversation=cancel["conversation"],
+        confirm=cancel["pending"]["id"],
+    )
+    after = await call(talking_gateway, "get_my_reservations", guest_name=name)
+
+    assert change["pending"]["action"] == "change"
+    assert datetime.fromisoformat(moved["reservation"]["starts_at"]) == at(day, "21:00")
+    assert wrong_name["pending"] is None  # the tool found no booking under that name
+    assert [reservation["id"] for reservation in listed["reservations"]] == [booking]
+    assert cancel["pending"]["action"] == "cancel"
+    assert cancelled["reservation"]["status"] == "cancelled"
+    assert after["reservations"] == []
+
+
+async def test_a_party_too_large_gets_the_fallback_url_from_the_agent(
+    talking_gateway: str, agent_llm: ScriptedLLM
+) -> None:
+    agent_llm.then(
+        calls(tool_call("get_availability", date=day_ahead().isoformat(), party_size=8)),
+        says("We seat up to 6: please book on our website."),
+    )
+    answer = await talk(f"{talking_gateway}/mcp", "A table for 8 tomorrow?", merchant=ZINC)
+
+    assert answer["fallback_url"] == ZINC_FALLBACK
+    assert answer["slots"] == [] and answer["pending"] is None
+
+
+async def test_a_start_the_merchant_blocks_is_no_longer_offered(
+    talking_gateway: str, agent_llm: ScriptedLLM, e2e_engine: AsyncEngine
+) -> None:
+    day = day_ahead(3)
+    before = await offered(talking_gateway, agent_llm, ZINC, day, "21:00")
+    await service(e2e_engine).block_slot(ZINC, at(day, "21:00"))
+    try:
+        after = await offered(talking_gateway, agent_llm, ZINC, day, "21:00")
+    finally:
+        await service(e2e_engine).unblock_slot(ZINC, at(day, "21:00"))
+
+    assert "21:00" in before
+    assert "21:00" not in after
+
+
+async def test_a_slow_agent_gets_the_fallback_url_within_the_talk_s_budget(
+    talking_node: TalkingNode, agent_llm: ScriptedLLM, e2e_engine: AsyncEngine
 ) -> None:
     """Chaos on one merchant only, and the connection goes back to the pool (#13's pitfall)."""
     settings = Settings(
         _env_file=None,
-        database_url=e2e_database_url,
-        agent_timeout_ms=100,
+        database_url="postgresql+psycopg://unused/db",
+        agent_talk_timeout_ms=100,
         chaos_delay_ms=500,
         chaos_merchants=ZINC,
     )
-    agent = LocalAgentClient(PgAgentService(e2e_engine, tz=TZ), e2e_engine)
-    availability = {"date": day_ahead().isoformat(), "party_size": 2}
-    async with Client(create_server(agent, e2e_engine, settings)) as client:
-        started = time.perf_counter()
-        slow = await call(client, "get_availability", merchant=ZINC, **availability)
-        elapsed = time.perf_counter() - started
-        untouched = await call(client, "get_availability", merchant="maison-albane", **availability)
+    host, port = parse_batp_url(talking_node.url)
+    agent = BatpAgentClient(BatpClient(host, port, GATEWAY_AGENT, TOKEN))
+    agent_llm.then(says("Yes, we have tables tomorrow."))
+    try:
+        async with Client(create_server(agent, e2e_engine, settings)) as client:
+            started = time.perf_counter()
+            slow = await client.call_tool(
+                "talk_to_merchant",
+                {"merchant": ZINC, "message": "Tomorrow?", "idempotency_key": str(uuid4())},
+            )
+            elapsed = time.perf_counter() - started
+            untouched = await client.call_tool(
+                "talk_to_merchant",
+                {
+                    "merchant": "maison-albane",
+                    "message": "Tomorrow?",
+                    "idempotency_key": str(uuid4()),
+                },
+            )
+    finally:
+        await agent.close()
 
-    assert slow["error"] == "agent_unavailable"
-    assert slow["fallback_url"] == ZINC_FALLBACK
+    assert slow.structured_content is not None and untouched.structured_content is not None
+    assert slow.structured_content["result"]["error"] == "agent_unavailable"
+    assert slow.structured_content["result"]["fallback_url"] == ZINC_FALLBACK
     assert elapsed < 0.45
-    assert "slots" in untouched
+    assert untouched.structured_content["result"]["reply"].startswith("Yes")
 
 
 async def test_timeout_during_a_query_releases_its_connection(e2e_engine: AsyncEngine) -> None:
     """`wait_for` cancels mid-transaction: the rollback must still give the connection back."""
     settings = Settings(
-        _env_file=None, database_url="postgresql+psycopg://unused/db", agent_timeout_ms=100
+        _env_file=None, database_url="postgresql+psycopg://unused/db", agent_talk_timeout_ms=100
     )
     zinc = await find_merchant(ZINC, engine=e2e_engine)
 
@@ -466,7 +418,7 @@ async def test_timeout_during_a_query_releases_its_connection(e2e_engine: AsyncE
             await conn.execute(select(func.pg_sleep(5)))
 
     started = time.perf_counter()
-    result = await call_agent(zinc, "create_reservation", stuck_in_transaction, settings=settings)
+    result = await call_agent(zinc, TALK_TOOL, stuck_in_transaction, settings=settings)
 
     assert isinstance(result, ToolError)
     assert result.error == "agent_unavailable"

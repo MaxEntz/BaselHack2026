@@ -211,7 +211,7 @@ async def test_update_knowledge_says_when_it_changed_nothing() -> None:
     ("party", "answer"),
     [
         (2, "An agent asking for 2 gets 3 times: 19:30, 20:00 and 20:30."),
-        (9, "An agent asking for 9 gets a 413 with the link to your booking page"),
+        (9, "An agent asking for 9 is told it's too many, with the link to your booking page"),
     ],
 )
 async def test_try_request_says_what_an_agent_gets(party: int, answer: str) -> None:
@@ -420,6 +420,6 @@ async def test_show_view_switches_studios_canvas() -> None:
 def test_the_prompt_answers_what_agents_read_and_refuses_to_touch_the_site() -> None:
     prompt = system_prompt(NOW, PROFILE)
 
-    assert "What agents read:\n- get_availability:" in prompt
+    assert "What agents read:\n- talk_to_merchant:" in prompt
     assert "No. Sésame only reads your public site." in prompt
     assert "Your agent site has no interface, so there's nothing to colour." in prompt

@@ -58,7 +58,7 @@ MAX_REPLY = 2000
 # runs before it starts, so a slow model never cuts a write short.
 TURN_SECONDS = 20.0
 # Bookings over BATP come from guests' agents; `Via` has no value for agents other than Claude
-# yet, so every one is `claude`, as for the node's `BOOK` (PROTOCOL.md §15).
+# yet, so every one is `claude`, whatever `kind` the caller declares (PROTOCOL.md §15).
 VIA: Via = "claude"
 # What `tools_called` names a confirmed write by: the service call code made.
 WRITES: dict[PendingKind, str] = {

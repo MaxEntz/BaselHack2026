@@ -10,9 +10,10 @@ site's form books "via website", live too; the owner cancels the guest's booking
 guest's next call carries the notice.
 
 Real Postgres, platform (`default_app`, with an invite code as on the server), BATP node and
-gateway as a bridge, as deployed; only the model and the crawl are scripted, so the booking
-page is the scripted draft's. The management site's own buttons (Block a time, Pause the
-agent) are tests/e2e/test_web_stack.py's, in a browser.
+gateway as a bridge, as deployed; only the models (the platform's, the merchant agent's) and the
+crawl are scripted, so the booking page is the scripted draft's. The guest only talks to the
+merchant's agent, which alone books (#254). The management site's own buttons (Block a time,
+Pause the agent) are tests/e2e/test_web_stack.py's, in a browser.
 """
 
 import asyncio
@@ -42,15 +43,21 @@ from core.models import StepEvent
 from merchant_platform.api import default_app
 from tests.e2e.conftest import (
     TZ,
-    BatpNode,
+    TalkingNode,
+    book,
+    bridged_to,
     call,
     free_port,
+    node_talking_on,
     offered,
     running_gateway,
     serving,
     subscribed,
+    talk,
     tomorrow,
 )
+from tests.integration.agent_fakes import call as tool_call
+from tests.integration.agent_fakes import calls, says
 
 pytestmark = pytest.mark.integration
 
@@ -152,34 +159,33 @@ async def demo_engine(e2e_database_url: str) -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture(scope="module")
+async def demo_node(demo_engine: AsyncEngine) -> AsyncIterator[TalkingNode]:
+    """The BATP node, its merchant agent on a scripted model, over the demo's state."""
+    async with node_talking_on(demo_engine) as node:
+        yield node
+
+
+@pytest.fixture(scope="module")
 def demo_stack(
-    e2e_database_url: str, demo_engine: AsyncEngine, tmp_path_factory: pytest.TempPathFactory
+    e2e_database_url: str, demo_node: TalkingNode
 ) -> Iterator[tuple[str, str, FastAPI, ScriptedModel]]:
-    """The node, the gateway as its bridge, and the platform: their URLs, the platform, its
+    """The gateway as the node's bridge, and the platform: their URLs, the platform, its
     model."""
-    node = BatpNode(e2e_database_url, tmp_path_factory.mktemp("batp") / "node.log")
-    node.start()
-    try:
-        gateway_settings = Settings(
-            _env_file=None, database_url=e2e_database_url, batp_url=node.url
+    with running_gateway(bridged_to(demo_node, e2e_database_url)) as gateway:
+        port = free_port()
+        settings = Settings(
+            _env_file=None,
+            database_url=e2e_database_url,
+            platform_web_url=f"http://127.0.0.1:{port}",
+            gateway_public_url=gateway,
+            builder_cache="off",
+            platform_invite_code=INVITE,
+            platform_cookie_secret="s" * 32,
         )
-        with running_gateway(gateway_settings) as gateway:
-            port = free_port()
-            settings = Settings(
-                _env_file=None,
-                database_url=e2e_database_url,
-                platform_web_url=f"http://127.0.0.1:{port}",
-                gateway_public_url=gateway,
-                builder_cache="off",
-                platform_invite_code=INVITE,
-                platform_cookie_secret="s" * 32,
-            )
-            model = ScriptedModel()
-            platform = default_app(settings, llm=model, crawler=fake_crawl)
-            with serving(platform, port) as url:
-                yield url, gateway, platform, model
-    finally:
-        node.stop()
+        model = ScriptedModel()
+        platform = default_app(settings, llm=model, crawler=fake_crawl)
+        with serving(platform, port) as url:
+            yield url, gateway, platform, model
 
 
 def at(day: date, hhmm: str) -> str:
@@ -237,9 +243,12 @@ async def next_live(events: asyncio.Queue[dict[str, Any]], since: float) -> dict
 
 
 async def test_the_demo_runs_in_its_order(
-    demo_stack: tuple[str, str, FastAPI, ScriptedModel], demo_engine: AsyncEngine
+    demo_stack: tuple[str, str, FastAPI, ScriptedModel],
+    demo_node: TalkingNode,
+    demo_engine: AsyncEngine,
 ) -> None:
     platform_url, gateway, platform, model = demo_stack
+    agent = demo_node.llm
     day = tomorrow()
     async with (
         httpx.AsyncClient(base_url=platform_url) as studio,
@@ -296,18 +305,10 @@ async def test_the_demo_runs_in_its_order(
                 filters=PREFERENCES,
             )
             assert [m["slug"] for m in found["merchants"]] == ["la-graine-verte", SLUG]
-            assert "20:00" in await offered(gateway, SLUG, day, "20:00", party_size=4)
+            assert "20:00" in await offered(gateway, agent, SLUG, day, "20:00", party_size=4)
             started = time.monotonic()
-            booked = await call(
-                gateway,
-                "create_reservation",
-                merchant=SLUG,
-                starts_at=at(day, "20:00"),
-                party_size=4,
-                guest_name=GUEST,
-                idempotency_key=str(uuid4()),
-            )
-            reservation = booked["reservation"]
+            starts_at = datetime.fromisoformat(at(day, "20:00"))
+            reservation = await book(gateway, agent, SLUG, starts_at, GUEST, party_size=4)
             assert (reservation["status"], reservation["via"]) == ("confirmed", "claude")
 
             # 4. The merchant's side gets it within 2 s.
@@ -333,30 +334,27 @@ async def test_the_demo_runs_in_its_order(
             assert card(stats, "stats")["data"]["guests"] == 4
 
             # 5. "Block 21:00", through the chat: Claude users no longer get 21:00.
-            assert "21:00" in await offered(gateway, SLUG, day, "21:00")
+            assert "21:00" in await offered(gateway, agent, SLUG, day, "21:00")
             blocked = await merchant.say(
                 "Block 21:00 tomorrow", ("block_slot", {"starts_at": at(day, "21:00")})
             )
             assert "blocked" in card(blocked, "confirmation")["data"]["text"]
-            assert "21:00" not in await offered(gateway, SLUG, day, "21:00")
+            assert "21:00" not in await offered(gateway, agent, SLUG, day, "21:00")
 
-            # 6. A party of 8 gets the site's booking page.
-            too_large = await call(
-                gateway, "get_availability", merchant=SLUG, date=day.isoformat(), party_size=8
+            # 6. A party of 8 gets the site's booking page, from the agent's tool.
+            agent.then(
+                calls(tool_call("get_availability", date=day.isoformat(), party_size=8)),
+                says("We seat up to 6: please book on our website."),
             )
-            assert (too_large["error"], too_large["fallback_url"]) == (
-                "party_too_large",
-                BOOKING_PAGE,
-            )
+            too_large = await talk(f"{gateway}/mcp", "A table for 8 tomorrow?", merchant=SLUG)
+            assert (too_large["pending"], too_large["fallback_url"]) == (None, BOOKING_PAGE)
 
             # 7. Outage, as `make outage` sets it: the booking page too; back live, no restart.
             await provisioning.set_status(SLUG, "down", engine=demo_engine)
-            down = await call(
-                gateway, "get_availability", merchant=SLUG, date=day.isoformat(), party_size=2
-            )
+            down = await talk(f"{gateway}/mcp", "A table for 2 tomorrow?", merchant=SLUG)
             assert (down["error"], down["fallback_url"]) == ("agent_unavailable", BOOKING_PAGE)
             await provisioning.set_status(SLUG, "live", engine=demo_engine)
-            assert await offered(gateway, SLUG, day, "19:30")
+            assert await offered(gateway, agent, SLUG, day, "19:30")
 
             # 8. The site's own form books "via website", and it shows up live too.
             started = time.monotonic()
@@ -386,6 +384,7 @@ async def test_the_demo_runs_in_its_order(
             # The merchant's own change sends nothing live.
             await asyncio.sleep(0.5)
             assert live.empty()
+            assert agent.replies == [], "the merchant agent's model didn't get every call"
         finally:
             listening.cancel()
             await asyncio.gather(listening, return_exceptions=True)

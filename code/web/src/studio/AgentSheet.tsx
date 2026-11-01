@@ -4,7 +4,8 @@ import { ASSISTANT } from "../strings.ts";
 import type { AgentIntent, AgentRequest, AgentTryOutput, DaySlots, GeneratedTool, PendingAction, TalkOutput } from "../types.ts";
 import type { Addresses } from "./feed.tsx";
 
-const INTENTS: readonly AgentIntent[] = ["DISCOVER", "AVAILABILITY", "BOOK", "AMEND", "CANCEL", "RECALL", "PING"];
+// The intents that address no merchant: booking is a conversation with the agent (#254).
+const INTENTS: readonly AgentIntent[] = ["DISCOVER", "RECALL", "PING"];
 const PREVIEW_PARTY = 2;
 const PREVIEW_SLOTS = 3;
 const MAX_MESSAGE = 2000;
@@ -13,7 +14,7 @@ const YES = "Yes, please go ahead.";
 // How a session opens (PROTOCOL.md §5). The token is the agent's own: it is never shown.
 const HELLO = JSON.stringify({
   type: "hello",
-  batp: "0.2",
+  batp: "0.3",
   agent: {
     id: "urn:batp:agent:claude-gateway",
     name: `${ASSISTANT} via the Sésame gateway`,
@@ -24,9 +25,9 @@ const HELLO = JSON.stringify({
 });
 const WELCOME = JSON.stringify({
   type: "welcome",
-  batp: "0.2",
+  batp: "0.3",
   node: { id: "urn:batp:node:merchant-agents", name: "Sésame" },
-  intents: [...INTENTS, "TALK"],
+  intents: ["DISCOVER", "TALK", "RECALL", "PING"],
   session: "s-1",
 });
 
@@ -51,21 +52,31 @@ function FrameLine({ out, text }: { out: boolean; text: string }) {
   );
 }
 
-// What an agent gets once the merchant publishes: the real times, in the frame's shape.
+// What an agent gets once the merchant publishes: the real times, in a TALK answer's shape. The
+// reply stands for the model's, which words the same times its own way.
 function previewFrames(slug: string, day: DaySlots): [string, string] {
   const free = day.slots.filter((slot) => slot.table && !slot.blocked).slice(0, PREVIEW_SLOTS);
+  const times = free.map((slot) => slot.time);
   const request = {
     type: "request",
     id: "r-1",
-    intent: "AVAILABILITY",
+    intent: "TALK",
     merchant: slug,
-    params: { date: day.date, party_size: day.party_size },
+    params: { message: `A table for ${day.party_size} on ${day.date}?`, idempotency_key: "m-1" },
   };
   const response = {
     type: "response",
     id: "r-1",
     status: 200,
-    result: { slots: free.map((slot) => ({ starts_at: slot.starts_at, table_label: slot.table?.label })) },
+    result: {
+      conversation: "c-1",
+      reply: times.length > 0 ? `I can offer ${times.join(", ")}. Which name?` : "We're full that day.",
+      slots: free.map((slot) => ({ starts_at: slot.starts_at, table_label: slot.table?.label })),
+      pending: null,
+      reservation: null,
+      fallback_url: null,
+      tools_called: ["get_availability"],
+    },
   };
   return [JSON.stringify(request), JSON.stringify(response)];
 }

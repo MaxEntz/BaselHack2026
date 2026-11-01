@@ -66,27 +66,15 @@ function setStatus(mock: Mock, status: MerchantOverview["status"]): void {
   mock.data = { ...mock.data, merchant: { ...mock.data.merchant, status } };
 }
 
-// Like the node: hidden until published, and a paused agent sends guests to the booking page.
+// Like the node: the Send buttons' intents address no merchant, so whether it is published or
+// paused changes nothing; booking is a TALK (#254).
 function tryAgent(mock: Mock, intent: AgentIntent): AgentTryOutput {
-  const anyMerchant = intent === "PING" || intent === "DISCOVER" || intent === "RECALL";
-  const refused = anyMerchant ? null : { building: 404, down: 503, live: null }[mock.data.merchant.status];
-  const status = refused ?? 200;
   mock.tries += 1;
   const id = `r-${mock.tries}`;
-  const merchant = anyMerchant ? undefined : mock.data.merchant.slug;
-  const answer =
-    status === 200
-      ? { result: {} }
-      : {
-          error:
-            status === 404
-              ? { code: "not_found", message: "Unknown merchant" }
-              : { code: "agent_unavailable", message: "Not taking bookings through agents right now" },
-        };
   return {
-    request: JSON.stringify({ type: "request", id, intent, merchant, params: {} }),
-    response: JSON.stringify({ type: "response", id, status, ...answer }),
-    status,
+    request: JSON.stringify({ type: "request", id, intent, params: {} }),
+    response: JSON.stringify({ type: "response", id, status: 200, result: {} }),
+    status: 200,
   };
 }
 
@@ -133,6 +121,7 @@ function scriptedAnswer(mock: Mock, input: AgentTalkInput): TalkOutput {
         status: "confirmed",
         guest_name: "Test booking",
       },
+      // Like the agent: code ran the write on the confirm, and names it (#247).
       tools_called: ["create_reservation"],
     };
   }

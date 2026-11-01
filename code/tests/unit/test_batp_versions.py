@@ -1,4 +1,5 @@
-"""BATP 0.2: the `TALK` intent and the session's version (PROTOCOL.md §7, §14, #245)."""
+"""BATP 0.2 and 0.3: the `TALK` intent, the closed direct intents and the session's version
+(PROTOCOL.md §7, §14, #245, #254)."""
 
 import asyncio
 import json
@@ -36,13 +37,14 @@ TALK = {
 }
 
 
-def test_this_implementation_speaks_0_2() -> None:
-    assert PROTOCOL_VERSION == "0.2"
+def test_this_implementation_speaks_0_3() -> None:
+    assert PROTOCOL_VERSION == "0.3"
 
 
-def test_talk_is_an_addressed_intent() -> None:
-    assert "TALK" in ALL_INTENTS
-    assert "TALK" in ADDRESSED
+def test_talk_is_the_only_addressed_intent() -> None:
+    # 0.3 closed the direct booking intents: only the merchant's agent calls the tools (#254).
+    assert ALL_INTENTS == ("DISCOVER", "TALK", "RECALL", "PING")
+    assert frozenset({"TALK"}) == ADDRESSED
 
 
 def test_a_talk_frame_round_trips() -> None:
@@ -52,7 +54,8 @@ def test_a_talk_frame_round_trips() -> None:
 
 
 @pytest.mark.parametrize(
-    ("caller", "session"), [("0.1", "0.1"), ("0.2", "0.2"), ("0.9", "0.2"), ("0.10", "0.2")]
+    ("caller", "session"),
+    [("0.1", "0.1"), ("0.2", "0.2"), ("0.3", "0.3"), ("0.9", "0.3"), ("0.10", "0.3")],
 )
 def test_the_session_speaks_the_highest_minor_both_speak(caller: str, session: str) -> None:
     assert negotiate(caller) == session
@@ -95,7 +98,7 @@ async def test_a_0_1_caller_is_still_welcomed_in_0_1_without_talk(node: NodeServ
     try:
         assert (welcome["type"], welcome["batp"]) == ("welcome", "0.1")
         assert "TALK" not in welcome["intents"]
-        assert "BOOK" in welcome["intents"]
+        assert welcome["intents"] == ["DISCOVER", "RECALL", "PING"]
         # An intent its version doesn't have isn't served, and the session goes on.
         writer.write(encode(TALK))
         refused = Response.model_validate(await read_json(reader))
@@ -114,6 +117,23 @@ async def test_a_0_2_caller_is_offered_talk_and_served(node: NodeServer) -> None
         writer.write(encode(TALK))
         answer = await read_json(reader)
         assert (answer["status"], answer["result"]) == (200, {"intent": "TALK"})
+    finally:
+        writer.close()
+
+
+@pytest.mark.parametrize("version", ["0.1", "0.2", PROTOCOL_VERSION])
+@pytest.mark.parametrize("intent", ["AVAILABILITY", "BOOK", "AMEND", "CANCEL"])
+async def test_a_closed_intent_is_invalid_in_any_session_and_the_session_goes_on(
+    node: NodeServer, version: str, intent: str
+) -> None:
+    _, reader, writer = await hello(node, version)
+    try:
+        writer.write(encode(TALK | {"intent": intent}))
+        refused = await read_json(reader)
+        assert (refused["id"], refused["status"]) == ("r-1", 400)
+        assert refused["error"]["code"] == "invalid_input"
+        writer.write(encode({"type": "request", "id": "r-2", "intent": "PING", "params": {}}))
+        assert (await read_json(reader))["status"] == 200
     finally:
         writer.close()
 

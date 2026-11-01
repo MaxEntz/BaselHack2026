@@ -116,7 +116,6 @@ def talking_gateway(database_url: str, port: int) -> Settings:
         _env_file=None,
         database_url=database_url,
         batp_url=f"batp://{LOOPBACK}:{port}",
-        gateway_talk=True,
         agent_talk_timeout_ms=TALK_TIMEOUT_MS,
     )
 
